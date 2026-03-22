@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.turbo/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.DS_Store
