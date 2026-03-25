@@ -1,7 +1,7 @@
 import type { OrderStatus } from '../types/experience';
 
 export const STATUS_DISPLAY: Record<string, { label: string; bg: string; text: string; ringColor: string }> = {
-  pending:   { label: 'Order Placed',   bg: 'bg-yellow-50',  text: 'text-yellow-800', ringColor: 'ring-yellow-200' },
+  pending:   { label: 'Order Placed',   bg: 'bg-blue-50',    text: 'text-blue-800',   ringColor: 'ring-blue-200' },
   confirmed: { label: 'Entered in POS', bg: 'bg-purple-50',  text: 'text-purple-800', ringColor: 'ring-purple-200' },
   preparing: { label: 'Entered in POS', bg: 'bg-purple-50',  text: 'text-purple-800', ringColor: 'ring-purple-200' },
   ready:     { label: 'Ready to Serve', bg: 'bg-amber-50',   text: 'text-amber-800',  ringColor: 'ring-amber-200' },
