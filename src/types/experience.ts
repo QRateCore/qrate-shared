@@ -37,6 +37,10 @@ export interface TableGuest {
   is_first_timer: boolean;
   order_ids?: string[];
   connected?: boolean;
+  /** True when patron's phone has been away >5 min (disconnected → idle) */
+  idle?: boolean;
+  /** ISO timestamp of when patron went idle/disconnected */
+  idle_since?: string | null;
 }
 
 export interface TableCart {
