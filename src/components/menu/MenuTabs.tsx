@@ -202,7 +202,8 @@ export function MenuTabs({
                     for (let i = 0; i < 7; i++) sched[String(i)] = { start: '09:00', end: '22:00' };
                     onUpdateField(activeMenu.id, { allDay: false, schedule: sched });
                   } else {
-                    onUpdateField(activeMenu.id, { allDay: true, schedule: {} });
+                    // STR-132: "all day every day" implies active
+                    onUpdateField(activeMenu.id, { allDay: true, schedule: {}, active: true });
                   }
                 }}
                 onToggleDay={(day) => onToggleDay(activeMenu.id, day)}
