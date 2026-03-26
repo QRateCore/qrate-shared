@@ -90,9 +90,11 @@ function resizeImage(file: File): Promise<Blob> {
 function InlineTagInput({
   tags = [],
   onChange,
+  testId,
 }: {
   tags: string[];
   onChange: (t: string[]) => void;
+  testId?: string;
 }) {
   const [input, setInput] = useState("");
   const add = () => {
@@ -103,16 +105,18 @@ function InlineTagInput({
   const remove = (t: string) => onChange(tags.filter((x) => x !== t));
   return (
     <div>
-      <div className="flex gap-1 flex-wrap mb-1">
+      <div className="flex gap-1 flex-wrap mb-1" data-testid={testId ? `tag-badges-${testId}` : undefined}>
         {tags.map((t) => (
           <span
             key={t}
             className="flex items-center gap-1 bg-orange-100 text-orange-800 text-xs px-2 py-0.5 rounded-full"
+            data-testid={testId ? `tag-badge-${testId}-${t}` : undefined}
           >
             {t}
             <button
               onClick={() => remove(t)}
               className="text-orange-400 hover:text-orange-700 leading-none"
+              data-testid={testId ? `tag-remove-${testId}-${t}` : undefined}
             >
               &times;
             </button>
@@ -131,10 +135,12 @@ function InlineTagInput({
           }}
           className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
           placeholder="Type and press Enter..."
+          data-testid={testId ? `tag-input-${testId}` : undefined}
         />
         <button
           onClick={add}
           className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1 rounded-lg transition"
+          data-testid={testId ? `tag-add-btn-${testId}` : undefined}
         >
           Add
         </button>
@@ -1997,7 +2003,7 @@ export default function MenuItemsManagement({
                   const tags =
                     (editFoodTags[key as keyof FoodTags] as string[]) || [];
                   return (
-                    <div key={key} className="px-5 py-3">
+                    <div key={key} className="px-5 py-3" data-testid={`food-tag-category-${key}`}>
                       <div className="flex items-start gap-3">
                         <div className="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center text-sm shrink-0 mt-0.5">
                           {icon}
@@ -2010,6 +2016,7 @@ export default function MenuItemsManagement({
                             <InlineTagInput
                               tags={tags}
                               onChange={(val) => updateTag(key, val)}
+                              testId={key}
                             />
                           ) : (
                             <div className="flex gap-1 flex-wrap">

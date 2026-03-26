@@ -15,7 +15,7 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="food-tag-editor">
       {/* Array-based tag categories */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {TAG_CATEGORIES.map(({ key, label, color, icon }) => (
@@ -25,6 +25,7 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
             tags={(tags[key as keyof FoodTags] as string[]) || []}
             onChange={(t) => updateArrayTag(key, t)}
             color={color}
+            testId={key}
           />
         ))}
       </div>
@@ -32,12 +33,13 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
       {/* Heat/Spice Level */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">🔥 Heat/Spice Level</label>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" data-testid="heat-level-selector">
           {HEAT_LABELS.map((label, level) => (
             <button
               key={level}
               type="button"
               onClick={() => onChange({ ...tags, heat: level })}
+              data-testid={`heat-btn-${level}`}
               className={'flex-1 text-xs py-2 rounded-lg border-2 font-semibold transition ' +
                 ((tags.heat ?? 0) === level
                   ? 'bg-orange-500 border-orange-500 text-white'
@@ -52,12 +54,13 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
       {/* Calorie Count */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">🔢 Calorie Count</label>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5" data-testid="calorie-selector">
           {CALORIE_OPTIONS.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => onChange({ ...tags, calorie_count: tags.calorie_count === option ? undefined : option })}
+              data-testid={`calorie-btn-${option}`}
               className={'text-xs px-3 py-1.5 rounded-lg border-2 transition font-medium ' +
                 (tags.calorie_count === option
                   ? 'bg-orange-500 text-white border-orange-500'
