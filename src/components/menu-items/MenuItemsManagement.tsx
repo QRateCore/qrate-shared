@@ -265,6 +265,10 @@ export interface MenuItemsManagementProps {
   headerExtra?: React.ReactNode;
   /** Canonical category mapping from menu intelligence (original_name → canonical_names) */
   canonicalCategoryMap?: Record<string, string[]>;
+  /** When set, only show items belonging to this menu */
+  filterMenuId?: string | null;
+  /** Called when user clears the menu filter */
+  onClearMenuFilter?: () => void;
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -274,11 +278,14 @@ export default function MenuItemsManagement({
   service,
   headerExtra,
   canonicalCategoryMap,
+  filterMenuId,
+  onClearMenuFilter,
 }: MenuItemsManagementProps) {
   // Data
   const [items, setItems] = useState<MenuItemDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filterMenuName, setFilterMenuName] = useState<string | null>(null);
 
   // Sidebar
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -389,6 +396,18 @@ export default function MenuItemsManagement({
       .then(setAvailableMenus)
       .catch(() => {});
   }, [restaurantId, service]);
+
+  // Resolve menu name for filter banner
+  useEffect(() => {
+    if (!filterMenuId) { setFilterMenuName(null); return; }
+    // Try availableMenus first
+    const fromMenus = availableMenus.find(m => m.id === filterMenuId);
+    if (fromMenus) { setFilterMenuName(fromMenus.name); return; }
+    // Fallback: derive from item associations
+    const fromItems = items.find(i => i.menu_associations?.some(a => a.menu_id === filterMenuId));
+    const assoc = fromItems?.menu_associations?.find(a => a.menu_id === filterMenuId);
+    setFilterMenuName(assoc?.menu_name ?? null);
+  }, [filterMenuId, availableMenus, items]);
 
   // ─── Sync editor on selection change ──────────────────────────────────
 
@@ -831,6 +850,9 @@ export default function MenuItemsManagement({
     return [];
   };
   const filtered = items.filter((i) => {
+    const matchMenu = !filterMenuId
+      || i.menu_associations?.some(a => a.menu_id === filterMenuId)
+      || i.menu_id === filterMenuId;
     const matchSearch = i.name.toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCat === "All" || getCanonicalCategory(i.category).includes(filterCat);
     const isActive = i.active ?? true;
@@ -838,7 +860,7 @@ export default function MenuItemsManagement({
       filterStatus === "all" ||
       (filterStatus === "active" && isActive) ||
       (filterStatus === "inactive" && !isActive);
-    return matchSearch && matchCat && matchStatus;
+    return matchMenu && matchSearch && matchCat && matchStatus;
   });
   const totalTags = TAG_CATEGORIES.reduce(
     (acc, f) =>
@@ -847,7 +869,12 @@ export default function MenuItemsManagement({
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Items needing attention
+  // Items needing attention — scoped to filtered menu when active
+  const menuScopedItems = filterMenuId
+    ? items.filter(i =>
+        i.menu_associations?.some(a => a.menu_id === filterMenuId)
+        || i.menu_id === filterMenuId)
+    : items;
   const itemTagCount = (item: MenuItemDisplay) =>
     TAG_CATEGORIES.reduce(
       (acc, f) =>
@@ -855,9 +882,9 @@ export default function MenuItemsManagement({
         ((item.food_tags?.[f.key as keyof FoodTags] as string[]) || []).length,
       0,
     );
-  const noMenuItems = items.filter((i) => !i.menu_associations || i.menu_associations.length === 0);
-  const redItems = items.filter((i) => !i.description);
-  const yellowItems = items
+  const noMenuItems = menuScopedItems.filter((i) => !i.menu_associations || i.menu_associations.length === 0);
+  const redItems = menuScopedItems.filter((i) => !i.description);
+  const yellowItems = menuScopedItems
     .filter((i) => !i.thumbnail_url || itemTagCount(i) === 0)
     .filter((i) => !redItems.some((r) => r.id === i.id));
   const attentionCount = redItems.length + yellowItems.length + noMenuItems.filter(
@@ -868,7 +895,7 @@ export default function MenuItemsManagement({
   const attentionItems = (() => {
     const seen = new Set<string>();
     const result: { item: MenuItemDisplay; issues: string[] }[] = [];
-    for (const item of items) {
+    for (const item of menuScopedItems) {
       const issues: string[] = [];
       if (!item.description) issues.push('No description');
       if (item.price === null || item.price === undefined) issues.push('No price');
@@ -933,6 +960,26 @@ export default function MenuItemsManagement({
         </div>
         {headerExtra}
       </div>
+
+      {/* Menu filter banner */}
+      {filterMenuId && (
+        <div data-testid="menu-filter-banner" className="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+          <span className="text-sm text-blue-800">
+            Filtered to{' '}
+            <strong data-testid="menu-filter-name">{filterMenuName || 'this menu'}</strong>
+            {' '}&mdash; <span data-testid="menu-filter-count">{filtered.length}</span> item{filtered.length !== 1 ? 's' : ''}
+          </span>
+          {onClearMenuFilter && (
+            <button
+              data-testid="menu-filter-clear"
+              onClick={onClearMenuFilter}
+              className="ml-auto text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Clear filter &times;
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Items Needing Attention */}
       {attentionCount > 0 && (
