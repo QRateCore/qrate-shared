@@ -375,7 +375,14 @@ export default function MenuItemsManagement({
       );
       setItems(unique);
       if (data.length > 0 && !selectedId) {
-        setSelectedId(data[0].id);
+        const firstVisible = filterMenuId
+          ? unique.find(
+              (i) =>
+                i.menu_associations?.some((a) => a.menu_id === filterMenuId) ||
+                i.menu_id === filterMenuId,
+            )
+          : unique[0];
+        setSelectedId(firstVisible?.id || null);
       }
     } catch {
       setError("Failed to load menu items");
@@ -963,17 +970,17 @@ export default function MenuItemsManagement({
 
       {/* Menu filter banner */}
       {filterMenuId && (
-        <div data-testid="menu-filter-banner" className="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-          <span className="text-sm text-blue-800">
+        <div data-testid="menu-filter-banner" className="mb-4 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-lg px-4 py-3">
+          <span className="text-sm text-gray-700">
             Filtered to{' '}
-            <strong data-testid="menu-filter-name">{filterMenuName || 'this menu'}</strong>
+            <strong data-testid="menu-filter-name" className="text-gray-900">{filterMenuName || 'this menu'}</strong>
             {' '}&mdash; <span data-testid="menu-filter-count">{filtered.length}</span> item{filtered.length !== 1 ? 's' : ''}
           </span>
           {onClearMenuFilter && (
             <button
               data-testid="menu-filter-clear"
               onClick={onClearMenuFilter}
-              className="ml-auto text-sm text-blue-600 hover:text-blue-800 font-medium"
+              className="ml-auto text-sm text-orange-600 hover:text-orange-800 font-medium"
             >
               Clear filter &times;
             </button>
