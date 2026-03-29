@@ -1,5 +1,5 @@
 import type { FoodTags } from '../../types';
-import { TAG_CATEGORIES, HEAT_LABELS } from '../../constants/food-tags';
+import { TAG_CATEGORIES } from '../../constants/food-tags';
 
 export function FoodTagBadges({ tags }: { tags?: FoodTags }) {
   if (!tags) return null;
@@ -8,10 +8,9 @@ export function FoodTagBadges({ tags }: { tags?: FoodTags }) {
     const val = tags[cat.key as keyof FoodTags];
     return Array.isArray(val) && val.length > 0;
   });
-  const hasHeat = typeof tags.heat === 'number' && tags.heat > 0;
   const hasCalorie = !!tags.calorie_count;
 
-  if (!hasArrayTags && !hasHeat && !hasCalorie) return null;
+  if (!hasArrayTags && !hasCalorie) return null;
 
   return (
     <div className="mt-3 space-y-1">
@@ -33,14 +32,6 @@ export function FoodTagBadges({ tags }: { tags?: FoodTags }) {
           </div>
         );
       })}
-      {hasHeat && (
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-xs text-gray-500 mr-1">Heat:</span>
-          <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700">
-            {'🔥'.repeat(tags.heat!)} {HEAT_LABELS[tags.heat!]}
-          </span>
-        </div>
-      )}
       {hasCalorie && (
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs text-gray-500 mr-1">Calories:</span>

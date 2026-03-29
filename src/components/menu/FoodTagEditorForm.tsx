@@ -1,6 +1,6 @@
 'use client';
 
-import { TAG_CATEGORIES, HEAT_LABELS, CALORIE_OPTIONS } from '../../constants/food-tags';
+import { TAG_CATEGORIES, CALORIE_OPTIONS } from '../../constants/food-tags';
 import { TagInput } from './TagInput';
 import type { FoodTags } from '../../types';
 
@@ -28,27 +28,6 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
             testId={key}
           />
         ))}
-      </div>
-
-      {/* Heat/Spice Level */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">🔥 Heat/Spice Level</label>
-        <div className="flex gap-1.5" data-testid="heat-level-selector">
-          {HEAT_LABELS.map((label, level) => (
-            <button
-              key={level}
-              type="button"
-              onClick={() => onChange({ ...tags, heat: level })}
-              data-testid={`heat-btn-${level}`}
-              className={'flex-1 text-xs py-2 rounded-lg border-2 font-semibold transition ' +
-                ((tags.heat ?? 0) === level
-                  ? 'bg-orange-500 border-orange-500 text-white'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300 hover:text-orange-500')}
-            >
-              {level > 0 && '🔥'.repeat(level)} {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Calorie Count */}
