@@ -1,11 +1,12 @@
 import type { FoodTags } from '../types/restaurant';
 
 // Keys of FoodTags that are string arrays
-type ArrayTagKey = 'ingredients' | 'textures' | 'taste_profile' | 'dietary' | 'cooking_method' | 'allergens' | 'seasons' | 'festivity';
+type ArrayTagKey = 'ingredients' | 'textures' | 'taste_profile' | 'dietary' | 'cooking_method' | 'allergens' | 'seasons' | 'festivity' | 'heat_spice';
 
 export const TAG_CATEGORIES: { key: ArrayTagKey; label: string; color: string; icon: string }[] = [
   { key: 'ingredients', label: 'Ingredients', color: 'bg-sky-100 text-sky-700', icon: '🥬' },
   { key: 'allergens', label: 'Identified Allergens from Listed Ingredients', color: 'bg-red-100 text-red-700', icon: '⚠️' },
+  { key: 'heat_spice', label: 'Heat / Spice Level', color: 'bg-orange-100 text-orange-700', icon: '🌶️' },
   { key: 'cooking_method', label: 'Cooking Style', color: 'bg-gray-100 text-gray-700', icon: '🍳' },
   { key: 'textures', label: 'Texture', color: 'bg-purple-100 text-purple-700', icon: '✨' },
   { key: 'dietary', label: 'Dietary Preference', color: 'bg-green-100 text-green-700', icon: '🥗' },
