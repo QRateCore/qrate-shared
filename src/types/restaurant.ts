@@ -83,6 +83,10 @@ export interface MenuItem {
   boost_level?: number;
   chefs_special?: boolean;
   canonical_category?: string | null;
+  /** 'single' = serves one person; 'shared' = serves multiple guests */
+  portion_type?: 'single' | 'shared';
+  /** Number of guests the item serves (only set when portion_type = 'shared') */
+  portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
 }
@@ -186,6 +190,10 @@ export interface MenuItemDisplay {
   boost_level?: number;
   chefs_special?: boolean;
   canonical_category?: string | null;
+  /** 'single' = serves one person; 'shared' = serves multiple guests */
+  portion_type?: 'single' | 'shared';
+  /** Number of guests the item serves (only set when portion_type = 'shared') */
+  portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
   enrichment_status?: string;

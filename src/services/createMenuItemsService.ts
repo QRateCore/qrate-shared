@@ -41,6 +41,8 @@ export function createMenuItemsService(
           food_tags: updates.food_tags,
           chefs_special: updates.chefs_special,
           canonical_category: updates.canonical_category,
+          portion_type: updates.portion_type,
+          portion_serves: updates.portion_serves,
         },
       });
     },

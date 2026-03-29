@@ -301,6 +301,8 @@ export default function MenuItemsManagement({
   const [editFoodTags, setEditFoodTags] = useState<FoodTags>({});
   const [editBoost, setEditBoost] = useState("");
   const [editChefsSpecial, setEditChefsSpecial] = useState(false);
+  const [editPortionType, setEditPortionType] = useState<'single' | 'shared'>('single');
+  const [editPortionServes, setEditPortionServes] = useState<number>(2);
 
   // Persistence
   const [saving, setSaving] = useState(false);
@@ -443,6 +445,8 @@ export default function MenuItemsManagement({
 
     setEditFoodTags(selected.food_tags || {});
     setEditChefsSpecial(selected.chefs_special || false);
+    setEditPortionType(selected.portion_type || 'single');
+    setEditPortionServes(selected.portion_serves || 2);
     setImageUrl(selected.thumbnail_url || null);
     setDeleteConfirm(false);
     setSaved(false);
@@ -475,6 +479,8 @@ export default function MenuItemsManagement({
           food_tags: editFoodTags,
           chefs_special: editChefsSpecial,
           canonical_category: canonicalValue,
+          portion_type: editPortionType,
+          portion_serves: editPortionType === 'shared' ? editPortionServes : null,
         });
       } else if (service.saveTags) {
         await service.saveTags(selectedId, editFoodTags);
@@ -1868,6 +1874,52 @@ export default function MenuItemsManagement({
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${editChefsSpecial ? 'translate-x-5' : 'translate-x-1'}`} />
                       </button>
                     </div>
+                  </div>
+                )}
+                {/* Portion Size */}
+                {canEdit && !isCreatingNew && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-2 block">
+                      Portion Size
+                    </label>
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        type="button"
+                        data-testid="portion-type-single"
+                        onClick={() => { setEditPortionType('single'); setSaved(false); }}
+                        className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
+                          editPortionType === 'single'
+                            ? 'bg-orange-500 border-orange-500 text-white'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        Single
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="portion-type-shared"
+                        onClick={() => { setEditPortionType('shared'); setSaved(false); }}
+                        className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold transition-colors ${
+                          editPortionType === 'shared'
+                            ? 'bg-orange-500 border-orange-500 text-white'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        Shared
+                      </button>
+                    </div>
+                    {editPortionType === 'shared' && (
+                      <select
+                        value={editPortionServes}
+                        onChange={(e) => { setEditPortionServes(parseInt(e.target.value, 10)); setSaved(false); }}
+                        data-testid="portion-serves-select"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
+                      >
+                        {[2, 3, 4, 5, 6].map((n) => (
+                          <option key={n} value={n}>{n} guests</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
                 {/* Select the Menu it belongs to — existing items only */}
