@@ -67,6 +67,29 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   const [toggling, setToggling] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [headerError, setHeaderError] = useState<string | null>(null);
+  const [tabCounts, setTabCounts] = useState<{ tables?: number; orders?: number }>({});
+
+  const fetchTabCounts = useCallback(async () => {
+    if (!restaurantId) return;
+    try {
+      const [tablesData, ordersData] = await Promise.all([
+        service.getTables(restaurantId).catch(() => null),
+        service.getOrders(restaurantId, undefined, 1).catch(() => null),
+      ]);
+      setTabCounts({
+        tables: tablesData ? tablesData.tables.filter(t => t.table_number < 9900).length : undefined,
+        orders: ordersData?.total ?? undefined,
+      });
+    } catch {
+      // Non-critical — badges will just not show
+    }
+  }, [restaurantId, service]);
+
+  useEffect(() => {
+    fetchTabCounts();
+    const interval = setInterval(fetchTabCounts, 15_000);
+    return () => clearInterval(interval);
+  }, [fetchTabCounts]);
 
   const fetchRestaurantInfo = useCallback(async () => {
     if (!restaurantId) return;
@@ -118,9 +141,9 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   };
 
   const tabs = [
-    { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: 12 as number | undefined },
-    { id: 'reservations' as Tab, label: 'Reservations', icon: Calendar, count: 8 as number | undefined },
-    { id: 'orders' as Tab, label: 'Orders', icon: ShoppingBag, count: 15 as number | undefined },
+    { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
+    { id: 'reservations' as Tab, label: 'Reservations', icon: Calendar, count: undefined as number | undefined },
+    { id: 'orders' as Tab, label: 'Orders', icon: ShoppingBag, count: tabCounts.orders as number | undefined },
     { id: 'menu-boost' as Tab, label: 'Menu Boost', icon: Zap, count: undefined as number | undefined },
   ];
 
