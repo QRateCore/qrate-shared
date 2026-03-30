@@ -59,7 +59,7 @@ export interface TablePlacedOrder {
   created_at: string;
   item_count: number;
   total_amount: number;
-  items?: Array<{ name: string; quantity: number; price: number; patron_display_name?: string | null }>;
+  items?: Array<{ name: string; quantity: number; price: number; patron_display_name?: string | null; item_status?: string }>;
 }
 
 export interface TableActivityEntry {
