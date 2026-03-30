@@ -83,6 +83,8 @@ export interface MenuItem {
   boost_level?: number;
   chefs_special?: boolean;
   canonical_category?: string | null;
+  portion_type?: 'single' | 'shared' | null;
+  portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
 }
