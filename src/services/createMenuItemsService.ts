@@ -147,10 +147,10 @@ export function createMenuItemsService(
     },
 
     getMenus: async (restaurantId) => {
-      const data = await adapter.fetchJson<{ menus: { id: string; name: string }[] }>(
+      const data = await adapter.fetchJson<{ menus: { id: string; name: string; active?: boolean }[] }>(
         `${ownerApiUrl}/owner/restaurants/${restaurantId}/menus`,
       );
-      return data.menus;
+      return data.menus.filter(m => m.active !== false);
     },
   };
 }
