@@ -69,6 +69,20 @@ export interface MenuAssociation {
   menu_name: string;
   price: number | null;
   category_name?: string;
+  boost_level?: string | null;
+  chefs_special?: boolean;
+  portion_type?: 'single' | 'shared';
+  portion_serves?: number | null;
+}
+
+/** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
+export interface MenuItemJunctionSettings {
+  price?: number | null;
+  category_name?: string | null;
+  boost_level?: string | null;
+  chefs_special?: boolean;
+  portion_type?: 'single' | 'shared';
+  portion_serves?: number | null;
 }
 
 export interface MenuItem {
@@ -233,6 +247,7 @@ export interface MenuItemsService {
   /** If present, "Add to Menu" / per-menu pricing controls appear */
   addItemToMenu?(itemId: string, menuId: string, price: number, categoryName?: string): Promise<MenuAssociation[]>;
   removeItemFromMenu?(itemId: string, menuId: string): Promise<MenuAssociation[]>;
+  updateItemInMenu?(itemId: string, menuId: string, settings: MenuItemJunctionSettings): Promise<MenuAssociation[]>;
 
   /** If present, provides the list of available menus for the restaurant */
   getMenus?(restaurantId: string): Promise<{ id: string; name: string }[]>;

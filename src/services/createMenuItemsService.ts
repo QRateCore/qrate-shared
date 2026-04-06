@@ -1,4 +1,4 @@
-import type { HttpAdapter, MenuItemsService, MenuItemDisplay, MenuAssociation, FoodTags } from '../types/restaurant';
+import type { HttpAdapter, MenuItemsService, MenuItemDisplay, MenuAssociation, MenuItemJunctionSettings, FoodTags } from '../types/restaurant';
 
 export interface CreateMenuItemsServiceOptions {
   /** When true, a standalone saveTags method is wired (calls recommendation API). */
@@ -142,6 +142,14 @@ export function createMenuItemsService(
       const data = await adapter.fetchJson<{ menu_associations: MenuAssociation[] }>(
         `${ownerApiUrl}/owner/menu/items/${itemId}/menus/${menuId}`,
         { method: 'DELETE' },
+      );
+      return data.menu_associations;
+    },
+
+    updateItemInMenu: async (itemId: string, menuId: string, settings: MenuItemJunctionSettings) => {
+      const data = await adapter.fetchJson<{ menu_associations: MenuAssociation[] }>(
+        `${ownerApiUrl}/owner/menu/items/${itemId}/menus/${menuId}`,
+        { method: 'PATCH', body: settings },
       );
       return data.menu_associations;
     },
