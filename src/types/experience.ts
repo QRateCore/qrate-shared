@@ -25,7 +25,7 @@ export interface CreateStaffRequest {
 
 // ─── Order Status ────────────────────────────────────────────────────────────
 
-export type OrderStatus = 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'cancelled' | 'issue';
+export type OrderStatus = 'placed' | 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'cancelled' | 'issue';
 
 // ─── Table Activity Detail Types ─────────────────────────────────────────────
 
