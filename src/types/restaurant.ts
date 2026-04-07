@@ -73,12 +73,6 @@ export interface MenuAssociation {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
-  /**
-   * STR-251: distinguishes Included menu items (free, part of menu base) from
-   * Add-ons (paid extras priced per-menu). Optional during deploy window —
-   * absent values should be treated as 'included' by consumers.
-   */
-  link_type?: 'included' | 'addon';
 }
 
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
@@ -89,7 +83,6 @@ export interface MenuItemJunctionSettings {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
-  link_type?: 'included' | 'addon';
 }
 
 export interface MenuItem {
@@ -222,6 +215,25 @@ export interface MenuItemDisplay {
   enriched_at?: string | null;
   /** true = visible to diners; false = hidden from diners but visible in owner dashboard */
   active?: boolean;
+  /**
+   * STR-251: per-item modifiers stored in menu_items.sides / menu_items.addons JSONB.
+   * `sides` are free or low-cost included extras; `addons` are paid optional extras.
+   * Returned by /owner/restaurants/{id}/all-items so the menu builder can render
+   * them inline without an extra fetch per item.
+   */
+  sides?: Array<{
+    menu_item_id: string;
+    name: string;
+    price_override: number | null;
+    thumbnail_url?: string | null;
+  }>;
+  addons?: Array<{
+    menu_item_id: string;
+    name: string;
+    price_override: number;
+    thumbnail_url?: string | null;
+  }>;
+  sides_selection_mode?: 'and' | 'or';
 }
 
 export interface MenuItemsService {
