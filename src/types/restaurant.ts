@@ -73,6 +73,12 @@ export interface MenuAssociation {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
+  /**
+   * STR-251: distinguishes Included menu items (free, part of menu base) from
+   * Add-ons (paid extras priced per-menu). Optional during deploy window —
+   * absent values should be treated as 'included' by consumers.
+   */
+  link_type?: 'included' | 'addon';
 }
 
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
@@ -83,6 +89,7 @@ export interface MenuItemJunctionSettings {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
+  link_type?: 'included' | 'addon';
 }
 
 export interface MenuItem {
