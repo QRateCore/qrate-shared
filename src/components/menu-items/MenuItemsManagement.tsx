@@ -1947,12 +1947,6 @@ export default function MenuItemsManagement({
                                 data-testid={`menu-pill-${menu.id}`}
                                 onClick={() => {
                                   if (isAssigned) {
-                                    if (menuAssociations.length <= 1) {
-                                      setMenuError(
-                                        "Cannot remove item from its only menu",
-                                      );
-                                      return;
-                                    }
                                     setMenuError(null);
                                     service.removeItemFromMenu?.(
                                       selectedId!,
@@ -2047,16 +2041,9 @@ export default function MenuItemsManagement({
                                   className="w-full pl-5 pr-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-300"
                                 />
                               </div>
-                              {menuAssociations.length > 1 &&
-                                service.removeItemFromMenu && (
+                              {service.removeItemFromMenu && (
                                   <button
                                     onClick={() => {
-                                      if (menuAssociations.length <= 1) {
-                                        setMenuError(
-                                          "Cannot remove item from its only menu",
-                                        );
-                                        return;
-                                      }
                                       setMenuError(null);
                                       service.removeItemFromMenu!(
                                         selectedId!,
