@@ -426,22 +426,7 @@ export default function MenuItemsManagement({
     setEditDescription(selected.description || "");
     setEditPrice(selected.price?.toString() || "0");
 
-    // Use per-item canonical_category if available (bottom-up classification),
-    // then fall back to the category-name map, then to the raw category.
-    const itemCanonical = (selected as any).canonical_category;
-    const rawCat = selected.category || "";
-    if (itemCanonical && (CANONICAL_CATEGORIES as readonly string[]).includes(itemCanonical)) {
-      setEditCategory(itemCanonical);
-    } else {
-      const mapped = canonicalCategoryMap?.[rawCat];
-      if (mapped && mapped.length > 0) {
-        setEditCategory(mapped[0]);
-      } else if ((CANONICAL_CATEGORIES as readonly string[]).includes(rawCat)) {
-        setEditCategory(rawCat);
-      } else {
-        setEditCategory(rawCat);
-      }
-    }
+    setEditCategory(selected.category || "");
 
     setEditFoodTags(selected.food_tags || {});
     setEditChefsSpecial(selected.chefs_special || false);
@@ -470,7 +455,6 @@ export default function MenuItemsManagement({
       setError(null);
 
       if (service.updateItem) {
-        const canonicalValue = (CANONICAL_CATEGORIES as readonly string[]).includes(editCategory) ? editCategory : undefined;
         await service.updateItem(selectedId, {
           name: editName,
           description: editDescription,
@@ -478,7 +462,6 @@ export default function MenuItemsManagement({
           category: editCategory,
           food_tags: editFoodTags,
           chefs_special: editChefsSpecial,
-          canonical_category: canonicalValue,
           portion_type: editPortionType,
           portion_serves: editPortionType === 'shared' ? editPortionServes : null,
         });
@@ -1778,20 +1761,13 @@ export default function MenuItemsManagement({
                       Category
                     </label>
                     {canEdit ? (
-                      <select
+                      <input
+                        type="text"
                         value={editCategory}
                         onChange={(e) => { setEditCategory(e.target.value); setSaved(false); }}
+                        placeholder="e.g. Chicken Dishes"
                         className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
-                      >
-                        <option value="">Select category</option>
-                        {CANONICAL_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                        {/* Show the raw category as a fallback if it's not canonical */}
-                        {editCategory && !(CANONICAL_CATEGORIES as readonly string[]).includes(editCategory) && (
-                          <option value={editCategory}>{editCategory} (original)</option>
-                        )}
-                      </select>
+                      />
                     ) : (
                       <div className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-800">
                         {selected?.category || "\u2014"}

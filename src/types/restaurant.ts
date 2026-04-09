@@ -69,6 +69,7 @@ export interface MenuAssociation {
   menu_name: string;
   price: number | null;
   category_name?: string;
+  canonical_categories?: string[];
   boost_level?: string | null;
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
@@ -79,6 +80,7 @@ export interface MenuAssociation {
 export interface MenuItemJunctionSettings {
   price?: number | null;
   category_name?: string | null;
+  canonical_categories?: string[];
   boost_level?: string | null;
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
@@ -204,6 +206,7 @@ export interface MenuItemDisplay {
   boost_level?: number;
   chefs_special?: boolean;
   canonical_category?: string | null;
+  canonical_categories?: string[];
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
   /** Number of guests the item serves (only set when portion_type = 'shared') */
@@ -264,7 +267,7 @@ export interface MenuItemsService {
   updateBoost?(restaurantId: string, itemId: string, level: number): Promise<void>;
 
   /** If present, "Add to Menu" / per-menu pricing controls appear */
-  addItemToMenu?(itemId: string, menuId: string, price: number, categoryName?: string): Promise<MenuAssociation[]>;
+  addItemToMenu?(itemId: string, menuId: string, price: number, categoryName?: string, options?: { canonical_categories?: string[] }): Promise<MenuAssociation[]>;
   removeItemFromMenu?(itemId: string, menuId: string): Promise<MenuAssociation[]>;
   updateItemInMenu?(itemId: string, menuId: string, settings: MenuItemJunctionSettings): Promise<MenuAssociation[]>;
 
