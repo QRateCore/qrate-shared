@@ -119,7 +119,7 @@ export interface ExperienceService {
   // Tables
   getTables(restaurantId: string): Promise<{ tables: RestaurantTable[]; count: number }>;
   createTables(restaurantId: string, req: { table_count: number; start_number: number }): Promise<{ tables: RestaurantTable[]; message: string }>;
-  updateTable(restaurantId: string, tableId: string, updates: { capacity?: number; assigned_server_id?: string | null }): Promise<{ table: RestaurantTable }>;
+  updateTable(restaurantId: string, tableId: string, updates: { capacity?: number; assigned_server_id?: string | null; table_label?: string | null }): Promise<{ table: RestaurantTable }>;
   generateQRCodes(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; qr_code_url: string }>; message: string }>;
   downloadQRCodesZip(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
 

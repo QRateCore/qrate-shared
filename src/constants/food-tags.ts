@@ -15,7 +15,7 @@ export const TAG_CATEGORIES: { key: ArrayTagKey; label: string; color: string; i
   { key: 'festivity', label: 'Festivity Recommendation', color: 'bg-indigo-100 text-indigo-700', icon: '🎉' },
 ];
 
-export const HEAT_LABELS = ['None', 'Mild', 'Medium', 'Hot', 'Extra Hot'];
+export const HEAT_LABELS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
 
 // ─── Beverage Tag Options ────────────────────────────────────────────────
 
