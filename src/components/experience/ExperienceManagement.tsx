@@ -1,22 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   LayoutGrid,
   Users,
   Plus,
-  RefreshCw,
   Loader2,
   QrCode,
   Download,
-  ExternalLink,
-  Save,
-  AlertTriangle,
-  Bell,
   Trash2,
+  BellRing,
+  AlertTriangle,
+  Check,
+  X,
 } from 'lucide-react';
-import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall } from '../../types/experience';
+import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
+import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 
 type Tab = 'staff' | 'tables';
 
@@ -111,15 +111,16 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   const [addStartNumber, setAddStartNumber] = useState(1);
   const [addingTables, setAddingTables] = useState(false);
 
-  // QR code popup
-  const [qrPopupTable, setQrPopupTable] = useState<RestaurantTable | null>(null);
-
   // Reset state
   const [resetting, setResetting] = useState(false);
 
   // Waiter calls
-  const [waiterCalls, setWaiterCalls] = useState<{ id: string; table_number: number | null; status?: string; created_at: string }[]>([]);
+  const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([]);
   const [tableActivity, setTableActivity] = useState<TableActivity | null>(null);
+
+  // Per-card tab state and QR modal
+  const [cardTabState, setCardTabState] = useState<Record<number, 'orders' | 'service'>>({});
+  const [qrModalTable, setQrModalTable] = useState<RestaurantTable | null>(null);
 
   const fetchTableActivity = useCallback(async () => {
     if (!restaurantId) return;
@@ -493,158 +494,237 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
         </div>
       )}
 
-      {/* Table List */}
-      <div className="border border-gray-100 rounded-xl overflow-hidden">
-        {/* Header */}
-        <div className="grid items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-          style={{ gridTemplateColumns: '80px 110px 1fr 130px 44px 44px' }}>
-          <div>Table</div>
-          <div className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> Seats</div>
-          <div>Server</div>
-          <div>Status</div>
-          <div></div>
-          <div></div>
-        </div>
-
-        {/* Rows */}
-        {tables
+      {/* Table Grid — host station style */}
+      {(() => {
+        const sorted = [...tables]
           .filter(t => t.is_active)
-          .sort((a, b) => a.table_number - b.table_number)
-          .map(table => {
-            const editedCapacity = capacityEdits[table.id];
-            const hasCapacityEdit = editedCapacity !== undefined && editedCapacity !== (table.capacity ?? 0);
-            const isSavingCapacity = savingCapacity[table.id];
-            const tableCalls = waiterCalls.filter(c => c.table_number === table.table_number);
-            const activeCall = tableCalls.find(c => c.status === 'active' || c.status === 'overdue');
-            const needsAttention = !activeCall && tableActivity?.tables?.find(t => t.table_number === table.table_number)?.needs_attention;
-            const hasActiveSession = tableActivity?.tables?.find(t => t.table_number === table.table_number)?.has_active_session;
-            return (
-              <div
-                key={table.id}
-                className={`grid items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-b-0 transition-colors ${
-                  activeCall ? 'bg-red-50' : needsAttention ? 'bg-yellow-50' : 'hover:bg-gray-50'
-                }`}
-                style={{ gridTemplateColumns: '80px 110px 1fr 130px 44px 44px' }}
-              >
-                {/* Table number */}
-                <div className="font-bold text-gray-900 text-sm">#{table.table_number}</div>
+          .sort((a, b) => {
+            const actA = tableActivity?.tables?.find(t => t.table_number === a.table_number);
+            const actB = tableActivity?.tables?.find(t => t.table_number === b.table_number);
+            const hasA = actA?.has_active_session === true;
+            const hasB = actB?.has_active_session === true;
+            const callA = waiterCalls.filter(c => c.table_number === a.table_number && (c.status === 'active' || c.status === 'overdue')).length;
+            const callB = waiterCalls.filter(c => c.table_number === b.table_number && (c.status === 'active' || c.status === 'overdue')).length;
+            if (hasA !== hasB) return hasA ? -1 : 1;
+            if (hasA && callA !== callB) return callB - callA;
+            return a.table_number - b.table_number;
+          });
 
-                {/* Seats */}
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={0}
-                    value={editedCapacity ?? table.capacity ?? 0}
-                    onChange={e => handleCapacityChange(table.id, e.target.value)}
-                    className="w-16 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-center"
-                  />
-                  {hasCapacityEdit && (
-                    <button
-                      onClick={() => handleSaveCapacity(table.id)}
-                      disabled={isSavingCapacity}
-                      className="p-1 text-orange-600 hover:bg-orange-50 rounded transition-colors disabled:opacity-50"
-                      title="Save seats"
-                    >
-                      {isSavingCapacity ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    </button>
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {sorted.map(table => {
+              const activity = tableActivity?.tables?.find(t => t.table_number === table.table_number) ?? null;
+              const isOccupied = activity?.has_active_session === true;
+              const borderClass = isOccupied ? 'border-red-400' : 'border-green-400';
+              const activeTab = cardTabState[table.table_number] || 'orders';
+              const tableCalls = waiterCalls.filter(c => c.table_number === table.table_number && (c.status === 'active' || c.status === 'overdue'));
+              const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
+
+              return (
+                <div key={table.id} className={`border-2 border-dashed rounded-xl p-3 bg-white ${borderClass}`}>
+                  {/* Row 1: Table name + server + QR + seats */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <h3 className="font-bold text-base text-gray-900 whitespace-nowrap">Table {table.table_number}</h3>
+                        {serverName && (
+                          <span className="text-xs text-gray-400 truncate">Server: {serverName}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => setQrModalTable(table)}
+                        className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+                        title="Show QR code"
+                      >
+                        <QrCode className={`h-4 w-4 ${isOccupied ? 'text-red-400' : 'text-green-500'}`} />
+                      </button>
+                      <span className="text-xs text-gray-500">{table.capacity || '?'} seats</span>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Status badge */}
+                  <div className="mt-2">
+                    {isOccupied ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">OCCUPIED</span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">AVAILABLE</span>
+                    )}
+                  </div>
+
+                  {/* Occupied content */}
+                  {isOccupied && activity && (
+                    <>
+                      {/* Row 3: Guest avatar pills */}
+                      {activity.guests.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {activity.guests.map((g, i) => (
+                            <span key={i} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-100 text-gray-800 text-xs font-medium">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${avatarColor(g.name)}`}>
+                                {initials(g.name)}
+                              </span>
+                              <span className="truncate max-w-[90px]">{g.name || 'Guest'}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Row 4: Orders / Service toggle */}
+                      <div className="mt-3 flex rounded-lg border border-gray-200 overflow-hidden">
+                        <button
+                          onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'orders' }))}
+                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Orders
+                          {activity.placed_orders.length > 0 && (
+                            <span className={`text-[10px] rounded-full w-4 h-4 inline-flex items-center justify-center font-bold ${activeTab === 'orders' ? 'bg-white text-gray-900' : 'bg-orange-500 text-white'}`}>
+                              {activity.placed_orders.length}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'service' }))}
+                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'service' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Service
+                          {tableCalls.length > 0 && (
+                            <span className={`text-[10px] rounded-full w-4 h-4 inline-flex items-center justify-center font-bold ${activeTab === 'service' ? 'bg-white text-gray-900' : 'bg-red-500 text-white'}`}>
+                              {tableCalls.length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Row 5: Inline content */}
+                      <div className="mt-2">
+                        {activeTab === 'orders' && (
+                          <div className="space-y-1">
+                            {activity.placed_orders.length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-2">No orders yet</p>
+                            ) : (
+                              <>
+                                {activity.placed_orders.flatMap((order, oi) =>
+                                  (order.items || []).map((item, idx) => ({
+                                    ...item,
+                                    dinerName: order.diner_name,
+                                    key: `${oi}-${idx}`,
+                                  }))
+                                ).slice(0, 5).map(item => (
+                                  <div key={item.key} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                      <span className="text-gray-900 font-medium whitespace-nowrap">{item.quantity}&times;</span>
+                                      <span className="text-gray-700 truncate">{item.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                      {item.dinerName && (
+                                        <span className="text-gray-400 text-[11px] truncate max-w-[60px]">{item.dinerName}</span>
+                                      )}
+                                      <span className="text-gray-600 font-medium whitespace-nowrap">${(item.price * item.quantity).toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                                {(() => {
+                                  const total = activity.placed_orders.reduce((s, o) => s + (o.items?.length ?? 0), 0);
+                                  return total > 5 ? <p className="text-[11px] text-gray-400 text-center pt-1">+{total - 5} more item{total - 5 !== 1 ? 's' : ''}</p> : null;
+                                })()}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {activeTab === 'service' && (
+                          <div className="space-y-1.5">
+                            {tableCalls.length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-2">No service requests</p>
+                            ) : tableCalls.map(call => (
+                              <div key={call.id} className={`flex items-center justify-between rounded-lg px-2.5 py-2 ${call.status === 'overdue' ? 'bg-orange-50' : 'bg-red-50'}`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {call.status === 'overdue'
+                                    ? <AlertTriangle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                                    : <BellRing className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                  }
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-medium text-gray-800 truncate">{callTypeLabel(call.call_type ?? '')}</p>
+                                    <p className={`text-[11px] ${call.status === 'overdue' ? 'text-orange-500' : 'text-red-400'}`}>{timeSince(call.created_at)}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleAcknowledgeCall(call.id)}
+                                  className="ml-2 flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  Done
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
-                </div>
 
-                {/* Server */}
-                <select
-                  value={table.assigned_server_id || ''}
-                  onChange={e => handleAssignServer(table.id, e.target.value || null)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white text-gray-700"
-                >
-                  <option value="">Unassigned</option>
-                  {staff.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-
-                {/* Status */}
-                <div className="flex items-center gap-1">
-                  {activeCall ? (
-                    <button
-                      onClick={() => handleAcknowledgeCall(activeCall.id)}
-                      className="bg-red-500 text-white rounded-full px-2.5 py-1 text-xs font-bold flex items-center gap-1 animate-pulse hover:bg-red-600 transition-colors"
-                      title="Click to dismiss"
+                  {/* Management controls (always visible) */}
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    <select
+                      value={table.assigned_server_id || ''}
+                      onChange={e => handleAssignServer(table.id, e.target.value || null)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white text-gray-700"
                     >
-                      <Bell className="h-3 w-3" />
-                      Calling
-                    </button>
-                  ) : needsAttention ? (
-                    <span className="bg-yellow-100 text-yellow-800 rounded-full px-2.5 py-1 text-xs font-medium flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      Attention
-                    </span>
-                  ) : (
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      hasActiveSession ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                    }`}>
-                      {hasActiveSession ? 'Occupied' : 'Available'}
-                    </span>
-                  )}
-                </div>
-
-                {/* QR */}
-                <div className="flex justify-center">
-                  {table.qr_code_url ? (
-                    <button
-                      onClick={() => setQrPopupTable(table)}
-                      className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                      title="Show QR Code"
-                    >
-                      <QrCode className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-300 px-2">—</span>
-                  )}
-                </div>
-
-                {/* Reset (portal only) */}
-                <div className="flex justify-center">
-                  {service.closeTableSession ? (
-                    <button
-                      onClick={async () => {
-                        if (!restaurantId) return;
-                        if (!confirm(`Reset Table #${table.table_number}? This closes the active session and clears service requests.`)) return;
-                        try {
-                          await service.closeTableSession!(restaurantId, table.table_number);
-                          for (const call of tableCalls) {
-                            try { await handleAcknowledgeCall(call.id); } catch { /* best effort */ }
+                      <option value="">No server assigned</option>
+                      {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">Seats:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={capacityEdits[table.id] ?? table.capacity ?? 0}
+                        onChange={e => handleCapacityChange(table.id, e.target.value)}
+                        className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 text-center"
+                      />
+                      {capacityEdits[table.id] !== undefined && capacityEdits[table.id] !== (table.capacity ?? 0) && (
+                        <button
+                          onClick={() => handleSaveCapacity(table.id)}
+                          disabled={savingCapacity[table.id]}
+                          className="px-2 py-1 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50"
+                        >
+                          {savingCapacity[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                        </button>
+                      )}
+                    </div>
+                    {isOccupied && service.closeTableSession && (
+                      <button
+                        onClick={async () => {
+                          if (!restaurantId || !confirm(`Reset Table #${table.table_number}? This will end the session and remove all guests.`)) return;
+                          try {
+                            await service.closeTableSession!(restaurantId, table.table_number);
+                            setTableActivity(prev => prev ? {
+                              ...prev,
+                              tables: prev.tables.map(t =>
+                                t.table_number === table.table_number
+                                  ? { ...t, guests: [], active_carts: [], placed_orders: [], has_active_session: false, needs_attention: false }
+                                  : t
+                              ),
+                            } : prev);
+                            setWaiterCalls(prev => prev.filter(c => c.table_number !== table.table_number));
+                            showFeedback('success', `Table #${table.table_number} reset`);
+                          } catch {
+                            showFeedback('error', `Failed to reset Table #${table.table_number}`);
                           }
-                          await fetchTableActivity();
-                          showFeedback('success', `Table #${table.table_number} reset`);
-                        } catch {
-                          showFeedback('error', `Failed to reset Table #${table.table_number}`);
-                        }
-                      }}
-                      className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                      title="Reset table"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </button>
-                  ) : tableCalls.length > 0 ? (
-                    <button
-                      onClick={async () => {
-                        for (const call of tableCalls) {
-                          await handleAcknowledgeCall(call.id);
-                        }
-                      }}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title={`Clear ${tableCalls.length} service request${tableCalls.length > 1 ? 's' : ''}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <span className="w-8" />
-                  )}
+                        }}
+                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Reset Table
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-      </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Add Table Modal */}
       {showAddModal && (
@@ -694,38 +774,35 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
         </div>
       )}
 
-      {/* QR Code Popup */}
-      {qrPopupTable && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setQrPopupTable(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-xs mx-4 shadow-xl text-center" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Table #{qrPopupTable.table_number}</h3>
-            {qrPopupTable.table_label && (
-              <p className="text-sm text-gray-500 mb-4">{qrPopupTable.table_label}</p>
+      {/* QR Code Modal */}
+      {qrModalTable && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setQrModalTable(null)}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setQrModalTable(null)} className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-lg font-bold text-gray-900 text-center mb-1">Table {qrModalTable.table_number}</h3>
+            {qrModalTable.assigned_server_id && staff.find(s => s.id === qrModalTable.assigned_server_id) && (
+              <p className="text-xs text-gray-400 text-center mb-4">
+                Server: {staff.find(s => s.id === qrModalTable.assigned_server_id)?.name}
+              </p>
             )}
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <img
-                src={qrPopupTable.qr_code_url!}
-                alt={`QR Code - Table ${qrPopupTable.table_number}`}
-                className="w-full h-auto"
-              />
+            <div className="flex items-center justify-center bg-gray-50 rounded-xl p-4 aspect-square">
+              {qrModalTable.qr_code_url ? (
+                <img src={qrModalTable.qr_code_url} alt={`QR code for Table ${qrModalTable.table_number}`} className="w-full h-full object-contain" />
+              ) : (
+                <div className="text-center text-gray-400">
+                  <QrCode className="w-16 h-16 mx-auto mb-2" />
+                  <p className="text-sm">QR code not generated</p>
+                  <p className="text-xs mt-1">Use Generate QR above</p>
+                </div>
+              )}
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setQrPopupTable(null)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-              >
-                Close
-              </button>
-              <a
-                href={qrPopupTable.qr_code_url!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm inline-flex items-center justify-center gap-2"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Full Size
-              </a>
-            </div>
+            <p className="text-xs text-gray-400 text-center mt-3">Scan to open the menu for this table</p>
           </div>
         </div>
       )}

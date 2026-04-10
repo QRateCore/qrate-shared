@@ -20,7 +20,8 @@ export { FoodTagBadges, FoodTagEditorForm, TagInput, MenuScheduleEditor, MenuTab
 export type { MenuEditState, MenuTabsProps, MenuScheduleEditorProps } from './components/menu';
 
 // Components — Experience
-export { ExperienceManagement } from './components/experience';
+export { ExperienceManagement, TableCard, TableDetailSheet } from './components/experience';
+export type { TableCardProps, TableDetailSheetProps } from './components/experience';
 
 // Components — Staff
 export { StaffManagement, SwipeSlider } from './components/staff';

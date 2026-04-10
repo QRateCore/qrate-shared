@@ -80,6 +80,9 @@ export interface WaiterCall {
   table_number: number | null;
   status: string;
   created_at: string;
+  call_type?: string;
+  acknowledged_at?: string | null;
+  minutes_old?: number;
 }
 
 export interface OrderSummary {
@@ -132,10 +135,17 @@ export interface ExperienceService {
   getOrders(restaurantId: string, status?: string, limit?: number): Promise<{ orders: OrderSummary[]; total: number }>;
   deleteOrder?(restaurantId: string, orderId: string): Promise<{ message: string }>;
   purgeOrders?(restaurantId: string): Promise<{ message: string; deleted_count: number }>;
+  updateOrderStatus?(restaurantId: string, orderId: string, status: OrderStatus): Promise<void>;
+  cancelOrderItem?(restaurantId: string, orderId: string, itemId: string): Promise<void>;
 
   // Menu Boost
   getMenuBoosts(restaurantId: string): Promise<{ items: BoostItem[] }>;
   updateMenuBoosts(restaurantId: string, items: Array<{ id: string; boost_level: number }>): Promise<{ updated_count: number }>;
+
+  // Dynamic headers — waiter/owner portal
+  getRestaurant?(restaurantId: string): Promise<{ dynamic_headers_enabled?: boolean; current_header_theme?: string | null; header_last_generated_at?: string | null }>;
+  toggleDynamicHeaders?(restaurantId: string, enabled: boolean): Promise<{ dynamic_headers_enabled: boolean; current_header_theme: string | null; header_last_generated_at: string | null; generation_error?: string }>;
+  regenerateHeader?(restaurantId: string): Promise<{ header_image_url: string }>;
 
   // Reset — portal only
   purgeSessions?(restaurantId: string): Promise<{ message: string }>;
