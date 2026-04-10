@@ -95,7 +95,6 @@ export interface MenuItem {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
-  canonical_category?: string | null;
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
   /** Number of guests the item serves (only set when portion_type = 'shared') */
@@ -202,7 +201,6 @@ export interface MenuItemDisplay {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
-  canonical_category?: string | null;
   canonical_categories?: string[];
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
