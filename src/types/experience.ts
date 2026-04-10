@@ -111,11 +111,6 @@ export interface BoostItem {
 // ─── Service Interface ──────────────────────────────────────────────────────
 
 export interface ExperienceService {
-  // Restaurant info (dynamic headers)
-  getRestaurant(restaurantId: string): Promise<{ dynamic_headers_enabled?: boolean; current_header_theme?: string | null; header_last_generated_at?: string | null }>;
-  toggleDynamicHeaders(restaurantId: string, enabled: boolean): Promise<{ dynamic_headers_enabled: boolean; current_header_theme: string | null; header_last_generated_at: string | null; generation_error?: string }>;
-  regenerateHeader(restaurantId: string): Promise<{ header_image_url: string }>;
-
   // Tables
   getTables(restaurantId: string): Promise<{ tables: RestaurantTable[]; count: number }>;
   createTables(restaurantId: string, req: { table_count: number; start_number: number }): Promise<{ tables: RestaurantTable[]; message: string }>;

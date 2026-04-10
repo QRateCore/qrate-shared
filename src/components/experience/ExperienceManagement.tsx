@@ -5,7 +5,6 @@ import {
   LayoutGrid,
   Users,
   Plus,
-  ImageIcon,
   RefreshCw,
   Loader2,
   QrCode,
@@ -27,27 +26,8 @@ interface ExperienceManagementProps {
   service: ExperienceService;
 }
 
-const THEME_LABELS: Record<string, string> = {
-  default: 'Default',
-  diwali: 'Diwali',
-  christmas: 'Christmas',
-  lunar_new_year: 'Lunar New Year',
-  holi: 'Holi',
-  eid_al_fitr: 'Eid al-Fitr',
-  thanksgiving: 'Thanksgiving',
-  valentines_day: "Valentine's Day",
-  independence_day: '4th of July',
-  new_year: 'New Year',
-};
-
 export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [dynamicEnabled, setDynamicEnabled] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<string | null>(null);
-  const [lastGenerated, setLastGenerated] = useState<string | null>(null);
-  const [toggling, setToggling] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [headerError, setHeaderError] = useState<string | null>(null);
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
   const fetchTabCounts = useCallback(async () => {
@@ -68,55 +48,6 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
     return () => clearInterval(interval);
   }, [fetchTabCounts]);
 
-  const fetchRestaurantInfo = useCallback(async () => {
-    if (!restaurantId) return;
-    try {
-      const restaurant = await service.getRestaurant(restaurantId);
-      setDynamicEnabled(restaurant.dynamic_headers_enabled || false);
-      setCurrentTheme(restaurant.current_header_theme || null);
-      setLastGenerated(restaurant.header_last_generated_at || null);
-    } catch {
-      // Restaurant info not critical for this page
-    }
-  }, [restaurantId, service]);
-
-  useEffect(() => {
-    fetchRestaurantInfo();
-  }, [fetchRestaurantInfo]);
-
-  const handleToggleDynamic = async () => {
-    if (!restaurantId) return;
-    setToggling(true);
-    setHeaderError(null);
-    try {
-      const result = await service.toggleDynamicHeaders(restaurantId, !dynamicEnabled);
-      setDynamicEnabled(result.dynamic_headers_enabled);
-      setCurrentTheme(result.current_header_theme || null);
-      setLastGenerated(result.header_last_generated_at || null);
-      if (result.generation_error) {
-        setHeaderError(result.generation_error);
-      }
-    } catch (err: any) {
-      setHeaderError(err.message || 'Failed to toggle dynamic headers');
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  const handleRegenerate = async () => {
-    if (!restaurantId) return;
-    setRegenerating(true);
-    setHeaderError(null);
-    try {
-      await service.regenerateHeader(restaurantId);
-      await fetchRestaurantInfo();
-    } catch (err: any) {
-      setHeaderError(err.message || 'Failed to regenerate header');
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
   const tabs = [
     { id: 'staff' as Tab, label: 'Staff', icon: Users, count: undefined as number | undefined },
     { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
@@ -124,67 +55,6 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
 
   return (
     <div className="space-y-6">
-      {/* Dynamic Headers Card */}
-      {restaurantId && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-4">
-              <div className="bg-gradient-to-br from-purple-100 to-orange-100 p-3 rounded-lg">
-                <ImageIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Dynamic Header Images</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Automatically generate and update your restaurant&apos;s header image based on your cuisine and upcoming festivities
-                </p>
-                {dynamicEnabled && (
-                  <div className="flex items-center gap-3 mt-3">
-                    {currentTheme && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                        {THEME_LABELS[currentTheme] || currentTheme} Theme
-                      </span>
-                    )}
-                    {lastGenerated && (
-                      <span className="text-xs text-gray-400">
-                        Last generated: {new Date(lastGenerated).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {headerError && (
-                  <p className="text-sm text-red-500 mt-2">{headerError}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {dynamicEnabled && (
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Regenerate Now
-                </button>
-              )}
-              <button
-                onClick={handleToggleDynamic}
-                disabled={toggling}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  dynamicEnabled ? 'bg-orange-500' : 'bg-gray-200'
-                } ${toggling ? 'opacity-50' : ''}`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    dynamicEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         {/* Tabs */}
         <div className="border-b border-gray-100">
@@ -234,8 +104,6 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [capacityEdits, setCapacityEdits] = useState<Record<string, number>>({});
   const [savingCapacity, setSavingCapacity] = useState<Record<string, boolean>>({});
-  const [labelEdits, setLabelEdits] = useState<Record<string, string>>({});
-  const [savingLabel, setSavingLabel] = useState<Record<string, boolean>>({});
 
   // Add table modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -397,28 +265,6 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
     } catch (err) {
       console.error('Failed to assign server:', err);
       showFeedback('error', 'Failed to assign server');
-    }
-  };
-
-  const handleSaveLabel = async (tableId: string) => {
-    if (!restaurantId || labelEdits[tableId] === undefined) return;
-    const newLabel = labelEdits[tableId].trim();
-    setSavingLabel(prev => ({ ...prev, [tableId]: true }));
-    try {
-      await service.updateTable(restaurantId, tableId, { table_label: newLabel || null });
-      setTables(prev =>
-        prev.map(t => t.id === tableId ? { ...t, table_label: newLabel || undefined } : t)
-      );
-      setLabelEdits(prev => {
-        const next = { ...prev };
-        delete next[tableId];
-        return next;
-      });
-    } catch (err) {
-      console.error('Failed to update label:', err);
-      showFeedback('error', 'Failed to update label');
-    } finally {
-      setSavingLabel(prev => ({ ...prev, [tableId]: false }));
     }
   };
 
@@ -651,9 +497,8 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
       <div className="border border-gray-100 rounded-xl overflow-hidden">
         {/* Header */}
         <div className="grid items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide"
-          style={{ gridTemplateColumns: '80px 1fr 110px 1fr 130px 44px 44px' }}>
+          style={{ gridTemplateColumns: '80px 110px 1fr 130px 44px 44px' }}>
           <div>Table</div>
-          <div>Label</div>
           <div className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> Seats</div>
           <div>Server</div>
           <div>Status</div>
@@ -673,30 +518,16 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
             const activeCall = tableCalls.find(c => c.status === 'active' || c.status === 'overdue');
             const needsAttention = !activeCall && tableActivity?.tables?.find(t => t.table_number === table.table_number)?.needs_attention;
             const hasActiveSession = tableActivity?.tables?.find(t => t.table_number === table.table_number)?.has_active_session;
-            const labelValue = labelEdits[table.id] !== undefined ? labelEdits[table.id] : (table.table_label ?? '');
-            const isSavingLbl = savingLabel[table.id];
-
             return (
               <div
                 key={table.id}
                 className={`grid items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-b-0 transition-colors ${
                   activeCall ? 'bg-red-50' : needsAttention ? 'bg-yellow-50' : 'hover:bg-gray-50'
                 }`}
-                style={{ gridTemplateColumns: '80px 1fr 110px 1fr 130px 44px 44px' }}
+                style={{ gridTemplateColumns: '80px 110px 1fr 130px 44px 44px' }}
               >
                 {/* Table number */}
                 <div className="font-bold text-gray-900 text-sm">#{table.table_number}</div>
-
-                {/* Label */}
-                <input
-                  type="text"
-                  value={labelValue}
-                  placeholder="Add label…"
-                  onChange={e => setLabelEdits(prev => ({ ...prev, [table.id]: e.target.value }))}
-                  onBlur={() => { if (labelEdits[table.id] !== undefined) handleSaveLabel(table.id); }}
-                  disabled={isSavingLbl}
-                  className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 placeholder:text-gray-300"
-                />
 
                 {/* Seats */}
                 <div className="flex items-center gap-1.5">

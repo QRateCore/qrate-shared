@@ -4,9 +4,6 @@ export interface Restaurant {
   address: string;
   phone: string;
   cuisine_type: string;
-  dynamic_headers_enabled?: boolean;
-  current_header_theme?: string;
-  header_last_generated_at?: string;
 }
 
 export interface RestaurantCreate {
