@@ -310,21 +310,21 @@ function MenuItemRow({
               </div>
             </div>
 
-            {/* Mobile row 2 — thumbnail + modifier bubbles, indented under name */}
-            <div className="flex items-center gap-2 pl-5">
-              <div className="w-7 h-7 rounded-full bg-[var(--bg)] shrink-0 overflow-hidden flex items-center justify-center text-xs">
-                {item.thumbnail_url ? (
-                  <img src={item.thumbnail_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  '🍽'
+            {/* Mobile row 2 — aggregated modifier counters */}
+            {((item.sides?.length ?? 0) > 0 || (item.recommendations?.length ?? 0) > 0) && (
+              <div className="flex items-center gap-1.5 pl-5">
+                {(item.sides?.length ?? 0) > 0 && (
+                  <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded px-1.5 py-px border border-[var(--border)]">
+                    {item.sides!.length} side{item.sides!.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+                {(item.recommendations?.length ?? 0) > 0 && (
+                  <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded px-1.5 py-px border border-[var(--border)]">
+                    {item.recommendations!.length} rec{item.recommendations!.length !== 1 ? 's' : ''}
+                  </span>
                 )}
               </div>
-              <ModifierBubbles
-                sides={(item.sides ?? []) as ModifierEntry[]}
-                recommendations={(item.recommendations ?? []) as ModifierEntry[]}
-                itemId={item.id}
-              />
-            </div>
+            )}
           </>
         ) : (
           <>
