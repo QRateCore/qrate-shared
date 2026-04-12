@@ -189,6 +189,33 @@ export interface HttpAdapter {
 
 // ─── Menu Items Management Service ──────────────────────────────────────────
 
+export interface SideEntry {
+  menu_item_id: string;
+  name: string;
+  price_override: number | null;
+  thumbnail_url?: string | null;
+}
+
+export interface RecommendationEntry {
+  menu_item_id: string;
+  name: string;
+  price_override: number | null;
+  thumbnail_url?: string | null;
+  /** Defaults to 'manual' for newly drag-dropped items; set by backend on save. */
+  recommendation_type?: 'manual' | 'ai_accepted' | 'ai_generated';
+}
+
+export interface AddonEntry {
+  /** Row ID in menu_item_addons — present when returned by the API, absent for local-optimistic entries */
+  id?: string;
+  menu_item_id: string;
+  name: string;
+  price_override: number;
+  thumbnail_url?: string | null;
+  status: 'suggested' | 'approved';
+  suggestion_source: 'ai' | 'manual';
+}
+
 export interface MenuItemDisplay {
   id: string;
   name: string;
@@ -208,29 +235,24 @@ export interface MenuItemDisplay {
   portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
+  /** 'dish' = regular menu item visible to diners; 'addon' = ingredient-level modifier, hidden from browsing */
+  item_type?: 'dish' | 'addon';
   enrichment_status?: string;
   food_tags_source?: string;
   enriched_at?: string | null;
   /** true = visible to diners; false = hidden from diners but visible in owner dashboard */
   active?: boolean;
   /**
-   * STR-251: per-item modifiers stored in menu_items.sides / menu_items.addons JSONB.
-   * `sides` are free or low-cost included extras; `addons` are paid optional extras.
+   * Per-item modifiers stored in dedicated join tables.
+   * `sides` — free or low-cost included extras (menu_item_sides table).
+   * `recommendations` — paired dish items (menu_item_recommendations table).
+   * `addons` — ingredient-level extras, e.g. "Extra Chicken" (menu_item_addons table).
    * Returned by /owner/restaurants/{id}/all-items so the menu builder can render
    * them inline without an extra fetch per item.
    */
-  sides?: Array<{
-    menu_item_id: string;
-    name: string;
-    price_override: number | null;
-    thumbnail_url?: string | null;
-  }>;
-  addons?: Array<{
-    menu_item_id: string;
-    name: string;
-    price_override: number;
-    thumbnail_url?: string | null;
-  }>;
+  sides?: SideEntry[];
+  recommendations?: RecommendationEntry[];
+  addons?: AddonEntry[];
   sides_selection_mode?: 'and' | 'or';
 }
 
