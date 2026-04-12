@@ -294,6 +294,66 @@ export interface MenuItemsService {
   getMenus?(restaurantId: string): Promise<{ id: string; name: string }[]>;
 }
 
+// ── MenuItemPerformance types (used by MenuManagerService.getMenuItemPerformance) ──
+export type MenuItemPerformancePeriod =
+  | 'last_hour'
+  | 'last_day'
+  | 'last_3_days'
+  | 'last_7_days'
+  | 'last_month';
+
+export interface MenuItemPerformanceResponse {
+  item_id: string;
+  restaurant_id: string;
+  period: MenuItemPerformancePeriod;
+  carousel_views: number;
+  conversions: number;
+  card_flips: number;
+  conversion_rate: number;
+}
+
+// ── MenuManagerService — full service interface for the menu manager UI ───────
+export interface MenuManagerService {
+  // Items
+  getAllMenuItems(restaurantId: string): Promise<MenuItemDisplay[]>;
+  getMenus(restaurantId: string): Promise<MenuSummary[]>;
+  addMenuItem(restaurantId: string, data: Partial<MenuItemCreate> & { name: string }): Promise<MenuItemDisplay>;
+  updateMenuItem(itemId: string, updates: Partial<MenuItemDisplay>): Promise<MenuItemDisplay>;
+  deleteMenuItem(itemId: string): Promise<void>;
+  toggleMenuItemActive(itemId: string, active: boolean): Promise<void>;
+
+  // Menu CRUD
+  createMenu(restaurantId: string, data: MenuCreate): Promise<MenuSummary>;
+  updateMenu(restaurantId: string, menuId: string, data: MenuUpdate): Promise<MenuSummary>;
+  deleteMenu(restaurantId: string, menuId: string): Promise<void>;
+
+  // Menu item associations
+  addItemToMenu(itemId: string, menuId: string, price: number | null | undefined, category?: string, settings?: { canonical_categories?: string[] }): Promise<MenuAssociation[]>;
+  removeItemFromMenu(itemId: string, menuId: string): Promise<MenuAssociation[]>;
+  updateMenuItemInMenu(itemId: string, menuId: string, patch: Partial<MenuItemJunctionSettings>): Promise<MenuAssociation[]>;
+
+  // Modifiers & addons
+  updateItemModifiers(itemId: string, data: {
+    sides?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+    recommendations?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+    sides_selection_mode?: 'and' | 'or';
+    addons?: AddonEntry[];
+  }): Promise<void>;
+  approveAddonSuggestion(itemId: string, assocId: string): Promise<void>;
+  getAddonItems(restaurantId: string): Promise<MenuItemDisplay[]>;
+  bulkAssignModifiers(restaurantId: string, payload: { modifier_type: 'addon' | 'side'; modifier_item_ids: string[]; dish_ids: string[] }): Promise<{ created: number; skipped: number; total: number }>;
+
+  // Images
+  getMenuItemImageUploadUrl(itemId: string): Promise<{ upload_url: string; s3_key?: string }>;
+  confirmMenuItemImageUpload(itemId: string): Promise<{ thumbnail_url: string }>;
+  enhanceMenuItemImage(itemId: string): Promise<{ thumbnail_url: string }>;
+  generateMenuItemImage(itemId: string): Promise<{ thumbnail_url: string }>;
+  removeMenuItemImage(itemId: string): Promise<void>;
+
+  // Performance analytics (optional — not available in all consumers)
+  getMenuItemPerformance?(restaurantId: string, itemId: string, period: MenuItemPerformancePeriod): Promise<MenuItemPerformanceResponse>;
+}
+
 export interface RestaurantTable {
   id: string;
   restaurant_id: string;

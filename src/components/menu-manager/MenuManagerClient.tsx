@@ -1,0 +1,1074 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../types/restaurant';
+import {
+  buildAssignments,
+  buildJunctionSettings,
+  getMenuColor,
+  CANONICAL_CATEGORIES,
+  type MenuColor,
+} from './lib/menuUtils';
+import ItemPool from './components/ItemPool';
+import MenuBuilder from './components/MenuBuilder';
+import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
+import BulkActionsPanel from './components/BulkActionsPanel';
+import BulkModifierPanel from './components/BulkModifierPanel';
+import EditModal from './components/EditModal';
+import MenuEditPanel from './components/MenuEditPanel';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import type { MenuManagerService } from '../../types/restaurant';
+import { MenuManagerServiceProvider } from './context';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete';
+
+export interface DragState {
+  itemIds: string[];
+  fromMenuId: string | null;
+  fromCat: string | null;
+}
+
+interface Props {
+  service: MenuManagerService;
+  restaurantId: string;
+  initialItems: MenuItemDisplay[];
+  initialMenus: MenuSummary[];
+  /** Called when the user requests a data refresh (re-fetch menus + items from the server). */
+  onRefresh?: () => void;
+  /** True while a background refresh is in flight — used to show a spinner on the refresh button. */
+  refreshing?: boolean;
+  /** Optional: auto-open this item's edit modal on mount (e.g. navigated from another page). */
+  openItemId?: string | null;
+}
+
+// ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
+// One ref per droppable zone; increment on enter, decrement on leave,
+// treat as "over" only when counter > 0.
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId }: Props) {
+  const isMobile = useIsMobile();
+
+  // Mobile drawer state — lifted from MobileMenuManagerLayout so the existing
+  // handleDropBucket flow can close it automatically after a successful
+  // pool→bucket drop. STR-251 round 2 mobile + camera.
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  // Drag-and-drop is intentionally DISABLED on mobile. The HTML5 native drag
+  // events do not fire on touch devices and the polyfill we briefly tried
+  // (mobile-drag-drop) was removed in favour of a tap-to-edit flow — see the
+  // edit pencil button on MenuItemRow. Mobile users still get: ItemPool
+  // drawer (read-only), tap-to-open EditModal from any menu item, photo
+  // upload via the camera. STR-251 mobile + camera (2026-04-08).
+
+  // Core data
+  const [items, setItems] = useState<MenuItemDisplay[]>(initialItems);
+  const [menus, setMenus] = useState<MenuSummary[]>(initialMenus);
+  const [assignments, setAssignments] = useState<Record<string, Record<string, string[]>>>(() =>
+    buildAssignments(initialItems, initialMenus),
+  );
+  const [junctionSettings, setJunctionSettings] = useState<Record<string, MenuItemJunctionSettings>>(
+    () => buildJunctionSettings(initialItems),
+  );
+
+  // UI state
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(
+    initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null,
+  );
+  const [filterTag, setFilterTag] = useState<string>('All');
+  const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons'>('dishes');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [editMenuId, setEditMenuId] = useState<string | null>(null);
+  const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
+  const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
+  const [dragging, setDragging] = useState<DragState | null>(null);
+  const [dragOver, setDragOver] = useState<{ menuId: string; cat: string } | 'pool' | null>(null);
+  const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [addingMenu, setAddingMenu] = useState(false);
+  const [newMenuName, setNewMenuName] = useState('');
+  const [attentionExpanded, setAttentionExpanded] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
+
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const poolDcRef = useRef(0); // drag-enter counter for the pool zone
+  const bucketDcRef = useRef<Record<string, number>>({}); // per-bucket drag-enter counters
+  // Tracks the ID of a brand-new item opened via "Add Item" — if the modal is
+  // closed without saving, this item is rolled back (removed from state + deleted from backend).
+  const newlyCreatedItemIdRef = useRef<string | null>(null);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  // Undo toast — STR-251 #11. Optimistic remove + 5s window to revert.
+  const showUndoToast = useCallback((message: string, onUndo: () => void) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast({ message, onUndo });
+    undoTimerRef.current = setTimeout(() => setUndoToast(null), 5000);
+  }, []);
+
+  const dismissUndoToast = useCallback(() => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast(null);
+  }, []);
+
+  const colorMap = useCallback((index: number): MenuColor => getMenuColor(index), []);
+
+  const getSettings = useCallback(
+    (menuId: string, itemId: string): MenuItemJunctionSettings =>
+      junctionSettings[`${menuId}:${itemId}`] ?? {
+        price: null,
+        boost_level: null,
+        chefs_special: false,
+        portion_type: 'single',
+        portion_serves: null,
+        category_name: undefined,
+      },
+    [junctionSettings],
+  );
+
+  // Keep assignments + junctionSettings in sync when items/menus change
+  useEffect(() => {
+    setAssignments(buildAssignments(items, menus));
+    setJunctionSettings(buildJunctionSettings(items));
+  }, [items, menus]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  // Open edit modal for a specific item when navigated from another page (e.g. Patron Engagement)
+  useEffect(() => {
+    if (!openItemId || items.length === 0) return;
+    setEditItemId(openItemId);
+  }, [openItemId, items]);
+
+  // ── Filtered item list for ItemPool ──────────────────────────────────────
+
+  // Raw (crawler-extracted) categories for the ItemPool dropdown.
+  // Sorted alphabetically. The MenuBuilder still uses canonical buckets —
+  // this list only drives the pool filter UI.
+  const rawCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of items) {
+      const raw = (i.category ?? '').trim();
+      if (raw) set.add(raw);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    // When in 'addons' mode, show only addon-type items; otherwise show only dishes.
+    let result = itemTypeFilter === 'addons'
+      ? items.filter((i) => i.item_type === 'addon')
+      : items.filter((i) => i.item_type !== 'addon');
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((i) =>
+        i.name.toLowerCase().includes(q) || (i.description ?? '').toLowerCase().includes(q),
+      );
+    }
+    if (filterTag !== 'All') {
+      // Match against the raw crawler-extracted category, not the canonical bucket.
+      result = result.filter((i) => (i.category ?? '').trim() === filterTag);
+    }
+    if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
+    if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
+    return result;
+  }, [items, search, filterTag, visibilityFilter, itemTypeFilter]);
+
+  // ── Select handlers ───────────────────────────────────────────────────────
+
+  // Anchor used by shift+click range selection. Keyed by list ('pool' or
+  // `${menuId}:${category}` for MenuBuilder rows). STR-251 #12.
+  const selectionAnchorRef = useRef<{ list: string; itemId: string } | null>(null);
+
+  // Modifier-aware click. Plain → reset to [id]; Shift → range from anchor;
+  // Meta/Ctrl → toggle without resetting. STR-251 #12.
+  const handleSelectClick = useCallback(
+    (
+      e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+      itemId: string,
+      listKey: string,
+      orderedIds: string[],
+    ) => {
+      const anchor = selectionAnchorRef.current;
+      if (e.shiftKey && anchor && anchor.list === listKey) {
+        const fromIdx = orderedIds.indexOf(anchor.itemId);
+        const toIdx = orderedIds.indexOf(itemId);
+        if (fromIdx === -1 || toIdx === -1) {
+          // Anchor item is no longer in this list — fall back to plain click
+          setSelected(new Set([itemId]));
+          selectionAnchorRef.current = { list: listKey, itemId };
+          return;
+        }
+        const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+        setSelected(new Set(orderedIds.slice(lo, hi + 1)));
+        // Anchor stays put on shift-click (standard explorer behaviour)
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+          return next;
+        });
+        selectionAnchorRef.current = { list: listKey, itemId };
+        return;
+      }
+      // Plain click — toggle item (checkbox behaviour). STR-268.
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+        return next;
+      });
+      selectionAnchorRef.current = { list: listKey, itemId };
+    },
+    [],
+  );
+
+  const handleSelectAll = useCallback(() => {
+    setSelected(new Set(filtered.map((i) => i.id)));
+  }, [filtered]);
+
+  const handleClearSelect = useCallback(() => {
+    setSelected(new Set());
+    selectionAnchorRef.current = null;
+  }, []);
+
+  // ── Drag handlers (pool zone) ─────────────────────────────────────────────
+
+  // STR-267: selection-aware drag. If the dragged item is in the selected
+  // Set, drag all selected items (file-explorer convention). Otherwise,
+  // drag only the single item without disturbing the selection.
+  const handleDragStart = useCallback((e: React.DragEvent, itemId: string) => {
+    const ids = selected.has(itemId) ? [...selected] : [itemId];
+    e.dataTransfer.setData('text/plain', JSON.stringify(ids));
+    e.dataTransfer.effectAllowed = 'move';
+    setDragging({ itemIds: ids, fromMenuId: null, fromCat: null });
+  }, [selected]);
+
+  const handleMenuItemDragStart = useCallback(
+    (e: React.DragEvent, itemId: string, fromMenuId: string, fromCat: string) => {
+      const ids = selected.has(itemId) ? [...selected] : [itemId];
+      e.dataTransfer.setData('text/plain', JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = 'move';
+      setDragging({ itemIds: ids, fromMenuId, fromCat });
+    },
+    [selected],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDragging(null);
+    setDragOver(null);
+    poolDcRef.current = 0;
+    bucketDcRef.current = {};
+  }, []);
+
+  const handleDragEnterPool = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    poolDcRef.current += 1;
+    if (poolDcRef.current === 1) setDragOver('pool');
+  }, []);
+
+  const handleDragLeavePool = useCallback(() => {
+    poolDcRef.current -= 1;
+    if (poolDcRef.current === 0) setDragOver((prev) => (prev === 'pool' ? null : prev));
+  }, []);
+
+  // STR-267: multi-item pool drop (remove from menu)
+  const handleDropPool = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      poolDcRef.current = 0;
+      setDragOver(null);
+      const snap = dragging;
+      setDragging(null);
+
+      // Only remove from menu if the items were dragged from a menu bucket
+      if (!snap || snap.fromMenuId === null) return;
+      const { itemIds, fromMenuId } = snap;
+
+      const idsInMenu = itemIds.filter((id) => {
+        const item = items.find((i) => i.id === id);
+        return item?.menu_associations?.some((a) => a.menu_id === fromMenuId);
+      });
+      if (idsInMenu.length === 0) return;
+
+      const idSet = new Set(idsInMenu);
+
+      // Optimistic batch: remove menu association for all dragged items
+      const prevItems = items;
+      setItems((prev) =>
+        prev.map((item) =>
+          !idSet.has(item.id)
+            ? item
+            : {
+                ...item,
+                menu_associations: (item.menu_associations ?? []).filter(
+                  (a) => a.menu_id !== fromMenuId,
+                ),
+              },
+        ),
+      );
+
+      // Sequential API calls — best-effort, per-item rollback on failure
+      let failed = 0;
+      const processRemovals = async () => {
+        for (const id of idsInMenu) {
+          try {
+            const associations = await service.removeItemFromMenu(id, fromMenuId);
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id !== id ? item : { ...item, menu_associations: associations },
+              ),
+            );
+          } catch {
+            failed++;
+            // Rollback this single item
+            const original = prevItems.find((i) => i.id === id);
+            if (original) {
+              setItems((prev) =>
+                prev.map((item) => (item.id !== id ? item : original)),
+              );
+            }
+          }
+        }
+        if (failed > 0) {
+          showToast(`${idsInMenu.length - failed} removed, ${failed} failed`);
+        } else {
+          showToast(idsInMenu.length === 1 ? 'Removed from menu' : `Removed ${idsInMenu.length} items from menu`);
+        }
+        // Clear selection after multi-item drop
+        if (idsInMenu.length > 1) setSelected(new Set());
+      };
+      processRemovals();
+    },
+    [dragging, items, showToast],
+  );
+
+  // ── Bucket drag handlers ──────────────────────────────────────────────────
+
+  const handleDragEnterBucket = useCallback((e: React.DragEvent, menuId: string, cat: string) => {
+    e.preventDefault();
+    const key = `${menuId}:${cat}`;
+    bucketDcRef.current[key] = (bucketDcRef.current[key] ?? 0) + 1;
+    if (bucketDcRef.current[key] === 1) setDragOver({ menuId, cat });
+  }, []);
+
+  const handleDragLeaveBucket = useCallback((menuId: string, cat: string) => {
+    const key = `${menuId}:${cat}`;
+    bucketDcRef.current[key] = Math.max(0, (bucketDcRef.current[key] ?? 1) - 1);
+    if (bucketDcRef.current[key] === 0) {
+      setDragOver((prev) =>
+        prev !== null && prev !== 'pool' && prev.menuId === menuId && prev.cat === cat ? null : prev,
+      );
+    }
+  }, []);
+
+  // STR-267: multi-item bucket drop (add/move to menu)
+  const handleDropBucket = useCallback(
+    (e: React.DragEvent, menuId: string, cat: string) => {
+      e.preventDefault();
+      const key = `${menuId}:${cat}`;
+      bucketDcRef.current[key] = 0;
+      setDragOver(null);
+      const snap = dragging;
+      setDragging(null);
+
+      if (!snap) return;
+      const { itemIds, fromMenuId, fromCat } = snap;
+
+      // Same menu, same bucket → no-op
+      if (fromMenuId === menuId && fromCat === cat) return;
+
+      const menu = menus.find((m) => m.id === menuId);
+      if (!menu) {
+        showToast('Menu not found — please refresh the page and try again');
+        return;
+      }
+
+      // Resolve items to process — block add-on items from menu assignment
+      const allResolved = itemIds
+        .map((id) => items.find((i) => i.id === id))
+        .filter((i): i is MenuItemDisplay => i != null);
+      if (allResolved.length === 0) return;
+
+      const blockedAddons = allResolved.filter((i) => i.item_type === 'addon');
+      if (blockedAddons.length > 0) {
+        showToast(
+          blockedAddons.length === 1
+            ? `"${blockedAddons[0].name}" is an add-on — manage it in the item editor`
+            : `${blockedAddons.length} add-on items can't be added to menus directly`,
+        );
+      }
+      const toProcess = allResolved.filter((i) => i.item_type !== 'addon');
+      if (toProcess.length === 0) return;
+
+      // Partition items by whether they are already associated with the
+      // target menu. Items already in the menu need their canonical_categories
+      // merged (Case A). Items not yet in the menu get a new association
+      // (Case B). This partition is source-agnostic: a drag from the item
+      // pool (fromMenuId === null) onto a second bucket correctly takes the
+      // merge path if the item was previously assigned to the same menu.
+      const alreadyInMenu = toProcess.filter((i) =>
+        (i.menu_associations ?? []).some((a) => a.menu_id === menuId),
+      );
+      const notInMenu = toProcess.filter(
+        (i) => !(i.menu_associations ?? []).some((a) => a.menu_id === menuId),
+      );
+      const alreadyInMenuIds = new Set(alreadyInMenu.map((i) => i.id));
+
+      // ── Case A: items already in this menu — add to canonical_categories ──
+      if (alreadyInMenu.length > 0) {
+        const prevItems = items;
+        setItems((prev) =>
+          prev.map((i) => {
+            if (!alreadyInMenuIds.has(i.id)) return i;
+            return {
+              ...i,
+              menu_associations: (i.menu_associations ?? []).map((a) => {
+                if (a.menu_id !== menuId) return a;
+                const existing = a.canonical_categories ?? [];
+                const updated = cat === 'Uncategorised' || existing.includes(cat)
+                  ? existing
+                  : [...existing, cat];
+                return { ...a, canonical_categories: updated };
+              }),
+            };
+          }),
+        );
+        const processCategories = async () => {
+          let failed = 0;
+          for (const item of alreadyInMenu) {
+            try {
+              const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
+              const existing = assoc?.canonical_categories ?? [];
+              if (cat !== 'Uncategorised' && !existing.includes(cat)) {
+                const updated = [...existing, cat];
+                const associations = await service.updateMenuItemInMenu(item.id, menuId, { canonical_categories: updated });
+                setItems((prev) =>
+                  prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })),
+                );
+              }
+            } catch {
+              failed++;
+              const original = prevItems.find((o) => o.id === item.id);
+              if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
+            }
+          }
+          if (failed > 0) {
+            showToast(`${alreadyInMenu.length - failed} moved, ${failed} failed`);
+          } else if (notInMenu.length === 0) {
+            showToast(alreadyInMenu.length === 1 ? `Added to ${cat}` : `Added ${alreadyInMenu.length} items to ${cat}`);
+          }
+          if (toProcess.length > 1) setSelected(new Set());
+        };
+        processCategories();
+      }
+
+      // If there are no new items to assign, we're done.
+      if (notInMenu.length === 0) return;
+
+      // ── Case B: assigning to this menu (from pool or from a different menu) ─
+      const prevItems = items;
+      const initialCats = cat === 'Uncategorised' ? [] : [cat];
+      const notInMenuIds = new Set(notInMenu.map((i) => i.id));
+      // Optimistic batch: add association for items not yet in the menu
+      setItems((prev) =>
+        prev.map((i) => {
+          if (!notInMenuIds.has(i.id)) return i;
+          const optimisticAssoc = {
+            menu_id: menuId,
+            menu_name: menu.name,
+            price: i.price ?? null,
+            category_name: cat,
+            canonical_categories: initialCats,
+            boost_level: null,
+            chefs_special: false,
+            portion_type: 'single' as const,
+            portion_serves: null,
+          };
+          return {
+            ...i,
+            menu_associations: [
+              ...(i.menu_associations ?? []).filter((a) => a.menu_id !== menuId),
+              optimisticAssoc,
+            ],
+          };
+        }),
+      );
+      // Auto-close mobile drawer once (pool → bucket only)
+      if (fromMenuId === null) {
+        setMobileDrawerOpen(false);
+      }
+      // Sequential API calls — best-effort, per-item rollback on failure
+      const processAssigns = async () => {
+        let failed = 0;
+        for (const item of notInMenu) {
+          try {
+            const associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat, { canonical_categories: initialCats });
+            setItems((prev) =>
+              prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })),
+            );
+          } catch {
+            failed++;
+            // Rollback this single item
+            const original = prevItems.find((o) => o.id === item.id);
+            if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
+          }
+        }
+        if (failed > 0) {
+          showToast(`${notInMenu.length - failed} added, ${failed} failed`);
+        } else {
+          showToast(notInMenu.length === 1 ? `Added to ${menu.name}` : `Added ${notInMenu.length} items to ${menu.name}`);
+        }
+        // Clear selection after multi-item drop
+        if (toProcess.length > 1) setSelected(new Set());
+      };
+      processAssigns();
+    },
+    [dragging, items, menus, showToast],
+  );
+
+  // ── Update item modifiers (sides + recommendations) ─────────────────────────
+  // Optimistically updates the parent item's modifiers and PUTs to the API.
+  // Add-ons are managed per item in the Edit modal (Add-ons tab).
+  const handleUpdateModifiers = useCallback(
+    async (
+      parentId: string,
+      payload: {
+        sides: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+        recommendations: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+        sides_selection_mode: 'and' | 'or';
+      },
+    ) => {
+      const prevItems = items;
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== parentId) return i;
+          return {
+            ...i,
+            sides: payload.sides,
+            recommendations: payload.recommendations.map((r) => ({
+              ...r,
+              price_override: r.price_override ?? 0,
+            })),
+            sides_selection_mode: payload.sides_selection_mode,
+          };
+        }),
+      );
+      try {
+        await service.updateItemModifiers(parentId, {
+          sides: payload.sides,
+          recommendations: payload.recommendations.map((r) => ({
+            ...r,
+            price_override: r.price_override ?? 0,
+          })),
+          sides_selection_mode: payload.sides_selection_mode,
+        });
+      } catch {
+        setItems(prevItems);
+        showToast('Failed to save modifiers — please try again');
+      }
+    },
+    [items, showToast],
+  );
+
+  // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
+  const handleRemoveItemFromMenu = useCallback(
+    (itemId: string, menuId: string) => {
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+      const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
+      if (!assoc) return;
+      const menu = menus.find((m) => m.id === menuId);
+      const menuName = menu?.name ?? 'menu';
+
+      // Snapshot for undo
+      const snapshot = {
+        price: assoc.price,
+        category_name: assoc.category_name ?? undefined,
+      };
+
+      // Optimistic removal
+      const prevItems = items;
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id !== itemId
+            ? i
+            : {
+                ...i,
+                menu_associations: (i.menu_associations ?? []).filter((a) => a.menu_id !== menuId),
+              },
+        ),
+      );
+
+      service
+        .removeItemFromMenu(itemId, menuId)
+        .then((associations) => {
+          setItems((prev) =>
+            prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
+          );
+        })
+        .catch((err) => {
+          setItems(prevItems);
+          dismissUndoToast();
+          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to remove — please try again';
+          showToast(msg);
+        });
+
+      showUndoToast(`Removed from ${menuName}`, () => {
+        // Re-add with the snapshot. The backend's ON CONFLICT upsert handles
+        // the soft-delete reactivation cleanly.
+        service
+          .addItemToMenu(itemId, menuId, snapshot.price, snapshot.category_name)
+          .then((associations) => {
+            setItems((prev) =>
+              prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
+            );
+            dismissUndoToast();
+          })
+          .catch(() => {
+            showToast('Could not undo — please retry');
+          });
+      });
+    },
+    [items, menus, dismissUndoToast, showUndoToast, showToast],
+  );
+
+  // ── Settings update ───────────────────────────────────────────────────────
+
+  const handleUpdateSettings = useCallback(
+    async (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => {
+      const key = `${menuId}:${itemId}`;
+      const prev = junctionSettings[key] ?? {
+        price: null,
+        boost_level: null,
+        chefs_special: false,
+        portion_type: 'single' as const,
+        portion_serves: null,
+        category_name: undefined,
+      };
+      // Optimistic update
+      setJunctionSettings((s) => ({ ...s, [key]: { ...prev, ...patch } }));
+      try {
+        const associations = await service.updateMenuItemInMenu(itemId, menuId, patch);
+        // STR-262: Write server-returned associations back into items so the
+        // useEffect rebuild (buildJunctionSettings) stays in sync. Without this,
+        // any subsequent setItems call would overwrite the optimistic junction
+        // settings with stale data from items[].menu_associations.
+        if (Array.isArray(associations)) {
+          setItems((prev) =>
+            prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
+          );
+        }
+      } catch {
+        // Rollback
+        setJunctionSettings((s) => ({ ...s, [key]: prev }));
+        showToast('Failed to save — please try again');
+      }
+    },
+    [junctionSettings, showToast],
+  );
+
+  // ── Add item ──────────────────────────────────────────────────────────────
+
+  const handleAddItem = useCallback(async () => {
+    try {
+      const created = await service.addMenuItem(restaurantId, {
+        name: 'New item',
+        price: 0,
+        category: 'Uncategorised',
+      });
+      const display: MenuItemDisplay = {
+        id: created.id,
+        name: created.name,
+        description: created.description ?? null,
+        price: created.price,
+        category: created.category,
+        food_tags: created.food_tags,
+        thumbnail_url: created.thumbnail_url ?? null,
+        gallery_urls: created.gallery_urls ?? [],
+        active: true,
+        menu_associations: [],
+      };
+      setItems((prev) => [display, ...prev]);
+      newlyCreatedItemIdRef.current = created.id;
+      setEditItemId(created.id);
+    } catch {
+      showToast('Failed to create item — please try again');
+    }
+  }, [restaurantId, showToast]);
+
+  // ── Edit complete ─────────────────────────────────────────────────────────
+
+  const handleEditComplete = useCallback(
+    (updated: MenuItemDisplay & { _deleted?: boolean }) => {
+      // User explicitly saved or deleted — no longer a "new unsaved" item
+      newlyCreatedItemIdRef.current = null;
+      if (updated._deleted) {
+        setItems((prev) => prev.filter((i) => i.id !== updated.id));
+        showToast('Item deleted');
+      } else {
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        showToast('Item saved');
+      }
+      setEditItemId(null);
+    },
+    [showToast],
+  );
+
+  // Close handler — rolls back brand-new unsaved items
+  const handleCloseEditModal = useCallback(() => {
+    const newId = newlyCreatedItemIdRef.current;
+    if (newId) {
+      // Remove from local state immediately
+      setItems((prev) => prev.filter((i) => i.id !== newId));
+      newlyCreatedItemIdRef.current = null;
+      // Fire-and-forget backend delete — user never saved so there's nothing meaningful to keep
+      void service.deleteMenuItem(newId).catch(() => {
+        // Silently ignore — worst case is an orphaned "New item" row in the DB
+      });
+    }
+    setEditItemId(null);
+  }, []);
+
+  // ── Navigate from EditModal to a menu tab + scroll to item ───────────────
+
+  const handleNavigateToMenu = useCallback((menuId: string, itemId: string) => {
+    setEditItemId(null);
+    setActiveMenuId(menuId);
+    setScrollToItemId(itemId);
+  }, []);
+
+  // ── Bulk complete ─────────────────────────────────────────────────────────
+
+  const handleBulkComplete = useCallback(
+    (updatedItems: MenuItemDisplay[], clearedIds: Set<string>) => {
+      setItems(updatedItems);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of clearedIds) next.delete(id);
+        return next;
+      });
+      setBulkMode(null);
+      showToast('Bulk action applied');
+    },
+    [showToast],
+  );
+
+  // ── Bulk modifier assign complete ─────────────────────────────────────────
+  const handleBulkModifiersComplete = useCallback(
+    (updatedItems: MenuItemDisplay[]) => {
+      setItems((prev) =>
+        prev.map((i) => {
+          const updated = updatedItems.find((u) => u.id === i.id);
+          return updated ?? i;
+        }),
+      );
+      setBulkModifiersOpen(false);
+      setSelected(new Set());
+      showToast('Addons assigned to dishes');
+    },
+    [showToast],
+  );
+
+  // ── Menu CRUD ─────────────────────────────────────────────────────────────
+
+  const handleCreateMenu = useCallback(
+    async (name: string) => {
+      const created = await service.createMenu(restaurantId, { name });
+      setMenus((prev) => [...prev, created]);
+      setActiveMenuId(created.id);
+    },
+    [restaurantId],
+  );
+
+  const handleUpdateMenu = useCallback((updated: MenuSummary) => {
+    setMenus((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    setEditMenuId(null);
+    showToast('Menu saved');
+  }, [showToast]);
+
+  const handleDeleteMenu = useCallback(
+    (menuId: string) => {
+      setMenus((prev) => {
+        const next = prev.filter((m) => m.id !== menuId);
+        setActiveMenuId(next.find((m) => m.active)?.id ?? next[0]?.id ?? null);
+        return next;
+      });
+      setEditMenuId(null);
+      showToast('Menu deleted');
+    },
+    [showToast],
+  );
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <MenuManagerServiceProvider value={service}>
+    <div className="flex flex-col fixed-height-page-shell" data-testid="menu-manager">
+      {/* Page heading */}
+      <div style={{ padding: '0 0 14px', flexShrink: 0 }}>
+        <h1
+          data-testid="menu-manager-heading"
+          className="page-title"
+          style={{ margin: 0 }}
+        >
+          Menu Management
+        </h1>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg"
+          data-testid="menu-manager-toast"
+        >
+          {toast}
+        </div>
+      )}
+
+      {/* Undo toast — STR-251 #11 */}
+      {undoToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3"
+          data-testid="menu-manager-undo-toast"
+        >
+          <span>{undoToast.message}</span>
+          <button
+            type="button"
+            onClick={() => undoToast.onUndo()}
+            data-testid="menu-manager-undo-btn"
+            className="text-blue-300 font-semibold uppercase text-xs tracking-wide hover:text-blue-200"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {editItemId && (() => {
+        const editItem = items.find((i) => i.id === editItemId);
+        return editItem ? (
+          <EditModal
+            item={editItem}
+            restaurantId={restaurantId}
+            menus={menus}
+            allItems={items.filter((i) => i.item_type !== 'addon')}
+            onClose={handleCloseEditModal}
+            onComplete={handleEditComplete}
+            onNavigateToMenu={handleNavigateToMenu}
+          />
+        ) : null;
+      })()}
+
+      {/* Menu Edit Panel */}
+      {editMenuId && (() => {
+        const editMenu = menus.find((m) => m.id === editMenuId);
+        return editMenu ? (
+          <MenuEditPanel
+            menu={editMenu}
+            restaurantId={restaurantId}
+            onClose={() => setEditMenuId(null)}
+            onUpdate={handleUpdateMenu}
+            onDelete={handleDeleteMenu}
+          />
+        ) : null;
+      })()}
+
+      {/* Bulk Actions Panel */}
+      {bulkMode && selected.size > 0 && (
+        <BulkActionsPanel
+          selected={selected}
+          items={items}
+          menus={menus}
+          initialMode={bulkMode}
+          onClose={() => setBulkMode(null)}
+          onComplete={handleBulkComplete}
+        />
+      )}
+
+      {/* Bulk Modifier Panel — assign addons to dishes */}
+      {bulkModifiersOpen && selected.size > 0 && (
+        <BulkModifierPanel
+          restaurantId={restaurantId}
+          selectedAddons={items.filter((i) => selected.has(i.id))}
+          dishItems={items.filter((i) => i.item_type !== 'addon')}
+          onClose={() => setBulkModifiersOpen(false)}
+          onComplete={handleBulkModifiersComplete}
+        />
+      )}
+
+      {/* Mobile branch — STR-251 mobile + camera (2026-04-08).
+          Same handlers, same state, just a different shell. Desktop branch
+          below remains byte-for-byte identical to the historical layout. */}
+      {isMobile ? (
+        <MobileMenuManagerLayout
+          itemsCount={items.length}
+          drawerOpen={mobileDrawerOpen}
+          onDrawerOpenChange={setMobileDrawerOpen}
+          itemPoolProps={{
+            items,
+            menus,
+            filtered,
+            selected,
+            search,
+            filterTag,
+            rawCategories,
+            dragOver: dragOver === 'pool' ? 'pool' : null,
+            dragging,
+            editItemId,
+            onSearchChange: setSearch,
+            onFilterChange: setFilterTag,
+            visibilityFilter,
+            onVisibilityFilterChange: setVisibilityFilter,
+            itemTypeFilter,
+            onItemTypeFilterChange: setItemTypeFilter,
+            onSelectClick: handleSelectClick,
+            onSelectAll: handleSelectAll,
+            onClearSelect: handleClearSelect,
+            onEditItem: setEditItemId,
+            onAddItem: handleAddItem,
+            attentionExpanded,
+            onToggleAttention: () => setAttentionExpanded((v) => !v),
+            onOpenBulk: (mode) => setBulkMode(mode),
+            onOpenBulkModifiers: () => setBulkModifiersOpen(true),
+            onDragStart: handleDragStart,
+            onDragEnd: handleDragEnd,
+            onDragEnterPool: handleDragEnterPool,
+            onDragLeavePool: handleDragLeavePool,
+            onDropPool: handleDropPool,
+            colorMap,
+          }}
+          menuBuilderProps={{
+            items,
+            menus,
+            assignments,
+            junctionSettings,
+            activeMenuId,
+            collapsed,
+            dragging,
+            dragOver,
+            colorMap,
+            getSettings,
+            onTabChange: setActiveMenuId,
+            onToggleCollapse: (key) =>
+              setCollapsed((prev) => ({ ...prev, [key]: !prev[key] })),
+            onUpdateSettings: handleUpdateSettings,
+            onDragStart: handleMenuItemDragStart,
+            onDragEnd: handleDragEnd,
+            onDragEnterBucket: handleDragEnterBucket,
+            onDragLeaveBucket: (menuId, cat) => handleDragLeaveBucket(menuId, cat),
+            onDropBucket: handleDropBucket,
+            onCreateMenu: handleCreateMenu,
+            onEditMenu: setEditMenuId,
+            onRemoveItemFromMenu: handleRemoveItemFromMenu,
+            onEditItem: setEditItemId,
+            onUpdateModifiers: handleUpdateModifiers,
+            scrollToItemId,
+            onScrollComplete: () => setScrollToItemId(null),
+          }}
+        />
+      ) : (
+        /* Two-panel layout — desktop, unchanged */
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '272px 1fr',
+            gap: 16,
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Left panel — ItemPool */}
+          <ItemPool
+            items={items}
+            menus={menus}
+            filtered={filtered}
+            selected={selected}
+            search={search}
+            filterTag={filterTag}
+            rawCategories={rawCategories}
+            dragOver={dragOver === 'pool' ? 'pool' : null}
+            dragging={dragging}
+            editItemId={editItemId}
+            onSearchChange={setSearch}
+            onFilterChange={setFilterTag}
+            visibilityFilter={visibilityFilter}
+            onVisibilityFilterChange={setVisibilityFilter}
+            itemTypeFilter={itemTypeFilter}
+            onItemTypeFilterChange={setItemTypeFilter}
+            onSelectClick={handleSelectClick}
+            onSelectAll={handleSelectAll}
+            onClearSelect={handleClearSelect}
+            onEditItem={setEditItemId}
+            onAddItem={handleAddItem}
+            attentionExpanded={attentionExpanded}
+            onToggleAttention={() => setAttentionExpanded((v) => !v)}
+            onOpenBulk={(mode) => setBulkMode(mode)}
+            onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragEnterPool={handleDragEnterPool}
+            onDragLeavePool={handleDragLeavePool}
+            onDropPool={handleDropPool}
+            colorMap={colorMap}
+          />
+
+          {/* Right panel — MenuBuilder */}
+          <MenuBuilder
+            items={items}
+            menus={menus}
+            assignments={assignments}
+            junctionSettings={junctionSettings}
+            activeMenuId={activeMenuId}
+            collapsed={collapsed}
+            dragging={dragging}
+            dragOver={dragOver}
+            colorMap={colorMap}
+            getSettings={getSettings}
+            onTabChange={setActiveMenuId}
+            onToggleCollapse={(key) =>
+              setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+            }
+            onUpdateSettings={handleUpdateSettings}
+            onDragStart={handleMenuItemDragStart}
+            onDragEnd={handleDragEnd}
+            onDragEnterBucket={handleDragEnterBucket}
+            onDragLeaveBucket={(menuId, cat) => handleDragLeaveBucket(menuId, cat)}
+            onDropBucket={handleDropBucket}
+            onCreateMenu={handleCreateMenu}
+            onEditMenu={setEditMenuId}
+            onRemoveItemFromMenu={handleRemoveItemFromMenu}
+            onEditItem={setEditItemId}
+            onUpdateModifiers={handleUpdateModifiers}
+            scrollToItemId={scrollToItemId}
+            onScrollComplete={() => setScrollToItemId(null)}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        </div>
+      )}
+    </div>
+    </MenuManagerServiceProvider>
+  );
+}

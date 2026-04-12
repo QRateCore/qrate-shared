@@ -30,6 +30,10 @@ export type { SwipeSliderProps } from './components/staff';
 // Components — Menu Items
 export { MenuItemsManagement } from './components/menu-items';
 
+// Components — Menu Manager (full two-pane menu management UI)
+export { MenuManagerClient } from './components/menu-manager';
+export type { BulkMode, DragState } from './components/menu-manager';
+
 // Components — Common
 export { QRateLogo } from './components/common';
 export type { QRateLogoProps } from './components/common';
@@ -37,6 +41,7 @@ export type { QRateLogoProps } from './components/common';
 // Services
 export { createMenuItemsService, fetchCanonicalCategoryMap } from './services/createMenuItemsService';
 export type { CreateMenuItemsServiceOptions } from './services/createMenuItemsService';
+export { createMenuManagerService } from './services/createMenuManagerService';
 
 // Utils — Order Status Display
 export { STATUS_DISPLAY, getNextStatus, getNextStatusLabel, ACTIVE_STATUSES, isActiveStatus } from './utils/order-status-display';
