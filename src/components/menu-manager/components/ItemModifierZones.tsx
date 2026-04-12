@@ -197,19 +197,6 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
                 </div>
                 <div className="modifier-card-body">
                   <div className="modifier-card-name">{side.name}</div>
-                  <div className="modifier-card-price-row">
-                    <span className="modifier-card-price-symbol">$</span>
-                    <input
-                      className="modifier-card-price-input"
-                      type="number"
-                      defaultValue={side.price_override ?? ''}
-                      placeholder="Free"
-                      aria-label="Side price"
-                      min="0"
-                      step="0.01"
-                      onBlur={(e) => updateSidePrice(side.menu_item_id, e.target.value)}
-                    />
-                  </div>
                 </div>
                 <button
                   type="button"
@@ -254,18 +241,6 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
                 </div>
                 <div className="modifier-card-body">
                   <div className="modifier-card-name">{rec.name}</div>
-                  <div className="modifier-card-price-row">
-                    <span className="modifier-card-price-symbol">$</span>
-                    <input
-                      className="modifier-card-price-input"
-                      type="number"
-                      defaultValue={rec.price_override ?? 0}
-                      aria-label="Recommendation price"
-                      min="0"
-                      step="0.01"
-                      onBlur={(e) => updateRecommendationPrice(rec.menu_item_id, e.target.value)}
-                    />
-                  </div>
                 </div>
                 <button
                   type="button"
