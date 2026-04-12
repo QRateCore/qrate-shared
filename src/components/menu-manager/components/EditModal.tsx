@@ -818,33 +818,49 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <SectionLabel>Basic Info</SectionLabel>
 
-              {/* Add-on checkbox */}
-              <label
-                data-testid="addon-checkbox-label"
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 'var(--r-xs)',
-                  border: isAddon ? '1px solid #f59e0b' : '1px solid var(--border)',
-                  background: isAddon ? '#fffbeb' : '#fafafa',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAddon}
-                  onChange={(e) => setIsAddon(e.target.checked)}
-                  data-testid="addon-checkbox"
-                  style={{ marginTop: 1, width: 14, height: 14, accentColor: '#f59e0b', cursor: 'pointer', flexShrink: 0 }}
-                />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>This is an Add-on</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                    Ingredient-level modifier (e.g. Extra Chicken). Hidden from diners — assignable to dishes in the menu builder.
-                  </div>
-                </div>
-              </label>
+              {/* Add-on checkbox — disabled when item has sides or recommendations */}
+              {(() => {
+                const hasSides = (item.sides?.length ?? 0) > 0;
+                const hasRecs  = (item.recommendations?.length ?? 0) > 0;
+                const addonDisabled = hasSides || hasRecs;
+                const disabledReason = hasSides && hasRecs
+                  ? 'Items with sides and recommendations cannot be Add-ons'
+                  : hasSides
+                    ? 'Items with sides cannot be Add-ons'
+                    : hasRecs
+                      ? 'Items with recommendations cannot be Add-ons'
+                      : null;
+                return (
+                  <label
+                    data-testid="addon-checkbox-label"
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 'var(--r-xs)',
+                      border: addonDisabled ? '1px solid var(--border)' : isAddon ? '1px solid #f59e0b' : '1px solid var(--border)',
+                      background: addonDisabled ? '#f5f5f5' : isAddon ? '#fffbeb' : '#fafafa',
+                      cursor: addonDisabled ? 'not-allowed' : 'pointer',
+                      opacity: addonDisabled ? 0.6 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isAddon}
+                      onChange={(e) => { if (!addonDisabled) setIsAddon(e.target.checked); }}
+                      disabled={addonDisabled}
+                      data-testid="addon-checkbox"
+                      style={{ marginTop: 1, width: 14, height: 14, accentColor: '#f59e0b', cursor: addonDisabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>This is an Add-on</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                        {disabledReason ?? 'Ingredient-level modifier (e.g. Extra Chicken). Hidden from diners — assignable to dishes in the menu builder.'}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })()}
 
               {/* Name */}
               <div>
