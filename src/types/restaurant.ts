@@ -101,6 +101,8 @@ export interface MenuItem {
   portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
+  /** 'dish' = regular menu item visible to diners; 'addon' = ingredient-level modifier (e.g. Extra Chicken), hidden from browsing */
+  item_type?: 'dish' | 'addon';
 }
 
 export interface MenuItemCreate {
