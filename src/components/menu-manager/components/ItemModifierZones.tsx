@@ -80,7 +80,7 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
     if (!droppedId || droppedId === parent.id) return;
     if (sideIds.has(droppedId)) return;
     const dropped = itemsById.get(droppedId);
-    if (!dropped) return;
+    if (!dropped || dropped.item_type === 'addon') return;
     const next: ModifierEntry = {
       menu_item_id: dropped.id,
       name: dropped.name,
@@ -114,7 +114,7 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
     if (!droppedId || droppedId === parent.id) return;
     if (recommendationIds.has(droppedId)) return;
     const dropped = itemsById.get(droppedId);
-    if (!dropped) return;
+    if (!dropped || dropped.item_type === 'addon') return;
     const next: ModifierEntry = {
       menu_item_id: dropped.id,
       name: dropped.name,
