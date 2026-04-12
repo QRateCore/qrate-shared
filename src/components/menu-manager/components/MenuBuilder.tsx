@@ -252,10 +252,10 @@ function MenuItemRow({
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
       data-pending-addons={pendingAddons > 0 ? pendingAddons : undefined}
-      className={`border-b border-[var(--border)] cursor-grab ${expanded ? 'bg-[var(--bg)]' : ''}`}
+      className={`w-full border-b border-[var(--border)] cursor-grab ${expanded ? 'bg-[var(--bg)]' : ''}`}
       style={{ borderLeft: `3px solid ${borderLeftColor}` }}
     >
-      <div className="flex items-stretch">
+      <div className="flex items-stretch w-full">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -312,7 +312,7 @@ function MenuItemRow({
 
             {/* Mobile row 2 — aggregated modifier counters */}
             {((item.sides?.length ?? 0) > 0 || (item.recommendations?.length ?? 0) > 0) && (
-              <div className="flex items-center gap-1.5 pl-5">
+              <div className="flex items-center gap-1.5 pl-5 w-full">
                 {(item.sides?.length ?? 0) > 0 && (
                   <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded px-1.5 py-px border border-[var(--border)]">
                     {item.sides!.length} side{item.sides!.length !== 1 ? 's' : ''}
