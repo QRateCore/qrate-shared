@@ -550,6 +550,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
   // Optimistically updates the parent item's modifiers and PUTs to the API.
   // Add-ons are managed per item in the Edit modal (Add-ons tab).
+  //
+  // Auto-add to menu: when a recommendation item is dropped that is NOT yet on
+  // the active menu, automatically assign it to the menu under the parent
+  // item's canonical category. This makes pool→recommendation drops seamless —
+  // the item appears in the correct menu bucket and inherits the standard
+  // "needs attention" red border if it has no price.
   const handleUpdateModifiers = useCallback(
     async (
       parentId: string,
@@ -586,9 +592,104 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       } catch {
         setItems(prevItems);
         showToast('Failed to save modifiers — please try again');
+        return; // Don't proceed to auto-add if modifier save failed
+      }
+
+      // ── Auto-add new recommendation items to the active menu ────────────
+      if (!activeMenuId) return;
+
+      const parent = items.find((i) => i.id === parentId);
+      if (!parent) return;
+
+      // Detect newly added recommendations (items in payload but not in current state)
+      const currentRecIds = new Set(
+        ((parent.recommendations ?? []) as Array<{ menu_item_id: string }>).map((r) => r.menu_item_id),
+      );
+      const newRecItems = payload.recommendations.filter((r) => !currentRecIds.has(r.menu_item_id));
+      if (newRecItems.length === 0) return;
+
+      // Determine the parent's canonical category on the active menu
+      const parentAssoc = parent.menu_associations?.find((a) => a.menu_id === activeMenuId);
+      const parentCats = parentAssoc?.canonical_categories ?? [];
+      const targetCat = parentCats[0] ?? 'Uncategorised';
+
+      const activeMenu = menus.find((m) => m.id === activeMenuId);
+      if (!activeMenu) return;
+
+      // For each new recommendation, check if it's already on the active menu
+      for (const rec of newRecItems) {
+        const recItem = items.find((i) => i.id === rec.menu_item_id);
+        if (!recItem) continue;
+
+        const alreadyOnMenu = (recItem.menu_associations ?? []).some(
+          (a) => a.menu_id === activeMenuId,
+        );
+        if (alreadyOnMenu) continue;
+
+        // Auto-add to active menu under parent's canonical category
+        const initialCats = targetCat === 'Uncategorised' ? [] : [targetCat];
+        const optimisticAssoc = {
+          menu_id: activeMenuId,
+          menu_name: activeMenu.name,
+          price: recItem.price ?? null,
+          category_name: targetCat,
+          canonical_categories: initialCats,
+          boost_level: null,
+          chefs_special: false,
+          portion_type: 'single' as const,
+          portion_serves: null,
+        };
+        setItems((prev) =>
+          prev.map((i) => {
+            if (i.id !== recItem.id) return i;
+            return {
+              ...i,
+              menu_associations: [
+                ...(i.menu_associations ?? []).filter((a) => a.menu_id !== activeMenuId),
+                optimisticAssoc,
+              ],
+            };
+          }),
+        );
+
+        try {
+          const associations = await service.addItemToMenu(
+            recItem.id,
+            activeMenuId,
+            recItem.price ?? 0,
+            targetCat,
+            { canonical_categories: initialCats },
+          );
+          setItems((prev) =>
+            prev.map((i) => (i.id !== recItem.id ? i : { ...i, menu_associations: associations })),
+          );
+        } catch {
+          // Rollback optimistic add on failure
+          setItems((prev) =>
+            prev.map((i) => {
+              if (i.id !== recItem.id) return i;
+              return {
+                ...i,
+                menu_associations: (i.menu_associations ?? []).filter(
+                  (a) => a.menu_id !== activeMenuId,
+                ),
+              };
+            }),
+          );
+        }
+      }
+
+      if (newRecItems.length > 0) {
+        const addedCount = newRecItems.length;
+        const itemNames = newRecItems.map((r) => r.name).join(', ');
+        showToast(
+          addedCount === 1
+            ? `"${itemNames}" auto-added to ${targetCat} in ${activeMenu.name}`
+            : `${addedCount} items auto-added to ${targetCat} in ${activeMenu.name}`,
+        );
       }
     },
-    [items, showToast],
+    [items, menus, activeMenuId, showToast],
   );
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────

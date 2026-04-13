@@ -212,6 +212,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [addonsError, setAddonsError] = useState<string | null>(null);
   const [poolSearch, setPoolSearch] = useState('');
 
+  // Dishes tab state — search + multi-select
+  const [dishSearch, setDishSearch] = useState('');
+  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
+
   // Performance tab state
   const [perfPeriod, setPerfPeriod] = useState<MenuItemPerformancePeriod>('last_7_days');
   const [perfData, setPerfData] = useState<MenuItemPerformanceResponse | null>(null);
@@ -381,6 +385,52 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       await service.updateItemModifiers(dish.id, { addons: nextAddons });
     } catch {
       setAssociatedDishIds((prev) => new Set([...prev, dish.id]));
+    }
+  }
+
+  async function handleAddToMultipleDishes(dishIds: Set<string>) {
+    if (!allItems || dishIds.size === 0) return;
+    const dishes = allItems.filter((d) => dishIds.has(d.id));
+    // Optimistic: add all to associated set and clear selection
+    setAssociatedDishIds((prev) => new Set([...prev, ...dishIds]));
+    setSelectedDishIds(new Set());
+    const failed: string[] = [];
+    for (const dish of dishes) {
+      const newEntry: AddonEntry = {
+        menu_item_id: item.id,
+        name: item.name,
+        price_override: item.price ?? 0,
+        thumbnail_url: item.thumbnail_url ?? null,
+        status: 'approved',
+        suggestion_source: 'manual',
+      };
+      const nextAddons = [...(dish.addons ?? []), newEntry];
+      try {
+        await service.updateItemModifiers(dish.id, { addons: nextAddons });
+      } catch {
+        failed.push(dish.id);
+      }
+    }
+    // Rollback failures
+    if (failed.length > 0) {
+      setAssociatedDishIds((prev) => {
+        const next = new Set(prev);
+        for (const id of failed) next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  async function handleUpdateAddonPrice(menuItemId: string, newPrice: number) {
+    const prev = itemAddons;
+    const next = itemAddons.map((a) =>
+      a.menu_item_id === menuItemId ? { ...a, price_override: newPrice } : a,
+    );
+    setItemAddons(next);
+    try {
+      await service.updateItemModifiers(item.id, { addons: next });
+    } catch {
+      setItemAddons(prev);
     }
   }
 
@@ -1085,6 +1135,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                             addon={addon}
                             onApprove={() => void handleApproveAddon(addon)}
                             onRemove={() => void handleRemoveAddon(addon.menu_item_id)}
+                            onPriceChange={(p) => void handleUpdateAddonPrice(addon.menu_item_id, p)}
                           />
                         ))}
                       </div>
@@ -1107,6 +1158,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                             key={addon.menu_item_id}
                             addon={addon}
                             onRemove={() => void handleRemoveAddon(addon.menu_item_id)}
+                            onPriceChange={(p) => void handleUpdateAddonPrice(addon.menu_item_id, p)}
                           />
                         ))}
                       </div>
@@ -1288,55 +1340,120 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
                       Add to Dish
                     </div>
-                    {allItems.filter((d) => !associatedDishIds.has(d.id)).length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
-                        All dishes are already associated with this add-on.
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {allItems
-                          .filter((d) => !associatedDishIds.has(d.id))
-                          .map((dish) => (
-                            <div
-                              key={dish.id}
+                    {(() => {
+                      const availableDishes = allItems.filter((d) => !associatedDishIds.has(d.id));
+                      if (availableDishes.length === 0) {
+                        return (
+                          <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                            All dishes are already associated with this add-on.
+                          </div>
+                        );
+                      }
+                      const filtered = availableDishes.filter(
+                        (d) => !dishSearch.trim() || d.name.toLowerCase().includes(dishSearch.toLowerCase()),
+                      );
+                      return (
+                        <>
+                          <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={dishSearch}
+                              onChange={(e) => setDishSearch(e.target.value)}
+                              placeholder="Search dishes..."
+                              data-testid="dish-pool-search"
                               style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '8px 10px', borderRadius: 'var(--r-xs)',
-                                border: '1px solid var(--border)', background: '#fafafa',
+                                ...inputStyle,
+                                fontSize: 12,
+                                padding: '6px 10px',
+                                flex: 1,
                               }}
-                            >
-                              <div
-                                style={{
-                                  width: 32, height: 32, borderRadius: 4,
-                                  background: '#f0f0f0', overflow: 'hidden',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: 14, flexShrink: 0,
-                                }}
-                              >
-                                {dish.thumbnail_url ? (
-                                  <img src={dish.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : '🍽'}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {dish.name}
-                                </div>
-                                {dish.price != null && (
-                                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>${Number(dish.price).toFixed(2)}</div>
-                                )}
-                              </div>
+                            />
+                            {selectedDishIds.size > 0 && (
                               <button
                                 type="button"
-                                onClick={() => void handleAddToDish(dish)}
-                                data-testid={`add-to-dish-${dish.id}`}
-                                style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', background: '#fff7ed', border: '1px solid #f59e0b', color: '#92400e', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                                onClick={() => void handleAddToMultipleDishes(selectedDishIds)}
+                                data-testid="add-selected-dishes"
+                                style={{
+                                  fontSize: 11, fontWeight: 700, padding: '6px 12px',
+                                  background: '#fff7ed', border: '1px solid #f59e0b',
+                                  color: '#92400e', borderRadius: 4, cursor: 'pointer',
+                                  whiteSpace: 'nowrap', flexShrink: 0,
+                                }}
                               >
-                                + Add
+                                Add Selected ({selectedDishIds.size})
                               </button>
+                            )}
+                          </div>
+                          {filtered.length === 0 ? (
+                            <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                              No dishes match your search.
                             </div>
-                          ))}
-                      </div>
-                    )}
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {filtered.map((dish) => {
+                                const isSelected = selectedDishIds.has(dish.id);
+                                return (
+                                  <div
+                                    key={dish.id}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: 10,
+                                      padding: '8px 10px', borderRadius: 'var(--r-xs)',
+                                      border: isSelected ? '1px solid #f59e0b' : '1px solid var(--border)',
+                                      background: isSelected ? '#fffbeb' : '#fafafa',
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={() => {
+                                      setSelectedDishIds((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(dish.id)) next.delete(dish.id);
+                                        else next.add(dish.id);
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      readOnly
+                                      data-testid={`select-dish-${dish.id}`}
+                                      style={{ flexShrink: 0, cursor: 'pointer', accentColor: '#f59e0b' }}
+                                    />
+                                    <div
+                                      style={{
+                                        width: 32, height: 32, borderRadius: 4,
+                                        background: '#f0f0f0', overflow: 'hidden',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: 14, flexShrink: 0,
+                                      }}
+                                    >
+                                      {dish.thumbnail_url ? (
+                                        <img src={dish.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      ) : '🍽'}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {dish.name}
+                                      </div>
+                                      {dish.price != null && (
+                                        <div style={{ fontSize: 11, color: 'var(--text2)' }}>${Number(dish.price).toFixed(2)}</div>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); void handleAddToDish(dish); }}
+                                      data-testid={`add-to-dish-${dish.id}`}
+                                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', background: '#fff7ed', border: '1px solid #f59e0b', color: '#92400e', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                                    >
+                                      + Add
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </>
               )}
@@ -1416,11 +1533,26 @@ function AddonCard({
   addon,
   onApprove,
   onRemove,
+  onPriceChange,
 }: {
   addon: AddonEntry;
   onApprove?: () => void;
   onRemove: () => void;
+  onPriceChange?: (newPrice: number) => void;
 }) {
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput, setPriceInput] = useState((addon.price_override ?? 0).toFixed(2));
+
+  function commitPrice() {
+    setEditingPrice(false);
+    const parsed = parseFloat(priceInput);
+    const val = Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
+    setPriceInput(val.toFixed(2));
+    if (onPriceChange && val !== (addon.price_override ?? 0)) {
+      onPriceChange(val);
+    }
+  }
+
   return (
     <div
       style={{
@@ -1456,9 +1588,35 @@ function AddonCard({
             </span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text2)' }}>
-          ${(addon.price_override ?? 0).toFixed(2)}
-        </div>
+        {editingPrice && onPriceChange ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
+            <span style={{ fontSize: 11, color: 'var(--text2)' }}>$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={priceInput}
+              onChange={(e) => setPriceInput(e.target.value)}
+              onBlur={commitPrice}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitPrice(); if (e.key === 'Escape') { setPriceInput((addon.price_override ?? 0).toFixed(2)); setEditingPrice(false); } }}
+              autoFocus
+              data-testid={`addon-price-input-${addon.menu_item_id}`}
+              style={{
+                width: 60, fontSize: 11, padding: '1px 4px',
+                border: '1px solid var(--border)', borderRadius: 3,
+                outline: 'none', background: 'white', color: 'var(--text)',
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            style={{ fontSize: 11, color: 'var(--text2)', cursor: onPriceChange ? 'pointer' : 'default' }}
+            onClick={() => { if (onPriceChange) { setPriceInput((addon.price_override ?? 0).toFixed(2)); setEditingPrice(true); } }}
+            title={onPriceChange ? 'Click to edit price' : undefined}
+            data-testid={`addon-price-${addon.menu_item_id}`}
+          >
+            ${(addon.price_override ?? 0).toFixed(2)}
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         {addon.status === 'suggested' && onApprove && (
