@@ -35,7 +35,7 @@ export { MenuManagerClient } from './components/menu-manager';
 export type { BulkMode, DragState } from './components/menu-manager';
 
 // Components — Common
-export { QRateLogo } from './components/common';
+export { QRateLogo, Button, Card } from './components/common';
 export type { QRateLogoProps } from './components/common';
 
 // Services
