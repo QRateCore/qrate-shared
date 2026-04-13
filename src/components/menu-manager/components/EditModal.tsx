@@ -325,6 +325,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     };
     const next = [...itemAddons, newEntry];
     setItemAddons(next);
+    setPoolSearch(''); // Clear search so the full pool is visible after adding
     try {
       await service.updateItemModifiers(item.id, { addons: next });
     } catch {
