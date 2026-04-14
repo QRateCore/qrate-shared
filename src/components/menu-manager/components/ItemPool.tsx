@@ -332,9 +332,10 @@ export default function ItemPool({
           gap: 8,
         }}
       >
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>
-          {items.length} Items
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 11, color: 'var(--text2)' }}>Total count of Food Items</span>
+          <span data-testid="item-pool-count" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{items.length}</span>
+        </div>
         <Button
           variant="primary"
           size="sm"
@@ -343,12 +344,37 @@ export default function ItemPool({
           data-testid="add-item-btn"
           aria-label="Add menu item"
         >
-          New Item
+          New Food Item
         </Button>
       </div>
 
       {/* Search + filter */}
       <div style={{ padding: '10px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Category subsection */}
+        <span style={{ fontSize: 11, color: 'var(--text2)' }}>List of Categories identified from your Menus:</span>
+        <select
+          value={filterTag}
+          onChange={(e) => onFilterChange(e.target.value)}
+          data-testid="item-pool-category-filter"
+          aria-label="Filter by category"
+          style={{
+            fontSize: 12,
+            color: 'var(--text)',
+            background: '#f6f6f6',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-xs)',
+            padding: '6px 10px',
+            cursor: 'pointer',
+            width: '100%',
+          }}
+        >
+          <option value="All">All categories</option>
+          {rawCategories.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
+        {/* Search input */}
         <div
           style={{
             display: 'flex',
@@ -378,87 +404,68 @@ export default function ItemPool({
             }}
           />
         </div>
-        {/* Item type toggle — Dishes / Addons */}
-        <div
-          style={{
-            display: 'inline-flex',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}
-        >
-          {(['dishes', 'addons'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              data-testid={`item-type-filter-${tab}`}
-              onClick={() => onItemTypeFilterChange(tab)}
-              style={{
-                padding: '4px 14px',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: 'none',
-                borderRight: tab === 'dishes' ? '1px solid var(--border)' : 'none',
-                background: itemTypeFilter === tab
-                  ? (tab === 'addons' ? '#f59e0b' : 'var(--brand-s)')
-                  : 'var(--white)',
-                color: itemTypeFilter === tab ? 'white' : 'var(--text2)',
-                transition: 'background 0.12s, color 0.12s',
-              }}
-            >
-              {tab === 'dishes' ? 'Dishes' : 'Add-ons'}
-            </button>
-          ))}
-        </div>
 
-        {/* Visibility filter pills */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(['All', 'Visible', 'Hidden'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              data-testid={`visibility-filter-${tab.toLowerCase()}`}
-              onClick={() => onVisibilityFilterChange(tab)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 20,
-                fontSize: 12,
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.1s',
-                border: visibilityFilter === tab ? 'none' : '1px solid var(--border)',
-                background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
-                color: visibilityFilter === tab ? 'white' : 'var(--text2)',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
+        {/* Combined filter row — item type + visibility */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+          {/* Dishes / Add-ons toggle */}
+          <div
+            style={{
+              display: 'inline-flex',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
+            {(['dishes', 'addons'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                data-testid={`item-type-filter-${tab}`}
+                onClick={() => onItemTypeFilterChange(tab)}
+                style={{
+                  padding: '4px 14px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  borderRight: tab === 'dishes' ? '1px solid var(--border)' : 'none',
+                  background: itemTypeFilter === tab
+                    ? (tab === 'addons' ? '#f59e0b' : 'var(--brand-s)')
+                    : 'var(--white)',
+                  color: itemTypeFilter === tab ? 'white' : 'var(--text2)',
+                  transition: 'background 0.12s, color 0.12s',
+                }}
+              >
+                {tab === 'dishes' ? 'Dishes' : 'Add-ons'}
+              </button>
+            ))}
+          </div>
+          {/* Visible / Hidden toggle */}
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            {(['Visible', 'Hidden'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                data-testid={`visibility-filter-${tab.toLowerCase()}`}
+                onClick={() => onVisibilityFilterChange(visibilityFilter === tab ? 'All' : tab)}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.1s',
+                  border: visibilityFilter === tab ? 'none' : '1px solid var(--border)',
+                  background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
+                  color: visibilityFilter === tab ? 'white' : 'var(--text2)',
+                }}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
-
-        <select
-          value={filterTag}
-          onChange={(e) => onFilterChange(e.target.value)}
-          data-testid="item-pool-category-filter"
-          aria-label="Filter by category"
-          style={{
-            fontSize: 12,
-            color: 'var(--text)',
-            background: '#f6f6f6',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-xs)',
-            padding: '6px 10px',
-            cursor: 'pointer',
-            width: '100%',
-          }}
-        >
-          <option value="All">All categories</option>
-          {rawCategories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
       </div>
 
       {/* Select-all row */}
