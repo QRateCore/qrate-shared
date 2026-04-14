@@ -448,6 +448,8 @@ export default function ItemPool({
                 key={tab}
                 type="button"
                 data-testid={`visibility-filter-${tab.toLowerCase()}`}
+                aria-pressed={visibilityFilter === tab}
+                aria-label={`Show only ${tab.toLowerCase()} items (click to show all)`}
                 onClick={() => onVisibilityFilterChange(visibilityFilter === tab ? 'All' : tab)}
                 style={{
                   padding: '4px 12px',
