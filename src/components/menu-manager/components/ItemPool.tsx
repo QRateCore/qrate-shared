@@ -405,8 +405,8 @@ export default function ItemPool({
           />
         </div>
 
-        {/* Combined filter row — item type + visibility */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        {/* Combined filter row — item type + visibility. Wraps on narrow viewports to prevent clipping. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6, columnGap: 6 }}>
           {/* Dishes / Add-ons toggle */}
           <div
             style={{
