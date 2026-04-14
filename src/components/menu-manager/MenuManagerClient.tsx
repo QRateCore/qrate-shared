@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry } from '../../types/restaurant';
 import {
   buildAssignments,
   buildJunctionSettings,
@@ -914,6 +914,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [showToast],
   );
 
+  // ── Dish-addon association changed from EditModal ────────────────────────
+  // Fired when the user adds/removes dishes on an addon's "Dishes" tab.
+  // The mutation already hit the backend via updateItemModifiers(dishId, ...);
+  // we reflect it in local state so the association is visible both on reopen
+  // of the addon modal AND when later editing the dish directly.
+  const handleDishAddonsChanged = useCallback((dishId: string, nextAddons: AddonEntry[]) => {
+    setItems((prev) => prev.map((i) => (i.id === dishId ? { ...i, addons: nextAddons } : i)));
+  }, []);
+
   // Close handler — rolls back brand-new unsaved items
   const handleCloseEditModal = useCallback(() => {
     const newId = newlyCreatedItemIdRef.current;
@@ -1071,6 +1080,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onClose={handleCloseEditModal}
             onComplete={handleEditComplete}
             onNavigateToMenu={handleNavigateToMenu}
+            onDishAddonsChange={handleDishAddonsChanged}
           />
         ) : null;
       })()}

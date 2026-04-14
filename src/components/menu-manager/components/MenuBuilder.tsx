@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2, RefreshCw } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
+import { countApprovedAddons } from '../lib/addonHelpers';
 import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry } from './ItemModifierZones';
 import MobileItemModifierPicker from './MobileItemModifierPicker';
@@ -62,59 +63,37 @@ interface MenuBuilderProps {
   refreshing?: boolean;
 }
 
-// ── ModifierBubbles ───────────────────────────────────────────────────────────
-// Small circular thumbnails for sides + add-ons, rendered inline on a menu
-// item row so owners can see each item's modifiers at a glance.
-function ModifierBubbles({
-  sides,
-  recommendations,
+// ── ModifierCounter ───────────────────────────────────────────────────────────
+// Colored pill showing the number of modifiers of a given kind (sides,
+// recommendations, addons) attached to a menu item. Distinct palettes per type
+// let owners tell them apart at a glance.
+const COUNTER_PALETTE: Record<'side' | 'recommendation' | 'addon', { bg: string; fg: string; border: string }> = {
+  side:           { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
+  recommendation: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, // blue
+  addon:          { bg: '#ffedd5', fg: '#9a3412', border: '#fb923c' }, // orange
+};
+
+function ModifierCounter({
+  kind,
+  count,
   itemId,
+  label,
 }: {
-  sides: ModifierEntry[];
-  recommendations: ModifierEntry[];
+  kind: 'side' | 'recommendation' | 'addon';
+  count: number;
   itemId: string;
+  label: string;
 }) {
-  if (sides.length === 0 && recommendations.length === 0) return null;
-
-  const MAX = 6;
-  const visibleSides = sides.slice(0, MAX);
-  const visibleRecs = recommendations.slice(0, MAX - visibleSides.length);
-  const overflow = (sides.length - visibleSides.length) + (recommendations.length - visibleRecs.length);
-  const hasSeparator = visibleSides.length > 0 && visibleRecs.length > 0;
-
-  const renderBadge = (m: ModifierEntry & { kind: 'side' | 'recommendation' }, i: number) => (
-    <div
-      key={`${m.kind}-${m.menu_item_id}`}
-      title={`${m.name}${m.kind === 'recommendation' ? ' (recommendation)' : ' (side)'}`}
-      className="w-5 h-5 rounded-full bg-[var(--bg)] overflow-hidden flex items-center justify-center text-[10px] shrink-0 box-border"
-      style={{
-        border: `1.5px solid ${m.kind === 'recommendation' ? 'var(--orange-text)' : 'var(--green)'}`,
-        marginLeft: i === 0 ? 0 : -4,
-      }}
-    >
-      {m.thumbnail_url ? (
-        <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" draggable={false} />
-      ) : (
-        '🍽'
-      )}
-    </div>
-  );
-
+  if (count <= 0) return null;
+  const palette = COUNTER_PALETTE[kind];
   return (
-    <div
-      data-testid={`modifier-bubbles-${itemId}`}
-      className="flex items-center shrink-0 ml-1"
-      aria-label={`${sides.length} sides, ${recommendations.length} recommendations`}
+    <span
+      className="text-[10px] font-bold px-1.5 py-px rounded shrink-0"
+      data-testid={`modifier-counter-${kind}-${itemId}`}
+      style={{ background: palette.bg, color: palette.fg, border: `1px solid ${palette.border}` }}
     >
-      {visibleSides.map((s, i) => renderBadge({ ...s, kind: 'side' }, i))}
-      {hasSeparator && <span className="inline-block w-1.5" aria-hidden="true" />}
-      {visibleRecs.map((r, i) => renderBadge({ ...r, kind: 'recommendation' }, i))}
-      {overflow > 0 && (
-        <span className="text-[10px] font-semibold text-[var(--text2)] ml-0.5">
-          +{overflow}
-        </span>
-      )}
-    </div>
+      {count} {label}{count !== 1 ? 's' : ''}
+    </span>
   );
 }
 
@@ -252,9 +231,13 @@ function MenuItemRow({
         : null;
 
   const attention = itemHasAttention(item, settings);
-  const pendingAddons = (item.addons ?? []).filter((a) => a.status === 'suggested').length;
+  // Approved-only count — AI-suggested addons that the owner hasn't accepted
+  // yet are excluded from the row badge so the number reflects the live menu.
+  const approvedAddons = countApprovedAddons(item);
+  const sidesCount = item.sides?.length ?? 0;
+  const recsCount = item.recommendations?.length ?? 0;
 
-  const borderLeftColor = attention ? 'var(--red)' : pendingAddons > 0 ? '#f59e0b' : 'transparent';
+  const borderLeftColor = attention ? 'var(--red)' : 'transparent';
 
   return (
     <div
@@ -265,7 +248,7 @@ function MenuItemRow({
       data-item-row-id={item.id}
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
-      data-pending-addons={pendingAddons > 0 ? pendingAddons : undefined}
+      data-approved-addons={approvedAddons > 0 ? approvedAddons : undefined}
       className={`w-full border-b border-[var(--border)] cursor-grab ${expanded ? 'bg-[var(--bg)]' : ''}`}
       style={{ borderLeft: `3px solid ${borderLeftColor}` }}
     >
@@ -306,15 +289,6 @@ function MenuItemRow({
                     {settings.price != null && <span className="text-[9px] ml-0.5">↑</span>}
                   </span>
                 )}
-                {pendingAddons > 0 && (
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-px rounded"
-                    data-testid={`pending-addons-badge-${item.id}`}
-                    style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }}
-                  >
-                    {pendingAddons} addon{pendingAddons !== 1 ? 's' : ''}
-                  </span>
-                )}
                 {!item.active && (
                   <span className="badge badge-green text-[10px] !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
                 )}
@@ -324,19 +298,12 @@ function MenuItemRow({
               </div>
             </div>
 
-            {/* Mobile row 2 — aggregated modifier counters */}
-            {((item.sides?.length ?? 0) > 0 || (item.recommendations?.length ?? 0) > 0) && (
+            {/* Mobile row 2 — modifier counters (sides, recs, addons) */}
+            {(sidesCount > 0 || recsCount > 0 || approvedAddons > 0) && (
               <div className="flex items-center gap-1.5 pl-5 w-full">
-                {(item.sides?.length ?? 0) > 0 && (
-                  <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded px-1.5 py-px border border-[var(--border)]">
-                    {item.sides!.length} side{item.sides!.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {(item.recommendations?.length ?? 0) > 0 && (
-                  <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded px-1.5 py-px border border-[var(--border)]">
-                    {item.recommendations!.length} rec{item.recommendations!.length !== 1 ? 's' : ''}
-                  </span>
-                )}
+                <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+                <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
+                <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
               </div>
             )}
           </>
@@ -360,11 +327,12 @@ function MenuItemRow({
               {item.name}
             </span>
 
-            <ModifierBubbles
-              sides={(item.sides ?? []) as ModifierEntry[]}
-              recommendations={(item.recommendations ?? []) as ModifierEntry[]}
-              itemId={item.id}
-            />
+            {/* Modifier counters — sides, recs, addons */}
+            <div className="flex items-center gap-1 shrink-0 ml-1">
+              <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+              <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
+              <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
+            </div>
 
             <span className="flex-1" />
 
@@ -385,15 +353,6 @@ function MenuItemRow({
                 >
                   {displayPrice}
                   {settings.price != null && <span className="text-[9px] ml-0.5">↑</span>}
-                </span>
-              )}
-              {pendingAddons > 0 && (
-                <span
-                  className="text-[10px] font-bold px-1.5 py-px rounded"
-                  data-testid={`pending-addons-badge-${item.id}`}
-                  style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }}
-                >
-                  {pendingAddons} addon{pendingAddons !== 1 ? 's' : ''}
                 </span>
               )}
               {!item.active && (

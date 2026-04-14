@@ -6,6 +6,7 @@ import { useRef, useState, useEffect } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP } from '../lib/menuUtils';
+import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 
@@ -22,6 +23,12 @@ interface EditModalProps {
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   /** Called when user clicks a menu chip — close modal and navigate to that menu+item */
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
+  /**
+   * Called after a dish's addons array is mutated from the Dishes tab of an addon editor.
+   * Lets the parent update its cached items so the addon↔dish association is visible
+   * both on reopen of the addon modal and when later editing the dish directly.
+   */
+  onDishAddonsChange?: (dishId: string, nextAddons: AddonEntry[]) => void;
 }
 
 // ── Food tag fields shown in the editor (heat_spice handled separately as pills) ──
@@ -144,7 +151,7 @@ function TagInput({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -456,6 +463,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setAssociatedDishIds((prev) => new Set([...prev, dish.id]));
     try {
       await service.updateItemModifiers(dish.id, { addons: nextAddons });
+      onDishAddonsChange?.(dish.id, nextAddons);
     } catch {
       setAssociatedDishIds((prev) => { const next = new Set(prev); next.delete(dish.id); return next; });
     }
@@ -466,6 +474,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setAssociatedDishIds((prev) => { const next = new Set(prev); next.delete(dish.id); return next; });
     try {
       await service.updateItemModifiers(dish.id, { addons: nextAddons });
+      onDishAddonsChange?.(dish.id, nextAddons);
     } catch {
       setAssociatedDishIds((prev) => new Set([...prev, dish.id]));
     }
@@ -490,6 +499,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       const nextAddons = [...(dish.addons ?? []), newEntry];
       try {
         await service.updateItemModifiers(dish.id, { addons: nextAddons });
+        onDishAddonsChange?.(dish.id, nextAddons);
       } catch {
         failed.push(dish.id);
       }
@@ -573,6 +583,31 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           ? service.toggleMenuItemActive(item.id, isActive)
           : Promise.resolve(),
       ]);
+
+      // When an add-on's base price changes, cascade the new price to every
+      // dish whose existing association is still tracking the old base price.
+      // A dish whose owner has explicitly set a per-dish override (different
+      // from the old base) is preserved — only default-tracking entries move.
+      // Why: the previous behaviour snapshot-captured the addon's price at the
+      // time of association and never refreshed it, so owners saw $0 on the
+      // dish's Add-ons tab after updating the addon's price.
+      if (isAddon && allItems && price !== null && price !== (item.price ?? 0)) {
+        const oldBase = item.price ?? 0;
+        const newBase = price;
+        const cascadeTargets = computeAddonCascadeTargets(allItems, item.id, oldBase);
+        for (const dish of cascadeTargets) {
+          const nextAddons = applyAddonPriceCascade(dish.addons ?? [], item.id, oldBase, newBase);
+          try {
+            await service.updateItemModifiers(dish.id, { addons: nextAddons });
+            onDishAddonsChange?.(dish.id, nextAddons);
+          } catch {
+            // Non-fatal: the addon's own price save succeeded; a failed
+            // cascade just leaves that dish on the old override until the
+            // owner re-opens it. Surfacing a blocking error here would be
+            // worse UX than quietly continuing.
+          }
+        }
+      }
 
       const updated: MenuItemDisplay = {
         ...item,
