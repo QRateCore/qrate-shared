@@ -13,14 +13,14 @@ import { TAG_CATEGORIES, BEVERAGE_TYPES, BASE_SPIRITS, WINE_VARIETIES, BEER_STYL
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const CANONICAL_CATEGORIES = [
-  'Appetizers',
   'Beverages',
-  'Breads',
-  'Desserts',
-  'Entrees',
+  'Appetizers',
+  'Soups',
   'Salads',
   'Sides',
-  'Soups',
+  'Breads',
+  'Entrees',
+  'Desserts',
 ] as const;
 
 const BOOST_LEVELS = [
