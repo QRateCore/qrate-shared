@@ -71,6 +71,17 @@ export interface MenuAssociation {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
+  /**
+   * Per-canonical-category price overrides for this (item, menu) placement.
+   * Only categories with an explicit override appear here. Missing keys fall
+   * back to the default `price`. When the item is in a single canonical
+   * category, owners typically just set `price` and leave this empty.
+   *
+   * Source: backend `menu_item_menu_categories` table, aggregated into a
+   * JSON map server-side. Frontend consumers should treat an empty or
+   * absent map as "no overrides — use `price` for every category."
+   */
+  category_prices?: Record<string, number>;
 }
 
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
@@ -82,6 +93,13 @@ export interface MenuItemJunctionSettings {
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
   portion_serves?: number | null;
+  /**
+   * Optional per-category price overrides. When provided, the backend
+   * replaces any existing overrides for (item, menu) with this set.
+   * Keys not present in `canonical_categories` are ignored server-side.
+   * Use `{}` or omit to clear all overrides; the base `price` applies.
+   */
+  category_prices?: Record<string, number>;
 }
 
 export interface MenuItem {
