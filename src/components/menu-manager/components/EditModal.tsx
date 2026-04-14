@@ -152,6 +152,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Form state — initialized from item
   const [name, setName]             = useState(item.name);
   const [description, setDesc]      = useState(item.description ?? '');
+  // Price is only editable in Add-on mode (dishes price per-menu in MenuBuilder).
+  // STR-303: add-ons are ingredient-level surcharges with a single base price.
+  const [price, setPrice]           = useState<number | null>(item.price ?? null);
+  const [priceError, setPriceError] = useState<string | null>(null);
   const [isActive, setIsActive]     = useState(item.active !== false);
 
   // Heat/spice — extracted from food_tags into its own state
@@ -209,12 +213,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Tab state — Food Tags | Add-ons | Performance (dish items) or Food Tags | Dishes | Performance (addon items)
   const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'dishes' | 'performance'>('food_tags');
 
-  // When the Dishes/Add-ons toggle flips, the available tab set changes
-  // (dishes have an Add-ons tab, addons have a Dishes tab). Reset to
-  // Food Tags so the user is never stranded on a tab that no longer renders.
-  // Dep list is [isAddon] only — including activeTab would loop.
+  // When the Dishes/Add-ons toggle flips, the available tab set changes.
+  //   Dishes  → [food_tags, addons, performance]
+  //   Add-ons → [performance, dishes]                (no food_tags tab)
+  // Land on a valid tab for the new mode. Dep list is [isAddon] only
+  // — including activeTab would loop.
   useEffect(() => {
-    setActiveTab('food_tags');
+    setActiveTab(isAddon ? 'performance' : 'food_tags');
   }, [isAddon]);
 
   // Add-ons tab state (used when editing a dish item)
@@ -463,7 +468,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     let hasError = false;
     if (!name.trim()) { setNameError(true); hasError = true; }
     if (!description.trim()) { setDescError(true); hasError = true; }
+    // Add-on price validation: optional, but if present must be a non-negative finite number.
+    // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
+    if (isAddon && price !== null) {
+      if (!Number.isFinite(price) || price < 0) {
+        setPriceError('Price must be a non-negative number');
+        hasError = true;
+      } else if (price > 10_000) {
+        setPriceError('Price must be ≤ 10,000');
+        hasError = true;
+      }
+    }
     if (hasError) return;
+    setPriceError(null);
 
     setNameError(false);
     setDescError(false);
@@ -489,6 +506,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         description: description.trim(),
         food_tags: foodTags,
         item_type: isAddon ? 'addon' : 'dish',
+        // STR-303: add-on mode is the sole per-item price surface in this modal.
+        // Dishes continue to price per-menu in MenuBuilder — do not send price for them.
+        ...(isAddon ? { price } : {}),
       };
 
       const [saved] = await Promise.all([
@@ -506,6 +526,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         active: isActive,
         thumbnail_url: thumbnail,
         item_type: isAddon ? 'addon' : 'dish',
+        price: isAddon ? price : (saved.price ?? item.price),
         addons: itemAddons,
       };
 
@@ -794,8 +815,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </div>
           )}
 
-          {/* ── Two-column: image left / fields right (mobile: stacked) ── */}
+          {/* ── Body — layout branches on isAddon (STR-303) ───────────────────
+              Dishes mode: full two-column (image + basic info + food-tag fields via tabs)
+              Add-ons mode: simplified single-column (Name + Price + Description) */}
+          {!isAddon && (
           <section
+            data-testid="dish-basic-info"
             style={{
               display: 'flex',
               flexDirection: isMobile ? 'column' : 'row',
@@ -954,36 +979,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <SectionLabel>Basic Info</SectionLabel>
 
-              {/* Add-on checkbox — mirrors the header Dishes/Add-ons toggle (shared isAddon state) */}
-              <label
-                data-testid="addon-checkbox-label"
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 'var(--r-xs)',
-                  border: addonDisabled ? '1px solid var(--border)' : isAddon ? '1px solid #f59e0b' : '1px solid var(--border)',
-                  background: addonDisabled ? '#f5f5f5' : isAddon ? '#fffbeb' : '#fafafa',
-                  cursor: addonDisabled ? 'not-allowed' : 'pointer',
-                  opacity: addonDisabled ? 0.6 : 1,
-                  transition: 'all 0.15s',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAddon}
-                  onChange={(e) => { if (!addonDisabled) setIsAddon(e.target.checked); }}
-                  disabled={addonDisabled}
-                  data-testid="addon-checkbox"
-                  style={{ marginTop: 1, width: 14, height: 14, accentColor: '#f59e0b', cursor: addonDisabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
-                />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>This is an Add-on</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                    {disabledReason ?? 'Ingredient-level modifier (e.g. Extra Chicken). Hidden from diners — assignable to dishes in the menu builder.'}
-                  </div>
-                </div>
-              </label>
-
               {/* Name */}
               <div>
                 <label style={labelStyle} htmlFor="edit-name">
@@ -1081,10 +1076,124 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
             </div>
           </section>
+          )}
 
-          {/* ── Tab bar: context-aware based on item type ─────────── */}
-          {/* Addon items: Food Tags | Dishes | Performance            */}
-          {/* Dish items:  Food Tags | Add-ons | Performance           */}
+          {/* Add-on form — simplified single-column layout (STR-303).
+              Renders instead of the dish two-column section when the header toggle
+              is on Add-ons. No image upload (add-ons never have images), no food tags
+              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
+          {isAddon && (
+          <section
+            data-testid="addon-basic-info"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              marginBottom: 20,
+            }}
+          >
+            <SectionLabel>Basic Info</SectionLabel>
+
+            {/* Name + Price row — wraps on narrow viewports (<~340px) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ flex: '1 1 180px' }}>
+                <label style={labelStyle} htmlFor="edit-name">
+                  Name <span style={{ color: '#b91c1c' }}>*</span>
+                </label>
+                <input
+                  id="edit-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); setNameError(false); }}
+                  data-testid="edit-name-input"
+                  style={{
+                    ...inputStyle,
+                    border: nameError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                  }}
+                />
+                {nameError && (
+                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Name is required</div>
+                )}
+              </div>
+
+              <div style={{ flex: '0 0 160px' }}>
+                <label style={labelStyle} htmlFor="edit-price-input">Price</label>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                    borderRadius: 'var(--r-xs)',
+                    padding: '0 8px',
+                    background: 'var(--white)',
+                    height: 36,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
+                  <input
+                    id="edit-price-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    value={price === null ? '' : price}
+                    onChange={(e) => {
+                      setPriceError(null);
+                      const raw = e.target.value;
+                      if (raw === '') { setPrice(null); return; }
+                      const n = parseFloat(raw);
+                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
+                    }}
+                    data-testid="edit-price-input"
+                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
+                  />
+                  {price !== null && (
+                    <button
+                      type="button"
+                      aria-label="Clear price"
+                      onClick={() => { setPrice(null); setPriceError(null); }}
+                      data-testid="edit-price-clear"
+                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, fontSize: 11, whiteSpace: 'nowrap' }}
+                    >
+                      × clear
+                    </button>
+                  )}
+                </div>
+                {priceError && (
+                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-description">
+                Description <span style={{ color: '#b91c1c' }}>*</span>
+              </label>
+              <textarea
+                id="edit-description"
+                value={description}
+                onChange={(e) => { setDesc(e.target.value); setDescError(false); }}
+                rows={4}
+                data-testid="edit-description-input"
+                style={{
+                  ...inputStyle,
+                  resize: 'vertical',
+                  minHeight: 88,
+                  border: descError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                }}
+              />
+              {descError && (
+                <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Description is required</div>
+              )}
+            </div>
+          </section>
+          )}
+
+          {/* ── Tab bar: context-aware based on toggle state ───────────
+              Dishes mode:   Food Tags | Add-ons | Performance
+              Add-ons mode:  Performance | Dishes                  */}
           <div
             style={{
               display: 'flex',
@@ -1095,7 +1204,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             }}
           >
             {(isAddon
-              ? (['food_tags', 'dishes', 'performance'] as const)
+              ? (['performance', 'dishes'] as const)
               : (['food_tags', 'addons', 'performance'] as const)
             ).map((tab) => {
               const isActive = activeTab === tab;
@@ -1133,8 +1242,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             })}
           </div>
 
-          {/* ── Food Tags tab ─────────────────────────────────────────── */}
-          {activeTab === 'food_tags' && (
+          {/* ── Food Tags tab (dishes only — guarded by !isAddon in case state lags) ── */}
+          {!isAddon && activeTab === 'food_tags' && (
             <section style={{ marginBottom: 4 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
