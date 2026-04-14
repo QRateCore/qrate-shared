@@ -59,7 +59,7 @@ interface MenuBuilderProps {
    * Forwarded to both desktop (ItemModifierZones) and mobile (MobileItemModifierPicker).
    * See `ItemModifierZones.onConfirmRecommendationDrop` for the contract.
    */
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -126,7 +126,7 @@ function MenuItemRow({
   itemsById: Map<string, MenuItemDisplay>;
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -537,6 +537,7 @@ function MenuItemRow({
               <MobileItemModifierPicker
                 parent={item}
                 itemsById={itemsById}
+                currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
               />
@@ -544,6 +545,7 @@ function MenuItemRow({
               <ItemModifierZones
                 parent={item}
                 itemsById={itemsById}
+                currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
               />
@@ -588,7 +590,7 @@ function CategoryBucket({
   onToggleCollapse: () => void;
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;

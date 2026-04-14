@@ -53,7 +53,7 @@ interface Props {
    *
    * See ItemModifierZones for the full contract.
    */
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
