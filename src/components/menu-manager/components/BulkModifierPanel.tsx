@@ -1,5 +1,6 @@
 'use client';
 import { useMenuManagerService } from '../context';
+import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
 import { X, Check, Search } from 'lucide-react';
@@ -28,6 +29,7 @@ export default function BulkModifierPanel({
   onComplete,
 }: BulkModifierPanelProps) {
   const service = useMenuManagerService();
+  const trackAction = useTrackAction();
   const [dishSearch, setDishSearch] = useState('');
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
   const [executing, setExecuting] = useState(false);
@@ -62,6 +64,7 @@ export default function BulkModifierPanel({
       setError('Select at least one dish');
       return;
     }
+    const start = Date.now();
     setExecuting(true);
     setError(null);
     setProgress('Assigning…');
@@ -93,6 +96,17 @@ export default function BulkModifierPanel({
       setExecuting(false);
       const skipped = result.skipped ?? 0;
       const created = result.created ?? 0;
+      trackAction('menu.bulkModifier.assign', {
+        restaurantId,
+        metadata: {
+          addonCount: selectedAddons.length,
+          dishCount: selectedDishIds.size,
+          created,
+          skipped,
+        },
+        success: true,
+        durationMs: Date.now() - start,
+      });
       if (skipped > 0) {
         setError(`${created} assigned, ${skipped} already existed — skipped`);
         // Still call onComplete with updated items
@@ -100,7 +114,17 @@ export default function BulkModifierPanel({
       } else {
         onComplete(updatedItems);
       }
-    } catch {
+    } catch (err) {
+      trackAction('menu.bulkModifier.assign', {
+        restaurantId,
+        metadata: {
+          addonCount: selectedAddons.length,
+          dishCount: selectedDishIds.size,
+        },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setExecuting(false);
       setProgress(null);
       setError('Assignment failed — please try again');

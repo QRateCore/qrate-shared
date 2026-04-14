@@ -5,6 +5,7 @@ import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import Button from '../../common/Button';
+import { useTrackAction } from '../track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,27 @@ export default function ItemPool({
   attentionExpanded,
   onToggleAttention,
 }: ItemPoolProps) {
+  const trackAction = useTrackAction();
+
+  const handleAddItemTracked = () => {
+    trackAction('menu.itemPool.addNewItem');
+    onAddItem();
+  };
+
+  const handleOpenBulkTracked = (mode: BulkMode) => {
+    trackAction('menu.itemPool.bulkActions', { metadata: { mode } });
+    onOpenBulk(mode);
+  };
+
+  const handleOpenBulkModifiersTracked = () => {
+    trackAction('menu.itemPool.bulkModifiers');
+    onOpenBulkModifiers();
+  };
+
+  const handleEditItemTracked = (id: string) => {
+    trackAction('menu.itemPool.openEdit', { metadata: { itemId: id } });
+    onEditItem(id);
+  };
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
   const someSelected = selected.size > 0;
 
@@ -340,7 +362,7 @@ export default function ItemPool({
           variant="primary"
           size="sm"
           icon={<Plus size={13} />}
-          onClick={onAddItem}
+          onClick={handleAddItemTracked}
           data-testid="add-item-btn"
           aria-label="Add menu item"
         >
@@ -525,7 +547,7 @@ export default function ItemPool({
         {someSelected && itemTypeFilter === 'addons' && (
           <button
             type="button"
-            onClick={onOpenBulkModifiers}
+            onClick={handleOpenBulkModifiersTracked}
             data-testid="bulk-assign-modifiers-btn"
             style={{
               fontSize: 11,
@@ -543,7 +565,7 @@ export default function ItemPool({
         {someSelected && itemTypeFilter === 'dishes' && (
           <button
             type="button"
-            onClick={() => onOpenBulk('assign')}
+            onClick={() => handleOpenBulkTracked('assign')}
             data-testid="bulk-actions-btn"
             style={{
               fontSize: 11,
@@ -688,7 +710,7 @@ export default function ItemPool({
                       </div>
                       <button
                         type="button"
-                        onClick={() => onEditItem(item.id)}
+                        onClick={() => handleEditItemTracked(item.id)}
                         data-testid={`attention-edit-${item.id}`}
                         aria-label={`Fix ${item.name}`}
                         style={{
@@ -737,7 +759,7 @@ export default function ItemPool({
               onSelectClick={(e) =>
                 onSelectClick(e, item.id, 'pool', filtered.map((i) => i.id))
               }
-              onEdit={onEditItem}
+              onEdit={handleEditItemTracked}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
             />

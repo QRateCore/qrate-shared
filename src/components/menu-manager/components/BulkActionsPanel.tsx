@@ -1,5 +1,6 @@
 'use client';
 import { useMenuManagerService } from '../context';
+import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
 import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle } from 'lucide-react';
@@ -54,6 +55,7 @@ export default function BulkActionsPanel({
   onComplete,
 }: BulkActionsPanelProps) {
   const service = useMenuManagerService();
+  const trackAction = useTrackAction();
   const [mode, setMode] = useState<BulkMode>(initialMode);
   const [executing, setExecuting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -214,15 +216,43 @@ export default function BulkActionsPanel({
 
   async function handleApply() {
     setError(null);
-    switch (mode) {
-      case 'assign':       return runAssign();
-      case 'remove':       return runRemove();
-      case 'boost':        return runBoost();
-      case 'special':      return runSpecial();
-      case 'availability': return runAvailability();
-      case 'delete':
-        if (!deleteConfirm) { setDeleteConfirm(true); return; }
-        return runDelete();
+    // Gate the delete click-through so we don't emit on confirmation click.
+    if (mode === 'delete' && !deleteConfirm) {
+      setDeleteConfirm(true);
+      return;
+    }
+    const start = Date.now();
+    const actionName = `menu.bulkPanel.${mode}` as const;
+    try {
+      switch (mode) {
+        case 'assign':       await runAssign(); break;
+        case 'remove':       await runRemove(); break;
+        case 'boost':        await runBoost(); break;
+        case 'special':      await runSpecial(); break;
+        case 'availability': await runAvailability(); break;
+        case 'delete':       await runDelete(); break;
+      }
+      trackAction(actionName, {
+        metadata: {
+          itemCount: count,
+          menuCount:
+            mode === 'assign' ? assignMenuIds.size :
+            mode === 'remove' ? removeMenuIds.size : undefined,
+          level: mode === 'boost' ? boostLevel : undefined,
+          chefsSpecial: mode === 'special' ? chefsSpecial : undefined,
+          active: mode === 'availability' ? setActive : undefined,
+        },
+        success: true,
+        durationMs: Date.now() - start,
+      });
+    } catch (err) {
+      trackAction(actionName, {
+        metadata: { itemCount: count },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   }
 

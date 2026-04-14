@@ -1,5 +1,6 @@
 'use client';
 import { useMenuManagerService } from '../context';
+import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
@@ -144,6 +145,7 @@ function TagInput({
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
 export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu }: EditModalProps) {
+  const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -249,6 +251,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState<string | null>(null);
 
+  // Modal-open track — fires once per open, keyed by item id.
+  useEffect(() => {
+    trackAction('menu.editModal.open', {
+      restaurantId,
+      metadata: { itemId: item.id, itemType: item.item_type ?? 'dish' },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
   useEffect(() => {
     if (activeTab !== 'performance' || !restaurantId || !service.getMenuItemPerformance) return;
     setPerfLoading(true);
@@ -276,6 +287,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const fromCamera = e.target === cameraRef.current;
+    const start = Date.now();
     setImgBusy('uploading');
     setImgError(null);
 
@@ -290,6 +303,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       console.warn('Image preprocessing failed, uploading raw file:', err);
     }
 
+    const imgAction = fromCamera ? 'menu.imageUpload.camera' : 'menu.imageUpload.file';
     try {
       const { upload_url } = await service.getMenuItemImageUploadUrl(item.id);
       // Do NOT send Content-Type header — the presigned URL is signed for
@@ -302,7 +316,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { thumbnail_url } = await service.confirmMenuItemImageUpload(item.id);
       setThumbnail(thumbnail_url);
+      trackAction(imgAction, {
+        restaurantId,
+        metadata: { itemId: item.id, fileSizeBytes: body.size },
+        success: true,
+        durationMs: Date.now() - start,
+      });
     } catch (err) {
+      trackAction(imgAction, {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setImgError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setImgBusy(null);
@@ -312,12 +339,26 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   }
 
   async function handleEnhance() {
+    const start = Date.now();
     setImgBusy('enhancing');
     setImgError(null);
     try {
       const { thumbnail_url } = await service.enhanceMenuItemImage(item.id);
       setThumbnail(thumbnail_url);
+      trackAction('menu.imageUpload.aiEnhance', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: true,
+        durationMs: Date.now() - start,
+      });
     } catch (err) {
+      trackAction('menu.imageUpload.aiEnhance', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setImgError(err instanceof Error ? err.message : 'Enhancement failed');
     } finally {
       setImgBusy(null);
@@ -325,12 +366,26 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   }
 
   async function handleRemoveImage() {
+    const start = Date.now();
     setImgBusy('removing');
     setImgError(null);
     try {
       await service.removeMenuItemImage(item.id);
       setThumbnail(null);
+      trackAction('menu.imageUpload.remove', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: true,
+        durationMs: Date.now() - start,
+      });
     } catch (err) {
+      trackAction('menu.imageUpload.remove', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setImgError(err instanceof Error ? err.message : 'Remove failed');
     } finally {
       setImgBusy(null);
@@ -482,6 +537,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     if (hasError) return;
     setPriceError(null);
 
+    const start = Date.now();
     setNameError(false);
     setDescError(false);
     setSaving(true);
@@ -530,8 +586,26 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         addons: itemAddons,
       };
 
+      trackAction('menu.editModal.save', {
+        restaurantId,
+        metadata: {
+          itemId: item.id,
+          isAddon,
+          hasImage: !!thumbnail,
+          activeToggled: isActive !== (item.active !== false),
+        },
+        success: true,
+        durationMs: Date.now() - start,
+      });
       onComplete(updated);
     } catch (err) {
+      trackAction('menu.editModal.save', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setSaveError(err instanceof Error ? err.message : 'Failed to save — please try again');
     } finally {
       setSaving(false);
@@ -541,12 +615,26 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // ── Delete ──────────────────────────────────────────────────────────────
 
   async function handleDelete() {
+    const start = Date.now();
     setDeleteLoading(true);
     setDeleteError(null);
     try {
       await service.deleteMenuItem(item.id);
+      trackAction('menu.editModal.delete', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: true,
+        durationMs: Date.now() - start,
+      });
       onComplete({ ...item, _deleted: true });
     } catch (err) {
+      trackAction('menu.editModal.delete', {
+        restaurantId,
+        metadata: { itemId: item.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
       setDeleteLoading(false);
       setDeleteConfirming(false);
@@ -700,7 +788,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {/* Active / visibility toggle */}
           <button
             type="button"
-            onClick={() => setIsActive((v) => !v)}
+            onClick={() => {
+              setIsActive((v) => {
+                trackAction('menu.editModal.toggleActive', {
+                  restaurantId,
+                  metadata: { itemId: item.id, next: !v },
+                });
+                return !v;
+              });
+            }}
             data-testid="edit-active-toggle"
             aria-pressed={isActive}
             style={{
@@ -1036,7 +1132,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                           type="button"
                           data-testid={`appears-in-menu-${assoc.menu_id}`}
                           disabled={!canNavigate}
-                          onClick={() => onNavigateToMenu?.(assoc.menu_id, item.id)}
+                          onClick={() => {
+                            trackAction('menu.editModal.navigateToMenu', {
+                              restaurantId,
+                              metadata: { itemId: item.id, menuId: assoc.menu_id },
+                            });
+                            onNavigateToMenu?.(assoc.menu_id, item.id);
+                          }}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',

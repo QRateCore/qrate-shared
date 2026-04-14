@@ -19,6 +19,7 @@ import MenuEditPanel from './components/MenuEditPanel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { MenuManagerService } from '../../types/restaurant';
 import { MenuManagerServiceProvider } from './context';
+import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ interface Props {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId }: Props) {
+  const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
   // Mobile drawer state — lifted from MobileMenuManagerLayout so the existing
@@ -208,6 +210,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       listKey: string,
       orderedIds: string[],
     ) => {
+      trackAction(
+        e.shiftKey ? 'menu.manager.selectRange' : 'menu.manager.selectItem',
+        { restaurantId },
+      );
       const anchor = selectionAnchorRef.current;
       if (e.shiftKey && anchor && anchor.list === listKey) {
         const fromIdx = orderedIds.indexOf(anchor.itemId);
@@ -240,7 +246,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       });
       selectionAnchorRef.current = { list: listKey, itemId };
     },
-    [],
+    [restaurantId, trackAction],
   );
 
   const handleSelectAll = useCallback(() => {
@@ -248,9 +254,49 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   }, [filtered]);
 
   const handleClearSelect = useCallback(() => {
+    trackAction('menu.manager.clearSelect', { restaurantId });
     setSelected(new Set());
     selectionAnchorRef.current = null;
-  }, []);
+  }, [restaurantId, trackAction]);
+
+  // Tracked filter setters — fire one metric per filter change.
+  const handleCategoryFilterChange = useCallback(
+    (tag: string) => {
+      trackAction('menu.manager.categoryFilter', {
+        restaurantId,
+        metadata: { tag },
+      });
+      setFilterTag(tag);
+    },
+    [restaurantId, trackAction],
+  );
+
+  const handleVisibilityFilterChange = useCallback(
+    (value: 'All' | 'Visible' | 'Hidden') => {
+      trackAction('menu.manager.visibilityFilter', {
+        restaurantId,
+        metadata: { value },
+      });
+      setVisibilityFilter(value);
+    },
+    [restaurantId, trackAction],
+  );
+
+  const handleItemTypeFilterChange = useCallback(
+    (value: 'dishes' | 'addons') => {
+      trackAction('menu.manager.typeToggle', {
+        restaurantId,
+        metadata: { value },
+      });
+      setItemTypeFilter(value);
+    },
+    [restaurantId, trackAction],
+  );
+
+  const handleRefresh = useCallback(() => {
+    trackAction('menu.manager.refresh', { restaurantId });
+    onRefresh?.();
+  }, [onRefresh, restaurantId, trackAction]);
 
   // ── Drag handlers (pool zone) ─────────────────────────────────────────────
 
@@ -311,6 +357,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       });
       if (idsInMenu.length === 0) return;
 
+      trackAction('menu.manager.dragToPool', {
+        restaurantId,
+        metadata: {
+          itemCount: idsInMenu.length,
+          fromMenuId,
+          multiSelect: idsInMenu.length > 1,
+        },
+      });
+
       const idSet = new Set(idsInMenu);
 
       // Optimistic batch: remove menu association for all dragged items
@@ -360,7 +415,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       };
       processRemovals();
     },
-    [dragging, items, showToast],
+    [dragging, items, restaurantId, showToast, trackAction],
   );
 
   // ── Bucket drag handlers ──────────────────────────────────────────────────
@@ -420,6 +475,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       }
       const toProcess = allResolved.filter((i) => i.item_type !== 'addon');
       if (toProcess.length === 0) return;
+
+      trackAction('menu.manager.dragToMenu', {
+        restaurantId,
+        metadata: {
+          itemCount: toProcess.length,
+          fromMenuId,
+          toMenuId: menuId,
+          toCategory: cat,
+          multiSelect: toProcess.length > 1,
+        },
+      });
 
       // Partition items by whether they are already associated with the
       // target menu. Items already in the menu need their canonical_categories
@@ -544,7 +610,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       };
       processAssigns();
     },
-    [dragging, items, menus, showToast],
+    [dragging, items, menus, restaurantId, showToast, trackAction],
   );
 
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
@@ -792,6 +858,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // ── Add item ──────────────────────────────────────────────────────────────
 
   const handleAddItem = useCallback(async () => {
+    const start = Date.now();
     try {
       const created = await service.addMenuItem(restaurantId, {
         name: 'New item',
@@ -813,10 +880,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       setItems((prev) => [display, ...prev]);
       newlyCreatedItemIdRef.current = created.id;
       setEditItemId(created.id);
-    } catch {
+      trackAction('menu.manager.addNewItem', {
+        restaurantId,
+        success: true,
+        durationMs: Date.now() - start,
+      });
+    } catch (err) {
+      trackAction('menu.manager.addNewItem', {
+        restaurantId,
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       showToast('Failed to create item — please try again');
     }
-  }, [restaurantId, showToast]);
+  }, [restaurantId, service, showToast, trackAction]);
 
   // ── Edit complete ─────────────────────────────────────────────────────────
 
@@ -895,11 +973,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   const handleCreateMenu = useCallback(
     async (name: string) => {
-      const created = await service.createMenu(restaurantId, { name });
-      setMenus((prev) => [...prev, created]);
-      setActiveMenuId(created.id);
+      const start = Date.now();
+      try {
+        const created = await service.createMenu(restaurantId, { name });
+        setMenus((prev) => [...prev, created]);
+        setActiveMenuId(created.id);
+        trackAction('menu.manager.createMenu', {
+          restaurantId,
+          success: true,
+          durationMs: Date.now() - start,
+        });
+      } catch (err) {
+        trackAction('menu.manager.createMenu', {
+          restaurantId,
+          success: false,
+          durationMs: Date.now() - start,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     },
-    [restaurantId],
+    [restaurantId, service, trackAction],
   );
 
   const handleUpdateMenu = useCallback((updated: MenuSummary) => {
@@ -1038,11 +1132,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             dragging,
             editItemId,
             onSearchChange: setSearch,
-            onFilterChange: setFilterTag,
+            onFilterChange: handleCategoryFilterChange,
             visibilityFilter,
-            onVisibilityFilterChange: setVisibilityFilter,
+            onVisibilityFilterChange: handleVisibilityFilterChange,
             itemTypeFilter,
-            onItemTypeFilterChange: setItemTypeFilter,
+            onItemTypeFilterChange: handleItemTypeFilterChange,
             onSelectClick: handleSelectClick,
             onSelectAll: handleSelectAll,
             onClearSelect: handleClearSelect,
@@ -1113,11 +1207,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             dragging={dragging}
             editItemId={editItemId}
             onSearchChange={setSearch}
-            onFilterChange={setFilterTag}
+            onFilterChange={handleCategoryFilterChange}
             visibilityFilter={visibilityFilter}
-            onVisibilityFilterChange={setVisibilityFilter}
+            onVisibilityFilterChange={handleVisibilityFilterChange}
             itemTypeFilter={itemTypeFilter}
-            onItemTypeFilterChange={setItemTypeFilter}
+            onItemTypeFilterChange={handleItemTypeFilterChange}
             onSelectClick={handleSelectClick}
             onSelectAll={handleSelectAll}
             onClearSelect={handleClearSelect}
@@ -1164,7 +1258,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onUpdateModifiers={handleUpdateModifiers}
             scrollToItemId={scrollToItemId}
             onScrollComplete={() => setScrollToItemId(null)}
-            onRefresh={onRefresh}
+            onRefresh={onRefresh ? handleRefresh : undefined}
             refreshing={refreshing}
           />
         </div>

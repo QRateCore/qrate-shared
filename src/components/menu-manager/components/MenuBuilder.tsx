@@ -8,6 +8,7 @@ import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry } from './ItemModifierZones';
 import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
+import { useTrackAction } from '../track-action-context';
 
 export interface ModifierUpdatePayload {
   sides: ModifierEntry[];
@@ -147,6 +148,7 @@ function MenuItemRow({
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const isMobile = useIsMobile();
+  const trackAction = useTrackAction();
 
   // Local controlled state for inline form
   const [priceStr, setPriceStr] = useState(
@@ -199,21 +201,33 @@ function MenuItemRow({
       setPriceStr(settings.price != null ? String(settings.price) : '');
       return;
     }
+    trackAction('menu.menuBuilder.inlineEditPrice', {
+      metadata: { itemId: item.id, menuId, newPrice: val },
+    });
     save({ price: val });
   }
 
   function handleBoostChange(label: string | null) {
     const newLevel = label == null ? null : String(BOOST_LABELS.indexOf(label as typeof BOOST_LABELS[number]) + 1);
+    trackAction('menu.menuBuilder.setBoost', {
+      metadata: { itemId: item.id, menuId, level: label },
+    });
     save({ boost_level: newLevel });
   }
 
   function handleChefsSpecial() {
     const next = !chefsSpecial;
+    trackAction('menu.menuBuilder.toggleSpecial', {
+      metadata: { itemId: item.id, menuId, next },
+    });
     setChefsSpecial(next);
     save({ chefs_special: next });
   }
 
   function handlePortionType(type: 'single' | 'shared') {
+    trackAction('menu.menuBuilder.togglePortion', {
+      metadata: { itemId: item.id, menuId, type },
+    });
     setPortionType(type);
     const patch: MenuItemJunctionSettings = { portion_type: type };
     if (type === 'single') patch.portion_serves = null;
@@ -746,6 +760,19 @@ export default function MenuBuilder({
   refreshing = false,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
+  const trackAction = useTrackAction();
+
+  const handleRemoveItemFromMenuTracked = (itemId: string, menuId: string) => {
+    trackAction('menu.menuBuilder.removeFromMenu', {
+      metadata: { itemId, menuId },
+    });
+    onRemoveItemFromMenu(itemId, menuId);
+  };
+
+  const handleToggleCollapseTracked = (key: string) => {
+    trackAction('menu.menuBuilder.expandCategory', { metadata: { key } });
+    onToggleCollapse(key);
+  };
 
   // Scroll to + expand an item row when requested (e.g. from "appears in menu" click)
   useEffect(() => {
@@ -952,7 +979,7 @@ export default function MenuBuilder({
                 collapsed={collapsed[collapseKey] ?? false}
                 getSettings={getSettings}
                 color={activeColor}
-                onToggleCollapse={() => onToggleCollapse(collapseKey)}
+                onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 isDragOver={isDragOverBucket}
@@ -961,7 +988,7 @@ export default function MenuBuilder({
                 onDrop={(e) => onDropBucket(e, activeMenu!.id, cat)}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
-                onRemoveItem={onRemoveItemFromMenu}
+                onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
               />
             );

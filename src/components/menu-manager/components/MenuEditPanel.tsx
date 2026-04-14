@@ -1,5 +1,6 @@
 'use client';
 import { useMenuManagerService } from '../context';
+import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
 import { X, Trash2, AlertCircle } from 'lucide-react';
@@ -43,6 +44,7 @@ export default function MenuEditPanel({
   onDelete,
 }: MenuEditPanelProps) {
   const service = useMenuManagerService();
+  const trackAction = useTrackAction();
   const [name, setName]           = useState(menu.name);
   const [isActive, setIsActive]   = useState(menu.active);
   const [isAllDay, setIsAllDay]   = useState(menu.is_all_day);
@@ -102,6 +104,7 @@ export default function MenuEditPanel({
 
   async function handleSave() {
     if (!name.trim()) { setNameError(true); return; }
+    const start = Date.now();
     setNameError(false);
     setSaving(true);
     setSaveError(null);
@@ -113,8 +116,26 @@ export default function MenuEditPanel({
         schedule: buildSchedule(),
         days_of_week: isAllDay ? [0, 1, 2, 3, 4, 5, 6] : [...enabledDays].sort(),
       });
+      trackAction('menu.menuEdit.save', {
+        restaurantId,
+        metadata: {
+          menuId: menu.id,
+          isAllDay,
+          scheduleDayCount: isAllDay ? 7 : enabledDays.size,
+          activeToggled: isActive !== (menu.active ?? true),
+        },
+        success: true,
+        durationMs: Date.now() - start,
+      });
       onUpdate(updated);
     } catch (err) {
+      trackAction('menu.menuEdit.save', {
+        restaurantId,
+        metadata: { menuId: menu.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setSaveError(err instanceof Error ? err.message : 'Failed to save — please try again');
     } finally {
       setSaving(false);
@@ -126,11 +147,25 @@ export default function MenuEditPanel({
   async function handleDelete() {
     if (deleteStep === 0) { setDeleteStep(1); return; }
     if (deleteStep === 1) { setDeleteStep(2); return; }
+    const start = Date.now();
     setDeleting(true);
     try {
       await service.deleteMenu(restaurantId, menu.id);
+      trackAction('menu.menuEdit.delete', {
+        restaurantId,
+        metadata: { menuId: menu.id },
+        success: true,
+        durationMs: Date.now() - start,
+      });
       onDelete(menu.id);
-    } catch {
+    } catch (err) {
+      trackAction('menu.menuEdit.delete', {
+        restaurantId,
+        metadata: { menuId: menu.id },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
       setDeleteStep(0);
       setSaveError('Failed to delete menu — please try again');
     } finally {
@@ -197,7 +232,13 @@ export default function MenuEditPanel({
                 <button
                   key={String(v)}
                   type="button"
-                  onClick={() => setIsActive(v)}
+                  onClick={() => {
+                    trackAction('menu.menuEdit.toggleActive', {
+                      restaurantId,
+                      metadata: { menuId: menu.id, next: v },
+                    });
+                    setIsActive(v);
+                  }}
                   data-testid={`menu-active-${v}`}
                   style={{
                     flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 600,
