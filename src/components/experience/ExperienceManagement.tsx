@@ -113,6 +113,8 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
   // Reset state
   const [resetting, setResetting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
 
   // Waiter calls
   const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([]);
@@ -148,6 +150,52 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
       setWaiterCalls(prev => prev.filter(c => c.id !== callId));
     } catch {
       showFeedback('error', 'Failed to dismiss call');
+    }
+  };
+
+  const handleReset = async () => {
+    if (!restaurantId) return;
+    setResetting(true);
+    showFeedback('success', 'Resetting...');
+    try {
+      // 1. Refresh table activity immediately to get the latest active sessions
+      //    (avoids skipping sessions that weren't in the stale cached state).
+      let freshActivity: TableActivity | null = null;
+      try {
+        freshActivity = await service.getTableActivity(restaurantId);
+        setTableActivity(freshActivity);
+      } catch { /* best effort — fall back to cached state */ }
+
+      // 2. Close each active table session (sends farewell to patrons)
+      if (service.closeTableSession) {
+        const activityToUse = freshActivity ?? tableActivity;
+        const activeTables = activityToUse?.tables?.filter(t => t.has_active_session) ?? [];
+        for (const t of activeTables) {
+          try { await service.closeTableSession(restaurantId, t.table_number); } catch { /* best effort */ }
+        }
+      }
+
+      // 3. Purge any remaining WebSocket sessions (cleanup DynamoDB + SQL state)
+      await service.purgeSessions!(restaurantId);
+
+      // 4. Purge all orders (archives + soft-deletes)
+      await service.purgeOrders!(restaurantId);
+
+      // 5. Resolve all waiter calls
+      const freshCalls = await service.getWaiterCalls(restaurantId);
+      for (const call of freshCalls) {
+        try { await service.acknowledgeWaiterCall(call.id); } catch { /* best effort */ }
+      }
+
+      // Refresh all data
+      setWaiterCalls([]);
+      await fetchTables();
+      await fetchTableActivity();
+      showFeedback('success', 'Restaurant reset — all sessions, orders, and service requests cleared');
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to reset restaurant');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -434,43 +482,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
           </button>
           {service.purgeSessions && service.purgeOrders && (
             <button
-              onClick={async () => {
-                if (!restaurantId) return;
-                if (!confirm('Reset all sessions, orders, and service requests for this restaurant? This cannot be undone.')) return;
-                setResetting(true);
-                showFeedback('success', 'Resetting...');
-                try {
-                  // 1. Close each active table session (sends farewell to patrons)
-                  if (service.closeTableSession && tableActivity?.tables) {
-                    const activeTables = tableActivity.tables.filter(t => t.has_active_session);
-                    for (const t of activeTables) {
-                      try { await service.closeTableSession(restaurantId, t.table_number); } catch { /* best effort */ }
-                    }
-                  }
-                  // 2. Purge any remaining WebSocket sessions (cleanup DynamoDB)
-                  await service.purgeSessions!(restaurantId);
-                  // 3. Purge all orders
-                  await service.purgeOrders!(restaurantId);
-                  // 3. Acknowledge all waiter calls
-                  for (const call of waiterCalls) {
-                    try { await service.acknowledgeWaiterCall(call.id); } catch { /* best effort */ }
-                  }
-                  // Re-acknowledge to resolve any already-acknowledged calls
-                  const freshCalls = await service.getWaiterCalls(restaurantId);
-                  for (const call of freshCalls) {
-                    try { await service.acknowledgeWaiterCall(call.id); } catch { /* best effort */ }
-                  }
-                  // Refresh all data
-                  setWaiterCalls([]);
-                  await fetchTables();
-                  await fetchTableActivity();
-                  showFeedback('success', 'Restaurant reset — all sessions, orders, and service requests cleared');
-                } catch (err: any) {
-                  showFeedback('error', err.message || 'Failed to reset restaurant');
-                } finally {
-                  setResetting(false);
-                }
-              }}
+              onClick={() => { setResetConfirmText(''); setShowResetModal(true); }}
               disabled={resetting}
               className="px-4 py-2 border border-red-200 rounded-lg font-medium text-red-600 hover:bg-red-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
             >
@@ -480,6 +492,63 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
           )}
         </div>
       </div>
+
+      {/* Reset Restaurant confirmation modal */}
+      {showResetModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowResetModal(false); setResetConfirmText(''); } }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Reset Restaurant</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  This will immediately disconnect all active patrons, complete and archive all open orders, and clear all service requests. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Type <span className="font-mono font-bold text-red-600">purge</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="purge"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && resetConfirmText === 'purge') {
+                    setShowResetModal(false);
+                    handleReset();
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400"
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setShowResetModal(false); setResetConfirmText(''); }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowResetModal(false); handleReset(); }}
+                disabled={resetConfirmText !== 'purge'}
+                className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Reset Restaurant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Feedback */}
       {feedback && (
