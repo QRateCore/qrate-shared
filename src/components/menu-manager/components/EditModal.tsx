@@ -181,6 +181,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Add-on type
   const [isAddon, setIsAddon]       = useState(item.item_type === 'addon');
 
+  // Add-on toggle is disabled when the item already carries sides or recommendations
+  // (those belong to dishes only). Computed once so the header toggle and the
+  // body checkbox share identical disabled state and messaging.
+  const hasSides      = (item.sides?.length ?? 0) > 0;
+  const hasRecs       = (item.recommendations?.length ?? 0) > 0;
+  const addonDisabled = hasSides || hasRecs;
+  const disabledReason = hasSides && hasRecs
+    ? 'Items with sides and recommendations cannot be Add-ons'
+    : hasSides
+      ? 'Items with sides cannot be Add-ons'
+      : hasRecs
+        ? 'Items with recommendations cannot be Add-ons'
+        : null;
+
   // Save state
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
@@ -194,6 +208,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Tab state — Food Tags | Add-ons | Performance (dish items) or Food Tags | Dishes | Performance (addon items)
   const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'dishes' | 'performance'>('food_tags');
+
+  // When the Dishes/Add-ons toggle flips, the available tab set changes
+  // (dishes have an Add-ons tab, addons have a Dishes tab). Reset to
+  // Food Tags so the user is never stranded on a tab that no longer renders.
+  // Dep list is [isAddon] only — including activeTab would loop.
+  useEffect(() => {
+    setActiveTab('food_tags');
+  }, [isAddon]);
 
   // Add-ons tab state (used when editing a dish item)
   const [itemAddons, setItemAddons] = useState<AddonEntry[]>(item.addons ?? []);
@@ -591,6 +613,69 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {item.name}
           </div>
 
+          {/* Dishes / Add-ons pill toggle — primary item-type selector (STR-303).
+              Mirrors the in-body "This is an Add-on" checkbox via shared isAddon state.
+              Add-ons side is disabled when the item has sides or recommendations. */}
+          <div
+            role="radiogroup"
+            aria-label="Item type"
+            data-testid="type-toggle"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'stretch',
+              border: '1px solid var(--border)',
+              borderRadius: 999,
+              padding: 2,
+              background: '#fafafa',
+              flexShrink: 0,
+            }}
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!isAddon}
+              onClick={() => setIsAddon(false)}
+              data-testid="type-toggle-dishes"
+              style={{
+                padding: '4px 14px',
+                fontSize: 12,
+                fontWeight: !isAddon ? 700 : 500,
+                color: !isAddon ? 'white' : 'var(--text2)',
+                background: !isAddon ? 'var(--brand, #f97316)' : 'transparent',
+                border: 'none',
+                borderRadius: 999,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              Dishes
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={isAddon}
+              aria-disabled={addonDisabled}
+              onClick={() => { if (!addonDisabled) setIsAddon(true); }}
+              disabled={addonDisabled}
+              title={addonDisabled ? (disabledReason ?? undefined) : undefined}
+              data-testid="type-toggle-addons"
+              style={{
+                padding: '4px 14px',
+                fontSize: 12,
+                fontWeight: isAddon ? 700 : 500,
+                color: isAddon ? 'white' : 'var(--text2)',
+                background: isAddon ? 'var(--brand, #f97316)' : 'transparent',
+                border: 'none',
+                borderRadius: 999,
+                cursor: addonDisabled ? 'not-allowed' : 'pointer',
+                opacity: addonDisabled ? 0.5 : 1,
+                transition: 'all 0.15s',
+              }}
+            >
+              Add-ons
+            </button>
+          </div>
+
           {/* Active / visibility toggle */}
           <button
             type="button"
@@ -869,49 +954,35 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <SectionLabel>Basic Info</SectionLabel>
 
-              {/* Add-on checkbox — disabled when item has sides or recommendations */}
-              {(() => {
-                const hasSides = (item.sides?.length ?? 0) > 0;
-                const hasRecs  = (item.recommendations?.length ?? 0) > 0;
-                const addonDisabled = hasSides || hasRecs;
-                const disabledReason = hasSides && hasRecs
-                  ? 'Items with sides and recommendations cannot be Add-ons'
-                  : hasSides
-                    ? 'Items with sides cannot be Add-ons'
-                    : hasRecs
-                      ? 'Items with recommendations cannot be Add-ons'
-                      : null;
-                return (
-                  <label
-                    data-testid="addon-checkbox-label"
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10,
-                      padding: '10px 12px',
-                      borderRadius: 'var(--r-xs)',
-                      border: addonDisabled ? '1px solid var(--border)' : isAddon ? '1px solid #f59e0b' : '1px solid var(--border)',
-                      background: addonDisabled ? '#f5f5f5' : isAddon ? '#fffbeb' : '#fafafa',
-                      cursor: addonDisabled ? 'not-allowed' : 'pointer',
-                      opacity: addonDisabled ? 0.6 : 1,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isAddon}
-                      onChange={(e) => { if (!addonDisabled) setIsAddon(e.target.checked); }}
-                      disabled={addonDisabled}
-                      data-testid="addon-checkbox"
-                      style={{ marginTop: 1, width: 14, height: 14, accentColor: '#f59e0b', cursor: addonDisabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>This is an Add-on</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                        {disabledReason ?? 'Ingredient-level modifier (e.g. Extra Chicken). Hidden from diners — assignable to dishes in the menu builder.'}
-                      </div>
-                    </div>
-                  </label>
-                );
-              })()}
+              {/* Add-on checkbox — mirrors the header Dishes/Add-ons toggle (shared isAddon state) */}
+              <label
+                data-testid="addon-checkbox-label"
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 'var(--r-xs)',
+                  border: addonDisabled ? '1px solid var(--border)' : isAddon ? '1px solid #f59e0b' : '1px solid var(--border)',
+                  background: addonDisabled ? '#f5f5f5' : isAddon ? '#fffbeb' : '#fafafa',
+                  cursor: addonDisabled ? 'not-allowed' : 'pointer',
+                  opacity: addonDisabled ? 0.6 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isAddon}
+                  onChange={(e) => { if (!addonDisabled) setIsAddon(e.target.checked); }}
+                  disabled={addonDisabled}
+                  data-testid="addon-checkbox"
+                  style={{ marginTop: 1, width: 14, height: 14, accentColor: '#f59e0b', cursor: addonDisabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>This is an Add-on</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                    {disabledReason ?? 'Ingredient-level modifier (e.g. Extra Chicken). Hidden from diners — assignable to dishes in the menu builder.'}
+                  </div>
+                </div>
+              </label>
 
               {/* Name */}
               <div>
@@ -1023,7 +1094,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               marginBottom: 20,
             }}
           >
-            {(item.item_type === 'addon'
+            {(isAddon
               ? (['food_tags', 'dishes', 'performance'] as const)
               : (['food_tags', 'addons', 'performance'] as const)
             ).map((tab) => {
