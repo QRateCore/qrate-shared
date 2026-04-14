@@ -1,14 +1,14 @@
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 
 export const CANONICAL_CATEGORIES = [
-  'Appetizers',
   'Beverages',
-  'Breads',
-  'Desserts',
-  'Entrees',
+  'Appetizers',
+  'Soups',
   'Salads',
   'Sides',
-  'Soups',
+  'Breads',
+  'Entrees',
+  'Desserts',
 ] as const;
 
 export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
