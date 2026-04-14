@@ -174,7 +174,7 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
           {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
         </div>
         <p className="modifier-section-hint">
-          {sidesSelectionMode === 'or' ? 'Patron can pick one side' : 'Patron can pick multiple sides'}
+          {sidesSelectionMode === 'or' ? 'Patron can pick One side that\'s included (Free of Cost)' : 'Patron can pick Multiple sides that are included (Free of Cost)'}
         </p>
         <div
           data-testid={`sides-drop-zone-${parent.id}`}
@@ -219,7 +219,7 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
           <span className="modifier-section-title">Recommendations</span>
           {recommendations.length > 0 && <span className="modifier-section-count">{recommendations.length}</span>}
         </div>
-        <p className="modifier-section-hint">Pair complementary dishes — shown on the patron card.</p>
+        <p className="modifier-section-hint">Recommended dishes - shown on patron food cart</p>
         <div
           data-testid={`recommendations-drop-zone-${parent.id}`}
           className={`modifier-drop-zone${recommendationsDragOver ? ' drag-over' : ''}`}
