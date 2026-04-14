@@ -54,6 +54,12 @@ interface MenuBuilderProps {
   onRemoveItemFromMenu: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
+  /**
+   * Optional gate called before a dropped item is added as a recommendation.
+   * Forwarded to both desktop (ItemModifierZones) and mobile (MobileItemModifierPicker).
+   * See `ItemModifierZones.onConfirmRecommendationDrop` for the contract.
+   */
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -107,6 +113,7 @@ function MenuItemRow({
   itemsById,
   onUpdateSettings,
   onUpdateModifiers,
+  onConfirmRecommendationDrop,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -119,6 +126,7 @@ function MenuItemRow({
   itemsById: Map<string, MenuItemDisplay>;
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -526,12 +534,18 @@ function MenuItemRow({
           {/* Right column / mobile bottom: Sides + Add-ons */}
           <div className={`flex-1 min-w-0 ${isMobile ? 'w-full' : ''}`}>
             {isMobile ? (
-              <MobileItemModifierPicker parent={item} itemsById={itemsById} onUpdate={onUpdateModifiers} />
+              <MobileItemModifierPicker
+                parent={item}
+                itemsById={itemsById}
+                onUpdate={onUpdateModifiers}
+                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+              />
             ) : (
               <ItemModifierZones
                 parent={item}
                 itemsById={itemsById}
                 onUpdate={onUpdateModifiers}
+                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
               />
             )}
           </div>
@@ -554,6 +568,7 @@ function CategoryBucket({
   onToggleCollapse,
   onUpdateSettings,
   onUpdateModifiers,
+  onConfirmRecommendationDrop,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -573,6 +588,7 @@ function CategoryBucket({
   onToggleCollapse: () => void;
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -674,6 +690,7 @@ function CategoryBucket({
                 itemsById={itemsById}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
+                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => onRemoveItem(item.id, menuId)}
@@ -713,6 +730,7 @@ export default function MenuBuilder({
   onRemoveItemFromMenu,
   onEditItem,
   onUpdateModifiers,
+  onConfirmRecommendationDrop,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -941,6 +959,7 @@ export default function MenuBuilder({
                 onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
+                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}

@@ -42,6 +42,18 @@ interface Props {
   refreshing?: boolean;
   /** Optional: auto-open this item's edit modal on mount (e.g. navigated from another page). */
   openItemId?: string | null;
+  /**
+   * Optional gate called before a dropped item is added as a recommendation.
+   * Consumer apps (e.g., owner dashboard) use this to prompt for canonical
+   * categories when the dropped item is not yet on the current menu, and to
+   * make the `addItemToMenu` API call before accepting the drop.
+   *
+   * Return `true` to proceed, `false` to cancel. When this prop is not
+   * provided, drops proceed silently (backward compat).
+   *
+   * See ItemModifierZones for the full contract.
+   */
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -50,7 +62,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1266,6 +1278,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onRemoveItemFromMenu={handleRemoveItemFromMenu}
             onEditItem={setEditItemId}
             onUpdateModifiers={handleUpdateModifiers}
+            onConfirmRecommendationDrop={onConfirmRecommendationDrop}
             scrollToItemId={scrollToItemId}
             onScrollComplete={() => setScrollToItemId(null)}
             onRefresh={onRefresh ? handleRefresh : undefined}
