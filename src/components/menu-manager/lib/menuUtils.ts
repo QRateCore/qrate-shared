@@ -1,4 +1,4 @@
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '@qrate/shared';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 
 export const CANONICAL_CATEGORIES = [
   'Appetizers',
