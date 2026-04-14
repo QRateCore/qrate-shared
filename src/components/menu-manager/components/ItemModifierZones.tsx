@@ -33,9 +33,26 @@ interface Props {
       sides_selection_mode: 'and' | 'or';
     },
   ) => Promise<void>;
+  /**
+   * Optional gate called before a dropped item is added to the Recommendations
+   * zone. The parent inspects the item and decides whether the drop should
+   * proceed — e.g., the owner dashboard uses this to prompt for canonical
+   * categories when the dropped item is not on the current menu yet, and to
+   * call the `addItemToMenu` API after the user confirms.
+   *
+   * Return `true` to proceed with the emit, `false` to cancel the drop. When
+   * this prop is not provided, the drop proceeds without prompting (current
+   * backward-compatible behavior).
+   */
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
 }
 
-export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props) {
+export default function ItemModifierZones({
+  parent,
+  itemsById,
+  onUpdate,
+  onConfirmRecommendationDrop,
+}: Props) {
   const sides: ModifierEntry[] = (parent.sides ?? []) as ModifierEntry[];
   const recommendations: ModifierEntry[] = ((parent.recommendations ?? []) as ModifierEntry[]).map((r) => ({
     ...r,
@@ -106,7 +123,7 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
 
   // ── Recommendations handlers ─────────────────────────────────────────────────
 
-  function handleDropRecommendation(e: React.DragEvent) {
+  async function handleDropRecommendation(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setRecommendationsDragOver(false);
@@ -115,6 +132,15 @@ export default function ItemModifierZones({ parent, itemsById, onUpdate }: Props
     if (recommendationIds.has(droppedId)) return;
     const dropped = itemsById.get(droppedId);
     if (!dropped || dropped.item_type === 'addon') return;
+
+    // Optional gate — parent may prompt (e.g., "add to which categories?")
+    // before accepting the drop. Parent returns false on cancel; if no
+    // callback provided, drop proceeds silently (backward compat).
+    if (onConfirmRecommendationDrop) {
+      const proceed = await onConfirmRecommendationDrop(dropped);
+      if (!proceed) return;
+    }
+
     const next: ModifierEntry = {
       menu_item_id: dropped.id,
       name: dropped.name,
