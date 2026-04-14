@@ -180,7 +180,7 @@ export default function MobileItemModifierPicker({ parent, itemsById, onUpdate }
           {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
         </div>
         <p className="modifier-section-hint">
-          {sidesSelectionMode === 'or' ? 'Patron can pick one side' : 'Patron can pick multiple sides'}
+          {sidesSelectionMode === 'or' ? 'Patron can pick One side that\'s included (Free of Cost)' : 'Patron can pick Multiple sides that are included (Free of Cost)'}
         </p>
 
         {/* Existing sides as cards */}
@@ -257,7 +257,7 @@ export default function MobileItemModifierPicker({ parent, itemsById, onUpdate }
           <span className="modifier-section-title">Recommendations</span>
           {recommendations.length > 0 && <span className="modifier-section-count">{recommendations.length}</span>}
         </div>
-        <p className="modifier-section-hint">Pair complementary dishes — shown on the patron card.</p>
+        <p className="modifier-section-hint">Recommended dishes - shown on patron food cart</p>
 
         {recommendations.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
