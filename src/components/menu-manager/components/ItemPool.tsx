@@ -442,7 +442,15 @@ export default function ItemPool({
             ))}
           </div>
           {/* Visible / Hidden toggle */}
-          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
             {(['Visible', 'Hidden'] as const).map((tab) => (
               <button
                 key={tab}
@@ -452,15 +460,15 @@ export default function ItemPool({
                 aria-label={`Show only ${tab.toLowerCase()} items (click to show all)`}
                 onClick={() => onVisibilityFilterChange(visibilityFilter === tab ? 'All' : tab)}
                 style={{
-                  padding: '4px 12px',
-                  borderRadius: 20,
+                  padding: '4px 14px',
                   fontSize: 12,
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
-                  transition: 'all 0.1s',
-                  border: visibilityFilter === tab ? 'none' : '1px solid var(--border)',
+                  border: 'none',
+                  borderRight: tab === 'Visible' ? '1px solid var(--border)' : 'none',
                   background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
                   color: visibilityFilter === tab ? 'white' : 'var(--text2)',
+                  transition: 'background 0.12s, color 0.12s',
                 }}
               >
                 {tab}
