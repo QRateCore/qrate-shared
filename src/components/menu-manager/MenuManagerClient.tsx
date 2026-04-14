@@ -54,6 +54,25 @@ interface Props {
    * See ItemModifierZones for the full contract.
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /**
+   * Optional gate called before an item is removed from a menu. Consumer apps
+   * use this to warn the owner when the removal would deactivate existing
+   * recommendations — per Step 9 of the rec-lifecycle PDD, the "last
+   * occurrence" case.
+   *
+   * Shared computes `isLastActiveMenuPlacement` from the current items +
+   * menu_associations state. The consumer is responsible for deciding whether
+   * to show a confirmation dialog (typically: skip the dialog if not last
+   * occurrence OR if no recommendations reference the item; show otherwise).
+   *
+   * Return `true` to proceed with the removal, `false` to cancel. When this
+   * prop is not provided, removals proceed silently (backward compat).
+   */
+  onConfirmItemRemoval?: (params: {
+    item: MenuItemDisplay;
+    menuId: string;
+    isLastActiveMenuPlacement: boolean;
+  }) => Promise<boolean>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -62,7 +81,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -772,13 +791,26 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
   const handleRemoveItemFromMenu = useCallback(
-    (itemId: string, menuId: string) => {
+    async (itemId: string, menuId: string) => {
       const item = items.find((i) => i.id === itemId);
       if (!item) return;
       const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
       if (!assoc) return;
       const menu = menus.find((m) => m.id === menuId);
       const menuName = menu?.name ?? 'menu';
+
+      // Step 9 (rec lifecycle PDD) preflight gate — if a consumer provides
+      // onConfirmItemRemoval, ask it whether to proceed before any mutation
+      // runs. Consumer is expected to fetch the recommendation-count and
+      // show a deactivation-warning popup on "last occurrence" removals.
+      // Presence in menu_associations = active placement (backend filters
+      // inactive), so "last active" means there's only ONE entry.
+      if (onConfirmItemRemoval) {
+        const activeAssocs = item.menu_associations ?? [];
+        const isLastActiveMenuPlacement = activeAssocs.length === 1 && activeAssocs[0].menu_id === menuId;
+        const proceed = await onConfirmItemRemoval({ item, menuId, isLastActiveMenuPlacement });
+        if (!proceed) return;
+      }
 
       // Snapshot for undo
       const snapshot = {
@@ -829,7 +861,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           });
       });
     },
-    [items, menus, dismissUndoToast, showUndoToast, showToast],
+    [items, menus, dismissUndoToast, showUndoToast, showToast, onConfirmItemRemoval],
   );
 
   // ── Settings update ───────────────────────────────────────────────────────
