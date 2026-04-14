@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2, RefreshCw } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
@@ -137,9 +137,34 @@ function MenuItemRow({
   const isMobile = useIsMobile();
   const trackAction = useTrackAction();
 
+  // Per-category price overrides — when the item appears in 2+ canonical
+  // categories on this menu, the owner gets one input per category. When it's
+  // in a single category (or none), fall back to the single "Menu price" input.
+  const canonicalCats = useMemo(
+    () => [...(settings.canonical_categories ?? [])].sort(),
+    [settings.canonical_categories],
+  );
+  const multiCat = canonicalCats.length > 1;
+
+  function initialPerCategoryStrs(): Record<string, string> {
+    const next: Record<string, string> = {};
+    for (const cat of canonicalCats) {
+      const override = settings.category_prices?.[cat];
+      next[cat] = override != null
+        ? String(override)
+        : settings.price != null
+          ? String(settings.price)
+          : '';
+    }
+    return next;
+  }
+
   // Local controlled state for inline form
   const [priceStr, setPriceStr] = useState(
     settings.price != null ? String(settings.price) : '',
+  );
+  const [categoryPriceStrs, setCategoryPriceStrs] = useState<Record<string, string>>(
+    initialPerCategoryStrs,
   );
   const [chefsSpecial, setChefsSpecial] = useState(settings.chefs_special ?? false);
   const [portionType, setPortionType] = useState<'single' | 'shared'>(
@@ -157,11 +182,13 @@ function MenuItemRow({
   useEffect(() => {
     if (prevSettingsRef.current !== settings) {
       setPriceStr(settings.price != null ? String(settings.price) : '');
+      setCategoryPriceStrs(initialPerCategoryStrs());
       setChefsSpecial(settings.chefs_special ?? false);
       setPortionType(settings.portion_type ?? 'single');
       setPortionServes(settings.portion_serves != null ? String(settings.portion_serves) : '');
       prevSettingsRef.current = settings;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
   const boostLabel = intToBoostLabel(
@@ -192,6 +219,40 @@ function MenuItemRow({
       metadata: { itemId: item.id, menuId, newPrice: val },
     });
     save({ price: val });
+  }
+
+  // Per-category price blur: persist THIS category's override. We send the
+  // complete category_prices map on every save (backend uses replace-
+  // semantics) so the current set on this row stays in sync. Categories that
+  // still have empty strings are omitted — the backend treats absent keys
+  // as "no override, fall back to base price."
+  function handleCategoryPriceBlur(cat: string) {
+    const raw = categoryPriceStrs[cat] ?? '';
+    const val = raw.trim() === '' ? null : parseFloat(raw);
+    if (raw.trim() !== '' && isNaN(val!)) {
+      const prev = settings.category_prices?.[cat];
+      setCategoryPriceStrs((prevState) => ({
+        ...prevState,
+        [cat]: prev != null ? String(prev) : '',
+      }));
+      return;
+    }
+    // Build the complete overrides map from current local state + this new value.
+    const nextOverrides: Record<string, number> = {};
+    for (const c of canonicalCats) {
+      const s = c === cat ? raw : (categoryPriceStrs[c] ?? '');
+      const n = s.trim() === '' ? null : parseFloat(s);
+      if (n != null && !isNaN(n)) nextOverrides[c] = n;
+    }
+    // No-op if nothing changed.
+    const currentOverrides = settings.category_prices ?? {};
+    const same = Object.keys(nextOverrides).length === Object.keys(currentOverrides).length
+      && Object.entries(nextOverrides).every(([k, v]) => currentOverrides[k] === v);
+    if (same) return;
+    trackAction('menu.menuBuilder.inlineEditCategoryPrice', {
+      metadata: { itemId: item.id, menuId, category: cat, newPrice: val },
+    });
+    save({ category_prices: nextOverrides });
   }
 
   function handleBoostChange(label: string | null) {
@@ -409,41 +470,83 @@ function MenuItemRow({
         >
           {/* Left column: editable fields */}
           <div className={`flex flex-col gap-2.5 shrink-0 min-w-0 ${isMobile ? 'w-full' : ''}`}>
-          {/* Price override */}
-          <div className="flex items-center gap-2">
-            <label className="section-header !mb-0 w-[100px] shrink-0" htmlFor={`price-${menuId}-${item.id}`}>
-              Menu price
-            </label>
-            <div
-              className={`flex items-center gap-1 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}
-              data-testid={`price-input-wrapper-${item.id}`}
-              data-attention={attention ? 'true' : undefined}
-            >
-              <span className="text-xs text-[var(--text2)]">$</span>
-              <input
-                id={`price-${menuId}-${item.id}`}
-                type="number"
-                min="0"
-                step="0.01"
-                value={priceStr}
-                onChange={(e) => setPriceStr(e.target.value)}
-                onBlur={handlePriceBlur}
-                placeholder={item.price != null ? String(item.price) : ''}
-                data-testid={`price-input-${item.id}`}
-                className="border-none outline-none text-xs w-[72px] bg-transparent text-[var(--text)]"
-              />
-            </div>
-            {settings.price != null && (
-              <button
-                type="button"
-                onClick={() => { setPriceStr(''); save({ price: null }); }}
-                className="text-[10px] text-[var(--text2)] bg-transparent border-none cursor-pointer px-1 py-0.5"
-                data-testid={`price-clear-${item.id}`}
+          {/* Price override — single "Menu price" when the item is in 0 or 1
+              canonical category on this menu; per-category inputs when it's
+              in 2+. This is the owner UX for per-category pricing (e.g.
+              Garlic Bread: Appetizer $6 / Side $3 on the same menu). */}
+          {!multiCat ? (
+            <div className="flex items-center gap-2">
+              <label className="section-header !mb-0 w-[100px] shrink-0" htmlFor={`price-${menuId}-${item.id}`}>
+                Menu price
+              </label>
+              <div
+                className={`flex items-center gap-1 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}
+                data-testid={`price-input-wrapper-${item.id}`}
+                data-attention={attention ? 'true' : undefined}
               >
-                ✕ clear
-              </button>
-            )}
-          </div>
+                <span className="text-xs text-[var(--text2)]">$</span>
+                <input
+                  id={`price-${menuId}-${item.id}`}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={priceStr}
+                  onChange={(e) => setPriceStr(e.target.value)}
+                  onBlur={handlePriceBlur}
+                  placeholder={item.price != null ? String(item.price) : ''}
+                  data-testid={`price-input-${item.id}`}
+                  className="border-none outline-none text-xs w-[72px] bg-transparent text-[var(--text)]"
+                />
+              </div>
+              {settings.price != null && (
+                <button
+                  type="button"
+                  onClick={() => { setPriceStr(''); save({ price: null }); }}
+                  className="text-[10px] text-[var(--text2)] bg-transparent border-none cursor-pointer px-1 py-0.5"
+                  data-testid={`price-clear-${item.id}`}
+                >
+                  ✕ clear
+                </button>
+              )}
+            </div>
+          ) : (
+            <div
+              className="flex flex-col gap-1.5"
+              data-testid={`category-prices-${item.id}`}
+            >
+              <span className="section-header !mb-0">Prices by category</span>
+              {canonicalCats.map((cat) => (
+                <div key={cat} className="flex items-center gap-2">
+                  <label
+                    className="text-xs text-[var(--text2)] w-[100px] shrink-0 pl-2"
+                    htmlFor={`price-${menuId}-${item.id}-${cat}`}
+                  >
+                    {cat}
+                  </label>
+                  <div
+                    className="flex items-center gap-1 rounded-[var(--r-xs)] bg-white px-2 py-1 border border-[var(--border)]"
+                    data-testid={`category-price-wrapper-${item.id}-${cat}`}
+                  >
+                    <span className="text-xs text-[var(--text2)]">$</span>
+                    <input
+                      id={`price-${menuId}-${item.id}-${cat}`}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={categoryPriceStrs[cat] ?? ''}
+                      onChange={(e) =>
+                        setCategoryPriceStrs((prev) => ({ ...prev, [cat]: e.target.value }))
+                      }
+                      onBlur={() => handleCategoryPriceBlur(cat)}
+                      placeholder={settings.price != null ? String(settings.price) : ''}
+                      data-testid={`category-price-input-${item.id}-${cat}`}
+                      className="border-none outline-none text-xs w-[72px] bg-transparent text-[var(--text)]"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Boost level */}
           <div className="flex items-center gap-2">
