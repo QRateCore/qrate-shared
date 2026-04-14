@@ -30,18 +30,21 @@ import type { ModifierEntry } from './ItemModifierZones';
 interface Props {
   parent: MenuItemDisplay;
   itemsById: Map<string, MenuItemDisplay>;
+  /** The menu currently being edited. Forwarded to `onConfirmRecommendationDrop`. */
+  currentMenuId: string | null;
   onUpdate: (
     parentId: string,
     next: { sides: ModifierEntry[]; recommendations: ModifierEntry[]; sides_selection_mode: 'and' | 'or' },
   ) => Promise<void>;
   /** See ItemModifierZones for the contract — same gating applied to the
    *  mobile picker so the modal flow works on phones too. */
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
 }
 
 export default function MobileItemModifierPicker({
   parent,
   itemsById,
+  currentMenuId,
   onUpdate,
   onConfirmRecommendationDrop,
 }: Props) {
@@ -117,7 +120,7 @@ export default function MobileItemModifierPicker({
     // Optional gate — parent may prompt before accepting (e.g., "which
     // canonical categories?" for off-menu items). Mirrors ItemModifierZones.
     if (onConfirmRecommendationDrop) {
-      const proceed = await onConfirmRecommendationDrop(item);
+      const proceed = await onConfirmRecommendationDrop(item, currentMenuId);
       if (!proceed) return;
     }
     const next: ModifierEntry = {

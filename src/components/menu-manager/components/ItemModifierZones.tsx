@@ -25,6 +25,13 @@ export interface ModifierEntry {
 interface Props {
   parent: MenuItemDisplay;
   itemsById: Map<string, MenuItemDisplay>;
+  /**
+   * The menu currently being edited — passed to `onConfirmRecommendationDrop`
+   * so consumer apps can check "is the dropped item on this menu?" and call
+   * backend APIs scoped to the right menu. `null` only if the Menu Builder
+   * has no active menu (edge case — consumers should treat as no-prompt path).
+   */
+  currentMenuId: string | null;
   onUpdate: (
     parentId: string,
     next: {
@@ -44,12 +51,13 @@ interface Props {
    * this prop is not provided, the drop proceeds without prompting (current
    * backward-compatible behavior).
    */
-  onConfirmRecommendationDrop?: (item: MenuItemDisplay) => Promise<boolean>;
+  onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
 }
 
 export default function ItemModifierZones({
   parent,
   itemsById,
+  currentMenuId,
   onUpdate,
   onConfirmRecommendationDrop,
 }: Props) {
@@ -137,7 +145,7 @@ export default function ItemModifierZones({
     // before accepting the drop. Parent returns false on cancel; if no
     // callback provided, drop proceeds silently (backward compat).
     if (onConfirmRecommendationDrop) {
-      const proceed = await onConfirmRecommendationDrop(dropped);
+      const proceed = await onConfirmRecommendationDrop(dropped, currentMenuId);
       if (!proceed) return;
     }
 
