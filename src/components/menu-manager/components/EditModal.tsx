@@ -584,6 +584,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           : Promise.resolve(),
       ]);
 
+      // STR-323: flush pending dish selections from the Dishes tab. Users who tick
+      // dish checkboxes and click Save Changes (without first clicking "Add Selected")
+      // would otherwise silently lose those selections on modal close.
+      // handleAddToMultipleDishes persists each association via updateItemModifiers
+      // and fires onDishAddonsChange so MenuManagerClient patches local state.
+      if (isAddon && selectedDishIds.size > 0) {
+        await handleAddToMultipleDishes(selectedDishIds);
+      }
+
       // When an add-on's base price changes, cascade the new price to every
       // dish whose existing association is still tracking the old base price.
       // A dish whose owner has explicitly set a per-dish override (different
