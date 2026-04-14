@@ -74,6 +74,27 @@ export default function ItemModifierZones({
   const sideIds = new Set(sides.map((s) => s.menu_item_id));
   const recommendationIds = new Set(recommendations.map((r) => r.menu_item_id));
 
+  /**
+   * A rec's target is "inactive" — and so shouldn't reach diners — when the
+   * target item is hidden by the owner (active=false) OR is not placed on
+   * any menu (empty menu_associations). Matches the backend rec-engine filter
+   * (Step 1 of the rec-lifecycle PDD): `active AND deleted_at IS NULL AND
+   * EXISTS menu_item_menus.active`. Items not present in itemsById are
+   * treated as inactive too — the parent state is stale, so render defensively.
+   *
+   * When a rec target is inactive, the card gets a red border so the owner
+   * can see "this pairing isn't reaching diners right now." Per Q-PRE-2 in
+   * idea-honing.md, owners keep visibility of their curated pairings even
+   * when the target is temporarily hidden/off-menu.
+   */
+  function isRecTargetInactive(targetId: string): boolean {
+    const target = itemsById.get(targetId);
+    if (!target) return true;
+    if (target.active === false) return true;
+    if (!target.menu_associations || target.menu_associations.length === 0) return true;
+    return false;
+  }
+
   function emit(
     nextSides: ModifierEntry[],
     nextRecommendations: ModifierEntry[],
@@ -264,29 +285,42 @@ export default function ItemModifierZones({
           {recommendations.length === 0 ? (
             <div className="modifier-drop-zone-empty">Drop items here</div>
           ) : (
-            recommendations.map((rec) => (
-              <div key={rec.menu_item_id} className="modifier-card">
-                <div className="modifier-card-thumb">
-                  {rec.thumbnail_url ? (
-                    <img src={rec.thumbnail_url} alt={rec.name} draggable={false} loading="lazy" width={60} height={60} />
-                  ) : (
-                    <span style={{ fontSize: 18 }}>🍽</span>
-                  )}
-                </div>
-                <div className="modifier-card-body">
-                  <div className="modifier-card-name">{rec.name}</div>
-                </div>
-                <button
-                  type="button"
-                  className="modifier-card-delete"
-                  onClick={() => removeRecommendation(rec.menu_item_id)}
-                  data-testid={`remove-recommendation-${parent.id}-${rec.menu_item_id}`}
-                  title="Remove"
+            recommendations.map((rec) => {
+              const inactive = isRecTargetInactive(rec.menu_item_id);
+              return (
+                <div
+                  key={rec.menu_item_id}
+                  className="modifier-card"
+                  data-inactive={inactive ? 'true' : undefined}
+                  data-testid={`recommendation-card-${parent.id}-${rec.menu_item_id}`}
+                  // Inline border overrides the base .modifier-card stylesheet
+                  // rule (1.5px grey) so the inactive state reads as "not
+                  // reaching diners" at a glance. Title explains on hover.
+                  style={inactive ? { border: '2px solid #dc2626' } : undefined}
+                  title={inactive ? 'This recommendation is not reaching diners — the target item is hidden or off-menu.' : undefined}
                 >
-                  <X size={11} />
-                </button>
-              </div>
-            ))
+                  <div className="modifier-card-thumb">
+                    {rec.thumbnail_url ? (
+                      <img src={rec.thumbnail_url} alt={rec.name} draggable={false} loading="lazy" width={60} height={60} />
+                    ) : (
+                      <span style={{ fontSize: 18 }}>🍽</span>
+                    )}
+                  </div>
+                  <div className="modifier-card-body">
+                    <div className="modifier-card-name">{rec.name}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="modifier-card-delete"
+                    onClick={() => removeRecommendation(rec.menu_item_id)}
+                    data-testid={`remove-recommendation-${parent.id}-${rec.menu_item_id}`}
+                    title="Remove"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
       </div>
