@@ -141,8 +141,12 @@ export interface MenuItem {
   portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
-  /** 'dish' = regular menu item visible to diners; 'addon' = ingredient-level modifier (e.g. Extra Chicken), hidden from browsing */
-  item_type?: 'dish' | 'addon';
+  /**
+   * 'dish'     — regular menu item visible to diners.
+   * 'addon'    — ingredient-level modifier (e.g. Extra Chicken), hidden from browsing.
+   * 'included' — orderable by diners AND eligible to be offered free-with-order by the recommendation engine.
+   */
+  item_type?: 'dish' | 'addon' | 'included';
 }
 
 export interface MenuItemCreate {
@@ -279,8 +283,12 @@ export interface MenuItemDisplay {
   portion_serves?: number | null;
   menu_id?: string;
   menu_associations?: MenuAssociation[];
-  /** 'dish' = regular menu item visible to diners; 'addon' = ingredient-level modifier, hidden from browsing */
-  item_type?: 'dish' | 'addon';
+  /**
+   * 'dish'     — regular menu item visible to diners.
+   * 'addon'    — ingredient-level modifier, hidden from browsing.
+   * 'included' — orderable by diners AND eligible to be offered free-with-order by the recommendation engine.
+   */
+  item_type?: 'dish' | 'addon' | 'included';
   enrichment_status?: string;
   food_tags_source?: string;
   enriched_at?: string | null;
