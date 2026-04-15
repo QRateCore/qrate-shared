@@ -248,6 +248,8 @@ export interface MenuItemDisplay {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /** Pipeline-assigned canonical category (set by the categorize stage, independent of menu assignment) */
+  canonical_category?: string | null;
   canonical_categories?: string[];
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
