@@ -82,6 +82,22 @@ export interface MenuAssociation {
    * absent map as "no overrides — use `price` for every category."
    */
   category_prices?: Record<string, number>;
+  /**
+   * Per-canonical-category boost level overrides. Keys are canonical category
+   * names; values are the boost level string ("1"/"2"/"3"). Missing keys fall
+   * back to the shared `boost_level` for this (item, menu) placement.
+   */
+  category_boost_levels?: Record<string, string | null>;
+  /**
+   * Per-canonical-category chef's special flag overrides. Missing keys fall
+   * back to the shared `chefs_special` for this (item, menu) placement.
+   */
+  category_chefs_specials?: Record<string, boolean>;
+  /**
+   * Per-canonical-category portion overrides. Missing keys fall back to the
+   * shared `portion_type`/`portion_serves` for this (item, menu) placement.
+   */
+  category_portions?: Record<string, { portion_type: 'single' | 'shared'; portion_serves: number | null }>;
 }
 
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
@@ -100,6 +116,12 @@ export interface MenuItemJunctionSettings {
    * Use `{}` or omit to clear all overrides; the base `price` applies.
    */
   category_prices?: Record<string, number>;
+  /** Per-category boost level overrides (same replace-semantics as category_prices). */
+  category_boost_levels?: Record<string, string | null>;
+  /** Per-category chef's special flag overrides (same replace-semantics as category_prices). */
+  category_chefs_specials?: Record<string, boolean>;
+  /** Per-category portion overrides (same replace-semantics as category_prices). */
+  category_portions?: Record<string, { portion_type: 'single' | 'shared'; portion_serves: number | null }>;
 }
 
 export interface MenuItem {

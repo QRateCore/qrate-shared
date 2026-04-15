@@ -38,6 +38,7 @@ interface Props {
       sides: ModifierEntry[];
       recommendations: ModifierEntry[];
       sides_selection_mode: 'and' | 'or';
+      addons?: ModifierEntry[];
     },
   ) => Promise<void>;
   /**
@@ -66,12 +67,17 @@ export default function ItemModifierZones({
     ...r,
     price_override: r.price_override ?? 0,
   }));
+  const addons: ModifierEntry[] = ((parent.addons ?? []) as Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null; status?: string }>)
+    .filter((a) => a.status === 'approved' || a.status === undefined)
+    .map((a) => ({ menu_item_id: a.menu_item_id, name: a.name, price_override: a.price_override ?? null, thumbnail_url: a.thumbnail_url ?? null }));
   const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
 
   const [sidesDragOver, setSidesDragOver] = useState(false);
+  const [addonsDragOver, setAddonsDragOver] = useState(false);
   const [recommendationsDragOver, setRecommendationsDragOver] = useState(false);
 
   const sideIds = new Set(sides.map((s) => s.menu_item_id));
+  const addonIds = new Set(addons.map((a) => a.menu_item_id));
   const recommendationIds = new Set(recommendations.map((r) => r.menu_item_id));
 
   /**
@@ -99,11 +105,13 @@ export default function ItemModifierZones({
     nextSides: ModifierEntry[],
     nextRecommendations: ModifierEntry[],
     nextMode: 'and' | 'or' = sidesSelectionMode,
+    nextAddons: ModifierEntry[] = addons,
   ) {
     void onUpdate(parent.id, {
       sides: nextSides,
       recommendations: nextRecommendations,
       sides_selection_mode: nextMode,
+      addons: nextAddons,
     });
   }
 
@@ -148,6 +156,30 @@ export default function ItemModifierZones({
       sides.map((s) => (s.menu_item_id === id ? { ...s, price_override: safe } : s)),
       recommendations,
     );
+  }
+
+  // ── Addons handlers ──────────────────────────────────────────────────────────
+
+  function handleDropAddon(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setAddonsDragOver(false);
+    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
+    if (!droppedId || droppedId === parent.id) return;
+    if (addonIds.has(droppedId)) return;
+    const dropped = itemsById.get(droppedId);
+    if (!dropped || dropped.item_type !== 'addon') return;
+    const next: ModifierEntry = {
+      menu_item_id: dropped.id,
+      name: dropped.name,
+      price_override: dropped.price ?? null,
+      thumbnail_url: dropped.thumbnail_url ?? null,
+    };
+    emit(sides, recommendations, sidesSelectionMode, [...addons, next]);
+  }
+
+  function removeAddon(id: string) {
+    emit(sides, recommendations, sidesSelectionMode, addons.filter((a) => a.menu_item_id !== id));
   }
 
   // ── Recommendations handlers ─────────────────────────────────────────────────
@@ -258,6 +290,53 @@ export default function ItemModifierZones({
                   className="modifier-card-delete"
                   onClick={() => removeSide(side.menu_item_id)}
                   data-testid={`remove-side-${parent.id}-${side.menu_item_id}`}
+                  title="Remove"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Addons column ── */}
+      <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>
+        <div className="modifier-section-header modifier-section-header--addons">
+          <span className="modifier-section-title">Add-ons</span>
+          {addons.length > 0 && <span className="modifier-section-count">{addons.length}</span>}
+        </div>
+        <p className="modifier-section-hint">Drag add-on items here to link them to this dish</p>
+        <div
+          data-testid={`addons-drop-zone-${parent.id}`}
+          className={`modifier-drop-zone${addonsDragOver ? ' drag-over' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setAddonsDragOver(true); }}
+          onDragLeave={() => setAddonsDragOver(false)}
+          onDrop={handleDropAddon}
+        >
+          {addons.length === 0 ? (
+            <div className="modifier-drop-zone-empty">Drop add-ons here</div>
+          ) : (
+            addons.map((addon) => (
+              <div key={addon.menu_item_id} className="modifier-card">
+                <div className="modifier-card-thumb">
+                  {addon.thumbnail_url ? (
+                    <img src={addon.thumbnail_url} alt={addon.name} draggable={false} loading="lazy" width={60} height={60} />
+                  ) : (
+                    <span style={{ fontSize: 18 }}>➕</span>
+                  )}
+                </div>
+                <div className="modifier-card-body">
+                  <div className="modifier-card-name">{addon.name}</div>
+                  {addon.price_override != null && (
+                    <div className="modifier-card-price">+${addon.price_override.toFixed(2)}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="modifier-card-delete"
+                  onClick={() => removeAddon(addon.menu_item_id)}
+                  data-testid={`remove-addon-${parent.id}-${addon.menu_item_id}`}
                   title="Remove"
                 >
                   <X size={11} />

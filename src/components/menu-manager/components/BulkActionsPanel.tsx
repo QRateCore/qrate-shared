@@ -87,7 +87,7 @@ export default function BulkActionsPanel({
     const tasks: Array<() => Promise<{ itemId: string; associations: MenuAssociation[] }>> = [];
     for (const item of selectedItems) {
       for (const menuId of targetMenuIds) {
-        const cat = assignCategory || item.category || 'Uncategorised';
+        const cat = assignCategory || item.category || 'Entrees';
         tasks.push(async () => ({
           itemId: item.id,
           associations: await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat),
@@ -623,7 +623,7 @@ function AssignForm({
           }}
         >
           <option value="">Use item's own category</option>
-          {[...CANONICAL_CATEGORIES, 'Uncategorised'].map((c) => (
+          {[...CANONICAL_CATEGORIES].map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>

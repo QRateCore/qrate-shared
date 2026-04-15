@@ -5,7 +5,7 @@ import { useTrackAction } from '../track-action-context';
 import { useRef, useState, useEffect } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
-import { FOOD_TAG_FIELD_MAP } from '../lib/menuUtils';
+import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
 import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -23,6 +23,8 @@ interface EditModalProps {
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   /** Called when user clicks a menu chip — close modal and navigate to that menu+item */
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
+  /** True when the modal was opened via "Add Item" — shows the Dishes/Add-ons type toggle. Hidden in edit mode. */
+  isNewItem?: boolean;
   /**
    * Called after a dish's addons array is mutated from the Dishes tab of an addon editor.
    * Lets the parent update its cached items so the addon↔dish association is visible
@@ -151,7 +153,7 @@ function TagInput({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -159,8 +161,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const isMobile = useIsMobile();
 
   // Form state — initialized from item
-  const [name, setName]             = useState(item.name);
+  const [name, setName]             = useState(isNewItem ? '' : item.name);
   const [description, setDesc]      = useState(item.description ?? '');
+  // Prefer the AI-pipeline canonical_category (already one of CANONICAL_CATEGORIES),
+  // fall back to mapping the raw category string, then to empty.
+  const [category, setCategory]     = useState(
+    item.canonical_category ?? toCanonical(item.category) ?? '',
+  );
   // Price is only editable in Add-on mode (dishes price per-menu in MenuBuilder).
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);
@@ -211,8 +218,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Save state
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
-  const [nameError, setNameError]   = useState(false);
-  const [descError, setDescError]   = useState(false);
+  const [nameError, setNameError]       = useState(false);
+  const [descError, setDescError]       = useState(false);
+  const [categoryError, setCategoryError] = useState(false);
 
   // Delete state
   const [deleteConfirming, setDeleteConfirming] = useState(false);
@@ -532,7 +540,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   async function handleSave() {
     let hasError = false;
     if (!name.trim()) { setNameError(true); hasError = true; }
-    if (!description.trim()) { setDescError(true); hasError = true; }
+    if (!isAddon && !description.trim()) { setDescError(true); hasError = true; }
+    if (!isAddon && !category) { setCategoryError(true); hasError = true; }
     // Add-on price validation: optional, but if present must be a non-negative finite number.
     // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
     if (isAddon && price !== null) {
@@ -550,6 +559,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     const start = Date.now();
     setNameError(false);
     setDescError(false);
+    setCategoryError(false);
     setSaving(true);
     setSaveError(null);
 
@@ -570,6 +580,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       const updates: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim(),
+        category: category.trim() || undefined,
         food_tags: foodTags,
         item_type: isAddon ? 'addon' : 'dish',
         // STR-303: add-on mode is the sole per-item price surface in this modal.
@@ -622,6 +633,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         ...item,
         name: saved.name ?? name.trim(),
         description: (saved.description ?? description.trim()) || null,
+        category: (saved as { category?: string }).category ?? (category.trim() || item.category),
+        canonical_category: category.trim() || item.canonical_category,
         food_tags: (saved.food_tags ?? foodTags) as FoodTags,
         active: isActive,
         thumbnail_url: thumbnail,
@@ -766,68 +779,68 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {item.name}
           </div>
 
-          {/* Dishes / Add-ons pill toggle — primary item-type selector (STR-303).
-              Mirrors the in-body "This is an Add-on" checkbox via shared isAddon state.
-              Add-ons side is disabled when the item has sides or recommendations. */}
-          <div
-            role="radiogroup"
-            aria-label="Item type"
-            data-testid="type-toggle"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'stretch',
-              border: '1px solid var(--border)',
-              borderRadius: 999,
-              padding: 2,
-              background: '#fafafa',
-              flexShrink: 0,
-            }}
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!isAddon}
-              onClick={() => setIsAddon(false)}
-              data-testid="type-toggle-dishes"
+          {/* Dishes / Add-ons pill toggle — only shown when creating a new item */}
+          {isNewItem && (
+            <div
+              role="radiogroup"
+              aria-label="Item type"
+              data-testid="type-toggle"
               style={{
-                padding: '4px 14px',
-                fontSize: 12,
-                fontWeight: !isAddon ? 700 : 500,
-                color: !isAddon ? 'white' : 'var(--text2)',
-                background: !isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'stretch',
+                border: '1px solid var(--border)',
                 borderRadius: 999,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
+                padding: 2,
+                background: '#fafafa',
+                flexShrink: 0,
               }}
             >
-              Dishes
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={isAddon}
-              aria-disabled={addonDisabled}
-              onClick={() => { if (!addonDisabled) setIsAddon(true); }}
-              disabled={addonDisabled}
-              title={addonDisabled ? (disabledReason ?? undefined) : undefined}
-              data-testid="type-toggle-addons"
-              style={{
-                padding: '4px 14px',
-                fontSize: 12,
-                fontWeight: isAddon ? 700 : 500,
-                color: isAddon ? 'white' : 'var(--text2)',
-                background: isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                border: 'none',
-                borderRadius: 999,
-                cursor: addonDisabled ? 'not-allowed' : 'pointer',
-                opacity: addonDisabled ? 0.5 : 1,
-                transition: 'all 0.15s',
-              }}
-            >
-              Add-ons
-            </button>
-          </div>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!isAddon}
+                onClick={() => setIsAddon(false)}
+                data-testid="type-toggle-dishes"
+                style={{
+                  padding: '4px 14px',
+                  fontSize: 12,
+                  fontWeight: !isAddon ? 700 : 500,
+                  color: !isAddon ? 'white' : 'var(--text2)',
+                  background: !isAddon ? 'var(--brand, #f97316)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 999,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                Dishes
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isAddon}
+                aria-disabled={addonDisabled}
+                onClick={() => { if (!addonDisabled) setIsAddon(true); }}
+                disabled={addonDisabled}
+                title={addonDisabled ? (disabledReason ?? undefined) : undefined}
+                data-testid="type-toggle-addons"
+                style={{
+                  padding: '4px 14px',
+                  fontSize: 12,
+                  fontWeight: isAddon ? 700 : 500,
+                  color: isAddon ? 'white' : 'var(--text2)',
+                  background: isAddon ? 'var(--brand, #f97316)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 999,
+                  cursor: addonDisabled ? 'not-allowed' : 'pointer',
+                  opacity: addonDisabled ? 0.5 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                Add-ons
+              </button>
+            </div>
+          )}
 
           {/* Active / visibility toggle */}
           <button
@@ -1117,7 +1130,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
             {/* Right column — required fields */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <SectionLabel>Basic Info</SectionLabel>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <SectionLabel>Basic Info</SectionLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="edit-category">
+                    Category <span style={{ color: '#b91c1c' }}>*</span>
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <select
+                      id="edit-category"
+                      value={category}
+                      onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
+                      data-testid="edit-category-select"
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        border: categoryError ? '1.5px solid #b91c1c' : '1px solid var(--border)',
+                        borderRadius: 'var(--r-xs)',
+                        padding: '3px 8px',
+                        outline: 'none',
+                        background: categoryError ? '#fff5f5' : 'var(--white)',
+                        color: 'var(--text)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value=""></option>
+                      {CANONICAL_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    {categoryError && (
+                      <span style={{ fontSize: 10, color: '#b91c1c' }}>Category is required</span>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               {/* Name */}
               <div>
@@ -1312,28 +1359,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               </div>
             </div>
 
-            {/* Description */}
-            <div>
-              <label style={labelStyle} htmlFor="edit-description">
-                Description <span style={{ color: '#b91c1c' }}>*</span>
-              </label>
-              <textarea
-                id="edit-description"
-                value={description}
-                onChange={(e) => { setDesc(e.target.value); setDescError(false); }}
-                rows={4}
-                data-testid="edit-description-input"
-                style={{
-                  ...inputStyle,
-                  resize: 'vertical',
-                  minHeight: 88,
-                  border: descError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                }}
-              />
-              {descError && (
-                <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Description is required</div>
-              )}
-            </div>
           </section>
           )}
 

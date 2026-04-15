@@ -15,6 +15,7 @@ export interface ModifierUpdatePayload {
   sides: ModifierEntry[];
   recommendations: ModifierEntry[];
   sides_selection_mode: 'and' | 'or';
+  addons?: ModifierEntry[];
 }
 
 // ── Attention rules ──────────────────────────────────────────────────────────
@@ -159,6 +160,23 @@ function MenuItemRow({
     return next;
   }
 
+  // Per-category helpers for boost/special/portion — used by both initial
+  // useState values and the STR-262 re-sync effect.
+  function effectiveChefsSpecial(): boolean {
+    if (multiCat) return settings.category_chefs_specials?.[cat] ?? settings.chefs_special ?? false;
+    return settings.chefs_special ?? false;
+  }
+  function effectivePortionType(): 'single' | 'shared' {
+    if (multiCat) return settings.category_portions?.[cat]?.portion_type ?? settings.portion_type ?? 'single';
+    return settings.portion_type ?? 'single';
+  }
+  function effectivePortionServes(): string {
+    const serves = multiCat
+      ? (settings.category_portions?.[cat]?.portion_serves ?? settings.portion_serves)
+      : settings.portion_serves;
+    return serves != null ? String(serves) : '';
+  }
+
   // Local controlled state for inline form
   const [priceStr, setPriceStr] = useState(
     settings.price != null ? String(settings.price) : '',
@@ -166,36 +184,39 @@ function MenuItemRow({
   const [categoryPriceStrs, setCategoryPriceStrs] = useState<Record<string, string>>(
     initialPerCategoryStrs,
   );
-  const [chefsSpecial, setChefsSpecial] = useState(settings.chefs_special ?? false);
-  const [portionType, setPortionType] = useState<'single' | 'shared'>(
-    settings.portion_type ?? 'single',
-  );
-  const [portionServes, setPortionServes] = useState(
-    settings.portion_serves != null ? String(settings.portion_serves) : '',
-  );
+  const [chefsSpecial, setChefsSpecial] = useState(effectiveChefsSpecial);
+  const [portionType, setPortionType] = useState<'single' | 'shared'>(effectivePortionType);
+  const [portionServes, setPortionServes] = useState(effectivePortionServes);
 
   // STR-262: Re-sync local form state when settings prop changes externally
   // (e.g. when the useEffect rebuild in MenuManagerClient overwrites
-  // junctionSettings). Without this, local priceStr/chefsSpecial/portionType/
-  // portionServes become stale after any items state change.
+  // junctionSettings). Without this, local state becomes stale after any
+  // items state change. Per-category values are used for multiCat items so
+  // each bucket row stays independent.
   const prevSettingsRef = useRef(settings);
   useEffect(() => {
     if (prevSettingsRef.current !== settings) {
       setPriceStr(settings.price != null ? String(settings.price) : '');
       setCategoryPriceStrs(initialPerCategoryStrs());
-      setChefsSpecial(settings.chefs_special ?? false);
-      setPortionType(settings.portion_type ?? 'single');
-      setPortionServes(settings.portion_serves != null ? String(settings.portion_serves) : '');
+      setChefsSpecial(effectiveChefsSpecial());
+      setPortionType(effectivePortionType());
+      setPortionServes(effectivePortionServes());
       prevSettingsRef.current = settings;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
+  // For multiCat items, each bucket row reads the per-category boost so that
+  // the Appetizers row can show a different boost than the Entrees row for the
+  // same item. Falls back to the shared boost when no category override exists.
+  const effectiveBoostStr = multiCat
+    ? (settings.category_boost_levels?.[cat] ?? settings.boost_level)
+    : settings.boost_level;
   const boostLabel = intToBoostLabel(
-    typeof settings.boost_level === 'number'
-      ? settings.boost_level
-      : settings.boost_level != null
-        ? Number(settings.boost_level)
+    typeof effectiveBoostStr === 'number'
+      ? effectiveBoostStr
+      : effectiveBoostStr != null
+        ? Number(effectiveBoostStr)
         : null,
   );
 
@@ -221,83 +242,152 @@ function MenuItemRow({
     save({ price: val });
   }
 
-  // Per-category price blur: persist THIS category's override. We send the
-  // complete category_prices map on every save (backend uses replace-
-  // semantics) so the current set on this row stays in sync. Categories that
-  // still have empty strings are omitted — the backend treats absent keys
-  // as "no override, fall back to base price."
+  // Per-category price blur: patch ONLY this category in the saved map.
+  // We start from the last persisted settings.category_prices so that editing
+  // one category never clobbers another category's price. Backend uses
+  // replace-semantics so we always send the full map.
   function handleCategoryPriceBlur(cat: string) {
     const raw = categoryPriceStrs[cat] ?? '';
     const val = raw.trim() === '' ? null : parseFloat(raw);
     if (raw.trim() !== '' && isNaN(val!)) {
-      const prev = settings.category_prices?.[cat];
+      // Invalid input — reset to last saved value for this category.
+      const saved = settings.category_prices?.[cat];
       setCategoryPriceStrs((prevState) => ({
         ...prevState,
-        [cat]: prev != null ? String(prev) : '',
+        [cat]: saved != null ? String(saved) : '',
       }));
       return;
     }
-    // Build the complete overrides map from current local state + this new value.
-    const nextOverrides: Record<string, number> = {};
-    for (const c of canonicalCats) {
-      const s = c === cat ? raw : (categoryPriceStrs[c] ?? '');
-      const n = s.trim() === '' ? null : parseFloat(s);
-      if (n != null && !isNaN(n)) nextOverrides[c] = n;
-    }
-    // No-op if nothing changed.
+    // Patch only this category; preserve all other saved overrides unchanged.
     const currentOverrides = settings.category_prices ?? {};
-    const same = Object.keys(nextOverrides).length === Object.keys(currentOverrides).length
-      && Object.entries(nextOverrides).every(([k, v]) => currentOverrides[k] === v);
-    if (same) return;
+    if (val === (currentOverrides[cat] ?? null)) return; // no-op
+    const nextOverrides: Record<string, number> = { ...currentOverrides };
+    if (val != null) {
+      nextOverrides[cat] = val;
+    } else {
+      delete nextOverrides[cat];
+    }
     trackAction('menu.menuBuilder.inlineEditCategoryPrice', {
       metadata: { itemId: item.id, menuId, category: cat, newPrice: val },
     });
-    save({ category_prices: nextOverrides });
+    // Always send all maps together — see handleBoostChange comment.
+    save({
+      category_prices:         nextOverrides,
+      category_boost_levels:   settings.category_boost_levels ?? {},
+      category_chefs_specials: settings.category_chefs_specials ?? {},
+      category_portions:       settings.category_portions ?? {},
+    });
   }
 
   function handleBoostChange(label: string | null) {
     const newLevel = label == null ? null : String(BOOST_LABELS.indexOf(label as typeof BOOST_LABELS[number]) + 1);
     trackAction('menu.menuBuilder.setBoost', {
-      metadata: { itemId: item.id, menuId, level: label },
+      metadata: { itemId: item.id, menuId, category: multiCat ? cat : undefined, level: label },
     });
-    save({ boost_level: newLevel });
+    if (multiCat) {
+      // Backend uses replace-semantics (DELETE + INSERT) across all four maps.
+      // Always send all maps together so saving one field never wipes the others.
+      const nextLevels = { ...(settings.category_boost_levels ?? {}) };
+      if (newLevel != null) {
+        nextLevels[cat] = newLevel;
+      } else {
+        delete nextLevels[cat];
+      }
+      save({
+        category_boost_levels:   nextLevels,
+        category_chefs_specials: settings.category_chefs_specials ?? {},
+        category_portions:       settings.category_portions ?? {},
+        category_prices:         settings.category_prices ?? {},
+      });
+    } else {
+      save({ boost_level: newLevel });
+    }
   }
 
   function handleChefsSpecial() {
     const next = !chefsSpecial;
     trackAction('menu.menuBuilder.toggleSpecial', {
-      metadata: { itemId: item.id, menuId, next },
+      metadata: { itemId: item.id, menuId, category: multiCat ? cat : undefined, next },
     });
     setChefsSpecial(next);
-    save({ chefs_special: next });
+    if (multiCat) {
+      // Always send all maps together — see handleBoostChange comment.
+      save({
+        category_chefs_specials: { ...(settings.category_chefs_specials ?? {}), [cat]: next },
+        category_boost_levels:   settings.category_boost_levels ?? {},
+        category_portions:       settings.category_portions ?? {},
+        category_prices:         settings.category_prices ?? {},
+      });
+    } else {
+      save({ chefs_special: next });
+    }
   }
 
   function handlePortionType(type: 'single' | 'shared') {
     trackAction('menu.menuBuilder.togglePortion', {
-      metadata: { itemId: item.id, menuId, type },
+      metadata: { itemId: item.id, menuId, category: multiCat ? cat : undefined, type },
     });
     setPortionType(type);
-    const patch: MenuItemJunctionSettings = { portion_type: type };
-    if (type === 'single') patch.portion_serves = null;
-    save(patch);
+    if (multiCat) {
+      // Always send all maps together — see handleBoostChange comment.
+      const nextPortions = { ...(settings.category_portions ?? {}) };
+      nextPortions[cat] = {
+        portion_type: type,
+        portion_serves: type === 'single' ? null : (nextPortions[cat]?.portion_serves ?? null),
+      };
+      if (type === 'single') setPortionServes('');
+      save({
+        category_portions:       nextPortions,
+        category_boost_levels:   settings.category_boost_levels ?? {},
+        category_chefs_specials: settings.category_chefs_specials ?? {},
+        category_prices:         settings.category_prices ?? {},
+      });
+    } else {
+      const patch: MenuItemJunctionSettings = { portion_type: type };
+      if (type === 'single') patch.portion_serves = null;
+      save(patch);
+    }
   }
 
   function handlePortionServesBlur() {
     const val = portionServes.trim() === '' ? null : parseInt(portionServes, 10);
-    if (val === settings.portion_serves) return;
     if (portionServes.trim() !== '' && isNaN(val!)) {
-      setPortionServes(settings.portion_serves != null ? String(settings.portion_serves) : '');
+      setPortionServes(effectivePortionServes());
       return;
     }
-    save({ portion_serves: val });
+    const currentServes = multiCat
+      ? (settings.category_portions?.[cat]?.portion_serves ?? settings.portion_serves)
+      : settings.portion_serves;
+    if (val === currentServes) return;
+    if (multiCat) {
+      // Always send all maps together — see handleBoostChange comment.
+      const nextPortions = { ...(settings.category_portions ?? {}) };
+      nextPortions[cat] = {
+        portion_type: nextPortions[cat]?.portion_type ?? portionType,
+        portion_serves: val,
+      };
+      save({
+        category_portions:       nextPortions,
+        category_boost_levels:   settings.category_boost_levels ?? {},
+        category_chefs_specials: settings.category_chefs_specials ?? {},
+        category_prices:         settings.category_prices ?? {},
+      });
+    } else {
+      save({ portion_serves: val });
+    }
   }
 
-  const displayPrice =
-    settings.price != null
-      ? `$${Number(settings.price).toFixed(2)}`
-      : item.price != null
-        ? `$${Number(item.price).toFixed(2)}`
-        : null;
+  // For multiCat items, show the category-specific price in the collapsed row
+  // so each bucket reflects its own price independently.
+  const effectivePrice = multiCat
+    ? (settings.category_prices?.[cat] ?? settings.price ?? item.price)
+    : (settings.price ?? item.price);
+  const displayPrice = effectivePrice != null
+    ? `$${Number(effectivePrice).toFixed(2)}`
+    : null;
+  const displayPriceIsOverride = multiCat
+    ? settings.category_prices?.[cat] != null
+    : settings.price != null;
 
   const attention = itemHasAttention(item, settings);
   // Approved-only count — AI-suggested addons that the owner hasn't accepted
@@ -351,11 +441,11 @@ function MenuItemRow({
                 )}
                 {displayPrice && (
                   <span
-                    className={`text-[11px] font-semibold ${settings.price != null ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                    className={`text-[11px] font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
                     data-testid={`price-display-${item.id}`}
                   >
                     {displayPrice}
-                    {settings.price != null && <span className="text-[9px] ml-0.5">↑</span>}
+                    {displayPriceIsOverride && <span className="text-[9px] ml-0.5">↑</span>}
                   </span>
                 )}
                 {!item.active && (
@@ -459,143 +549,115 @@ function MenuItemRow({
       </button>
       </div>
 
-      {/* Expanded settings — desktop: editable fields on the left, drop zones on
-          the right (STR-251 Atanu round 2 #15). Mobile: stacked column with the
-          search-driven modifier picker rendered below the Portion area
-          (STR-251 mobile + camera 2026-04-08). */}
+      {/* Expanded settings — info bar on top, three modifier panels below */}
       {expanded && (
         <div
-          className={`flex items-start ${isMobile ? 'flex-col gap-3.5 px-3 py-2.5 pl-4' : 'flex-row gap-4 px-3 py-2.5 pl-[52px]'}`}
+          className={`flex flex-col gap-2.5 ${isMobile ? 'px-3 py-2.5 pl-4' : 'px-3 py-2.5 pl-[52px]'}`}
           data-testid={`menu-item-settings-${item.id}`}
         >
-          {/* Left column: editable fields */}
-          <div className={`flex flex-col gap-2.5 shrink-0 min-w-0 ${isMobile ? 'w-full' : ''}`}>
-          {/* Price override — single "Menu price" when the item is in 0 or 1
-              canonical category on this menu; per-category inputs when it's
-              in 2+. This is the owner UX for per-category pricing (e.g.
-              Garlic Bread: Appetizer $6 / Side $3 on the same menu). */}
-          {!multiCat ? (
-            <div className="flex items-center gap-2">
-              <label className="section-header !mb-0 w-[100px] shrink-0" htmlFor={`price-${menuId}-${item.id}`}>
-                Menu price
+          {/* ── Info bar (one line) ─────────────────────────────────────── */}
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* Price — always a single input scoped to the current bucket (cat).
+                multiCat items bind to categoryPriceStrs[cat] so the owner edits
+                only the price for the category they are looking at, not all. */}
+            <div className="flex items-center gap-1.5">
+              <label className="section-header !mb-0 shrink-0" htmlFor={`price-${menuId}-${item.id}`}>
+                Price
               </label>
               <div
-                className={`flex items-center gap-1 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}
+                className={`flex items-center gap-0.5 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}
                 data-testid={`price-input-wrapper-${item.id}`}
                 data-attention={attention ? 'true' : undefined}
               >
                 <span className="text-xs text-[var(--text2)]">$</span>
-                <input
-                  id={`price-${menuId}-${item.id}`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={priceStr}
-                  onChange={(e) => setPriceStr(e.target.value)}
-                  onBlur={handlePriceBlur}
-                  placeholder={item.price != null ? String(item.price) : ''}
-                  data-testid={`price-input-${item.id}`}
-                  className="border-none outline-none text-xs w-[72px] bg-transparent text-[var(--text)]"
-                />
+                {multiCat ? (
+                  <input
+                    id={`price-${menuId}-${item.id}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={categoryPriceStrs[cat] ?? ''}
+                    onChange={(e) => setCategoryPriceStrs((prev) => ({ ...prev, [cat]: e.target.value }))}
+                    onBlur={() => handleCategoryPriceBlur(cat)}
+                    placeholder={settings.price != null ? String(settings.price) : ''}
+                    data-testid={`price-input-${item.id}`}
+                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)]"
+                  />
+                ) : (
+                  <input
+                    id={`price-${menuId}-${item.id}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={priceStr}
+                    onChange={(e) => setPriceStr(e.target.value)}
+                    onBlur={handlePriceBlur}
+                    placeholder={item.price != null ? String(item.price) : ''}
+                    data-testid={`price-input-${item.id}`}
+                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)]"
+                  />
+                )}
               </div>
-              {settings.price != null && (
+              {!multiCat && settings.price != null && (
                 <button
                   type="button"
                   onClick={() => { setPriceStr(''); save({ price: null }); }}
-                  className="text-[10px] text-[var(--text2)] bg-transparent border-none cursor-pointer px-1 py-0.5"
+                  className="text-[10px] text-[var(--text2)] bg-transparent border-none cursor-pointer"
                   data-testid={`price-clear-${item.id}`}
                 >
-                  ✕ clear
+                  ✕
                 </button>
               )}
             </div>
-          ) : (
-            <div
-              className="flex flex-col gap-1.5"
-              data-testid={`category-prices-${item.id}`}
-            >
-              <span className="section-header !mb-0">Prices by category</span>
-              {canonicalCats.map((cat) => (
-                <div key={cat} className="flex items-center gap-2">
-                  <label
-                    className="text-xs text-[var(--text2)] w-[100px] shrink-0 pl-2"
-                    htmlFor={`price-${menuId}-${item.id}-${cat}`}
-                  >
-                    {cat}
-                  </label>
-                  <div
-                    className="flex items-center gap-1 rounded-[var(--r-xs)] bg-white px-2 py-1 border border-[var(--border)]"
-                    data-testid={`category-price-wrapper-${item.id}-${cat}`}
-                  >
-                    <span className="text-xs text-[var(--text2)]">$</span>
-                    <input
-                      id={`price-${menuId}-${item.id}-${cat}`}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={categoryPriceStrs[cat] ?? ''}
-                      onChange={(e) =>
-                        setCategoryPriceStrs((prev) => ({ ...prev, [cat]: e.target.value }))
-                      }
-                      onBlur={() => handleCategoryPriceBlur(cat)}
-                      placeholder={settings.price != null ? String(settings.price) : ''}
-                      data-testid={`category-price-input-${item.id}-${cat}`}
-                      className="border-none outline-none text-xs w-[72px] bg-transparent text-[var(--text)]"
-                    />
-                  </div>
-                </div>
-              ))}
+
+            {/* Divider */}
+            <div className="w-px h-4 bg-[var(--border)] shrink-0" />
+
+            {/* Boost dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="section-header !mb-0 shrink-0">Boost</span>
+              <select
+                value={boostLabel ?? ''}
+                onChange={(e) => handleBoostChange(e.target.value || null)}
+                data-testid={`boost-select-${item.id}`}
+                className="text-[11px] font-semibold border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
+              >
+                <option value="">None</option>
+                {BOOST_LABELS.map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
             </div>
-          )}
 
-          {/* Boost level */}
-          <div className="flex items-center gap-2">
-            <span className="section-header !mb-0 w-[100px] shrink-0">Boost level</span>
-            <div className="flex gap-1">
-              {([null, ...BOOST_LABELS] as const).map((level) => {
-                const isActive = level === null ? boostLabel === null : boostLabel === level;
-                return (
-                  <button
-                    key={level ?? 'none'}
-                    type="button"
-                    onClick={() => handleBoostChange(level)}
-                    data-testid={`boost-btn-${level ?? 'none'}-${item.id}`}
-                    className={`text-[11px] font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer ${
-                      isActive
-                        ? 'border-2 border-[var(--blue)] bg-[var(--blue-bg)] text-[var(--blue)]'
-                        : 'border border-[var(--border)] bg-white text-[var(--text2)]'
-                    }`}
-                  >
-                    {level ?? 'None'}
-                  </button>
-                );
-              })}
+            {/* Divider */}
+            <div className="w-px h-4 bg-[var(--border)] shrink-0" />
+
+            {/* Chef's special */}
+            <div className="flex items-center gap-1.5">
+              <span className="section-header !mb-0 shrink-0">Chef's Special</span>
+              <button
+                type="button"
+                onClick={handleChefsSpecial}
+                data-testid={`chefs-special-toggle-${item.id}`}
+                aria-pressed={chefsSpecial}
+                className={`flex items-center gap-1 text-[11px] font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer ${
+                  chefsSpecial
+                    ? 'border-2 border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border border-[var(--border)] bg-white text-[var(--text2)]'
+                }`}
+              >
+                <Star size={11} fill={chefsSpecial ? '#f59e0b' : 'none'} color={chefsSpecial ? '#f59e0b' : 'currentColor'} />
+                {chefsSpecial ? 'Featured' : 'Not featured'}
+              </button>
             </div>
-          </div>
 
-          {/* Chef's special */}
-          <div className="flex items-center gap-2">
-            <span className="section-header !mb-0 w-[100px] shrink-0">Chef's special</span>
-            <button
-              type="button"
-              onClick={handleChefsSpecial}
-              data-testid={`chefs-special-toggle-${item.id}`}
-              aria-pressed={chefsSpecial}
-              className={`flex items-center gap-1.5 text-[11px] font-semibold py-0.5 px-2.5 rounded-[var(--r-xs)] cursor-pointer ${
-                chefsSpecial
-                  ? 'border-2 border-amber-400 bg-amber-50 text-amber-700'
-                  : 'border border-[var(--border)] bg-white text-[var(--text2)]'
-              }`}
-            >
-              <Star size={11} fill={chefsSpecial ? '#f59e0b' : 'none'} color={chefsSpecial ? '#f59e0b' : 'currentColor'} />
-              {chefsSpecial ? 'Featured' : 'Not featured'}
-            </button>
-          </div>
+            {/* Divider */}
+            <div className="w-px h-4 bg-[var(--border)] shrink-0" />
 
-          {/* Portion type */}
-          <div className="flex items-start gap-2">
-            <span className="section-header !mb-0 w-[100px] shrink-0 pt-0.5">Portion</span>
-            <div className="flex flex-col gap-1.5">
+            {/* Portion */}
+            <div className="flex items-center gap-1.5">
+              <span className="section-header !mb-0 shrink-0">Portion</span>
               <div className="flex gap-1">
                 {(['single', 'shared'] as const).map((t) => (
                   <button
@@ -614,8 +676,7 @@ function MenuItemRow({
                 ))}
               </div>
               {portionType === 'shared' && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-[var(--text2)]">Serves</span>
+                <div className="flex items-center gap-1">
                   <input
                     type="number"
                     min="2"
@@ -623,19 +684,18 @@ function MenuItemRow({
                     value={portionServes}
                     onChange={(e) => setPortionServes(e.target.value)}
                     onBlur={handlePortionServesBlur}
-                    placeholder="e.g. 4"
+                    placeholder="4"
                     data-testid={`portion-serves-input-${item.id}`}
-                    className="border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 text-xs w-14 outline-none"
+                    className="border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-1.5 text-xs w-10 outline-none"
                   />
-                  <span className="text-[11px] text-[var(--text2)]">guests</span>
+                  <span className="text-[10px] text-[var(--text2)]">guests</span>
                 </div>
               )}
             </div>
           </div>
 
-          </div>
-          {/* Right column / mobile bottom: Sides + Add-ons */}
-          <div className={`flex-1 min-w-0 ${isMobile ? 'w-full' : ''}`}>
+          {/* ── Sides | Addons | Recommendations panels ─────────────────── */}
+          <div className="w-full">
             {isMobile ? (
               <MobileItemModifierPicker
                 parent={item}
@@ -798,7 +858,20 @@ function CategoryBucket({
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
-                onRemove={() => onRemoveItem(item.id, menuId)}
+                onRemove={() => {
+                  const s = getSettings(menuId, item.id);
+                  const cats = s.canonical_categories ?? [];
+                  if (cats.length > 1) {
+                    // Item spans multiple categories on this menu — remove only
+                    // this category rather than the whole menu placement.
+                    void onUpdateSettings(menuId, item.id, {
+                      canonical_categories: cats.filter((c) => c !== category),
+                    });
+                  } else {
+                    // Last (or only) category — remove from menu entirely.
+                    onRemoveItem(item.id, menuId);
+                  }
+                }}
                 onEdit={() => onEditItem(item.id)}
               />
             ))
@@ -881,9 +954,9 @@ export default function MenuBuilder({
   const activeMenuIndex = activeMenu ? menus.findIndex((m) => m.id === activeMenu.id) : 0;
   const activeColor = colorMap(activeMenuIndex);
 
-  // Buckets to render: all 8 canonical + Uncategorised, but only non-empty unless dragging
+  // Buckets to render: canonical categories only
   const activeAssignments = activeMenu ? (assignments[activeMenu.id] ?? {}) : {};
-  const ALL_BUCKETS = [...CANONICAL_CATEGORIES, 'Uncategorised'] as const;
+  const ALL_BUCKETS = [...CANONICAL_CATEGORIES] as const;
   // Always show all canonical categories, even empty ones
   const visibleBuckets = ALL_BUCKETS;
 

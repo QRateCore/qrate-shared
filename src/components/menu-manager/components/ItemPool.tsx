@@ -15,13 +15,9 @@ interface ItemPoolProps {
   filtered: MenuItemDisplay[];
   selected: Set<string>;
   search: string;
-  filterTag: string;
-  /**
-   * Raw crawler-extracted categories for the dropdown (NOT canonical buckets).
-   * Sorted alphabetically. The MenuBuilder still uses canonical categories for
-   * its bucket headers.
-   */
-  rawCategories: string[];
+  filterTags: string[];
+  /** Canonical categories present in the current item set — drives the category pill filter. */
+  canonicalCategories: string[];
   dragOver: 'pool' | null;
   dragging: DragState | null;
   editItemId: string | null;
@@ -260,8 +256,8 @@ export default function ItemPool({
   filtered,
   selected,
   search,
-  filterTag,
-  rawCategories,
+  filterTags,
+  canonicalCategories,
   dragOver,
   dragging,
   editItemId,
@@ -372,29 +368,61 @@ export default function ItemPool({
 
       {/* Search + filter */}
       <div style={{ padding: '10px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Category subsection */}
-        <span style={{ fontSize: 11, color: 'var(--text2)' }}>List of Categories identified from your Menus:</span>
-        <select
-          value={filterTag}
-          onChange={(e) => onFilterChange(e.target.value)}
+        {/* Category filter pills — canonical categories only */}
+        <div
           data-testid="item-pool-category-filter"
           aria-label="Filter by category"
-          style={{
-            fontSize: 12,
-            color: 'var(--text)',
-            background: '#f6f6f6',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-xs)',
-            padding: '6px 10px',
-            cursor: 'pointer',
-            width: '100%',
-          }}
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}
         >
-          <option value="All">All categories</option>
-          {rawCategories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          <button
+            type="button"
+            onClick={() => onFilterChange('All')}
+            data-testid="item-pool-category-filter-all"
+            aria-pressed={filterTags.length === 0}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 20,
+              border: filterTags.length === 0 ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
+              background: filterTags.length === 0 ? 'rgba(255,107,43,0.08)' : 'var(--white)',
+              color: filterTags.length === 0 ? 'var(--brand-s)' : 'var(--text2)',
+              fontSize: 11,
+              fontWeight: filterTags.length === 0 ? 700 : 400,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              lineHeight: 1.4,
+              transition: 'all 0.12s ease',
+            }}
+          >
+            All
+          </button>
+          {canonicalCategories.map((c) => {
+            const active = filterTags.includes(c);
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onFilterChange(c)}
+                data-testid={`item-pool-category-filter-${c.toLowerCase()}`}
+                aria-pressed={active}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 20,
+                  border: active ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
+                  background: active ? 'rgba(255,107,43,0.08)' : 'var(--white)',
+                  color: active ? 'var(--brand-s)' : 'var(--text2)',
+                  fontSize: 11,
+                  fontWeight: active ? 700 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  lineHeight: 1.4,
+                  transition: 'all 0.12s ease',
+                }}
+              >
+                {c}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Search input */}
         <div
@@ -745,7 +773,7 @@ export default function ItemPool({
               color: 'var(--text2)',
             }}
           >
-            {search || filterTag !== 'All' ? 'No items match' : 'No items yet'}
+            {search || filterTags.length > 0 ? 'No items match' : 'No items yet'}
           </div>
         ) : (
           filtered.map((item) => (

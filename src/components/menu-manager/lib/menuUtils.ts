@@ -40,8 +40,8 @@ export function getMenuColor(index: number): MenuColor {
 }
 
 /** Map raw category string to the nearest canonical category (case-insensitive prefix). */
-export function toCanonical(raw: string | null | undefined): CanonicalCategory | 'Uncategorised' {
-  if (!raw) return 'Uncategorised';
+export function toCanonical(raw: string | null | undefined): CanonicalCategory | null {
+  if (!raw) return null;
   const lower = raw.toLowerCase().trim();
   for (const canon of CANONICAL_CATEGORIES) {
     if (lower === canon.toLowerCase() || lower.startsWith(canon.toLowerCase())) {
@@ -67,7 +67,7 @@ export function toCanonical(raw: string | null | undefined): CanonicalCategory |
     lower.includes('chicken') || lower.includes('meat') ||
     lower.includes('grill') || lower.includes('roast')
   ) return 'Entrees';
-  return 'Uncategorised';
+  return null;
 }
 
 /** Build the assignments map: {menuId: {category: itemId[]}} from items' menu_associations. */
@@ -78,14 +78,15 @@ export function buildAssignments(
   const result: Record<string, Record<string, string[]>> = {};
   for (const menu of menus) {
     result[menu.id] = Object.fromEntries(
-      [...CANONICAL_CATEGORIES, 'Uncategorised'].map((c) => [c, [] as string[]]),
+      CANONICAL_CATEGORIES.map((c) => [c, [] as string[]]),
     );
   }
   for (const item of items) {
     for (const assoc of item.menu_associations ?? []) {
+      const rawCanon = toCanonical(assoc.category_name ?? item.category);
       const cats = assoc.canonical_categories?.length
         ? assoc.canonical_categories
-        : [toCanonical(assoc.category_name ?? item.category)];
+        : rawCanon ? [rawCanon] : [];
       for (const canon of cats) {
         if (result[assoc.menu_id]?.[canon] !== undefined) {
           if (!result[assoc.menu_id][canon].includes(item.id)) {
@@ -113,6 +114,10 @@ export function buildJunctionSettings(
         portion_serves: assoc.portion_serves ?? item.portion_serves ?? null,
         category_name: assoc.category_name ?? undefined,
         canonical_categories: assoc.canonical_categories ?? [],
+        category_prices: assoc.category_prices ?? {},
+        category_boost_levels: assoc.category_boost_levels ?? {},
+        category_chefs_specials: assoc.category_chefs_specials ?? {},
+        category_portions: assoc.category_portions ?? {},
       };
     }
   }

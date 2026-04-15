@@ -7,6 +7,7 @@ import {
   buildJunctionSettings,
   getMenuColor,
   CANONICAL_CATEGORIES,
+  toCanonical,
   type MenuColor,
 } from './lib/menuUtils';
 import ItemPool from './components/ItemPool';
@@ -111,7 +112,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [activeMenuId, setActiveMenuId] = useState<string | null>(
     initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null,
   );
-  const [filterTag, setFilterTag] = useState<string>('All');
+  const [filterTags, setFilterTags] = useState<string[]>([]);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons'>('dishes');
   const [search, setSearch] = useState('');
@@ -173,10 +174,36 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [junctionSettings],
   );
 
-  // Keep assignments + junctionSettings in sync when items/menus change
+  // Keep assignments + junctionSettings in sync when items/menus change.
+  // junctionSettings uses a MERGE strategy — prev wins for existing keys so that
+  // optimistic per-category updates (category_boost_levels, category_chefs_specials,
+  // category_portions) survive any setItems call triggered by another item's API
+  // response. The only exception is canonical_categories, which must reflect
+  // drag-drop changes written back to items[].menu_associations.
   useEffect(() => {
     setAssignments(buildAssignments(items, menus));
-    setJunctionSettings(buildJunctionSettings(items));
+    setJunctionSettings((prev) => {
+      const fresh = buildJunctionSettings(items);
+      const merged: Record<string, MenuItemJunctionSettings> = {};
+      const allKeys = new Set([...Object.keys(fresh), ...Object.keys(prev)]);
+      for (const key of allKeys) {
+        const f = fresh[key];
+        const p = prev[key];
+        if (!f) {
+          // Association removed from items — keep stale prev entry (won't be rendered)
+          merged[key] = p;
+        } else if (!p) {
+          // New association (e.g. drag-drop just added item to menu) — use fresh
+          merged[key] = f;
+        } else {
+          // Both exist: prev wins to preserve optimistic updates and per-category data
+          // not yet backed by the backend. canonical_categories must come from fresh
+          // so drag-drop category additions are reflected immediately.
+          merged[key] = { ...p, canonical_categories: f.canonical_categories ?? p.canonical_categories ?? [] };
+        }
+      }
+      return merged;
+    });
   }, [items, menus]);
 
   useEffect(() => {
@@ -194,17 +221,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // ── Filtered item list for ItemPool ──────────────────────────────────────
 
-  // Raw (crawler-extracted) categories for the ItemPool dropdown.
-  // Sorted alphabetically. The MenuBuilder still uses canonical buckets —
-  // this list only drives the pool filter UI.
-  const rawCategories = useMemo(() => {
-    const set = new Set<string>();
-    for (const i of items) {
-      const raw = (i.category ?? '').trim();
-      if (raw) set.add(raw);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
+  // Always expose all 8 canonical categories as filter options — owners should
+  // always see the full canonical taxonomy, not just categories present in items.
+  const canonicalCategories = useMemo(() => [...CANONICAL_CATEGORIES], []);
 
   const filtered = useMemo(() => {
     // When in 'addons' mode, show only addon-type items; otherwise show only dishes.
@@ -217,14 +236,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         i.name.toLowerCase().includes(q) || (i.description ?? '').toLowerCase().includes(q),
       );
     }
-    if (filterTag !== 'All') {
-      // Match against the raw crawler-extracted category, not the canonical bucket.
-      result = result.filter((i) => (i.category ?? '').trim() === filterTag);
+    if (filterTags.length > 0) {
+      // Match via raw→canonical mapping OR the AI-pipeline canonical_category field
+      result = result.filter((i) => {
+        const canon = toCanonical(i.category);
+        return filterTags.some((tag) => canon === tag || (i.canonical_category != null && i.canonical_category === tag));
+      });
     }
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
     return result;
-  }, [items, search, filterTag, visibilityFilter, itemTypeFilter]);
+  }, [items, search, filterTags, visibilityFilter, itemTypeFilter]);
 
   // ── Select handlers ───────────────────────────────────────────────────────
 
@@ -293,11 +315,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // Tracked filter setters — fire one metric per filter change.
   const handleCategoryFilterChange = useCallback(
     (tag: string) => {
-      trackAction('menu.manager.categoryFilter', {
-        restaurantId,
-        metadata: { tag },
+      setFilterTags((prev) => {
+        const next = tag === 'All' ? [] : prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag];
+        trackAction('menu.manager.categoryFilter', { restaurantId, metadata: { tags: next } });
+        return next;
       });
-      setFilterTag(tag);
     },
     [restaurantId, trackAction],
   );
@@ -543,7 +565,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               menu_associations: (i.menu_associations ?? []).map((a) => {
                 if (a.menu_id !== menuId) return a;
                 const existing = a.canonical_categories ?? [];
-                const updated = cat === 'Uncategorised' || existing.includes(cat)
+                const updated = existing.includes(cat)
                   ? existing
                   : [...existing, cat];
                 return { ...a, canonical_categories: updated };
@@ -557,7 +579,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             try {
               const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
               const existing = assoc?.canonical_categories ?? [];
-              if (cat !== 'Uncategorised' && !existing.includes(cat)) {
+              if (!existing.includes(cat)) {
                 const updated = [...existing, cat];
                 const associations = await service.updateMenuItemInMenu(item.id, menuId, { canonical_categories: updated });
                 setItems((prev) =>
@@ -585,7 +607,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
       // ── Case B: assigning to this menu (from pool or from a different menu) ─
       const prevItems = items;
-      const initialCats = cat === 'Uncategorised' ? [] : [cat];
+      const initialCats = [cat];
       const notInMenuIds = new Set(notInMenu.map((i) => i.id));
       // Optimistic batch: add association for items not yet in the menu
       setItems((prev) =>
@@ -708,7 +730,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       // Determine the parent's canonical category on the active menu
       const parentAssoc = parent.menu_associations?.find((a) => a.menu_id === activeMenuId);
       const parentCats = parentAssoc?.canonical_categories ?? [];
-      const targetCat = parentCats[0] ?? 'Uncategorised';
+      const targetCat = parentCats[0] ?? 'Entrees';
 
       const activeMenu = menus.find((m) => m.id === activeMenuId);
       if (!activeMenu) return;
@@ -724,7 +746,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         if (alreadyOnMenu) continue;
 
         // Auto-add to active menu under parent's canonical category
-        const initialCats = targetCat === 'Uncategorised' ? [] : [targetCat];
+        const initialCats = [targetCat];
         const optimisticAssoc = {
           menu_id: activeMenuId,
           menu_name: activeMenu.name,
@@ -907,7 +929,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const created = await service.addMenuItem(restaurantId, {
         name: 'New item',
         price: 0,
-        category: 'Uncategorised',
+        category: '',
       });
       const display: MenuItemDisplay = {
         id: created.id,
@@ -1125,6 +1147,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onComplete={handleEditComplete}
             onNavigateToMenu={handleNavigateToMenu}
             onDishAddonsChange={handleDishAddonsChanged}
+            isNewItem={newlyCreatedItemIdRef.current === editItemId}
           />
         ) : null;
       })()}
@@ -1180,8 +1203,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             filtered,
             selected,
             search,
-            filterTag,
-            rawCategories,
+            filterTags,
+            canonicalCategories,
             dragOver: dragOver === 'pool' ? 'pool' : null,
             dragging,
             editItemId,
@@ -1255,8 +1278,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             filtered={filtered}
             selected={selected}
             search={search}
-            filterTag={filterTag}
-            rawCategories={rawCategories}
+            filterTags={filterTags}
+            canonicalCategories={canonicalCategories}
             dragOver={dragOver === 'pool' ? 'pool' : null}
             dragging={dragging}
             editItemId={editItemId}
