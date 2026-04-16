@@ -2,11 +2,19 @@
 /**
  * Per-item Sides + Recommendations editor — rendered in the expanded dish row of the MenuBuilder.
  *
- * Two drop zones:
- *   - Sides (left)            — free or low-cost included extras; price_override defaults to null = "Free"
- *   - Recommendations (right) — complementary paired dishes; price pre-filled from base price
+ * Two modes:
  *
- * Add-ons are managed per item in the Edit modal (Add-ons tab), not per-menu here.
+ *   Legacy (enableAndOrSplit=false) — single Sides zone with AND/OR dropdown:
+ *     - Sides (left)            — free or low-cost included extras; price_override defaults to null = "Free"
+ *     - Add-ons (middle)        — ingredient-level extras
+ *     - Recommendations (right) — complementary paired dishes; price pre-filled from base price
+ *
+ *   Split (enableAndOrSplit=true, STR-342) — two stacked Sides zones, no AND/OR dropdown:
+ *     - Included (grey)         — always free-with-order (side_type='and')
+ *     - Choice   (amber)        — one-of selection (side_type='or')
+ *     - Add-ons                 — unchanged
+ *     - Recommendations         — unchanged
+ *     Cross-group duplicate between Included and Choice is rejected with a toast.
  *
  * Persistence: PUT /owner/menu-items/{itemId}/modifiers via owner-restaurant-service.
  * State is lifted to the parent so optimistic updates flow through items[].
@@ -22,6 +30,21 @@ export interface ModifierEntry {
   thumbnail_url?: string | null;
 }
 
+/**
+ * Payload emitted by the editor. When `enableAndOrSplit` is ON the parent
+ * should persist `sides_and` + `sides_or` and ignore `sides`/`sides_selection_mode`.
+ * When OFF the parent should persist `sides` + `sides_selection_mode` and ignore
+ * the split fields.
+ */
+export interface ModifierUpdatePayload {
+  sides: ModifierEntry[];
+  sides_and?: ModifierEntry[];
+  sides_or?: ModifierEntry[];
+  recommendations: ModifierEntry[];
+  sides_selection_mode: 'and' | 'or';
+  addons?: ModifierEntry[];
+}
+
 interface Props {
   parent: MenuItemDisplay;
   itemsById: Map<string, MenuItemDisplay>;
@@ -32,15 +55,7 @@ interface Props {
    * has no active menu (edge case — consumers should treat as no-prompt path).
    */
   currentMenuId: string | null;
-  onUpdate: (
-    parentId: string,
-    next: {
-      sides: ModifierEntry[];
-      recommendations: ModifierEntry[];
-      sides_selection_mode: 'and' | 'or';
-      addons?: ModifierEntry[];
-    },
-  ) => Promise<void>;
+  onUpdate: (parentId: string, next: ModifierUpdatePayload) => Promise<void>;
   /**
    * Optional gate called before a dropped item is added to the Recommendations
    * zone. The parent inspects the item and decides whether the drop should
@@ -53,6 +68,21 @@ interface Props {
    * backward-compatible behavior).
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /**
+   * When true, render two stacked Sides zones (Included + Choice) driven by
+   * `parent.sides_and` / `parent.sides_or`. When false (default), render the
+   * legacy single Sides zone with AND/OR dropdown driven by `parent.sides` /
+   * `parent.sides_selection_mode`. Flag source: `features.sides_and_or_split`
+   * on the restaurant. STR-342.
+   */
+  enableAndOrSplit?: boolean;
+  /**
+   * Called when a drag-drop is rejected because the item is already in the
+   * other sides group (Included ↔ Choice). Consumers should surface a toast:
+   * "Already in [Included/Choice] — remove first". Only fires when
+   * `enableAndOrSplit` is true.
+   */
+  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
 }
 
 export default function ItemModifierZones({
@@ -61,8 +91,17 @@ export default function ItemModifierZones({
   currentMenuId,
   onUpdate,
   onConfirmRecommendationDrop,
+  enableAndOrSplit = false,
+  onCrossGroupDuplicate,
 }: Props) {
+  // ── Legacy (single-zone) state ──────────────────────────────────────────────
   const sides: ModifierEntry[] = (parent.sides ?? []) as ModifierEntry[];
+  const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
+
+  // ── Split (2-box) state ──────────────────────────────────────────────────────
+  const sidesAnd: ModifierEntry[] = (parent.sides_and ?? []) as ModifierEntry[];
+  const sidesOr: ModifierEntry[] = (parent.sides_or ?? []) as ModifierEntry[];
+
   const recommendations: ModifierEntry[] = ((parent.recommendations ?? []) as ModifierEntry[]).map((r) => ({
     ...r,
     price_override: r.price_override ?? 0,
@@ -70,13 +109,16 @@ export default function ItemModifierZones({
   const addons: ModifierEntry[] = ((parent.addons ?? []) as Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null; status?: string }>)
     .filter((a) => (a.status === 'approved' || a.status === undefined) && itemsById.has(a.menu_item_id))
     .map((a) => ({ menu_item_id: a.menu_item_id, name: a.name, price_override: a.price_override ?? null, thumbnail_url: a.thumbnail_url ?? null }));
-  const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
 
   const [sidesDragOver, setSidesDragOver] = useState(false);
+  const [sidesAndDragOver, setSidesAndDragOver] = useState(false);
+  const [sidesOrDragOver, setSidesOrDragOver] = useState(false);
   const [addonsDragOver, setAddonsDragOver] = useState(false);
   const [recommendationsDragOver, setRecommendationsDragOver] = useState(false);
 
   const sideIds = new Set(sides.map((s) => s.menu_item_id));
+  const sidesAndIds = new Set(sidesAnd.map((s) => s.menu_item_id));
+  const sidesOrIds = new Set(sidesOr.map((s) => s.menu_item_id));
   const addonIds = new Set(addons.map((a) => a.menu_item_id));
   const recommendationIds = new Set(recommendations.map((r) => r.menu_item_id));
 
@@ -101,18 +143,22 @@ export default function ItemModifierZones({
     return false;
   }
 
-  function emit(
-    nextSides: ModifierEntry[],
-    nextRecommendations: ModifierEntry[],
-    nextMode: 'and' | 'or' = sidesSelectionMode,
-    nextAddons: ModifierEntry[] = addons,
-  ) {
-    void onUpdate(parent.id, {
-      sides: nextSides,
-      recommendations: nextRecommendations,
-      sides_selection_mode: nextMode,
-      addons: nextAddons,
-    });
+  /**
+   * Emit a partial update. The caller provides the fields that changed; the
+   * rest default to the current parent state. The payload always includes
+   * both legacy and split fields so the parent can decide which shape to
+   * persist based on the flag. STR-342.
+   */
+  function emit(overrides: Partial<ModifierUpdatePayload>) {
+    const payload: ModifierUpdatePayload = {
+      sides: overrides.sides ?? sides,
+      sides_and: overrides.sides_and ?? sidesAnd,
+      sides_or: overrides.sides_or ?? sidesOr,
+      recommendations: overrides.recommendations ?? recommendations,
+      sides_selection_mode: overrides.sides_selection_mode ?? sidesSelectionMode,
+      addons: overrides.addons ?? addons,
+    };
+    void onUpdate(parent.id, payload);
   }
 
   function parseDroppedId(raw: string): string {
@@ -124,7 +170,7 @@ export default function ItemModifierZones({
     }
   }
 
-  // ── Sides handlers ───────────────────────────────────────────────────────────
+  // ── Legacy Sides handlers ────────────────────────────────────────────────────
 
   function handleDropSide(e: React.DragEvent) {
     e.preventDefault();
@@ -141,21 +187,73 @@ export default function ItemModifierZones({
       price_override: null,
       thumbnail_url: dropped.thumbnail_url ?? null,
     };
-    emit([...sides, next], recommendations);
+    emit({ sides: [...sides, next] });
   }
 
   function removeSide(id: string) {
-    emit(sides.filter((s) => s.menu_item_id !== id), recommendations);
+    emit({ sides: sides.filter((s) => s.menu_item_id !== id) });
   }
 
-  function updateSidePrice(id: string, raw: string) {
-    const trimmed = raw.trim();
-    const val = trimmed === '' ? null : parseFloat(trimmed);
-    const safe = trimmed !== '' && Number.isNaN(val as number) ? null : val;
-    emit(
-      sides.map((s) => (s.menu_item_id === id ? { ...s, price_override: safe } : s)),
-      recommendations,
-    );
+  function changeSelectionMode(mode: 'and' | 'or') {
+    emit({ sides_selection_mode: mode });
+  }
+
+  // ── Split Sides (Included = AND) handlers ────────────────────────────────────
+
+  function handleDropSidesAnd(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSidesAndDragOver(false);
+    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
+    if (!droppedId || droppedId === parent.id) return;
+    // Already in this group → silent no-op
+    if (sidesAndIds.has(droppedId)) return;
+    // Cross-group duplicate — surface to parent for toast
+    if (sidesOrIds.has(droppedId)) {
+      onCrossGroupDuplicate?.('choice');
+      return;
+    }
+    const dropped = itemsById.get(droppedId);
+    if (!dropped || dropped.item_type === 'addon') return;
+    const next: ModifierEntry = {
+      menu_item_id: dropped.id,
+      name: dropped.name,
+      price_override: null,
+      thumbnail_url: dropped.thumbnail_url ?? null,
+    };
+    emit({ sides_and: [...sidesAnd, next] });
+  }
+
+  function removeSidesAnd(id: string) {
+    emit({ sides_and: sidesAnd.filter((s) => s.menu_item_id !== id) });
+  }
+
+  // ── Split Sides (Choice = OR) handlers ───────────────────────────────────────
+
+  function handleDropSidesOr(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSidesOrDragOver(false);
+    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
+    if (!droppedId || droppedId === parent.id) return;
+    if (sidesOrIds.has(droppedId)) return;
+    if (sidesAndIds.has(droppedId)) {
+      onCrossGroupDuplicate?.('included');
+      return;
+    }
+    const dropped = itemsById.get(droppedId);
+    if (!dropped || dropped.item_type === 'addon') return;
+    const next: ModifierEntry = {
+      menu_item_id: dropped.id,
+      name: dropped.name,
+      price_override: null,
+      thumbnail_url: dropped.thumbnail_url ?? null,
+    };
+    emit({ sides_or: [...sidesOr, next] });
+  }
+
+  function removeSidesOr(id: string) {
+    emit({ sides_or: sidesOr.filter((s) => s.menu_item_id !== id) });
   }
 
   // ── Addons handlers ──────────────────────────────────────────────────────────
@@ -175,11 +273,11 @@ export default function ItemModifierZones({
       price_override: dropped.price ?? null,
       thumbnail_url: dropped.thumbnail_url ?? null,
     };
-    emit(sides, recommendations, sidesSelectionMode, [...addons, next]);
+    emit({ addons: [...addons, next] });
   }
 
   function removeAddon(id: string) {
-    emit(sides, recommendations, sidesSelectionMode, addons.filter((a) => a.menu_item_id !== id));
+    emit({ addons: addons.filter((a) => a.menu_item_id !== id) });
   }
 
   // ── Recommendations handlers ─────────────────────────────────────────────────
@@ -208,97 +306,150 @@ export default function ItemModifierZones({
       price_override: dropped.price ?? 0,
       thumbnail_url: dropped.thumbnail_url ?? null,
     };
-    emit(sides, [...recommendations, next]);
+    emit({ recommendations: [...recommendations, next] });
   }
 
   function removeRecommendation(id: string) {
-    emit(sides, recommendations.filter((r) => r.menu_item_id !== id));
+    emit({ recommendations: recommendations.filter((r) => r.menu_item_id !== id) });
   }
 
-  function updateRecommendationPrice(id: string, raw: string) {
-    const trimmed = raw.trim();
-    const val = trimmed === '' ? 0 : parseFloat(trimmed);
-    const safe = Number.isNaN(val) ? 0 : val;
-    emit(
-      sides,
-      recommendations.map((r) => (r.menu_item_id === id ? { ...r, price_override: safe } : r)),
+  // ── Render helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Render a single card for a sides/addons/recommendations entry. Shared
+   * across all zones to keep markup consistent.
+   */
+  function renderCard(entry: ModifierEntry, onRemove: () => void, testIdPrefix: string) {
+    return (
+      <div key={entry.menu_item_id} className="modifier-card">
+        <div className="modifier-card-thumb">
+          {entry.thumbnail_url ? (
+            <img src={entry.thumbnail_url} alt={entry.name} draggable={false} loading="lazy" width={60} height={60} />
+          ) : (
+            <span style={{ fontSize: 18 }}>🍽</span>
+          )}
+        </div>
+        <div className="modifier-card-body">
+          <div className="modifier-card-name">{entry.name}</div>
+        </div>
+        <button
+          type="button"
+          className="modifier-card-delete"
+          onClick={onRemove}
+          data-testid={`${testIdPrefix}-${parent.id}-${entry.menu_item_id}`}
+          title="Remove"
+        >
+          <X size={11} />
+        </button>
+      </div>
     );
   }
 
-  function changeSelectionMode(mode: 'and' | 'or') {
-    emit(sides, recommendations, mode);
-  }
+  // ── Sides column (either legacy single zone OR split 2-box) ─────────────────
+
+  const sidesColumn = enableAndOrSplit ? (
+    <div className="modifier-section" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Included (AND) zone */}
+      <div>
+        <div className="modifier-section-header modifier-section-header--sides">
+          <span className="modifier-section-title">Included</span>
+          {sidesAnd.length > 0 && <span className="modifier-section-count">{sidesAnd.length}</span>}
+        </div>
+        <p className="modifier-section-hint">All of these come with the dish (free of charge)</p>
+        <div
+          data-testid={`sides-and-drop-zone-${parent.id}`}
+          className={`modifier-drop-zone${sidesAndDragOver ? ' drag-over' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setSidesAndDragOver(true); }}
+          onDragLeave={() => setSidesAndDragOver(false)}
+          onDrop={handleDropSidesAnd}
+        >
+          {sidesAnd.length === 0 ? (
+            <div className="modifier-drop-zone-empty">Drop included sides here</div>
+          ) : (
+            sidesAnd.map((side) => renderCard(side, () => removeSidesAnd(side.menu_item_id), 'remove-sides-and'))
+          )}
+        </div>
+      </div>
+
+      {/* Choice (OR) zone — amber tint */}
+      <div>
+        <div
+          className="modifier-section-header modifier-section-header--sides"
+          style={{ background: '#fef3c7', color: '#92400e' }}
+        >
+          <span className="modifier-section-title">Choice</span>
+          {sidesOr.length > 0 && <span className="modifier-section-count">{sidesOr.length}</span>}
+        </div>
+        <p className="modifier-section-hint">Patron picks one of these (free of charge)</p>
+        <div
+          data-testid={`sides-or-drop-zone-${parent.id}`}
+          className={`modifier-drop-zone${sidesOrDragOver ? ' drag-over' : ''}`}
+          style={sidesOrDragOver ? { borderColor: '#f59e0b', background: '#fffbeb' } : undefined}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setSidesOrDragOver(true); }}
+          onDragLeave={() => setSidesOrDragOver(false)}
+          onDrop={handleDropSidesOr}
+        >
+          {sidesOr.length === 0 ? (
+            <div className="modifier-drop-zone-empty">Drop choice sides here</div>
+          ) : (
+            sidesOr.map((side) => renderCard(side, () => removeSidesOr(side.menu_item_id), 'remove-sides-or'))
+          )}
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>
+      <div className="modifier-section-header modifier-section-header--sides">
+        <span className="modifier-section-title">Sides</span>
+        <select
+          value={sidesSelectionMode}
+          onChange={(e) => changeSelectionMode(e.target.value as 'and' | 'or')}
+          data-testid={`sides-selection-mode-${parent.id}`}
+          style={{
+            marginLeft: 8,
+            padding: '2px 6px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 6,
+            border: '1px solid var(--border)',
+            background: sidesSelectionMode === 'or' ? '#fef3c7' : 'var(--bg2)',
+            color: sidesSelectionMode === 'or' ? '#92400e' : 'var(--text2)',
+            cursor: 'pointer',
+          }}
+        >
+          <option value="and">AND</option>
+          <option value="or">OR</option>
+        </select>
+        {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
+      </div>
+      <p className="modifier-section-hint">
+        {sidesSelectionMode === 'or' ? 'Patron can pick One side that\'s included (Free of Cost)' : 'Patron can pick Multiple sides that are included (Free of Cost)'}
+      </p>
+      <div
+        data-testid={`sides-drop-zone-${parent.id}`}
+        className={`modifier-drop-zone${sidesDragOver ? ' drag-over' : ''}`}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setSidesDragOver(true); }}
+        onDragLeave={() => setSidesDragOver(false)}
+        onDrop={handleDropSide}
+      >
+        {sides.length === 0 ? (
+          <div className="modifier-drop-zone-empty">Drop items here</div>
+        ) : (
+          sides.map((side) => renderCard(side, () => removeSide(side.menu_item_id), 'remove-side'))
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div
       style={{ display: 'flex', gap: 10 }}
       data-testid={`modifier-zones-${parent.id}`}
+      data-split-enabled={enableAndOrSplit ? 'true' : 'false'}
       onDragOver={(e) => e.stopPropagation()}
     >
-      {/* ── Sides column ── */}
-      <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>
-        <div className="modifier-section-header modifier-section-header--sides">
-          <span className="modifier-section-title">Sides</span>
-          <select
-            value={sidesSelectionMode}
-            onChange={(e) => changeSelectionMode(e.target.value as 'and' | 'or')}
-            data-testid={`sides-selection-mode-${parent.id}`}
-            style={{
-              marginLeft: 8,
-              padding: '2px 6px',
-              fontSize: 11,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: sidesSelectionMode === 'or' ? '#fef3c7' : 'var(--bg2)',
-              color: sidesSelectionMode === 'or' ? '#92400e' : 'var(--text2)',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="and">AND</option>
-            <option value="or">OR</option>
-          </select>
-          {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
-        </div>
-        <p className="modifier-section-hint">
-          {sidesSelectionMode === 'or' ? 'Patron can pick One side that\'s included (Free of Cost)' : 'Patron can pick Multiple sides that are included (Free of Cost)'}
-        </p>
-        <div
-          data-testid={`sides-drop-zone-${parent.id}`}
-          className={`modifier-drop-zone${sidesDragOver ? ' drag-over' : ''}`}
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setSidesDragOver(true); }}
-          onDragLeave={() => setSidesDragOver(false)}
-          onDrop={handleDropSide}
-        >
-          {sides.length === 0 ? (
-            <div className="modifier-drop-zone-empty">Drop items here</div>
-          ) : (
-            sides.map((side) => (
-              <div key={side.menu_item_id} className="modifier-card">
-                <div className="modifier-card-thumb">
-                  {side.thumbnail_url ? (
-                    <img src={side.thumbnail_url} alt={side.name} draggable={false} loading="lazy" width={60} height={60} />
-                  ) : (
-                    <span style={{ fontSize: 18 }}>🍽</span>
-                  )}
-                </div>
-                <div className="modifier-card-body">
-                  <div className="modifier-card-name">{side.name}</div>
-                </div>
-                <button
-                  type="button"
-                  className="modifier-card-delete"
-                  onClick={() => removeSide(side.menu_item_id)}
-                  data-testid={`remove-side-${parent.id}-${side.menu_item_id}`}
-                  title="Remove"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      {/* ── Sides column (legacy OR split) ── */}
+      {sidesColumn}
 
       {/* ── Addons column ── */}
       <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>

@@ -6,17 +6,13 @@ import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { countApprovedAddons } from '../lib/addonHelpers';
 import type { DragState } from '../MenuManagerClient';
-import ItemModifierZones, { type ModifierEntry } from './ItemModifierZones';
+import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } from './ItemModifierZones';
 import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
 
-export interface ModifierUpdatePayload {
-  sides: ModifierEntry[];
-  recommendations: ModifierEntry[];
-  sides_selection_mode: 'and' | 'or';
-  addons?: ModifierEntry[];
-}
+export type { ModifierUpdatePayload };
+export type { ModifierEntry };
 
 // ── Attention rules ──────────────────────────────────────────────────────────
 // An item-in-menu "needs attention" when its displayed price would be empty —
@@ -61,6 +57,20 @@ interface MenuBuilderProps {
    * See `ItemModifierZones.onConfirmRecommendationDrop` for the contract.
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /**
+   * STR-342 feature flag. When true, the sides drop zone splits into two
+   * stacked zones (Included + Choice) and counters show "N included / M choice".
+   * When false/undefined, legacy single-drop-zone + AND/OR dropdown renders.
+   */
+  enableAndOrSplit?: boolean;
+  /**
+   * STR-342 cross-group duplicate callback. Fires when the owner drops an item
+   * onto one split-sides zone while the item already exists in the other group.
+   * Arg = the group the item is ALREADY in (so the consumer can show a toast
+   * like "Already in [Included/Choice] — remove first"). Only invoked when
+   * `enableAndOrSplit` is true.
+   */
+  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -115,6 +125,8 @@ function MenuItemRow({
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  enableAndOrSplit = false,
+  onCrossGroupDuplicate,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -128,6 +140,10 @@ function MenuItemRow({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /** STR-342 — feature-flag gated split Sides UI. See MenuBuilderProps. */
+  enableAndOrSplit?: boolean;
+  /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
+  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -393,7 +409,14 @@ function MenuItemRow({
   // Approved-only count — AI-suggested addons that the owner hasn't accepted
   // yet are excluded from the row badge so the number reflects the live menu.
   const approvedAddons = countApprovedAddons(item);
-  const sidesCount = item.sides?.length ?? 0;
+  // STR-342: when the split-Sides flag is ON, read split arrays directly so
+  // the two counters stay accurate even before the first save round-trips
+  // legacy `sides`. When flag is OFF, fall back to the combined legacy count.
+  const includedCount = item.sides_and?.length ?? 0;
+  const choiceCount = item.sides_or?.length ?? 0;
+  const sidesCount = enableAndOrSplit
+    ? includedCount + choiceCount
+    : item.sides?.length ?? 0;
   const recsCount = item.recommendations?.length ?? 0;
 
   const borderLeftColor = attention ? 'var(--red)' : 'transparent';
@@ -460,7 +483,14 @@ function MenuItemRow({
             {/* Mobile row 2 — modifier counters (sides, recs, addons) */}
             {(sidesCount > 0 || recsCount > 0 || approvedAddons > 0) && (
               <div className="flex items-center gap-1.5 pl-5 w-full">
-                <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+                {enableAndOrSplit ? (
+                  <>
+                    <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
+                    <ModifierCounter kind="side" count={choiceCount} itemId={`${item.id}-choice`} label="choice" />
+                  </>
+                ) : (
+                  <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+                )}
                 <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
                 <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
               </div>
@@ -488,7 +518,14 @@ function MenuItemRow({
 
             {/* Modifier counters — sides, recs, addons */}
             <div className="flex items-center gap-1 shrink-0 ml-1">
-              <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+              {enableAndOrSplit ? (
+                <>
+                  <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
+                  <ModifierCounter kind="side" count={choiceCount} itemId={`${item.id}-choice`} label="choice" />
+                </>
+              ) : (
+                <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
+              )}
               <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
               <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
             </div>
@@ -703,6 +740,7 @@ function MenuItemRow({
                 currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                enableAndOrSplit={enableAndOrSplit}
               />
             ) : (
               <ItemModifierZones
@@ -711,6 +749,8 @@ function MenuItemRow({
                 currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                enableAndOrSplit={enableAndOrSplit}
+                onCrossGroupDuplicate={onCrossGroupDuplicate}
               />
             )}
           </div>
@@ -734,6 +774,8 @@ function CategoryBucket({
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  enableAndOrSplit = false,
+  onCrossGroupDuplicate,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -754,6 +796,10 @@ function CategoryBucket({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /** STR-342 — feature-flag gated split Sides UI. See MenuBuilderProps. */
+  enableAndOrSplit?: boolean;
+  /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
+  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -856,6 +902,8 @@ function CategoryBucket({
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                enableAndOrSplit={enableAndOrSplit}
+                onCrossGroupDuplicate={onCrossGroupDuplicate}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => {
@@ -909,6 +957,8 @@ export default function MenuBuilder({
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  enableAndOrSplit = false,
+  onCrossGroupDuplicate,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -1138,6 +1188,8 @@ export default function MenuBuilder({
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                enableAndOrSplit={enableAndOrSplit}
+                onCrossGroupDuplicate={onCrossGroupDuplicate}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}
