@@ -296,13 +296,21 @@ export interface MenuItemDisplay {
   active?: boolean;
   /**
    * Per-item modifiers stored in dedicated join tables.
-   * `sides` — free or low-cost included extras (menu_item_sides table).
+   * `sides` — legacy combined list (menu_item_sides table, unfiltered).
+   * `sides_and` — Included sides (side_type='and'), always free-with-order.
+   * `sides_or` — Choice sides (side_type='or'), one-of selection.
    * `recommendations` — paired dish items (menu_item_recommendations table).
    * `addons` — ingredient-level extras, e.g. "Extra Chicken" (menu_item_addons table).
-   * Returned by /owner/restaurants/{id}/all-items so the menu builder can render
-   * them inline without an extra fetch per item.
+   *
+   * When the `sides_and_or_split` feature flag is ENABLED, consumers should
+   * read/write `sides_and` + `sides_or` and treat `sides` as read-only legacy.
+   * When DISABLED, consumers should continue to read/write `sides` +
+   * `sides_selection_mode` only. Mixing the two write paths in a single
+   * PATCH request is a 400 at the backend (STR-342).
    */
   sides?: SideEntry[];
+  sides_and?: SideEntry[];
+  sides_or?: SideEntry[];
   recommendations?: RecommendationEntry[];
   addons?: AddonEntry[];
   sides_selection_mode?: 'and' | 'or';
@@ -385,12 +393,23 @@ export interface MenuManagerService {
   // Modifiers & addons
   getItemModifiers?(restaurantId: string, itemId: string): Promise<{
     sides: SideEntry[];
+    sides_and?: SideEntry[];
+    sides_or?: SideEntry[];
     recommendations: RecommendationEntry[];
     addons: AddonEntry[];
     sides_selection_mode: 'and' | 'or';
   }>;
+  /**
+   * Update item modifiers. Two mutually exclusive write shapes:
+   *   Legacy (flag OFF): `sides` + `sides_selection_mode`
+   *   Split  (flag ON):  `sides_and` + `sides_or`
+   * Sending both shapes in the same call → 400 at the backend (STR-342).
+   * Cross-group duplicates between sides_and and sides_or → 409.
+   */
   updateItemModifiers(itemId: string, data: {
     sides?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+    sides_and?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
+    sides_or?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
     recommendations?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
     sides_selection_mode?: 'and' | 'or';
     addons?: AddonEntry[];

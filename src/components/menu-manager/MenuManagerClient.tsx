@@ -11,7 +11,7 @@ import {
   type MenuColor,
 } from './lib/menuUtils';
 import ItemPool from './components/ItemPool';
-import MenuBuilder from './components/MenuBuilder';
+import MenuBuilder, { type ModifierUpdatePayload } from './components/MenuBuilder';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkModifierPanel from './components/BulkModifierPanel';
@@ -74,6 +74,16 @@ interface Props {
     menuId: string;
     isLastActiveMenuPlacement: boolean;
   }) => Promise<boolean>;
+  /**
+   * Feature flag: when true, renders the Sides editor as two stacked drop zones
+   * — Included (always-free, backend side_type='and') and Choice (one-of,
+   * side_type='or'). When false (default), legacy single drop zone + AND/OR
+   * dropdown is rendered. Gates both the UI and the PATCH body shape:
+   *   ON  → `{ sides_and, sides_or, recommendations }`
+   *   OFF → `{ sides, sides_selection_mode, recommendations }` (legacy)
+   * STR-342.
+   */
+  enableAndOrSplit?: boolean;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -82,7 +92,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -678,12 +688,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const handleUpdateModifiers = useCallback(
     async (
       parentId: string,
-      payload: {
-        sides: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
-        recommendations: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
-        sides_selection_mode: 'and' | 'or';
-        addons?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
-      },
+      payload: ModifierUpdatePayload,
     ) => {
       const prevItems = items;
 
@@ -721,20 +726,43 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               price_override: r.price_override ?? 0,
             })),
             sides_selection_mode: payload.sides_selection_mode,
+            // STR-342: when flag is ON, payload carries sides_and / sides_or.
+            // Mirror them into local state so the UI reflects the pending save.
+            ...(enableAndOrSplit
+              ? {
+                  sides_and: payload.sides_and ?? [],
+                  sides_or: payload.sides_or ?? [],
+                }
+              : {}),
             ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
           };
         }),
       );
       try {
-        await service.updateItemModifiers(parentId, {
-          sides: payload.sides,
-          recommendations: payload.recommendations.map((r) => ({
-            ...r,
-            price_override: r.price_override ?? 0,
-          })),
-          sides_selection_mode: payload.sides_selection_mode,
-          ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
-        });
+        // STR-342: flag-gate the PATCH body. Backend rejects mixing legacy
+        // `sides` with split `sides_and` / `sides_or` (400) — we only ever
+        // send one shape.
+        if (enableAndOrSplit) {
+          await service.updateItemModifiers(parentId, {
+            sides_and: payload.sides_and ?? [],
+            sides_or: payload.sides_or ?? [],
+            recommendations: payload.recommendations.map((r) => ({
+              ...r,
+              price_override: r.price_override ?? 0,
+            })),
+            ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
+          });
+        } else {
+          await service.updateItemModifiers(parentId, {
+            sides: payload.sides,
+            recommendations: payload.recommendations.map((r) => ({
+              ...r,
+              price_override: r.price_override ?? 0,
+            })),
+            sides_selection_mode: payload.sides_selection_mode,
+            ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
+          });
+        }
       } catch {
         setItems(prevItems);
         showToast('Failed to save modifiers — please try again');
@@ -835,7 +863,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         );
       }
     },
-    [items, menus, activeMenuId, showToast],
+    [items, menus, activeMenuId, showToast, service, enableAndOrSplit],
   );
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
@@ -1365,6 +1393,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onScrollComplete={() => setScrollToItemId(null)}
             onRefresh={onRefresh ? handleRefresh : undefined}
             refreshing={refreshing}
+            enableAndOrSplit={enableAndOrSplit}
+            onCrossGroupDuplicate={(group) =>
+              showToast(
+                `Already in ${group === 'included' ? 'Included' : 'Choice'} — remove first`,
+              )
+            }
           />
         </div>
       )}
