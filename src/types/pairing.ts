@@ -2,7 +2,7 @@ export interface MenuPairing {
   id: string;
   item_a_id: string;
   item_b_id: string;
-  pairing_type: 'manual' | 'ai_accepted' | 'ai_generated';
+  recommendation_type: 'manual' | 'ai' | 'ai_generated';
   strength: number;
   reason: string;
   ai_confidence?: number;

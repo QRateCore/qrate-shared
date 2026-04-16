@@ -248,7 +248,7 @@ export interface RecommendationEntry {
   price_override: number | null;
   thumbnail_url?: string | null;
   /** Defaults to 'manual' for newly drag-dropped items; set by backend on save. */
-  recommendation_type?: 'manual' | 'ai_accepted' | 'ai_generated';
+  recommendation_type?: 'manual' | 'ai' | 'ai_generated';
 }
 
 export interface AddonEntry {
