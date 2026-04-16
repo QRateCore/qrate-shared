@@ -4,7 +4,7 @@ import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
+import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
 import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
@@ -227,8 +227,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
-  // Tab state — Food Tags | Add-ons | Performance (dish items) or Food Tags | Dishes | Performance (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'dishes' | 'performance'>('food_tags');
+  // Tab state — Food Tags | Add-ons | Recommendations | Performance (dish items) or Performance | Dishes (addon items)
+  const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'recommendations' | 'dishes' | 'performance'>('food_tags');
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
   //   Dishes  → [food_tags, addons, performance]
@@ -241,6 +241,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Add-ons tab state (used when editing a dish item)
   const [itemAddons, setItemAddons] = useState<AddonEntry[]>(item.addons ?? []);
+
+  // Recommendations tab state (used when editing a dish item)
+  const [itemRecs, setItemRecs] = useState<RecommendationEntry[]>(item.recommendations ?? []);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState<string | null>(null);
 
   // Dishes tab state (used when editing an addon item) — tracks which dishes have this addon
   const [associatedDishIds, setAssociatedDishIds] = useState<Set<string>>(() => {
@@ -296,6 +301,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       .catch((e: unknown) => setAddonsError(e instanceof Error ? e.message : 'Failed to load add-ons'))
       .finally(() => setAddonsLoading(false));
   }, [activeTab, restaurantId]);
+
+  useEffect(() => {
+    if (activeTab !== 'recommendations' || !restaurantId || !service.getItemModifiers) return;
+    setRecsLoading(true);
+    setRecsError(null);
+    service
+      .getItemModifiers(restaurantId, item.id)
+      .then((modifiers) => setItemRecs(modifiers.recommendations))
+      .catch((e: unknown) => setRecsError(e instanceof Error ? e.message : 'Failed to load recommendations'))
+      .finally(() => setRecsLoading(false));
+  }, [activeTab, restaurantId, item.id]);
 
   // ── Image handlers ──────────────────────────────────────────────────────
 
@@ -453,6 +469,44 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       }
     } catch {
       setItemAddons(itemAddons);
+    }
+  }
+
+  // ── Recommendations tab handlers (used when editing a dish item) ─────────
+
+  async function handleApproveRec(rec: RecommendationEntry) {
+    const next = itemRecs.map((r) =>
+      r.menu_item_id === rec.menu_item_id ? { ...r, recommendation_type: 'manual' as const } : r,
+    );
+    setItemRecs(next);
+    try {
+      await service.updateItemModifiers(item.id, {
+        recommendations: next.map((r) => ({
+          menu_item_id: r.menu_item_id,
+          name: r.name,
+          price_override: null,
+          thumbnail_url: r.thumbnail_url ?? null,
+        })),
+      });
+    } catch {
+      setItemRecs(itemRecs);
+    }
+  }
+
+  async function handleRemoveRec(menuItemId: string) {
+    const next = itemRecs.filter((r) => r.menu_item_id !== menuItemId);
+    setItemRecs(next);
+    try {
+      await service.updateItemModifiers(item.id, {
+        recommendations: next.map((r) => ({
+          menu_item_id: r.menu_item_id,
+          name: r.name,
+          price_override: null,
+          thumbnail_url: r.thumbnail_url ?? null,
+        })),
+      });
+    } catch {
+      setItemRecs(itemRecs);
     }
   }
 
@@ -641,6 +695,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         item_type: isAddon ? 'addon' : 'dish',
         price: isAddon ? price : (saved.price ?? item.price),
         addons: itemAddons,
+        recommendations: itemRecs,
       };
 
       trackAction('menu.editModal.save', {
@@ -1376,7 +1431,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           >
             {(isAddon
               ? (['performance', 'dishes'] as const)
-              : (['food_tags', 'addons', 'performance'] as const)
+              : (['food_tags', 'addons', 'recommendations', 'performance'] as const)
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
@@ -1384,9 +1439,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   ? 'Food Tags'
                   : tab === 'addons'
                     ? `Add-ons${itemAddons.length > 0 ? ` (${itemAddons.length})` : ''}`
-                    : tab === 'dishes'
-                      ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                      : 'Performance';
+                    : tab === 'recommendations'
+                      ? `Recommendations${itemRecs.length > 0 ? ` (${itemRecs.length})` : ''}`
+                      : tab === 'dishes'
+                        ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
+                        : 'Performance';
               return (
                 <button
                   key={tab}
@@ -1618,6 +1675,74 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     )}
                   </div>
                 </>
+              )}
+            </section>
+          )}
+
+          {/* ── Recommendations tab (shown when editing a dish item) ──── */}
+          {activeTab === 'recommendations' && (
+            <section style={{ marginBottom: 4 }}>
+              {recsLoading && (
+                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '8px 0' }}>Loading…</div>
+              )}
+              {recsError && !recsLoading && (
+                <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
+                  {recsError}
+                </div>
+              )}
+              {!recsLoading && !recsError && (
+                itemRecs.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>
+                    No recommendations generated yet. Run Menu Intelligence to generate AI pairings for this dish.
+                  </div>
+                ) : (
+                  <>
+                    {/* AI Suggestions — pending acceptance */}
+                    {itemRecs.filter((r) => r.recommendation_type === 'ai' || r.recommendation_type === 'ai_generated').length > 0 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                          AI Suggestions
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {itemRecs
+                            .filter((r) => r.recommendation_type === 'ai' || r.recommendation_type === 'ai_generated')
+                            .map((rec) => (
+                              <RecommendationCard
+                                key={rec.menu_item_id}
+                                rec={rec}
+                                onApprove={() => void handleApproveRec(rec)}
+                                onRemove={() => void handleRemoveRec(rec.menu_item_id)}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Accepted pairings */}
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        Accepted Pairings
+                      </div>
+                      {itemRecs.filter((r) => r.recommendation_type === 'manual' || !r.recommendation_type).length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                          No pairings accepted yet — use the Accept button on AI suggestions above.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {itemRecs
+                            .filter((r) => r.recommendation_type === 'manual' || !r.recommendation_type)
+                            .map((rec) => (
+                              <RecommendationCard
+                                key={rec.menu_item_id}
+                                rec={rec}
+                                onRemove={() => void handleRemoveRec(rec.menu_item_id)}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )
               )}
             </section>
           )}
@@ -1880,6 +2005,76 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
+
+function RecommendationCard({
+  rec,
+  onApprove,
+  onRemove,
+}: {
+  rec: RecommendationEntry;
+  onApprove?: () => void;
+  onRemove: () => void;
+}) {
+  const isAI = rec.recommendation_type === 'ai' || rec.recommendation_type === 'ai_generated';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 10px',
+        borderRadius: 'var(--r-xs)',
+        border: isAI ? '1px solid #f59e0b' : '1px solid var(--border)',
+        background: isAI ? '#fffbeb' : '#fafafa',
+      }}
+    >
+      <div
+        style={{
+          width: 32, height: 32, borderRadius: 4,
+          background: '#f0f0f0', overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, flexShrink: 0,
+        }}
+      >
+        {rec.thumbnail_url ? (
+          <img src={rec.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : '🍽'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {rec.name}
+          </div>
+          {isAI && (
+            <span style={{ fontSize: 9, fontWeight: 700, background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 4px', flexShrink: 0 }}>
+              AI
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        {isAI && onApprove && (
+          <button
+            type="button"
+            onClick={onApprove}
+            data-testid={`approve-rec-modal-${rec.menu_item_id}`}
+            style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', borderRadius: 4, cursor: 'pointer' }}
+          >
+            Accept
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          data-testid={`remove-rec-modal-${rec.menu_item_id}`}
+          style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 4, cursor: 'pointer' }}
+        >
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function AddonCard({
   addon,

@@ -68,7 +68,7 @@ export default function ItemModifierZones({
     price_override: r.price_override ?? 0,
   }));
   const addons: ModifierEntry[] = ((parent.addons ?? []) as Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null; status?: string }>)
-    .filter((a) => a.status === 'approved' || a.status === undefined)
+    .filter((a) => (a.status === 'approved' || a.status === undefined) && itemsById.has(a.menu_item_id))
     .map((a) => ({ menu_item_id: a.menu_item_id, name: a.name, price_override: a.price_override ?? null, thumbnail_url: a.thumbnail_url ?? null }));
   const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
 

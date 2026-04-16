@@ -682,9 +682,34 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         sides: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
         recommendations: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
         sides_selection_mode: 'and' | 'or';
+        addons?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
       },
     ) => {
       const prevItems = items;
+
+      // Map ModifierEntry[] addons back to AddonEntry[] by merging with the existing
+      // entries on the item — this preserves id, status, and suggestion_source for
+      // addons that were already saved, and stamps new drag-drop entries as manual/approved.
+      let mergedAddons: AddonEntry[] | undefined;
+      if (payload.addons !== undefined) {
+        const currentItem = items.find((i) => i.id === parentId);
+        const existingAddonMap = new Map<string, AddonEntry>(
+          (currentItem?.addons ?? []).map((a) => [a.menu_item_id, a]),
+        );
+        mergedAddons = payload.addons.map((a) => {
+          const existing = existingAddonMap.get(a.menu_item_id);
+          if (existing) return existing;
+          return {
+            menu_item_id: a.menu_item_id,
+            name: a.name,
+            price_override: a.price_override ?? 0,
+            thumbnail_url: a.thumbnail_url ?? null,
+            status: 'approved' as const,
+            suggestion_source: 'manual' as const,
+          };
+        });
+      }
+
       setItems((prev) =>
         prev.map((i) => {
           if (i.id !== parentId) return i;
@@ -696,6 +721,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               price_override: r.price_override ?? 0,
             })),
             sides_selection_mode: payload.sides_selection_mode,
+            ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
           };
         }),
       );
@@ -707,6 +733,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             price_override: r.price_override ?? 0,
           })),
           sides_selection_mode: payload.sides_selection_mode,
+          ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
         });
       } catch {
         setItems(prevItems);

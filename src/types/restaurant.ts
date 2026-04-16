@@ -383,6 +383,12 @@ export interface MenuManagerService {
   updateMenuItemInMenu(itemId: string, menuId: string, patch: Partial<MenuItemJunctionSettings>): Promise<MenuAssociation[]>;
 
   // Modifiers & addons
+  getItemModifiers?(restaurantId: string, itemId: string): Promise<{
+    sides: SideEntry[];
+    recommendations: RecommendationEntry[];
+    addons: AddonEntry[];
+    sides_selection_mode: 'and' | 'or';
+  }>;
   updateItemModifiers(itemId: string, data: {
     sides?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
     recommendations?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
