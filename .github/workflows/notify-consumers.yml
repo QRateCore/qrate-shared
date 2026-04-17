@@ -1,0 +1,25 @@
+name: Notify Consumer Repos
+
+# When @qrate/shared main is updated, trigger submodule bump workflows
+# in all consumer repos so they stay in sync automatically.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo:
+          - QRateCore/qrate-owner-webapp
+          - QRateCore/qrate-admin-webapp
+    steps:
+      - name: Trigger submodule bump in ${{ matrix.repo }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: ${{ matrix.repo }}
+          event-type: shared-submodule-updated
+          client-payload: '{"sha": "${{ github.sha }}", "message": "${{ github.event.head_commit.message }}"}'
