@@ -652,3 +652,184 @@ describe('EditModal — image actions', () => {
     expect(screen.queryByTestId('edit-enhance-btn')).not.toBeInTheDocument();
   });
 });
+
+// ── Addon removal tests (STR-XXX: addon delete not persisting) ──────────────
+
+describe('EditModal — addon removal', () => {
+  const addonA = {
+    id: 'assoc-a',
+    menu_item_id: 'addon-a',
+    name: 'Extra Cheese',
+    price_override: 1.5,
+    thumbnail_url: null,
+    status: 'approved' as const,
+    suggestion_source: 'manual' as const,
+  };
+  const addonB = {
+    id: 'assoc-b',
+    menu_item_id: 'addon-b',
+    name: 'Bacon',
+    price_override: 3,
+    thumbnail_url: null,
+    status: 'approved' as const,
+    suggestion_source: 'manual' as const,
+  };
+
+  it('calls updateItemModifiers without the removed addon', async () => {
+    const user = userEvent.setup();
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([]),
+    });
+
+    renderModal({
+      item: makeDishItem({ addons: [addonA, addonB] }),
+      service,
+    });
+
+    // Switch to addons tab
+    await user.click(screen.getByTestId('tab-addons'));
+
+    // Remove addon A
+    const removeBtn = screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`);
+    await user.click(removeBtn);
+
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalledWith(
+        'item-1',
+        expect.objectContaining({
+          addons: [expect.objectContaining({ menu_item_id: 'addon-b' })],
+        }),
+      );
+    });
+
+    // Addon A should be gone from the UI
+    expect(screen.queryByTestId(`remove-addon-modal-${addonA.menu_item_id}`)).not.toBeInTheDocument();
+    // Addon B should still be visible
+    expect(screen.getByTestId(`remove-addon-modal-${addonB.menu_item_id}`)).toBeInTheDocument();
+  });
+
+  it('rolls back and shows error when API fails', async () => {
+    const user = userEvent.setup();
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([]),
+      updateItemModifiers: vi.fn().mockRejectedValue(new Error('Network error')),
+    });
+
+    renderModal({
+      item: makeDishItem({ addons: [addonA] }),
+      service,
+    });
+
+    await user.click(screen.getByTestId('tab-addons'));
+
+    // Remove addon A — should fail
+    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
+
+    // Addon should reappear after API failure
+    await waitFor(() => {
+      expect(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`)).toBeInTheDocument();
+    });
+
+    // Error message should be visible (may appear in multiple DOM nodes)
+    const errorEls = screen.getAllByText(/Failed to remove/i);
+    expect(errorEls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('persists removal through save — onComplete includes updated addons', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem({ name: 'Grilled Chicken' });
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([]),
+      updateMenuItem: vi.fn().mockResolvedValue(saved),
+    });
+    const onComplete = vi.fn();
+
+    renderModal({
+      item: makeDishItem({ addons: [addonA, addonB] }),
+      service,
+      onComplete,
+    });
+
+    // Switch to addons tab and remove addon A
+    await user.click(screen.getByTestId('tab-addons'));
+    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
+
+    // Wait for the modifiers API call to complete
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalled();
+    });
+
+    // Switch back to food_tags tab (so we can fill required fields and save)
+    await user.click(screen.getByTestId('tab-food_tags'));
+
+    // Click save
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          addons: [expect.objectContaining({ menu_item_id: 'addon-b' })],
+        }),
+      );
+    });
+
+    // Ensure addon A is NOT in the onComplete payload
+    const completedItem = onComplete.mock.calls[0][0];
+    expect(completedItem.addons).toHaveLength(1);
+    expect(completedItem.addons[0].menu_item_id).toBe('addon-b');
+  });
+
+  it('serialises concurrent mutations — second remove waits for first', async () => {
+    const user = userEvent.setup();
+    let resolveFirst!: () => void;
+    const firstCallPromise = new Promise<void>((r) => { resolveFirst = r; });
+    let callCount = 0;
+
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([]),
+      updateItemModifiers: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return firstCallPromise;
+        return Promise.resolve();
+      }),
+    });
+
+    const addonC = {
+      id: 'assoc-c',
+      menu_item_id: 'addon-c',
+      name: 'Avocado',
+      price_override: 2,
+      thumbnail_url: null,
+      status: 'approved' as const,
+      suggestion_source: 'manual' as const,
+    };
+
+    renderModal({
+      item: makeDishItem({ addons: [addonA, addonB, addonC] }),
+      service,
+    });
+
+    await user.click(screen.getByTestId('tab-addons'));
+
+    // Fire two removes rapidly
+    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
+    // B's remove button should still be visible since A was already removed from UI
+    await user.click(screen.getByTestId(`remove-addon-modal-${addonB.menu_item_id}`));
+
+    // First call is still pending — only 1 actual API call should have started
+    expect(callCount).toBe(1);
+
+    // Resolve the first call
+    resolveFirst();
+
+    // Now the second call should fire
+    await waitFor(() => {
+      expect(callCount).toBe(2);
+    });
+
+    // The second call should have been made with only [C] — not [B, C]
+    const secondCallAddons = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls[1][1].addons;
+    expect(secondCallAddons).toHaveLength(1);
+    expect(secondCallAddons[0].menu_item_id).toBe('addon-c');
+  });
+});

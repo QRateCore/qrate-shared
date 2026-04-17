@@ -241,9 +241,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Add-ons tab state (used when editing a dish item)
   const [itemAddons, setItemAddons] = useState<AddonEntry[]>(item.addons ?? []);
+  // Ref mirrors itemAddons so async handlers always read the latest value,
+  // avoiding stale-closure races when multiple mutations overlap (e.g. blur + click).
+  const itemAddonsRef = useRef(itemAddons);
+  itemAddonsRef.current = itemAddons;
+  // Serialise addon mutations: each handler awaits the previous one so
+  // the backend never receives two overlapping replace-all calls.
+  const addonMutexRef = useRef<Promise<void>>(Promise.resolve());
 
   // Recommendations tab state (used when editing a dish item)
+  // itemRecs  = confirmed/accepted pairings already in menu_item_recommendations
+  // aiSugs    = pending AI suggestions from menu_intelligence.pairing_graph (not yet saved)
   const [itemRecs, setItemRecs] = useState<RecommendationEntry[]>(item.recommendations ?? []);
+  const [aiSugs, setAiSugs] = useState<RecommendationEntry[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState<string | null>(null);
 
@@ -303,14 +313,36 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   }, [activeTab, restaurantId]);
 
   useEffect(() => {
-    if (activeTab !== 'recommendations' || !restaurantId || !service.getItemModifiers) return;
+    if (activeTab !== 'recommendations' || !restaurantId) return;
     setRecsLoading(true);
     setRecsError(null);
-    service
-      .getItemModifiers(restaurantId, item.id)
-      .then((modifiers) => setItemRecs(modifiers.recommendations))
-      .catch((e: unknown) => setRecsError(e instanceof Error ? e.message : 'Failed to load recommendations'))
-      .finally(() => setRecsLoading(false));
+    Promise.all([
+      service.getItemModifiers ? service.getItemModifiers(restaurantId, item.id) : Promise.resolve(null),
+      service.getMenuIntelligence ? service.getMenuIntelligence(restaurantId) : Promise.resolve(null),
+    ]).then(([modifiers, intelligence]) => {
+      const confirmed: RecommendationEntry[] = modifiers?.recommendations ?? [];
+      setItemRecs(confirmed);
+      const confirmedIds = new Set(confirmed.map((r) => r.menu_item_id));
+      const pairingGraph = intelligence?.menu_intelligence?.pairing_graph ?? [];
+      const entry = pairingGraph.find((e) => e.entree_item_id === item.id);
+      const suggestions: RecommendationEntry[] = [];
+      for (const pair of entry?.paired_items ?? []) {
+        if (confirmedIds.has(pair.item_id)) continue;
+        const found = allItems?.find((i) => i.id === pair.item_id);
+        if (found) {
+          suggestions.push({
+            menu_item_id: pair.item_id,
+            name: found.name,
+            price_override: null,
+            thumbnail_url: found.thumbnail_url ?? null,
+            recommendation_type: 'ai',
+          });
+        }
+      }
+      setAiSugs(suggestions);
+    })
+    .catch((e: unknown) => setRecsError(e instanceof Error ? e.message : 'Failed to load recommendations'))
+    .finally(() => setRecsLoading(false));
   }, [activeTab, restaurantId, item.id]);
 
   // ── Image handlers ──────────────────────────────────────────────────────
@@ -426,7 +458,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // ── Add-ons tab handlers ────────────────────────────────────────────────
 
   async function handleAddAddon(poolItem: MenuItemDisplay) {
-    const already = itemAddons.some((a) => a.menu_item_id === poolItem.id);
+    const already = itemAddonsRef.current.some((a) => a.menu_item_id === poolItem.id);
     if (already) return;
     const newEntry: AddonEntry = {
       menu_item_id: poolItem.id,
@@ -436,49 +468,68 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       status: 'approved',
       suggestion_source: 'manual',
     };
-    const next = [...itemAddons, newEntry];
+    const prev = itemAddonsRef.current;
+    const next = [...prev, newEntry];
     setItemAddons(next);
     setPoolSearch(''); // Clear search so the full pool is visible after adding
-    try {
-      await service.updateItemModifiers(item.id, { addons: next });
-    } catch {
-      setItemAddons(itemAddons);
-    }
+    const task = addonMutexRef.current.then(async () => {
+      try {
+        await service.updateItemModifiers(item.id, { addons: next });
+      } catch {
+        setItemAddons(prev);
+        setAddonsError('Failed to add — please try again.');
+      }
+    });
+    addonMutexRef.current = task;
+    await task;
   }
 
   async function handleRemoveAddon(menuItemId: string) {
-    const next = itemAddons.filter((a) => a.menu_item_id !== menuItemId);
+    const prev = itemAddonsRef.current;
+    const next = prev.filter((a) => a.menu_item_id !== menuItemId);
     setItemAddons(next);
-    try {
-      await service.updateItemModifiers(item.id, { addons: next });
-    } catch {
-      setItemAddons(itemAddons);
-    }
+    setAddonsError(null);
+    const task = addonMutexRef.current.then(async () => {
+      try {
+        await service.updateItemModifiers(item.id, { addons: next });
+      } catch {
+        setItemAddons(prev);
+        setAddonsError('Failed to remove add-on — please try again.');
+      }
+    });
+    addonMutexRef.current = task;
+    await task;
   }
 
   async function handleApproveAddon(addon: AddonEntry) {
-    const next = itemAddons.map((a) =>
+    const prev = itemAddonsRef.current;
+    const next = prev.map((a) =>
       a.menu_item_id === addon.menu_item_id ? { ...a, status: 'approved' as const } : a,
     );
     setItemAddons(next);
-    try {
-      if (addon.id) {
-        await service.approveAddonSuggestion(item.id, addon.id);
-      } else {
-        await service.updateItemModifiers(item.id, { addons: next });
+    const task = addonMutexRef.current.then(async () => {
+      try {
+        if (addon.id) {
+          await service.approveAddonSuggestion(item.id, addon.id);
+        } else {
+          await service.updateItemModifiers(item.id, { addons: next });
+        }
+      } catch {
+        setItemAddons(prev);
+        setAddonsError('Failed to approve — please try again.');
       }
-    } catch {
-      setItemAddons(itemAddons);
-    }
+    });
+    addonMutexRef.current = task;
+    await task;
   }
 
   // ── Recommendations tab handlers (used when editing a dish item) ─────────
 
+  // Accept an AI suggestion: move from aiSugs → itemRecs and persist
   async function handleApproveRec(rec: RecommendationEntry) {
-    const next = itemRecs.map((r) =>
-      r.menu_item_id === rec.menu_item_id ? { ...r, recommendation_type: 'manual' as const } : r,
-    );
+    const next = [...itemRecs, { ...rec, recommendation_type: 'manual' as const }];
     setItemRecs(next);
+    setAiSugs((prev) => prev.filter((r) => r.menu_item_id !== rec.menu_item_id));
     try {
       await service.updateItemModifiers(item.id, {
         recommendations: next.map((r) => ({
@@ -490,9 +541,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       });
     } catch {
       setItemRecs(itemRecs);
+      setAiSugs(aiSugs);
     }
   }
 
+  // Dismiss an AI suggestion locally (not persisted — will reappear on next tab open)
+  function handleDismissAiSug(menuItemId: string) {
+    setAiSugs((prev) => prev.filter((r) => r.menu_item_id !== menuItemId));
+  }
+
+  // Remove a confirmed pairing and persist
   async function handleRemoveRec(menuItemId: string) {
     const next = itemRecs.filter((r) => r.menu_item_id !== menuItemId);
     setItemRecs(next);
@@ -577,16 +635,23 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   }
 
   async function handleUpdateAddonPrice(menuItemId: string, newPrice: number) {
-    const prev = itemAddons;
-    const next = itemAddons.map((a) =>
+    // Read latest state from ref — avoids stale closure when blur fires right before a remove click.
+    const prev = itemAddonsRef.current;
+    // Guard: if the addon was already removed (e.g. blur races with click), skip.
+    if (!prev.some((a) => a.menu_item_id === menuItemId)) return;
+    const next = prev.map((a) =>
       a.menu_item_id === menuItemId ? { ...a, price_override: newPrice } : a,
     );
     setItemAddons(next);
-    try {
-      await service.updateItemModifiers(item.id, { addons: next });
-    } catch {
-      setItemAddons(prev);
-    }
+    const task = addonMutexRef.current.then(async () => {
+      try {
+        await service.updateItemModifiers(item.id, { addons: next });
+      } catch {
+        setItemAddons(prev);
+      }
+    });
+    addonMutexRef.current = task;
+    await task;
   }
 
   // ── Save ────────────────────────────────────────────────────────────────
@@ -1440,7 +1505,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   : tab === 'addons'
                     ? `Add-ons${itemAddons.length > 0 ? ` (${itemAddons.length})` : ''}`
                     : tab === 'recommendations'
-                      ? `Recommendations${itemRecs.length > 0 ? ` (${itemRecs.length})` : ''}`
+                      ? `Recommendations${(aiSugs.length + itemRecs.length) > 0 ? ` (${aiSugs.length + itemRecs.length})` : ''}`
                       : tab === 'dishes'
                         ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
                         : 'Performance';
@@ -1531,6 +1596,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
               {restaurantId && (
                 <>
+                  {/* Mutation error banner */}
+                  {addonsError && (
+                    <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <AlertCircle size={14} /> {addonsError}
+                    </div>
+                  )}
                   {/* AI Suggestions — pending approval */}
                   {itemAddons.filter((a) => a.status === 'suggested').length > 0 && (
                     <div style={{ marginBottom: 20 }}>
@@ -1691,53 +1762,49 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 </div>
               )}
               {!recsLoading && !recsError && (
-                itemRecs.length === 0 ? (
+                aiSugs.length === 0 && itemRecs.length === 0 ? (
                   <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>
                     No recommendations generated yet. Run Menu Intelligence to generate AI pairings for this dish.
                   </div>
                 ) : (
                   <>
-                    {/* AI Suggestions — pending acceptance */}
-                    {itemRecs.filter((r) => r.recommendation_type === 'ai' || r.recommendation_type === 'ai_generated').length > 0 && (
+                    {/* AI Suggestions — from pairing_graph, pending acceptance */}
+                    {aiSugs.length > 0 && (
                       <div style={{ marginBottom: 20 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
                           AI Suggestions
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {itemRecs
-                            .filter((r) => r.recommendation_type === 'ai' || r.recommendation_type === 'ai_generated')
-                            .map((rec) => (
-                              <RecommendationCard
-                                key={rec.menu_item_id}
-                                rec={rec}
-                                onApprove={() => void handleApproveRec(rec)}
-                                onRemove={() => void handleRemoveRec(rec.menu_item_id)}
-                              />
-                            ))}
+                          {aiSugs.map((rec) => (
+                            <RecommendationCard
+                              key={rec.menu_item_id}
+                              rec={rec}
+                              onApprove={() => void handleApproveRec(rec)}
+                              onRemove={() => handleDismissAiSug(rec.menu_item_id)}
+                            />
+                          ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Accepted pairings */}
+                    {/* Accepted pairings — confirmed in menu_item_recommendations */}
                     <div style={{ marginBottom: 20 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
                         Accepted Pairings
                       </div>
-                      {itemRecs.filter((r) => r.recommendation_type === 'manual' || !r.recommendation_type).length === 0 ? (
+                      {itemRecs.length === 0 ? (
                         <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
                           No pairings accepted yet — use the Accept button on AI suggestions above.
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {itemRecs
-                            .filter((r) => r.recommendation_type === 'manual' || !r.recommendation_type)
-                            .map((rec) => (
-                              <RecommendationCard
-                                key={rec.menu_item_id}
-                                rec={rec}
-                                onRemove={() => void handleRemoveRec(rec.menu_item_id)}
-                              />
-                            ))}
+                          {itemRecs.map((rec) => (
+                            <RecommendationCard
+                              key={rec.menu_item_id}
+                              rec={rec}
+                              onRemove={() => void handleRemoveRec(rec.menu_item_id)}
+                            />
+                          ))}
                         </div>
                       )}
                     </div>

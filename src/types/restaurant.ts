@@ -399,6 +399,15 @@ export interface MenuManagerService {
     addons: AddonEntry[];
     sides_selection_mode: 'and' | 'or';
   }>;
+  /** Fetch restaurant-level menu intelligence (pairing_graph, etc.) — optional, not available in all consumers */
+  getMenuIntelligence?(restaurantId: string): Promise<{
+    menu_intelligence?: {
+      pairing_graph?: Array<{
+        entree_item_id: string;
+        paired_items: Array<{ item_id: string; strength: number }>;
+      }>;
+    };
+  }>;
   /**
    * Update item modifiers. Two mutually exclusive write shapes:
    *   Legacy (flag OFF): `sides` + `sides_selection_mode`
