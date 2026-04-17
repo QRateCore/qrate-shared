@@ -143,6 +143,44 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Resizable divider ─────────────────────────────────────────────────────
+  const [poolWidth, setPoolWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('qrate-menu-pool-width');
+      if (saved) return Math.min(Math.max(Number(saved), 200), 520);
+    } catch {}
+    return 272;
+  });
+  const [dividerActive, setDividerActive] = useState(false);
+
+  const handleDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = poolWidth;
+    setDividerActive(true);
+    const onMouseMove = (mv: MouseEvent) => {
+      const next = Math.min(Math.max(startWidth + mv.clientX - startX, 200), 520);
+      setPoolWidth(next);
+    };
+    const onMouseUp = () => {
+      setDividerActive(false);
+      setPoolWidth(w => {
+        try { localStorage.setItem('qrate-menu-pool-width', String(w)); } catch {}
+        return w;
+      });
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const poolDcRef = useRef(0); // drag-enter counter for the pool zone
   const bucketDcRef = useRef<Record<string, number>>({}); // per-bucket drag-enter counters
   // Tracks the ID of a brand-new item opened via "Add Item" — if the modal is
@@ -1315,18 +1353,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           }}
         />
       ) : (
-        /* Two-panel layout — desktop, unchanged */
+        /* Two-panel layout — desktop with resizable divider */
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: '272px 1fr',
-            gap: 16,
+            display: 'flex',
             flex: 1,
             minHeight: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Left panel — ItemPool */}
+          {/* Left panel — ItemPool (resizable) */}
+          <div style={{ width: poolWidth, flexShrink: 0, minHeight: 0 }}>
           <ItemPool
             items={items}
             menus={menus}
@@ -1360,8 +1397,49 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDropPool={handleDropPool}
             colorMap={colorMap}
           />
+          </div>
 
-          {/* Right panel — MenuBuilder */}
+          {/* Draggable divider */}
+          <div
+            onMouseDown={handleDividerMouseDown}
+            title="Drag to resize panels"
+            style={{
+              width: 12,
+              flexShrink: 0,
+              cursor: 'col-resize',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              zIndex: 10,
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                transition: 'background 120ms',
+                background: dividerActive ? 'rgba(255, 107, 43, 0.1)' : 'transparent',
+              }}
+            />
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: 3,
+                    height: 3,
+                    borderRadius: '50%',
+                    background: dividerActive ? '#FF6B2B' : 'var(--border, #e2e8f0)',
+                    transition: 'background 120ms',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Right panel — MenuBuilder (flex fills remaining space) */}
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <MenuBuilder
             items={items}
             menus={menus}
@@ -1400,6 +1478,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               )
             }
           />
+          </div>
         </div>
       )}
     </div>
