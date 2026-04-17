@@ -111,6 +111,19 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // Core data
   const [items, setItems] = useState<MenuItemDisplay[]>(initialItems);
   const [menus, setMenus] = useState<MenuSummary[]>(initialMenus);
+  // Track when parent finishes a refresh so we can adopt the new data.
+  // Without this, items added via external callbacks (e.g. recommendation
+  // drop's addItemToMenu in the owner hook) never reach internal state
+  // because useState ignores subsequent prop changes.
+  const prevRefreshingRef = useRef(refreshing);
+  useEffect(() => {
+    if (prevRefreshingRef.current && !refreshing) {
+      setItems(initialItems);
+      setMenus(initialMenus);
+    }
+    prevRefreshingRef.current = refreshing;
+  }, [refreshing, initialItems, initialMenus]);
+
   const [assignments, setAssignments] = useState<Record<string, Record<string, string[]>>>(() =>
     buildAssignments(initialItems, initialMenus),
   );
