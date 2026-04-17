@@ -135,17 +135,18 @@ function ItemPoolCard({
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 18,
+          pointerEvents: 'none',
         }}
       >
         {item.thumbnail_url ? (
-          <img src={item.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img draggable={false} src={item.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           '🍽'
         )}
       </div>
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, pointerEvents: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <span
             style={{
