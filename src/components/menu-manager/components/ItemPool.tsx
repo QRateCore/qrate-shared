@@ -82,9 +82,6 @@ function ItemPoolCard({
 
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, item.id)}
-      onDragEnd={onDragEnd}
       data-testid={`item-card-${item.id}`}
       style={{
         background: bg,
@@ -97,9 +94,18 @@ function ItemPoolCard({
         cursor: 'grab',
         userSelect: 'none',
         transition: 'background 0.1s',
+        position: 'relative',
       }}
     >
-      {/* Checkbox */}
+      {/* Transparent drag overlay — covers entire card so drag works from anywhere */}
+      <div
+        draggable
+        onDragStart={(e) => onDragStart(e, item.id)}
+        onDragEnd={onDragEnd}
+        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+      />
+
+      {/* Checkbox — above overlay so clicks work */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onSelectClick(e); }}
@@ -117,6 +123,8 @@ function ItemPoolCard({
           justifyContent: 'center',
           flexShrink: 0,
           cursor: 'pointer',
+          position: 'relative',
+          zIndex: 2,
         }}
       >
         {isSelected && <Check size={11} color="white" strokeWidth={3} />}
@@ -135,7 +143,6 @@ function ItemPoolCard({
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 18,
-          pointerEvents: 'none',
         }}
       >
         {item.thumbnail_url ? (
@@ -146,7 +153,7 @@ function ItemPoolCard({
       </div>
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0, pointerEvents: 'none' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <span
             style={{
@@ -224,7 +231,7 @@ function ItemPoolCard({
         )}
       </div>
 
-      {/* Edit button */}
+      {/* Edit button — above overlay so clicks work */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(item.id); }}
@@ -241,6 +248,8 @@ function ItemPoolCard({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          position: 'relative',
+          zIndex: 2,
         }}
       >
         <Pencil size={13} />
