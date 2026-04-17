@@ -826,11 +826,18 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const parent = items.find((i) => i.id === parentId);
       if (!parent) return;
 
+      // Items already added to the menu by an external hook (e.g. the
+      // category-selection modal). Skip these — a second addItemToMenu
+      // would overwrite the user's canonical category selection.
+      const hookHandled = new Set(payload._hookHandledItemIds ?? []);
+
       // Detect newly added recommendations (items in payload but not in current state)
       const currentRecIds = new Set(
         ((parent.recommendations ?? []) as Array<{ menu_item_id: string }>).map((r) => r.menu_item_id),
       );
-      const newRecItems = payload.recommendations.filter((r) => !currentRecIds.has(r.menu_item_id));
+      const newRecItems = payload.recommendations.filter(
+        (r) => !currentRecIds.has(r.menu_item_id) && !hookHandled.has(r.menu_item_id),
+      );
       if (newRecItems.length === 0) return;
 
       // Determine the parent's canonical category on the active menu

@@ -192,9 +192,11 @@ export default function MobileItemModifierPicker({
   async function addRecommendation(item: MenuItemDisplay) {
     // Optional gate — parent may prompt before accepting (e.g., "which
     // canonical categories?" for off-menu items). Mirrors ItemModifierZones.
+    let hookHandledAdd = false;
     if (onConfirmRecommendationDrop) {
       const proceed = await onConfirmRecommendationDrop(item, currentMenuId);
       if (!proceed) return;
+      hookHandledAdd = true;
     }
     const next: ModifierEntry = {
       menu_item_id: item.id,
@@ -202,7 +204,10 @@ export default function MobileItemModifierPicker({
       price_override: item.price ?? 0,
       thumbnail_url: item.thumbnail_url ?? null,
     };
-    emit({ recommendations: [...recommendations, next] });
+    emit({
+      recommendations: [...recommendations, next],
+      ...(hookHandledAdd ? { _hookHandledItemIds: [item.id] } : {}),
+    });
     setRecommendationsSearch('');
     setRecommendationsPickerOpen(false);
   }

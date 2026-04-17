@@ -43,6 +43,10 @@ export interface ModifierUpdatePayload {
   recommendations: ModifierEntry[];
   sides_selection_mode: 'and' | 'or';
   addons?: ModifierEntry[];
+  /** Item IDs already added to the menu by an external hook (e.g. the
+   *  category-selection modal). The auto-add block in handleUpdateModifiers
+   *  skips these to avoid overwriting the user's category selection. */
+  _hookHandledItemIds?: string[];
 }
 
 interface Props {
@@ -157,6 +161,7 @@ export default function ItemModifierZones({
       recommendations: overrides.recommendations ?? recommendations,
       sides_selection_mode: overrides.sides_selection_mode ?? sidesSelectionMode,
       addons: overrides.addons ?? addons,
+      _hookHandledItemIds: overrides._hookHandledItemIds,
     };
     void onUpdate(parent.id, payload);
   }
@@ -295,9 +300,11 @@ export default function ItemModifierZones({
     // Optional gate — parent may prompt (e.g., "add to which categories?")
     // before accepting the drop. Parent returns false on cancel; if no
     // callback provided, drop proceeds silently (backward compat).
+    let hookHandledAdd = false;
     if (onConfirmRecommendationDrop) {
       const proceed = await onConfirmRecommendationDrop(dropped, currentMenuId);
       if (!proceed) return;
+      hookHandledAdd = true;
     }
 
     const next: ModifierEntry = {
@@ -306,7 +313,13 @@ export default function ItemModifierZones({
       price_override: dropped.price ?? 0,
       thumbnail_url: dropped.thumbnail_url ?? null,
     };
-    emit({ recommendations: [...recommendations, next] });
+    emit({
+      recommendations: [...recommendations, next],
+      // Tell handleUpdateModifiers to skip auto-add for this item —
+      // the hook already added it to the menu with the user's selected
+      // canonical category. A second addItemToMenu would overwrite that.
+      ...(hookHandledAdd ? { _hookHandledItemIds: [dropped.id] } : {}),
+    });
   }
 
   function removeRecommendation(id: string) {
