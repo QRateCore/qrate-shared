@@ -137,7 +137,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
-  const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons'>('dishes');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editItemId, setEditItemId] = useState<string | null>(null);
@@ -287,10 +287,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const canonicalCategories = useMemo(() => [...CANONICAL_CATEGORIES], []);
 
   const filtered = useMemo(() => {
-    // When in 'addons' mode, show only addon-type items; otherwise show only dishes.
+    // Filter by item type: addons, included, or regular dishes.
     let result = itemTypeFilter === 'addons'
       ? items.filter((i) => i.item_type === 'addon')
-      : items.filter((i) => i.item_type !== 'addon');
+      : itemTypeFilter === 'included'
+      ? items.filter((i) => i.item_type === 'included')
+      : items.filter((i) => i.item_type !== 'addon' && i.item_type !== 'included');
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>
@@ -397,7 +399,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
 
   const handleItemTypeFilterChange = useCallback(
-    (value: 'dishes' | 'addons') => {
+    (value: 'dishes' | 'addons' | 'included') => {
       trackAction('menu.manager.typeToggle', {
         restaurantId,
         metadata: { value },

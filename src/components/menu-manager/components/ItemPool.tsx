@@ -35,8 +35,8 @@ interface ItemPoolProps {
   onAddItem: () => void;
   visibilityFilter: 'All' | 'Visible' | 'Hidden';
   onVisibilityFilterChange: (v: 'All' | 'Visible' | 'Hidden') => void;
-  itemTypeFilter: 'dishes' | 'addons';
-  onItemTypeFilterChange: (v: 'dishes' | 'addons') => void;
+  itemTypeFilter: 'dishes' | 'addons' | 'included';
+  onItemTypeFilterChange: (v: 'dishes' | 'addons' | 'included') => void;
   onOpenBulk: (mode: BulkMode) => void;
   onOpenBulkModifiers: () => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
@@ -475,7 +475,7 @@ export default function ItemPool({
               flexShrink: 0,
             }}
           >
-            {(['dishes', 'addons'] as const).map((tab) => (
+            {(['dishes', 'addons', 'included'] as const).map((tab, idx, arr) => (
               <button
                 key={tab}
                 type="button"
@@ -487,15 +487,15 @@ export default function ItemPool({
                   fontWeight: 600,
                   cursor: 'pointer',
                   border: 'none',
-                  borderRight: tab === 'dishes' ? '1px solid var(--border)' : 'none',
+                  borderRight: idx < arr.length - 1 ? '1px solid var(--border)' : 'none',
                   background: itemTypeFilter === tab
-                    ? (tab === 'addons' ? '#f59e0b' : 'var(--brand-s)')
+                    ? 'var(--brand-s)'
                     : 'var(--white)',
                   color: itemTypeFilter === tab ? 'white' : 'var(--text2)',
                   transition: 'background 0.12s, color 0.12s',
                 }}
               >
-                {tab === 'dishes' ? 'Dishes' : 'Add-ons'}
+                {tab === 'dishes' ? 'Dishes' : tab === 'addons' ? 'Add-ons' : 'Included'}
               </button>
             ))}
           </div>
