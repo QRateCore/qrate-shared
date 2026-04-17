@@ -80,8 +80,16 @@ function ItemPoolCard({
 
   const border = isEditing || isSelected ? '1px solid var(--blue)' : '1px solid var(--border)';
 
+  // Chrome/Blink: -webkit-user-drag on children controls whether they
+  // intercept the parent's drag. 'none' on children forces the parent to
+  // be the drag source regardless of where the user clicks.
+  const noDrag: React.CSSProperties = { WebkitUserDrag: 'none' } as React.CSSProperties;
+
   return (
     <div
+      draggable
+      onDragStart={(e) => onDragStart(e, item.id)}
+      onDragEnd={onDragEnd}
       data-testid={`item-card-${item.id}`}
       style={{
         background: bg,
@@ -94,18 +102,9 @@ function ItemPoolCard({
         cursor: 'grab',
         userSelect: 'none',
         transition: 'background 0.1s',
-        position: 'relative',
       }}
     >
-      {/* Transparent drag overlay — covers entire card so drag works from anywhere */}
-      <div
-        draggable
-        onDragStart={(e) => onDragStart(e, item.id)}
-        onDragEnd={onDragEnd}
-        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
-      />
-
-      {/* Checkbox — above overlay so clicks work */}
+      {/* Checkbox */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onSelectClick(e); }}
@@ -123,8 +122,7 @@ function ItemPoolCard({
           justifyContent: 'center',
           flexShrink: 0,
           cursor: 'pointer',
-          position: 'relative',
-          zIndex: 2,
+          ...noDrag,
         }}
       >
         {isSelected && <Check size={11} color="white" strokeWidth={3} />}
@@ -143,6 +141,7 @@ function ItemPoolCard({
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 18,
+          ...noDrag,
         }}
       >
         {item.thumbnail_url ? (
@@ -153,7 +152,7 @@ function ItemPoolCard({
       </div>
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, ...noDrag }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <span
             style={{
@@ -231,7 +230,7 @@ function ItemPoolCard({
         )}
       </div>
 
-      {/* Edit button — above overlay so clicks work */}
+      {/* Edit button */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(item.id); }}
@@ -248,8 +247,7 @@ function ItemPoolCard({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          position: 'relative',
-          zIndex: 2,
+          ...noDrag,
         }}
       >
         <Pencil size={13} />
@@ -269,7 +267,7 @@ export default function ItemPool({
   filterTags,
   canonicalCategories,
   dragOver,
-  dragging,
+  dragging: _dragging,
   editItemId,
   onSearchChange,
   onFilterChange,
@@ -620,31 +618,12 @@ export default function ItemPool({
         )}
       </div>
 
-      {/* Drop-to-remove zone */}
+      {/* Item list (also acts as drop-to-remove target) */}
       <div
         onDragEnter={onDragEnterPool}
         onDragLeave={onDragLeavePool}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDropPool}
-        data-testid="drop-to-remove-zone"
-        style={{
-          margin: '0 12px 8px',
-          borderRadius: 'var(--r-xs)',
-          border: `2px dashed ${dragOver === 'pool' ? 'var(--blue)' : '#ddd'}`,
-          background: dragOver === 'pool' ? 'var(--blue-bg)' : 'transparent',
-          padding: '8px 12px',
-          fontSize: 11,
-          color: dragOver === 'pool' ? 'var(--blue)' : 'var(--text2)',
-          textAlign: 'center',
-          transition: 'all 0.15s',
-          display: dragging ? 'block' : 'none',
-        }}
-      >
-        {dragOver === 'pool' ? '↩ Drop to remove from menu' : 'Drag here to remove from menu'}
-      </div>
-
-      {/* Item list */}
-      <div
         data-testid="item-pool-scroll"
         style={{
           flex: 1,
