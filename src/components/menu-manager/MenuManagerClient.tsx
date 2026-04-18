@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags } from '../../types/restaurant';
 import {
   buildAssignments,
   buildJunctionSettings,
@@ -1041,56 +1041,77 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // ── Add item ──────────────────────────────────────────────────────────────
 
-  const handleAddItem = useCallback(async () => {
-    const start = Date.now();
-    try {
+  // Deferred-creation: open the modal with a local-only draft item. The DB row is
+  // only written when the user clicks Save (via handleSaveNewItem → onSaveNewItem).
+  // This eliminates orphaned "New item" rows that previously appeared when the modal
+  // was dismissed or the fire-and-forget delete failed.
+  const handleAddItem = useCallback(() => {
+    const tempId = `__draft__${Date.now()}`;
+    const draft: MenuItemDisplay = {
+      id: tempId,
+      name: 'New item',
+      description: null,
+      price: 0,
+      category: '',
+      food_tags: {},
+      thumbnail_url: null,
+      gallery_urls: [],
+      active: true,
+      menu_associations: [],
+    };
+    setItems((prev) => [draft, ...prev]);
+    newlyCreatedItemIdRef.current = tempId;
+    setEditItemId(tempId);
+    trackAction('menu.manager.addNewItem', { restaurantId });
+  }, [restaurantId, trackAction]);
+
+  // Called from EditModal (via onSaveNewItem) when the user saves a new item.
+  // Creates the DB row with the completed form data.
+  const handleSaveNewItem = useCallback(
+    async (data: {
+      name: string;
+      description: string;
+      category: string;
+      food_tags: FoodTags;
+      item_type: 'dish' | 'addon';
+      price?: number | null;
+    }) => {
       const created = await service.addMenuItem(restaurantId, {
-        name: 'New item',
-        price: 0,
-        category: '',
+        name: data.name,
+        description: data.description,
+        price: data.price ?? 0,
+        category: data.category,
       });
-      const display: MenuItemDisplay = {
-        id: created.id,
-        name: created.name,
-        description: created.description ?? null,
-        price: created.price,
-        category: created.category,
-        food_tags: created.food_tags,
-        thumbnail_url: created.thumbnail_url ?? null,
-        gallery_urls: created.gallery_urls ?? [],
-        active: true,
-        menu_associations: [],
-      };
-      setItems((prev) => [display, ...prev]);
-      newlyCreatedItemIdRef.current = created.id;
-      setEditItemId(created.id);
-      trackAction('menu.manager.addNewItem', {
-        restaurantId,
-        success: true,
-        durationMs: Date.now() - start,
-      });
-    } catch (err) {
-      trackAction('menu.manager.addNewItem', {
-        restaurantId,
-        success: false,
-        durationMs: Date.now() - start,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
-      showToast('Failed to create item — please try again');
-    }
-  }, [restaurantId, service, showToast, trackAction]);
+      // If the user chose addon type, set it in a follow-up update
+      // (add_owner_menu_item defaults to 'dish').
+      if (data.item_type === 'addon') {
+        const updated = await service.updateMenuItem(created.id, { item_type: 'addon' });
+        return { ...created, ...updated, item_type: 'addon' as const };
+      }
+      return { ...created, food_tags: data.food_tags };
+    },
+    [restaurantId, service],
+  );
 
   // ── Edit complete ─────────────────────────────────────────────────────────
 
   const handleEditComplete = useCallback(
     (updated: MenuItemDisplay & { _deleted?: boolean }) => {
-      // User explicitly saved or deleted — no longer a "new unsaved" item
+      // Capture the draft ID before clearing — needed to locate the draft entry
+      // in state when the saved item comes back with a different (real server) ID.
+      const draftId = newlyCreatedItemIdRef.current;
       newlyCreatedItemIdRef.current = null;
+
       if (updated._deleted) {
-        setItems((prev) => prev.filter((i) => i.id !== updated.id));
+        setItems((prev) => prev.filter((i) => i.id !== updated.id && i.id !== draftId));
         showToast('Item deleted');
       } else {
-        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        if (draftId?.startsWith('__draft__')) {
+          // Replace the local draft entry (temp ID) with the saved item (real server ID).
+          setItems((prev) => prev.map((i) => (i.id === draftId ? updated : i)));
+        } else {
+          setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        }
         showToast('Item saved');
       }
       setEditItemId(null);
@@ -1111,16 +1132,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const handleCloseEditModal = useCallback(() => {
     const newId = newlyCreatedItemIdRef.current;
     if (newId) {
-      // Remove from local state immediately
       setItems((prev) => prev.filter((i) => i.id !== newId));
       newlyCreatedItemIdRef.current = null;
-      // Fire-and-forget backend delete — user never saved so there's nothing meaningful to keep
-      void service.deleteMenuItem(newId).catch(() => {
-        // Silently ignore — worst case is an orphaned "New item" row in the DB
-      });
+      if (!newId.startsWith('__draft__')) {
+        // Real DB row (legacy path, should not be reached with deferred creation).
+        // Keep the delete as a safety net for any transition period.
+        void service.deleteMenuItem(newId).catch(() => {});
+      }
+      // Draft items are local-only — no backend call needed.
     }
     setEditItemId(null);
-  }, []);
+  }, [service]);
 
   // ── Navigate from EditModal to a menu tab + scroll to item ───────────────
 
@@ -1266,6 +1288,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onNavigateToMenu={handleNavigateToMenu}
             onDishAddonsChange={handleDishAddonsChanged}
             isNewItem={newlyCreatedItemIdRef.current === editItemId}
+            onSaveNewItem={handleSaveNewItem}
           />
         ) : null;
       })()}

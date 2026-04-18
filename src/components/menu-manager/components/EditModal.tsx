@@ -36,6 +36,19 @@ interface EditModalProps {
    * both on reopen of the addon modal and when later editing the dish directly.
    */
   onDishAddonsChange?: (dishId: string, nextAddons: AddonEntry[]) => void;
+  /**
+   * For new items only (isNewItem=true): called on Save instead of service.updateMenuItem.
+   * Enables deferred creation — the DB row is only written when the user completes the form,
+   * eliminating orphaned "New item" rows when the modal is dismissed without saving.
+   */
+  onSaveNewItem?: (data: {
+    name: string;
+    description: string;
+    category: string;
+    food_tags: FoodTags;
+    item_type: 'dish' | 'addon';
+    price?: number | null;
+  }) => Promise<MenuItemDisplay>;
 }
 
 // ── Food tag fields shown in the editor (heat_spice handled separately as pills) ──
@@ -158,7 +171,7 @@ function TagInput({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -709,6 +722,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
 
     try {
+      // ── Deferred-creation path ─────────────────────────────────────────────
+      // When onSaveNewItem is provided the item has no DB row yet (draft only in
+      // local state). Create it now with the completed form data instead of calling
+      // updateMenuItem on a non-existent ID.
+      if (isNewItem && onSaveNewItem) {
+        const created = await onSaveNewItem({
+          name: name.trim(),
+          description: description.trim(),
+          category: category.trim(),
+          food_tags: foodTags,
+          item_type: isAddon ? 'addon' : 'dish',
+          ...(isAddon && price !== null ? { price } : {}),
+        });
+        const updated: MenuItemDisplay = {
+          ...item,
+          ...created,
+          // Carry forward the canonical_category the owner selected — the pipeline
+          // will also assign it, but setting it immediately makes the pool reflect
+          // the chosen category without waiting for a pipeline run.
+          canonical_category: category.trim() || created.canonical_category,
+          active: isActive,
+          item_type: isAddon ? 'addon' : 'dish',
+        };
+        trackAction('menu.editModal.save', {
+          restaurantId,
+          metadata: { itemId: created.id, isAddon, hasImage: false, activeToggled: false, convertedToAddon: false },
+          success: true,
+          durationMs: Date.now() - start,
+        });
+        onComplete(updated);
+        return;
+      }
+
+      // ── Existing-item update path ──────────────────────────────────────────
       const updates: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim(),
