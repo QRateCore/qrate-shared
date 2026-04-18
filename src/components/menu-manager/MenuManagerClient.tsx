@@ -287,12 +287,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const canonicalCategories = useMemo(() => [...CANONICAL_CATEGORIES], []);
 
   const filtered = useMemo(() => {
-    // Filter by item type: addons, included, or regular dishes.
+    // Filter by item type: addons, included, or dishes (dish + included).
+    // 'included' items (e.g. naan, raita, sides) are orderable by patrons and belong
+    // in the Dishes pool so canonical category filters (Soups, Breads, Sides) work.
     let result = itemTypeFilter === 'addons'
       ? items.filter((i) => i.item_type === 'addon')
       : itemTypeFilter === 'included'
       ? items.filter((i) => i.item_type === 'included')
-      : items.filter((i) => i.item_type !== 'addon' && i.item_type !== 'included');
+      : items.filter((i) => i.item_type !== 'addon');
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>
