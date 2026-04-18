@@ -1567,7 +1567,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               alignItems: 'flex-end',
               gap: 0,
               borderBottom: '1px solid var(--border)',
-              marginBottom: 20,
+              marginBottom: 0,
+              position: 'sticky',
+              top: -20,
+              zIndex: 2,
+              background: '#fff',
+              marginLeft: -20,
+              marginRight: -20,
+              paddingLeft: 20,
+              paddingRight: 20,
             }}
           >
             {(isAddon
@@ -1615,7 +1623,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
           {/* ── Food Tags tab (dishes only — guarded by !isAddon in case state lags) ── */}
           {!isAddon && activeTab === 'food_tags' && (
-            <section style={{ marginBottom: 4 }}>
+            <section style={{ marginBottom: 4, paddingTop: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
                 {/* Heat / Spice — predefined pill selector */}
@@ -1665,7 +1673,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
           {/* ── Add-ons tab ───────────────────────────────────────────── */}
           {activeTab === 'addons' && (
-            <section style={{ marginBottom: 4 }}>
+            <section style={{ marginBottom: 4, paddingTop: 20 }}>
               {!restaurantId && (
                 <div style={{ fontSize: 12, color: 'var(--text2)', padding: '20px 0', textAlign: 'center' }}>
                   Add-on data unavailable — no restaurant context.
@@ -1830,7 +1838,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
           {/* ── Recommendations tab (shown when editing a dish item) ──── */}
           {activeTab === 'recommendations' && (
-            <section style={{ marginBottom: 4 }}>
+            <section style={{ marginBottom: 4, paddingTop: 20 }}>
               {recsLoading && (
                 <div style={{ fontSize: 12, color: 'var(--text2)', padding: '8px 0' }}>Loading…</div>
               )}
@@ -1894,7 +1902,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
           {/* ── Dishes tab (shown when editing an addon item) ─────────── */}
           {activeTab === 'dishes' && (
-            <section style={{ marginBottom: 4 }}>
+            <section style={{ marginBottom: 4, paddingTop: 20 }}>
               {!allItems || allItems.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--text2)', padding: '20px 0', textAlign: 'center' }}>
                   No dish data available.
@@ -2084,7 +2092,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
           {/* ── Performance tab ───────────────────────────────────────── */}
           {activeTab === 'performance' && (
-            <section style={{ marginBottom: 4 }}>
+            <section style={{ marginBottom: 4, paddingTop: 20 }}>
               {/* Period selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>Time period</label>
