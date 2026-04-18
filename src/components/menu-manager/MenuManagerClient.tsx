@@ -302,10 +302,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       );
     }
     if (filterTags.length > 0) {
-      // Match via raw→canonical mapping OR the AI-pipeline canonical_category field
+      // Prefer AI-pipeline canonical_category; fall back to raw→canonical mapping
       result = result.filter((i) => {
-        const canon = toCanonical(i.category);
-        return filterTags.some((tag) => canon === tag || (i.canonical_category != null && i.canonical_category === tag));
+        const canon = i.canonical_category ?? toCanonical(i.category);
+        return filterTags.some((tag) => canon === tag);
       });
     }
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
