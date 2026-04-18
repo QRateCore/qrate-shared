@@ -266,12 +266,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Dishes tab state (used when editing an addon item) — tracks which dishes have this addon
   const [associatedDishIds, setAssociatedDishIds] = useState<Set<string>>(() => {
-    if (!allItems) return new Set();
-    return new Set(
-      allItems
-        .filter((d) => d.item_type !== 'addon' && d.addons?.some((a) => a.menu_item_id === item.id))
-        .map((d) => d.id),
-    );
+    const existing = allItems
+      ? allItems
+          .filter((d) => d.item_type !== 'addon' && d.addons?.some((a) => a.menu_item_id === item.id))
+          .map((d) => d.id)
+      : [];
+    // Merge in preselected dishes (e.g. source dish from setup guide Add button)
+    return new Set([...existing, ...(preselectedDishIds ?? [])]);
   });
   const [addonPool, setAddonPool] = useState<MenuItemDisplay[]>([]);
   const [addonsLoading, setAddonsLoading] = useState(false);
@@ -280,9 +281,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Dishes tab state — search + multi-select
   const [dishSearch, setDishSearch] = useState('');
-  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(
-    () => new Set(preselectedDishIds ?? []),
-  );
+  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
 
   // Performance tab state
   const [perfPeriod, setPerfPeriod] = useState<MenuItemPerformancePeriod>('last_7_days');
@@ -748,6 +747,18 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       // and fires onDishAddonsChange so MenuManagerClient patches local state.
       if (isAddon && selectedDishIds.size > 0) {
         await handleAddToMultipleDishes(selectedDishIds);
+      }
+
+      // Persist preselected dish associations that aren't yet saved on the backend.
+      // These show in "Associated Dishes" but haven't been persisted via updateItemModifiers.
+      if (isAddon && preselectedDishIds && preselectedDishIds.length > 0) {
+        const unsaved = preselectedDishIds.filter((id) =>
+          associatedDishIds.has(id) &&
+          !allItems?.find((d) => d.id === id)?.addons?.some((a) => a.menu_item_id === item.id),
+        );
+        if (unsaved.length > 0) {
+          await handleAddToMultipleDishes(new Set(unsaved));
+        }
       }
 
       // When an add-on's base price changes, cascade the new price to every
