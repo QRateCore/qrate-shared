@@ -407,6 +407,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         metadata: { value },
       });
       setItemTypeFilter(value);
+      setFilterTags([]);
     },
     [restaurantId, trackAction],
   );
