@@ -264,6 +264,9 @@ export default function MenuEditPanel({
           {/* Serving hours */}
           <div>
             <div style={labelStyle}>Serving hours</div>
+            <p style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, marginTop: 2 }}>
+              Please set times as per the local timezone of the restaurant&apos;s location.
+            </p>
 
             {/* All-day toggle */}
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
