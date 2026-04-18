@@ -26,6 +26,8 @@ interface EditModalProps {
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
   /** True when the modal was opened via "Add Item" — shows the Dishes/Add-ons type toggle. Hidden in edit mode. */
   isNewItem?: boolean;
+  /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
+  forceAddon?: boolean;
   /**
    * Called after a dish's addons array is mutated from the Dishes tab of an addon editor.
    * Lets the parent update its cached items so the addon↔dish association is visible
@@ -154,7 +156,7 @@ function TagInput({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -200,7 +202,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [imgError, setImgError]     = useState<string | null>(null);
 
   // Add-on type
-  const [isAddon, setIsAddon]       = useState(item.item_type === 'addon');
+  const [isAddon, setIsAddon]       = useState(forceAddon || item.item_type === 'addon');
   // Confirmation state for dish→addon toggle when item has menu associations
   const [addonConfirmPending, setAddonConfirmPending] = useState(false);
 
@@ -924,8 +926,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {item.name}
           </div>
 
-          {/* Dishes / Add-ons pill toggle — only shown when creating a new item */}
-          {isNewItem && (
+          {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon) */}
+          {isNewItem && !forceAddon && (
             <div
               role="radiogroup"
               aria-label="Item type"
