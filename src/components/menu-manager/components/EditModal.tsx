@@ -241,8 +241,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Land on a valid tab for the new mode. Dep list is [isAddon] only
   // — including activeTab would loop.
   useEffect(() => {
-    setActiveTab(isAddon ? 'performance' : 'food_tags');
-  }, [isAddon]);
+    setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
+  }, [isAddon, isNewItem]);
 
   // Add-ons tab state (used when editing a dish item)
   const [itemAddons, setItemAddons] = useState<AddonEntry[]>(item.addons ?? []);
@@ -1571,8 +1571,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             }}
           >
             {(isAddon
-              ? (['performance', 'dishes'] as const)
-              : (['food_tags', 'addons', 'recommendations', 'performance'] as const)
+              ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
+              : (isNewItem
+                ? (['food_tags', 'addons', 'recommendations'] as const)
+                : (['food_tags', 'addons', 'recommendations', 'performance'] as const))
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
