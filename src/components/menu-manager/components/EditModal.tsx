@@ -6,6 +6,7 @@ import { useRef, useState, useEffect } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
+import Select from '../../common/Select';
 import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -200,6 +201,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Add-on type
   const [isAddon, setIsAddon]       = useState(item.item_type === 'addon');
+  // Confirmation state for dish→addon toggle when item has menu associations
+  const [addonConfirmPending, setAddonConfirmPending] = useState(false);
 
   // Add-on toggle is disabled when the item already carries sides or recommendations
   // (those belong to dishes only). Computed once so the header toggle and the
@@ -707,6 +710,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         ...(isAddon ? { price } : {}),
       };
 
+      // When converting dish → addon, remove all menu associations first.
+      // The item stays as an add-on associated with other dishes — only
+      // the menu category placements are stripped.
+      const wasConvertedToAddon = isAddon && item.item_type !== 'addon';
+      const menuAssocsToRemove = wasConvertedToAddon
+        ? (item.menu_associations ?? []).filter((a) => 'menu_id' in a && a.menu_id)
+        : [];
+      if (menuAssocsToRemove.length > 0) {
+        for (const assoc of menuAssocsToRemove) {
+          await service.removeItemFromMenu(item.id, assoc.menu_id);
+        }
+      }
+
       const [saved] = await Promise.all([
         service.updateMenuItem(item.id, updates),
         isActive !== (item.active !== false)
@@ -761,6 +777,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         price: isAddon ? price : (saved.price ?? item.price),
         addons: itemAddons,
         recommendations: itemRecs,
+        // Clear menu associations in local state when converted to addon
+        ...(wasConvertedToAddon ? { menu_associations: [] } : {}),
       };
 
       trackAction('menu.editModal.save', {
@@ -770,6 +788,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           isAddon,
           hasImage: !!thumbnail,
           activeToggled: isActive !== (item.active !== false),
+          convertedToAddon: wasConvertedToAddon,
         },
         success: true,
         durationMs: Date.now() - start,
@@ -872,6 +891,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 zIndex: 70,
                 width: 720,
                 maxWidth: 'calc(100vw - 32px)',
+                height: '90vh',
                 maxHeight: '90vh',
                 background: 'var(--white)',
                 borderRadius: 'var(--r)',
@@ -940,7 +960,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 role="radio"
                 aria-checked={isAddon}
                 aria-disabled={addonDisabled}
-                onClick={() => { if (!addonDisabled) setIsAddon(true); }}
+                onClick={() => {
+                  if (addonDisabled) return;
+                  const menuAssocs = item.menu_associations?.filter(
+                    (a) => 'menu_id' in a && a.menu_id,
+                  ) ?? [];
+                  if (menuAssocs.length > 0 && item.item_type !== 'addon') {
+                    setAddonConfirmPending(true);
+                  } else {
+                    setIsAddon(true);
+                  }
+                }}
                 disabled={addonDisabled}
                 title={addonDisabled ? (disabledReason ?? undefined) : undefined}
                 data-testid="type-toggle-addons"
@@ -1085,6 +1115,54 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             >
               <AlertCircle size={12} />
               {deleteError}
+            </div>
+          )}
+
+          {/* Addon toggle confirmation — shown when a dish with menu placements is being converted to an add-on */}
+          {addonConfirmPending && (
+            <div
+              data-testid="addon-confirm-banner"
+              style={{
+                fontSize: 12,
+                color: '#92400e',
+                background: '#fef3c7',
+                border: '1px solid #fcd34d',
+                borderRadius: 6,
+                padding: '10px 14px',
+                marginBottom: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  Changing this item to an add-on will <strong>remove it from{' '}
+                  {(item.menu_associations?.length ?? 0) === 1
+                    ? item.menu_associations![0].menu_name
+                    : `${item.menu_associations?.length} menus`}
+                  </strong> as a menu item. Its add-on associations with other dishes will be kept.
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setAddonConfirmPending(false)}
+                  data-testid="addon-confirm-cancel"
+                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'white', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddonConfirmPending(false); setIsAddon(true); }}
+                  data-testid="addon-confirm-proceed"
+                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 700, color: 'white', background: '#d97706', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Convert to Add-on
+                </button>
+              </div>
             </div>
           )}
 
@@ -1257,28 +1335,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     Category <span style={{ color: '#b91c1c' }}>*</span>
                   </label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <select
+                    <Select
                       id="edit-category"
                       value={category}
                       onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
                       data-testid="edit-category-select"
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        border: categoryError ? '1.5px solid #b91c1c' : '1px solid var(--border)',
-                        borderRadius: 'var(--r-xs)',
-                        padding: '3px 8px',
-                        outline: 'none',
-                        background: categoryError ? '#fff5f5' : 'var(--white)',
-                        color: 'var(--text)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value=""></option>
-                      {CANONICAL_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      options={CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                      placeholder="— Select category —"
+                      error={categoryError}
+                    />
                     {categoryError && (
                       <span style={{ fontSize: 10, color: '#b91c1c' }}>Category is required</span>
                     )}

@@ -37,8 +37,8 @@ export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
 
 // Components — Common
-export { QRateLogo, Button, Card } from './components/common';
-export type { QRateLogoProps } from './components/common';
+export { QRateLogo, Button, Card, Select } from './components/common';
+export type { QRateLogoProps, SelectProps, SelectOption, SelectSize } from './components/common';
 
 // Services
 export { createMenuItemsService, fetchCanonicalCategoryMap } from './services/createMenuItemsService';
