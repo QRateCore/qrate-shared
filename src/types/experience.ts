@@ -120,11 +120,13 @@ export interface ExperienceService {
   updateTable(restaurantId: string, tableId: string, updates: { capacity?: number; assigned_server_id?: string | null; table_label?: string | null }): Promise<{ table: RestaurantTable }>;
   generateQRCodes(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; qr_code_url: string }>; message: string }>;
   downloadQRCodesZip(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
+  deleteTable?(restaurantId: string, tableId: string): Promise<void>;
 
   // Staff
   getStaff(restaurantId: string): Promise<{ staff: StaffMember[]; count: number }>;
   createStaff(restaurantId: string, data: CreateStaffRequest): Promise<{ staff: StaffMember }>;
   updateStaff(restaurantId: string, staffId: string, updates: { is_active?: boolean; role?: string }): Promise<{ staff: StaffMember }>;
+  deleteStaff?(restaurantId: string, staffId: string): Promise<{ message: string }>;
 
   // Waiter calls & activity
   getWaiterCalls(restaurantId: string): Promise<WaiterCall[]>;

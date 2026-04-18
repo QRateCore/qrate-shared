@@ -124,6 +124,10 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   const [cardTabState, setCardTabState] = useState<Record<number, 'orders' | 'service'>>({});
   const [qrModalTable, setQrModalTable] = useState<RestaurantTable | null>(null);
 
+  // Delete table
+  const [deleteConfirm, setDeleteConfirm] = useState<{ tableId: string; tableNumber: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const fetchTableActivity = useCallback(async () => {
     if (!restaurantId) return;
     try {
@@ -314,6 +318,22 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
     } catch (err) {
       console.error('Failed to assign server:', err);
       showFeedback('error', 'Failed to assign server');
+    }
+  };
+
+  const handleDeleteTable = async (tableId: string) => {
+    if (!restaurantId) return;
+    setDeleting(true);
+    try {
+      await service.deleteTable!(restaurantId, tableId);
+      setTables(prev => prev.filter(t => t.id !== tableId));
+      showFeedback('success', 'Table deleted');
+    } catch (err) {
+      console.error('Failed to delete table:', err);
+      showFeedback('error', 'Failed to delete table');
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(null);
     }
   };
 
@@ -761,6 +781,16 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                         </button>
                       )}
                     </div>
+                    {!isOccupied && service.deleteTable && (
+                      <button
+                        onClick={() => setDeleteConfirm({ tableId: table.id, tableNumber: table.table_number })}
+                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        data-testid={`table-delete-${table.table_number}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete Table
+                      </button>
+                    )}
                     {isOccupied && service.closeTableSession && (
                       <button
                         onClick={async () => {
@@ -872,6 +902,46 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
               )}
             </div>
             <p className="text-xs text-gray-400 text-center mt-3">Scan to open the menu for this table</p>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Table Confirmation Modal */}
+      {deleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Delete Table {deleteConfirm.tableNumber}</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  This will permanently remove Table #{deleteConfirm.tableNumber} and its QR code. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteTable(deleteConfirm.tableId)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

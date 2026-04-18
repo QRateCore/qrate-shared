@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Loader2, Users, Eye, EyeOff, X } from 'lucide-react';
+import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2 } from 'lucide-react';
 import type { StaffMember, StaffRole, ExperienceService } from '../../types/experience';
 
 const ROLE_LABELS: Record<StaffRole, string> = {
@@ -39,6 +39,8 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
   const [showPassword, setShowPassword] = useState(false);
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -103,6 +105,21 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
       showFeedback('error', err?.response?.data?.error || err?.message || 'Failed to update staff');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleDelete = async (member: StaffMember) => {
+    if (!restaurantId || !service.deleteStaff) return;
+    setDeletingId(member.id);
+    try {
+      await service.deleteStaff(restaurantId, member.id);
+      setConfirmDeleteId(null);
+      showFeedback('success', `${member.name} has been removed`);
+      await fetchStaff();
+    } catch (err: any) {
+      showFeedback('error', err?.response?.data?.error || err?.message || 'Failed to remove staff member');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -266,23 +283,58 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                 </div>
                 <p className="text-sm text-gray-500 truncate">{member.email}</p>
               </div>
-              <button
-                onClick={() => handleToggleActive(member)}
-                disabled={togglingId === member.id}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
-                  member.is_active
-                    ? 'text-red-700 bg-red-50 hover:bg-red-100'
-                    : 'text-green-700 bg-green-50 hover:bg-green-100'
-                }`}
-              >
-                {togglingId === member.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : member.is_active ? (
-                  'Deactivate'
-                ) : (
-                  'Activate'
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => handleToggleActive(member)}
+                  disabled={togglingId === member.id || deletingId === member.id}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                    member.is_active
+                      ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                      : 'text-green-700 bg-green-50 hover:bg-green-100'
+                  }`}
+                >
+                  {togglingId === member.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : member.is_active ? (
+                    'Deactivate'
+                  ) : (
+                    'Activate'
+                  )}
+                </button>
+                {service.deleteStaff && (
+                  confirmDeleteId === member.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleDelete(member)}
+                        disabled={deletingId === member.id}
+                        className="px-2 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {deletingId === member.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          'Confirm'
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        disabled={deletingId === member.id}
+                        className="px-2 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(member.id)}
+                      disabled={togglingId === member.id || deletingId === member.id}
+                      title="Remove staff member"
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )
                 )}
-              </button>
+              </div>
             </div>
           ))}
         </div>
