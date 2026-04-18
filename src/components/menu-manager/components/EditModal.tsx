@@ -664,15 +664,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     if (!name.trim()) { setNameError(true); hasError = true; }
     if (!isAddon && !description.trim()) { setDescError(true); hasError = true; }
     if (!isAddon && !category) { setCategoryError(true); hasError = true; }
-    // Add-on price validation: optional, but if present must be a non-negative finite number.
+    // Add-on price validation: required when creating a new add-on; optional when editing.
     // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
-    if (isAddon && price !== null) {
-      if (!Number.isFinite(price) || price < 0) {
-        setPriceError('Price must be a non-negative number');
+    if (isAddon) {
+      if (isNewItem && price === null) {
+        setPriceError('Price is required');
         hasError = true;
-      } else if (price > 10_000) {
-        setPriceError('Price must be ≤ 10,000');
-        hasError = true;
+      } else if (price !== null) {
+        if (!Number.isFinite(price) || price < 0) {
+          setPriceError('Price must be a non-negative number');
+          hasError = true;
+        } else if (price > 10_000) {
+          setPriceError('Price must be ≤ 10,000');
+          hasError = true;
+        }
       }
     }
     if (hasError) return;
@@ -1497,7 +1502,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               </div>
 
               <div style={{ flex: '0 0 160px' }}>
-                <label style={labelStyle} htmlFor="edit-price-input">Price</label>
+                <label style={labelStyle} htmlFor="edit-price-input">
+                  Price{isNewItem && isAddon && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
+                </label>
                 <div
                   style={{
                     display: 'flex',
@@ -1528,7 +1535,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     data-testid="edit-price-input"
                     style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
                   />
-                  {price !== null && (
+                  {price !== null && !(isNewItem && isAddon) && (
                     <button
                       type="button"
                       aria-label="Clear price"

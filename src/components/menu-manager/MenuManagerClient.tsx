@@ -1499,7 +1499,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             enableAndOrSplit={enableAndOrSplit}
             onCrossGroupDuplicate={(group) =>
               showToast(
-                `Already in ${group === 'included' ? 'Included' : 'Choice'} — remove first`,
+                `Already in ${group === 'included' ? 'Includes All' : 'Includes one by choice'} — remove first`,
               )
             }
           />

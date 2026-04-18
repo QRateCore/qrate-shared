@@ -379,7 +379,7 @@ export default function MobileItemModifierPicker({
           {/* Included (AND) — always-free with dish */}
           <div className="modifier-section" data-testid={`mobile-sides-included-section-${parent.id}`}>
             <div className="modifier-section-header modifier-section-header--sides">
-              <span className="modifier-section-title">Included sides</span>
+              <span className="modifier-section-title">Includes All</span>
               {sidesAnd.length > 0 && <span className="modifier-section-count">{sidesAnd.length}</span>}
             </div>
             <p className="modifier-section-hint">Always included with this dish (Free of Cost)</p>
@@ -453,7 +453,7 @@ export default function MobileItemModifierPicker({
           {/* Choice (OR) — patron picks one */}
           <div className="modifier-section" data-testid={`mobile-sides-choice-section-${parent.id}`}>
             <div className="modifier-section-header modifier-section-header--sides" style={{ background: '#fef3c7', color: '#92400e' }}>
-              <span className="modifier-section-title">Choice of side</span>
+              <span className="modifier-section-title">Includes one by choice</span>
               {sidesOr.length > 0 && <span className="modifier-section-count">{sidesOr.length}</span>}
             </div>
             <p className="modifier-section-hint">Patron picks ONE of these (Free of Cost)</p>

@@ -365,7 +365,7 @@ export default function ItemModifierZones({
       {/* Included (AND) zone */}
       <div>
         <div className="modifier-section-header modifier-section-header--sides">
-          <span className="modifier-section-title">Included</span>
+          <span className="modifier-section-title">Includes All</span>
           {sidesAnd.length > 0 && <span className="modifier-section-count">{sidesAnd.length}</span>}
         </div>
         <p className="modifier-section-hint">All of these come with the dish (free of charge)</p>
@@ -390,7 +390,7 @@ export default function ItemModifierZones({
           className="modifier-section-header modifier-section-header--sides"
           style={{ background: '#fef3c7', color: '#92400e' }}
         >
-          <span className="modifier-section-title">Choice</span>
+          <span className="modifier-section-title">Includes one by choice</span>
           {sidesOr.length > 0 && <span className="modifier-section-count">{sidesOr.length}</span>}
         </div>
         <p className="modifier-section-hint">Patron picks one of these (free of charge)</p>
