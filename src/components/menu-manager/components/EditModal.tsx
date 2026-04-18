@@ -28,6 +28,8 @@ interface EditModalProps {
   isNewItem?: boolean;
   /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
   forceAddon?: boolean;
+  /** Dish IDs to pre-select on the Dishes tab (used when creating an addon from a specific dish card). */
+  preselectedDishIds?: string[];
   /**
    * Called after a dish's addons array is mutated from the Dishes tab of an addon editor.
    * Lets the parent update its cached items so the addon↔dish association is visible
@@ -156,7 +158,7 @@ function TagInput({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -278,7 +280,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Dishes tab state — search + multi-select
   const [dishSearch, setDishSearch] = useState('');
-  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
+  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(
+    () => new Set(preselectedDishIds ?? []),
+  );
 
   // Performance tab state
   const [perfPeriod, setPerfPeriod] = useState<MenuItemPerformancePeriod>('last_7_days');
