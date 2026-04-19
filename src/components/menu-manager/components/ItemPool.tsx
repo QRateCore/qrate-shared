@@ -162,7 +162,8 @@ function ItemPoolCard({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              maxWidth: 120,
+              minWidth: 0,
+              flex: '1 1 0',
             }}
           >
             {item.name}
