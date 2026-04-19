@@ -2307,18 +2307,6 @@ function RecommendationCard({
         background: isAI ? '#fffbeb' : '#fafafa',
       }}
     >
-      <div
-        style={{
-          width: 32, height: 32, borderRadius: 4,
-          background: '#f0f0f0', overflow: 'hidden',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, flexShrink: 0,
-        }}
-      >
-        {rec.thumbnail_url ? (
-          <img src={rec.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : '🍽'}
-      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2379,18 +2367,6 @@ function AddonCard({
         background: addon.status === 'suggested' ? '#fffbeb' : '#fafafa',
       }}
     >
-      <div
-        style={{
-          width: 32, height: 32, borderRadius: 4,
-          background: '#f0f0f0', overflow: 'hidden',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, flexShrink: 0,
-        }}
-      >
-        {addon.thumbnail_url ? (
-          <img src={addon.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : '🍽'}
-      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2401,12 +2377,12 @@ function AddonCard({
               AI
             </span>
           )}
-        </div>
-        <div
-          className="text-caption"
-          data-testid={`addon-price-${addon.menu_item_id}`}
-        >
-          {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
+          <div
+            style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}
+            data-testid={`addon-price-${addon.menu_item_id}`}
+          >
+            {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
+          </div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>

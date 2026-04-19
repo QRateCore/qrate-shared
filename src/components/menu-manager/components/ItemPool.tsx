@@ -128,28 +128,30 @@ function ItemPoolCard({
         {isSelected && <Check size={11} color="white" strokeWidth={3} />}
       </button>
 
-      {/* Thumbnail */}
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 'var(--r-xs)',
-          background: '#f0f0f0',
-          flexShrink: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 18,
-          ...noDrag,
-        }}
-      >
-        {item.thumbnail_url ? (
-          <img draggable={false} src={item.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          '🍽'
-        )}
-      </div>
+      {/* Thumbnail — dishes only */}
+      {item.item_type !== 'addon' && (
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 'var(--r-xs)',
+            background: '#f0f0f0',
+            flexShrink: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 18,
+            ...noDrag,
+          }}
+        >
+          {item.thumbnail_url ? (
+            <img draggable={false} src={item.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            '🍽'
+          )}
+        </div>
+      )}
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0, ...noDrag }}>
@@ -168,23 +170,12 @@ function ItemPoolCard({
           >
             {item.name}
           </span>
-          {item.item_type === 'addon' && (
-            <span
-              data-testid={`addon-badge-${item.id}`}
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: '0.05em',
-                color: '#92400e',
-                background: '#fef3c7',
-                borderRadius: 4,
-                padding: '1px 5px',
-                border: '1px solid #fde68a',
-              }}
-            >
-              ADDON
+          {item.item_type === 'addon' && item.price != null && (
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', flexShrink: 0 }}>
+              ${Number(item.price).toFixed(2)}
             </span>
           )}
+
           {!item.active && (
             <span
               style={{
@@ -202,8 +193,8 @@ function ItemPoolCard({
           )}
         </div>
 
-        {/* Menu chips */}
-        {itemMenus.length > 0 && (
+        {/* Menu chips — dishes only */}
+        {item.item_type !== 'addon' && itemMenus.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
             {itemMenus.map(({ menu, index }) => {
               const color = colorMap(index);
