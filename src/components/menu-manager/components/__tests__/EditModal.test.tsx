@@ -138,6 +138,10 @@ interface RenderConfig {
   menus?: MenuSummary[];
   allItems?: MenuItemDisplay[];
   isNewItem?: boolean;
+  forceAddon?: boolean;
+  preselectedDishIds?: string[];
+  onSaveNewItem?: (data: { name: string; description: string; category: string; food_tags: Record<string, unknown>; item_type: 'dish' | 'addon'; price?: number | null }) => Promise<MenuItemDisplay>;
+  onDishAddonsChange?: (dishId: string, nextAddons: unknown[]) => void;
   service?: MenuManagerService;
   onClose?: () => void;
   onComplete?: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
@@ -149,6 +153,10 @@ function renderModal(config: RenderConfig = {}) {
     menus = [],
     allItems = [],
     isNewItem = false,
+    forceAddon = false,
+    preselectedDishIds,
+    onSaveNewItem,
+    onDishAddonsChange,
     service = makeService(),
     onClose = vi.fn(),
     onComplete = vi.fn(),
@@ -162,6 +170,10 @@ function renderModal(config: RenderConfig = {}) {
         menus={menus}
         allItems={allItems}
         isNewItem={isNewItem}
+        forceAddon={forceAddon}
+        preselectedDishIds={preselectedDishIds}
+        onSaveNewItem={onSaveNewItem}
+        onDishAddonsChange={onDishAddonsChange}
         onClose={onClose}
         onComplete={onComplete}
       />
@@ -862,5 +874,318 @@ describe('EditModal — cross-tab recommendation reactivity', () => {
     await waitFor(() => {
       expect(service.getItemModifiers).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+// ── Cross-tab reactivity — addon broadcast ────────────────────────────────────
+
+describe('EditModal — cross-tab addon reactivity', () => {
+  it('refetches addon pool on visibilitychange when addons tab is active', async () => {
+    const dish = makeDishItem({ id: 'dish-1' });
+    const addonPool = [makeAddonItem({ id: 'pool-addon-1', name: 'Guac' })];
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue(addonPool),
+    });
+
+    renderModal({ item: dish, service });
+
+    // Switch to addons tab to activate the listener
+    fireEvent.click(screen.getByTestId('tab-addons'));
+    await waitFor(() => expect(service.getAddonItems).toHaveBeenCalledTimes(1));
+
+    // Simulate the user switching away and back to this browser tab
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    // getAddonItems should have been called again (refetch on visibility restore)
+    await waitFor(() => {
+      expect(service.getAddonItems).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('does not refetch addon pool on visibilitychange when a different tab is active', async () => {
+    const dish = makeDishItem({ id: 'dish-1' });
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([]),
+    });
+
+    renderModal({ item: dish, service });
+
+    // Stay on food_tags tab (default) — do NOT switch to addons
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    // getAddonItems should NOT have been called
+    expect(service.getAddonItems).not.toHaveBeenCalled();
+  });
+
+  it('broadcasts addon change after adding an addon', async () => {
+    const dish = makeDishItem({ id: 'dish-1' });
+    const poolAddon = makeAddonItem({ id: 'pool-addon-1', name: 'Guac' });
+    const service = makeService({
+      getAddonItems: vi.fn().mockResolvedValue([poolAddon]),
+      updateItemModifiers: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderModal({ item: dish, service, allItems: [dish, poolAddon] });
+
+    // Switch to addons tab
+    fireEvent.click(screen.getByTestId('tab-addons'));
+    await waitFor(() => expect(service.getAddonItems).toHaveBeenCalled());
+
+    // Wait for pool to render and click the add button
+    await waitFor(() => {
+      expect(screen.getByText('Guac')).toBeInTheDocument();
+    });
+    const addBtn = screen.getByTestId('add-addon-pool-addon-1');
+    fireEvent.click(addBtn);
+
+    // Verify updateItemModifiers was called with the addon
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalledWith(
+        'dish-1',
+        expect.objectContaining({
+          addons: expect.arrayContaining([
+            expect.objectContaining({ menu_item_id: 'pool-addon-1' }),
+          ]),
+        }),
+      );
+    });
+  });
+});
+
+// ── Deferred dish association tests (new addon creation) ──────────────────────
+
+describe('EditModal — deferred dish association for new addons', () => {
+  const dishA = makeDishItem({ id: 'dish-a', name: 'Caesar Salad' });
+  const dishB = makeDishItem({ id: 'dish-b', name: 'Margherita Pizza' });
+  const draftAddon = makeAddonItem({ id: '__draft__1234', name: '' });
+
+  function makeSaveNewItem(createdId = 'real-addon-id') {
+    return vi.fn().mockImplementation(async (data: Record<string, unknown>) => ({
+      id: createdId,
+      name: data.name,
+      description: data.description ?? null,
+      price: data.price ?? 0,
+      item_type: 'addon',
+      food_tags: {},
+      thumbnail_url: null,
+    }));
+  }
+
+  it('does NOT call updateItemModifiers when "Add Selected" is clicked in deferred-creation mode', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+
+    renderModal({
+      item: draftAddon,
+      isNewItem: true,
+      forceAddon: true,
+      allItems: [dishA, dishB],
+      onSaveNewItem: makeSaveNewItem(),
+      service,
+    });
+
+    // Addon mode + isNewItem → Dishes tab is default
+    const dishesTab = screen.getByTestId('tab-dishes');
+    await user.click(dishesTab);
+
+    // Select dish A
+    const selectA = screen.getByTestId('select-dish-dish-a');
+    await user.click(selectA);
+
+    // Click "Add Selected"
+    const addSelectedBtn = screen.getByTestId('add-selected-dishes');
+    await user.click(addSelectedBtn);
+
+    // updateItemModifiers must NOT have been called — addon doesn't exist yet
+    expect(service.updateItemModifiers).not.toHaveBeenCalled();
+
+    // But the dish should appear in the "Associated Dishes" section (local state)
+    expect(screen.getByTestId('remove-dish-dish-a')).toBeInTheDocument();
+  });
+
+  it('does NOT call updateItemModifiers when "Remove" is clicked in deferred-creation mode', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+
+    renderModal({
+      item: draftAddon,
+      isNewItem: true,
+      forceAddon: true,
+      allItems: [dishA],
+      preselectedDishIds: ['dish-a'],
+      onSaveNewItem: makeSaveNewItem(),
+      service,
+    });
+
+    const dishesTab = screen.getByTestId('tab-dishes');
+    await user.click(dishesTab);
+
+    // Dish A should be pre-associated
+    const removeBtn = screen.getByTestId('remove-dish-dish-a');
+    await user.click(removeBtn);
+
+    // API must NOT be called
+    expect(service.updateItemModifiers).not.toHaveBeenCalled();
+
+    // Dish should be gone from Associated Dishes
+    expect(screen.queryByTestId('remove-dish-dish-a')).not.toBeInTheDocument();
+  });
+
+  it('flushes all dish associations with real ID on save', async () => {
+    const user = userEvent.setup();
+    const onSaveNewItem = makeSaveNewItem('real-addon-99');
+    const onDishAddonsChange = vi.fn();
+    const service = makeService();
+    const onComplete = vi.fn();
+
+    renderModal({
+      item: draftAddon,
+      isNewItem: true,
+      forceAddon: true,
+      allItems: [dishA, dishB],
+      onSaveNewItem,
+      onDishAddonsChange,
+      service,
+      onComplete,
+    });
+
+    // Go to Dishes tab and select both dishes
+    const dishesTab = screen.getByTestId('tab-dishes');
+    await user.click(dishesTab);
+
+    await user.click(screen.getByTestId('select-dish-dish-a'));
+    await user.click(screen.getByTestId('select-dish-dish-b'));
+    await user.click(screen.getByTestId('add-selected-dishes'));
+
+    // No API call yet
+    expect(service.updateItemModifiers).not.toHaveBeenCalled();
+
+    // Fill required name and price, then save
+    const nameInput = screen.getByTestId('edit-name-input');
+    await user.type(nameInput, 'Truffle Oil');
+    const priceInput = screen.getByTestId('edit-price-input');
+    await user.type(priceInput, '3');
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    // onSaveNewItem should have been called to create the addon
+    await waitFor(() => {
+      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    // Now updateItemModifiers should have been called for each associated dish,
+    // using the REAL addon ID ('real-addon-99'), not the draft ID
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalledTimes(2);
+    });
+
+    const calls = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls;
+    const dishIds = calls.map((c) => c[0]).sort();
+    expect(dishIds).toEqual(['dish-a', 'dish-b']);
+
+    // Each call should use the real addon ID
+    for (const call of calls) {
+      const addons = call[1].addons;
+      expect(addons).toHaveLength(1);
+      expect(addons[0].menu_item_id).toBe('real-addon-99');
+    }
+
+    // onComplete should have been called
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes preselected + user-selected dishes together on save', async () => {
+    const user = userEvent.setup();
+    const onSaveNewItem = makeSaveNewItem('real-addon-42');
+    const service = makeService();
+
+    renderModal({
+      item: draftAddon,
+      isNewItem: true,
+      forceAddon: true,
+      allItems: [dishA, dishB],
+      preselectedDishIds: ['dish-a'],
+      onSaveNewItem,
+      service,
+    });
+
+    // Dish A is pre-associated. Go to Dishes tab and also select dish B.
+    const dishesTab = screen.getByTestId('tab-dishes');
+    await user.click(dishesTab);
+
+    // Dish A should already be in Associated
+    expect(screen.getByTestId('remove-dish-dish-a')).toBeInTheDocument();
+
+    // Select dish B from pool
+    await user.click(screen.getByTestId('select-dish-dish-b'));
+    await user.click(screen.getByTestId('add-selected-dishes'));
+
+    // Fill required fields and save
+    const nameInput = screen.getByTestId('edit-name-input');
+    await user.type(nameInput, 'Garlic Butter');
+    const priceInput = screen.getByTestId('edit-price-input');
+    await user.type(priceInput, '2');
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    // Both dishes should have been associated using the real ID
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalledTimes(2);
+    });
+
+    const calls = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls;
+    const dishIds = calls.map((c) => c[0]).sort();
+    expect(dishIds).toEqual(['dish-a', 'dish-b']);
+
+    for (const call of calls) {
+      expect(call[1].addons[0].menu_item_id).toBe('real-addon-42');
+    }
+  });
+
+  it('does not flush dish associations when saving a new DISH (non-addon)', async () => {
+    const user = userEvent.setup();
+    const onSaveNewItem = vi.fn().mockResolvedValue({
+      id: 'real-dish-1',
+      name: 'New Dish',
+      description: 'Desc',
+      price: 15,
+      item_type: 'dish',
+      food_tags: {},
+      thumbnail_url: null,
+    });
+    const service = makeService();
+
+    renderModal({
+      item: makeDishItem({ id: '__draft__5678', name: '' }),
+      isNewItem: true,
+      onSaveNewItem,
+      service,
+    });
+
+    // Fill required fields for a dish
+    const nameInput = screen.getByTestId('edit-name-input');
+    await user.type(nameInput, 'New Dish');
+    const descInput = screen.getByTestId('edit-description-input');
+    await user.type(descInput, 'Desc');
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    // No dish association calls for a dish item
+    expect(service.updateItemModifiers).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import Select from '../../common/Select';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
+import { broadcastAddonChange, onAddonChange } from '../../../utils/addon-broadcast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -217,6 +218,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Add-on type
   const [isAddon, setIsAddon]       = useState(forceAddon || item.item_type === 'addon');
+  // True when the addon has no DB row yet — dish associations must be deferred until save.
+  const isDeferredCreation = isNewItem && !!onSaveNewItem;
   // Confirmation state for dish→addon toggle when item has menu associations
   const [addonConfirmPending, setAddonConfirmPending] = useState(false);
 
@@ -321,8 +324,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       .finally(() => setPerfLoading(false));
   }, [activeTab, restaurantId, item.id, perfPeriod]);
 
-  useEffect(() => {
-    if (activeTab !== 'addons' || !restaurantId) return;
+  // Refetch addon pool from backend — used on initial load, cross-tab
+  // broadcast, and tab-visibility restore.
+  const fetchAddons = useRef<() => void>(() => {});
+  fetchAddons.current = () => {
+    if (!restaurantId) return;
     setAddonsLoading(true);
     setAddonsError(null);
     service
@@ -330,6 +336,38 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       .then(setAddonPool)
       .catch((e: unknown) => setAddonsError(e instanceof Error ? e.message : 'Failed to load add-ons'))
       .finally(() => setAddonsLoading(false));
+  };
+
+  // Initial fetch when addons tab becomes active
+  useEffect(() => {
+    if (activeTab !== 'addons' || !restaurantId) return;
+    fetchAddons.current();
+  }, [activeTab, restaurantId]);
+
+  // Cross-tab reactivity: refetch when another tab modifies addons
+  // for this item, and when user switches back to this tab.
+  useEffect(() => {
+    if (activeTab !== 'addons' || !restaurantId) return;
+
+    // Listen for BroadcastChannel messages from other tabs
+    const unsubBroadcast = onAddonChange((msg) => {
+      if (msg.restaurantId === restaurantId) {
+        fetchAddons.current();
+      }
+    });
+
+    // Refetch when the browser tab regains focus
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAddons.current();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      unsubBroadcast();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [activeTab, restaurantId]);
 
   // Refetch recommendations from backend — used on initial load, cross-tab
@@ -532,6 +570,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     const task = addonMutexRef.current.then(async () => {
       try {
         await service.updateItemModifiers(item.id, { addons: next });
+        if (restaurantId) broadcastAddonChange(item.id, restaurantId);
       } catch {
         setItemAddons(prev);
         setAddonsError('Failed to add — please try again.');
@@ -549,6 +588,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     const task = addonMutexRef.current.then(async () => {
       try {
         await service.updateItemModifiers(item.id, { addons: next });
+        if (restaurantId) broadcastAddonChange(item.id, restaurantId);
       } catch {
         setItemAddons(prev);
         setAddonsError('Failed to remove add-on — please try again.');
@@ -571,6 +611,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         } else {
           await service.updateItemModifiers(item.id, { addons: next });
         }
+        if (restaurantId) broadcastAddonChange(item.id, restaurantId);
       } catch {
         setItemAddons(prev);
         setAddonsError('Failed to approve — please try again.');
@@ -643,6 +684,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     try {
       await service.updateItemModifiers(dish.id, { addons: nextAddons });
       onDishAddonsChange?.(dish.id, nextAddons);
+      if (restaurantId) broadcastAddonChange(dish.id, restaurantId);
     } catch {
       setAssociatedDishIds((prev) => { const next = new Set(prev); next.delete(dish.id); return next; });
     }
@@ -651,25 +693,32 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   async function handleRemoveFromDish(dish: MenuItemDisplay) {
     const nextAddons = (dish.addons ?? []).filter((a) => a.menu_item_id !== item.id);
     setAssociatedDishIds((prev) => { const next = new Set(prev); next.delete(dish.id); return next; });
+    // In deferred-creation mode the addon has no DB row yet — only update local state.
+    if (isDeferredCreation) return;
     try {
       await service.updateItemModifiers(dish.id, { addons: nextAddons });
       onDishAddonsChange?.(dish.id, nextAddons);
+      if (restaurantId) broadcastAddonChange(dish.id, restaurantId);
     } catch {
       setAssociatedDishIds((prev) => new Set([...prev, dish.id]));
     }
   }
 
-  async function handleAddToMultipleDishes(dishIds: Set<string>) {
+  async function handleAddToMultipleDishes(dishIds: Set<string>, realAddonId?: string) {
     if (!allItems || dishIds.size === 0) return;
     const dishes = allItems.filter((d) => dishIds.has(d.id));
     // Optimistic: add all to associated set and clear selection
     setAssociatedDishIds((prev) => new Set([...prev, ...dishIds]));
     setSelectedDishIds(new Set());
+    // In deferred-creation mode (no realAddonId override), only update local state.
+    // The actual API calls happen after save, when the real ID is known.
+    if (isDeferredCreation && !realAddonId) return;
+    const addonId = realAddonId ?? item.id;
     const failed: string[] = [];
     for (const dish of dishes) {
       const newEntry: AddonEntry = {
-        menu_item_id: item.id,
-        name: item.name,
+        menu_item_id: addonId,
+        name: name.trim() || item.name,
         price_override: price ?? item.price ?? 0,
         thumbnail_url: item.thumbnail_url ?? null,
         status: 'approved',
@@ -679,6 +728,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       try {
         await service.updateItemModifiers(dish.id, { addons: nextAddons });
         onDishAddonsChange?.(dish.id, nextAddons);
+        if (restaurantId) broadcastAddonChange(dish.id, restaurantId);
       } catch {
         failed.push(dish.id);
       }
@@ -763,6 +813,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           active: isActive,
           item_type: isAddon ? 'addon' : 'dish',
         };
+        // Flush deferred dish associations now that the addon has a real DB ID.
+        // associatedDishIds contains both preselectedDishIds and any dishes the user
+        // added via "Add Selected" while the modal was open (local-only until now).
+        // selectedDishIds contains checked-but-not-yet-added dishes.
+        if (isAddon && created.id) {
+          const allPendingDishIds = new Set([...associatedDishIds, ...selectedDishIds]);
+          if (allPendingDishIds.size > 0) {
+            await handleAddToMultipleDishes(allPendingDishIds, created.id);
+          }
+        }
+
         trackAction('menu.editModal.save', {
           restaurantId,
           metadata: { itemId: created.id, isAddon, hasImage: false, activeToggled: false, convertedToAddon: false },

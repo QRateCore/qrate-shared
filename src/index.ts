@@ -54,3 +54,7 @@ export { TAG_CATEGORIES, COMPACT_TAG_CATEGORIES, HEAT_LABELS, CALORIE_OPTIONS } 
 // Utils — Recommendation Broadcast (cross-tab reactivity)
 export { broadcastRecommendationChange, onRecommendationChange } from './utils/recommendation-broadcast';
 export type { RecommendationChangeMessage } from './utils/recommendation-broadcast';
+
+// Utils — Addon Broadcast (cross-tab reactivity)
+export { broadcastAddonChange, onAddonChange } from './utils/addon-broadcast';
+export type { AddonChangeMessage } from './utils/addon-broadcast';
