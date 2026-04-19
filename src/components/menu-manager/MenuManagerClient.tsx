@@ -286,6 +286,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // always see the full canonical taxonomy, not just categories present in items.
   const canonicalCategories = useMemo(() => [...CANONICAL_CATEGORIES], []);
 
+  const handleCollapseAll = (collapse: boolean) => {
+    if (!activeMenuId) return;
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      for (const cat of CANONICAL_CATEGORIES) {
+        next[`${activeMenuId}:${cat}`] = collapse;
+      }
+      return next;
+    });
+  };
+
   const filtered = useMemo(() => {
     // Filter by item type: addons, included, or dishes (dish + included).
     // 'included' items (e.g. naan, raita, sides) are orderable by patrons and belong
@@ -1385,6 +1396,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onTabChange: setActiveMenuId,
             onToggleCollapse: (key) =>
               setCollapsed((prev) => ({ ...prev, [key]: !prev[key] })),
+            onCollapseAll: handleCollapseAll,
             onUpdateSettings: handleUpdateSettings,
             onDragStart: handleMenuItemDragStart,
             onDragEnd: handleDragEnd,
@@ -1503,6 +1515,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onToggleCollapse={(key) =>
               setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
             }
+            onCollapseAll={handleCollapseAll}
             onUpdateSettings={handleUpdateSettings}
             onDragStart={handleMenuItemDragStart}
             onDragEnd={handleDragEnd}

@@ -492,8 +492,8 @@ export default function ItemModifierZones({
                 </div>
                 <div className="modifier-card-body">
                   <div className="modifier-card-name">{addon.name}</div>
-                  {addon.price_override != null && (
-                    <div className="modifier-card-price">+${addon.price_override.toFixed(2)}</div>
+                  {(itemsById.get(addon.menu_item_id)?.price ?? null) != null && (
+                    <div className="modifier-card-price">+${itemsById.get(addon.menu_item_id)!.price!.toFixed(2)}</div>
                   )}
                 </div>
                 <button

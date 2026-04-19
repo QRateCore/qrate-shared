@@ -433,63 +433,6 @@ describe('EditModal — active toggle + save', () => {
   });
 });
 
-describe('EditModal — price cascade for addons', () => {
-  it('calls updateItemModifiers on dependent dishes when addon price changes', async () => {
-    const user = userEvent.setup();
-
-    // dish-1 has addon-1 with price_override matching the old base (2)
-    const dish1 = makeDishItem({
-      id: 'dish-1',
-      name: 'Pasta',
-      item_type: 'dish',
-      addons: [
-        {
-          id: 'assoc-1',
-          menu_item_id: 'addon-1',
-          name: 'Extra Sauce',
-          price_override: 2, // matches old base → should cascade
-          thumbnail_url: null,
-          status: 'approved',
-          suggestion_source: 'manual',
-        },
-      ],
-    });
-
-    const addonItem = makeAddonItem({ id: 'addon-1', name: 'Extra Sauce', price: 2 });
-    const savedAddon = makeAddonItem({ id: 'addon-1', name: 'Extra Sauce', price: 5 });
-
-    const service = makeService({
-      updateMenuItem: vi.fn().mockResolvedValue(savedAddon),
-      updateItemModifiers: vi.fn().mockResolvedValue(undefined),
-    });
-    const onComplete = vi.fn();
-
-    renderModal({
-      item: addonItem,
-      allItems: [dish1, addonItem],
-      service,
-      onComplete,
-    });
-
-    // Change addon price from 2 → 5
-    const priceInput = screen.getByTestId('edit-price-input') as HTMLInputElement;
-    fireEvent.change(priceInput, { target: { value: '5' } });
-
-    await user.click(screen.getByTestId('edit-save-btn'));
-
-    await waitFor(() => {
-      // updateItemModifiers should have been called for dish-1 with the new price cascaded
-      expect(service.updateItemModifiers).toHaveBeenCalledWith(
-        'dish-1',
-        expect.objectContaining({
-          addons: expect.arrayContaining([
-            expect.objectContaining({ menu_item_id: 'addon-1', price_override: 5 }),
-          ]),
-        }),
-      );
-    });
-  });
-});
 
 describe('EditModal — heat/spice pill selection', () => {
   it('renders heat/spice pills when food_tags tab is active', () => {

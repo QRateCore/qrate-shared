@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { countApprovedAddons } from '../lib/addonHelpers';
@@ -78,6 +78,8 @@ interface MenuBuilderProps {
   onRefresh?: () => void;
   /** True while a background refresh is in flight. */
   refreshing?: boolean;
+  /** Collapse or expand all category buckets at once. */
+  onCollapseAll?: (collapse: boolean) => void;
 }
 
 // ── ModifierCounter ───────────────────────────────────────────────────────────
@@ -963,6 +965,7 @@ export default function MenuBuilder({
   onScrollComplete,
   onRefresh,
   refreshing = false,
+  onCollapseAll,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -1013,6 +1016,10 @@ export default function MenuBuilder({
   const totalItems = activeMenu
     ? Object.values(activeAssignments).reduce((s, ids) => s + ids.length, 0)
     : 0;
+
+  const allCollapsed = activeMenu
+    ? visibleBuckets.every((cat) => collapsed[`${activeMenu.id}:${cat}`])
+    : false;
 
   if (menus.length === 0) {
     return (
@@ -1144,22 +1151,20 @@ export default function MenuBuilder({
           >
             {totalItems} item{totalItems !== 1 ? 's' : ''}
           </span>
+          {onCollapseAll && (
+            <button
+              type="button"
+              onClick={() => onCollapseAll(!allCollapsed)}
+              data-testid="collapse-expand-all-btn"
+              className="text-[11px] text-[var(--text2)] bg-transparent border-none cursor-pointer opacity-60 hover:opacity-100 transition-opacity whitespace-nowrap"
+            >
+              {allCollapsed ? 'Expand All' : 'Collapse All'}
+            </button>
+          )}
           {!activeMenu.active && (
             <span className="badge badge-green text-[10px] !bg-[var(--red-bg)] !text-[var(--red)]">
               Inactive
             </span>
-          )}
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={refreshing}
-              data-testid="refresh-menus-btn"
-              title="Refresh menus — picks up any newly crawled menus"
-              className="flex items-center gap-1 p-1 rounded-[var(--r-xs)] text-[var(--text2)] bg-transparent border-none cursor-pointer opacity-60 hover:opacity-100 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
-            >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-            </button>
           )}
         </div>
       )}

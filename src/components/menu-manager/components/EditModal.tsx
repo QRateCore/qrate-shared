@@ -7,7 +7,6 @@ import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'luci
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
 import Select from '../../common/Select';
-import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
@@ -635,7 +634,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     const newEntry: AddonEntry = {
       menu_item_id: item.id,
       name: item.name,
-      price_override: item.price ?? 0,
+      price_override: price ?? item.price ?? 0,
       thumbnail_url: item.thumbnail_url ?? null,
       status: 'approved',
       suggestion_source: 'manual',
@@ -672,7 +671,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       const newEntry: AddonEntry = {
         menu_item_id: item.id,
         name: item.name,
-        price_override: item.price ?? 0,
+        price_override: price ?? item.price ?? 0,
         thumbnail_url: item.thumbnail_url ?? null,
         status: 'approved',
         suggestion_source: 'manual',
@@ -693,26 +692,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         return next;
       });
     }
-  }
-
-  async function handleUpdateAddonPrice(menuItemId: string, newPrice: number) {
-    // Read latest state from ref — avoids stale closure when blur fires right before a remove click.
-    const prev = itemAddonsRef.current;
-    // Guard: if the addon was already removed (e.g. blur races with click), skip.
-    if (!prev.some((a) => a.menu_item_id === menuItemId)) return;
-    const next = prev.map((a) =>
-      a.menu_item_id === menuItemId ? { ...a, price_override: newPrice } : a,
-    );
-    setItemAddons(next);
-    const task = addonMutexRef.current.then(async () => {
-      try {
-        await service.updateItemModifiers(item.id, { addons: next });
-      } catch {
-        setItemAddons(prev);
-      }
-    });
-    addonMutexRef.current = task;
-    await task;
   }
 
   // ── Save ────────────────────────────────────────────────────────────────
@@ -845,31 +824,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         );
         if (unsaved.length > 0) {
           await handleAddToMultipleDishes(new Set(unsaved));
-        }
-      }
-
-      // When an add-on's base price changes, cascade the new price to every
-      // dish whose existing association is still tracking the old base price.
-      // A dish whose owner has explicitly set a per-dish override (different
-      // from the old base) is preserved — only default-tracking entries move.
-      // Why: the previous behaviour snapshot-captured the addon's price at the
-      // time of association and never refreshed it, so owners saw $0 on the
-      // dish's Add-ons tab after updating the addon's price.
-      if (isAddon && allItems && price !== null && price !== (item.price ?? 0)) {
-        const oldBase = item.price ?? 0;
-        const newBase = price;
-        const cascadeTargets = computeAddonCascadeTargets(allItems, item.id, oldBase);
-        for (const dish of cascadeTargets) {
-          const nextAddons = applyAddonPriceCascade(dish.addons ?? [], item.id, oldBase, newBase);
-          try {
-            await service.updateItemModifiers(dish.id, { addons: nextAddons });
-            onDishAddonsChange?.(dish.id, nextAddons);
-          } catch {
-            // Non-fatal: the addon's own price save succeeded; a failed
-            // cascade just leaves that dish on the old override until the
-            // owner re-opens it. Surfacing a blocking error here would be
-            // worse UX than quietly continuing.
-          }
         }
       }
 
@@ -1796,9 +1750,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                           <AddonCard
                             key={addon.menu_item_id}
                             addon={addon}
+                            basePrice={addonPool.find((p) => p.id === addon.menu_item_id)?.price ?? null}
                             onApprove={() => void handleApproveAddon(addon)}
                             onRemove={() => void handleRemoveAddon(addon.menu_item_id)}
-                            onPriceChange={(p) => void handleUpdateAddonPrice(addon.menu_item_id, p)}
                           />
                         ))}
                       </div>
@@ -1820,8 +1774,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                           <AddonCard
                             key={addon.menu_item_id}
                             addon={addon}
+                            basePrice={addonPool.find((p) => p.id === addon.menu_item_id)?.price ?? null}
                             onRemove={() => void handleRemoveAddon(addon.menu_item_id)}
-                            onPriceChange={(p) => void handleUpdateAddonPrice(addon.menu_item_id, p)}
                           />
                         ))}
                       </div>
@@ -2329,28 +2283,16 @@ function RecommendationCard({
 
 function AddonCard({
   addon,
+  basePrice,
   onApprove,
   onRemove,
-  onPriceChange,
 }: {
   addon: AddonEntry;
+  /** Price read from the addon item itself — always authoritative, never from the association. */
+  basePrice: number | null;
   onApprove?: () => void;
   onRemove: () => void;
-  onPriceChange?: (newPrice: number) => void;
 }) {
-  const [editingPrice, setEditingPrice] = useState(false);
-  const [priceInput, setPriceInput] = useState((addon.price_override ?? 0).toFixed(2));
-
-  function commitPrice() {
-    setEditingPrice(false);
-    const parsed = parseFloat(priceInput);
-    const val = Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
-    setPriceInput(val.toFixed(2));
-    if (onPriceChange && val !== (addon.price_override ?? 0)) {
-      onPriceChange(val);
-    }
-  }
-
   return (
     <div
       style={{
@@ -2386,35 +2328,12 @@ function AddonCard({
             </span>
           )}
         </div>
-        {editingPrice && onPriceChange ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
-            <span style={{ fontSize: 11, color: 'var(--text2)' }}>$</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-              onBlur={commitPrice}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitPrice(); if (e.key === 'Escape') { setPriceInput((addon.price_override ?? 0).toFixed(2)); setEditingPrice(false); } }}
-              autoFocus
-              data-testid={`addon-price-input-${addon.menu_item_id}`}
-              style={{
-                width: 60, fontSize: 11, padding: '1px 4px',
-                border: '1px solid var(--border)', borderRadius: 3,
-                outline: 'none', background: 'white', color: 'var(--text)',
-              }}
-            />
-          </div>
-        ) : (
-          <div
-            style={{ fontSize: 11, color: 'var(--text2)', cursor: onPriceChange ? 'pointer' : 'default' }}
-            onClick={() => { if (onPriceChange) { setPriceInput((addon.price_override ?? 0).toFixed(2)); setEditingPrice(true); } }}
-            title={onPriceChange ? 'Click to edit price' : undefined}
-            data-testid={`addon-price-${addon.menu_item_id}`}
-          >
-            ${(addon.price_override ?? 0).toFixed(2)}
-          </div>
-        )}
+        <div
+          style={{ fontSize: 11, color: 'var(--text2)' }}
+          data-testid={`addon-price-${addon.menu_item_id}`}
+        >
+          {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         {addon.status === 'suggested' && onApprove && (

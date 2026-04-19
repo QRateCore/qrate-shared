@@ -279,3 +279,70 @@ describe('ItemModifierZones — addon drag-drop calls onUpdate (Bug 2)', () => {
     expect(onUpdate).not.toHaveBeenCalled();
   });
 });
+
+// ── Price display: reads from itemsById, not price_override ───────────────────
+
+describe('ItemModifierZones — addon price comes from itemsById, not price_override', () => {
+  it('shows the addon item price from itemsById, ignoring stale price_override on the association', () => {
+    // Association has price_override: 0 — stale value from before the design fix.
+    // The addon item itself has price: 2.50 — this is the authoritative source.
+    const addonEntry: ReturnType<typeof makeAddonEntry> = { ...makeAddonEntry('addon-1', 'Extra Chutney'), price_override: 0 };
+    const addonItem = makeAddonItem('addon-1', { name: 'Extra Chutney', price: 2.5 });
+    const parent = makeDish('dish-1', { addons: [addonEntry] });
+    const itemsById = new Map([
+      ['dish-1', parent],
+      ['addon-1', addonItem],
+    ]);
+
+    renderZones(parent, itemsById);
+
+    // Must show the addon item's price ($2.50), not the stale association price ($0.00)
+    expect(screen.getByText('+$2.50')).toBeInTheDocument();
+  });
+
+  it('hides the price tag when the addon item has a null price', () => {
+    const addonEntry = makeAddonEntry('addon-1', 'Complimentary Item');
+    const addonItem = makeAddonItem('addon-1', { price: null });
+    const parent = makeDish('dish-1', { addons: [addonEntry] });
+    const itemsById = new Map([
+      ['dish-1', parent],
+      ['addon-1', addonItem],
+    ]);
+
+    renderZones(parent, itemsById);
+
+    expect(document.querySelector('.modifier-card-price')).toBeNull();
+  });
+
+  it('shows +$0.00 when the addon item price is explicitly zero', () => {
+    const addonEntry = makeAddonEntry('addon-1', 'Free Add-on');
+    const addonItem = makeAddonItem('addon-1', { price: 0 });
+    const parent = makeDish('dish-1', { addons: [addonEntry] });
+    const itemsById = new Map([
+      ['dish-1', parent],
+      ['addon-1', addonItem],
+    ]);
+
+    renderZones(parent, itemsById);
+
+    expect(screen.getByText('+$0.00')).toBeInTheDocument();
+  });
+
+  it('shows a different price for two addons based on their respective itemsById entries', () => {
+    const entry1 = makeAddonEntry('addon-a', 'Sauce');
+    const entry2 = makeAddonEntry('addon-b', 'Cheese');
+    const addonA = makeAddonItem('addon-a', { price: 1.0 });
+    const addonB = makeAddonItem('addon-b', { price: 3.5 });
+    const parent = makeDish('dish-1', { addons: [entry1, entry2] });
+    const itemsById = new Map([
+      ['dish-1', parent],
+      ['addon-a', addonA],
+      ['addon-b', addonB],
+    ]);
+
+    renderZones(parent, itemsById);
+
+    expect(screen.getByText('+$1.00')).toBeInTheDocument();
+    expect(screen.getByText('+$3.50')).toBeInTheDocument();
+  });
+});
