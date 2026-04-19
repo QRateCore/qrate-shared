@@ -418,6 +418,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       });
       setItemTypeFilter(value);
       setFilterTags([]);
+      setSelected(new Set());
+      selectionAnchorRef.current = null;
     },
     [restaurantId, trackAction],
   );
@@ -432,10 +434,45 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // STR-267: selection-aware drag. If the dragged item is in the selected
   // Set, drag all selected items (file-explorer convention). Otherwise,
   // drag only the single item without disturbing the selection.
+  // Ref for the ephemeral drag ghost element — created on multi-select drag,
+  // removed on drag end. Only shown when dragging 2+ items.
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+
+  function attachMultiDragGhost(e: React.DragEvent, count: number) {
+    if (count < 2) return;
+    const ghost = document.createElement('div');
+    ghost.textContent = `${count} selections`;
+    Object.assign(ghost.style, {
+      position: 'fixed',
+      top: '-1000px',
+      left: '-1000px',
+      padding: '6px 14px',
+      borderRadius: '8px',
+      background: '#1e293b',
+      color: '#fff',
+      fontSize: '13px',
+      fontWeight: '600',
+      whiteSpace: 'nowrap',
+      pointerEvents: 'none',
+      zIndex: '9999',
+    } satisfies Partial<CSSStyleDeclaration>);
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+    dragGhostRef.current = ghost;
+  }
+
+  function removeMultiDragGhost() {
+    if (dragGhostRef.current) {
+      dragGhostRef.current.remove();
+      dragGhostRef.current = null;
+    }
+  }
+
   const handleDragStart = useCallback((e: React.DragEvent, itemId: string) => {
     const ids = selected.has(itemId) ? [...selected] : [itemId];
     e.dataTransfer.setData('text/plain', JSON.stringify(ids));
     e.dataTransfer.effectAllowed = 'move';
+    attachMultiDragGhost(e, ids.length);
     setDragging({ itemIds: ids, fromMenuId: null, fromCat: null });
   }, [selected]);
 
@@ -444,12 +481,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const ids = selected.has(itemId) ? [...selected] : [itemId];
       e.dataTransfer.setData('text/plain', JSON.stringify(ids));
       e.dataTransfer.effectAllowed = 'move';
+      attachMultiDragGhost(e, ids.length);
       setDragging({ itemIds: ids, fromMenuId, fromCat });
     },
     [selected],
   );
 
   const handleDragEnd = useCallback(() => {
+    removeMultiDragGhost();
     setDragging(null);
     setDragOver(null);
     poolDcRef.current = 0;

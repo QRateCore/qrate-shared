@@ -168,12 +168,13 @@ export default function ItemModifierZones({
     void onUpdate(parent.id, payload);
   }
 
-  function parseDroppedId(raw: string): string {
+  function parseDroppedIds(raw: string): string[] {
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed[0] : raw;
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+      return typeof parsed === 'string' ? [parsed] : [raw];
     } catch {
-      return raw;
+      return raw ? [raw] : [];
     }
   }
 
@@ -183,18 +184,20 @@ export default function ItemModifierZones({
     e.preventDefault();
     e.stopPropagation();
     setSidesDragOver(false);
-    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
-    if (!droppedId || droppedId === parent.id) return;
-    if (sideIds.has(droppedId)) return;
-    const dropped = itemsById.get(droppedId);
-    if (!dropped || dropped.item_type === 'addon') return;
-    const next: ModifierEntry = {
-      menu_item_id: dropped.id,
-      name: dropped.name,
-      price_override: null,
-      thumbnail_url: dropped.thumbnail_url ?? null,
-    };
-    emit({ sides: [...sides, next] });
+    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    const newSides: ModifierEntry[] = [];
+    for (const id of droppedIds) {
+      if (id === parent.id || sideIds.has(id)) continue;
+      const dropped = itemsById.get(id);
+      if (!dropped || dropped.item_type === 'addon') continue;
+      newSides.push({
+        menu_item_id: dropped.id,
+        name: dropped.name,
+        price_override: null,
+        thumbnail_url: dropped.thumbnail_url ?? null,
+      });
+    }
+    if (newSides.length > 0) emit({ sides: [...sides, ...newSides] });
   }
 
   function removeSide(id: string) {
@@ -211,24 +214,23 @@ export default function ItemModifierZones({
     e.preventDefault();
     e.stopPropagation();
     setSidesAndDragOver(false);
-    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
-    if (!droppedId || droppedId === parent.id) return;
-    // Already in this group → silent no-op
-    if (sidesAndIds.has(droppedId)) return;
-    // Cross-group duplicate — surface to parent for toast
-    if (sidesOrIds.has(droppedId)) {
-      onCrossGroupDuplicate?.('choice');
-      return;
+    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    let hasCrossGroup = false;
+    const newEntries: ModifierEntry[] = [];
+    for (const id of droppedIds) {
+      if (id === parent.id || sidesAndIds.has(id)) continue;
+      if (sidesOrIds.has(id)) { hasCrossGroup = true; continue; }
+      const dropped = itemsById.get(id);
+      if (!dropped || dropped.item_type === 'addon') continue;
+      newEntries.push({
+        menu_item_id: dropped.id,
+        name: dropped.name,
+        price_override: null,
+        thumbnail_url: dropped.thumbnail_url ?? null,
+      });
     }
-    const dropped = itemsById.get(droppedId);
-    if (!dropped || dropped.item_type === 'addon') return;
-    const next: ModifierEntry = {
-      menu_item_id: dropped.id,
-      name: dropped.name,
-      price_override: null,
-      thumbnail_url: dropped.thumbnail_url ?? null,
-    };
-    emit({ sides_and: [...sidesAnd, next] });
+    if (hasCrossGroup) onCrossGroupDuplicate?.('choice');
+    if (newEntries.length > 0) emit({ sides_and: [...sidesAnd, ...newEntries] });
   }
 
   function removeSidesAnd(id: string) {
@@ -241,22 +243,23 @@ export default function ItemModifierZones({
     e.preventDefault();
     e.stopPropagation();
     setSidesOrDragOver(false);
-    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
-    if (!droppedId || droppedId === parent.id) return;
-    if (sidesOrIds.has(droppedId)) return;
-    if (sidesAndIds.has(droppedId)) {
-      onCrossGroupDuplicate?.('included');
-      return;
+    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    let hasCrossGroup = false;
+    const newEntries: ModifierEntry[] = [];
+    for (const id of droppedIds) {
+      if (id === parent.id || sidesOrIds.has(id)) continue;
+      if (sidesAndIds.has(id)) { hasCrossGroup = true; continue; }
+      const dropped = itemsById.get(id);
+      if (!dropped || dropped.item_type === 'addon') continue;
+      newEntries.push({
+        menu_item_id: dropped.id,
+        name: dropped.name,
+        price_override: null,
+        thumbnail_url: dropped.thumbnail_url ?? null,
+      });
     }
-    const dropped = itemsById.get(droppedId);
-    if (!dropped || dropped.item_type === 'addon') return;
-    const next: ModifierEntry = {
-      menu_item_id: dropped.id,
-      name: dropped.name,
-      price_override: null,
-      thumbnail_url: dropped.thumbnail_url ?? null,
-    };
-    emit({ sides_or: [...sidesOr, next] });
+    if (hasCrossGroup) onCrossGroupDuplicate?.('included');
+    if (newEntries.length > 0) emit({ sides_or: [...sidesOr, ...newEntries] });
   }
 
   function removeSidesOr(id: string) {
@@ -269,18 +272,20 @@ export default function ItemModifierZones({
     e.preventDefault();
     e.stopPropagation();
     setAddonsDragOver(false);
-    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
-    if (!droppedId || droppedId === parent.id) return;
-    if (addonIds.has(droppedId)) return;
-    const dropped = itemsById.get(droppedId);
-    if (!dropped || dropped.item_type !== 'addon') return;
-    const next: ModifierEntry = {
-      menu_item_id: dropped.id,
-      name: dropped.name,
-      price_override: dropped.price ?? null,
-      thumbnail_url: dropped.thumbnail_url ?? null,
-    };
-    emit({ addons: [...addons, next] });
+    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    const newAddons: ModifierEntry[] = [];
+    for (const id of droppedIds) {
+      if (id === parent.id || addonIds.has(id)) continue;
+      const dropped = itemsById.get(id);
+      if (!dropped || dropped.item_type !== 'addon') continue;
+      newAddons.push({
+        menu_item_id: dropped.id,
+        name: dropped.name,
+        price_override: dropped.price ?? null,
+        thumbnail_url: dropped.thumbnail_url ?? null,
+      });
+    }
+    if (newAddons.length > 0) emit({ addons: [...addons, ...newAddons] });
   }
 
   function removeAddon(id: string) {
@@ -293,35 +298,38 @@ export default function ItemModifierZones({
     e.preventDefault();
     e.stopPropagation();
     setRecommendationsDragOver(false);
-    const droppedId = parseDroppedId(e.dataTransfer.getData('text/plain'));
-    if (!droppedId || droppedId === parent.id) return;
-    if (recommendationIds.has(droppedId)) return;
-    const dropped = itemsById.get(droppedId);
-    if (!dropped || dropped.item_type === 'addon') return;
+    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    const newRecs: ModifierEntry[] = [];
+    const hookHandledIds: string[] = [];
+    for (const id of droppedIds) {
+      if (id === parent.id || recommendationIds.has(id)) continue;
+      const dropped = itemsById.get(id);
+      if (!dropped || dropped.item_type === 'addon') continue;
 
-    // Optional gate — parent may prompt (e.g., "add to which categories?")
-    // before accepting the drop. Parent returns false on cancel; if no
-    // callback provided, drop proceeds silently (backward compat).
-    let hookHandledAdd = false;
-    if (onConfirmRecommendationDrop) {
-      const proceed = await onConfirmRecommendationDrop(dropped, currentMenuId);
-      if (!proceed) return;
-      hookHandledAdd = true;
+      // Optional gate — parent may prompt (e.g., "add to which categories?")
+      // before accepting the drop. Run per-item so user can accept/reject each.
+      if (onConfirmRecommendationDrop) {
+        const proceed = await onConfirmRecommendationDrop(dropped, currentMenuId);
+        if (!proceed) continue;
+        hookHandledIds.push(dropped.id);
+      }
+
+      newRecs.push({
+        menu_item_id: dropped.id,
+        name: dropped.name,
+        price_override: dropped.price ?? 0,
+        thumbnail_url: dropped.thumbnail_url ?? null,
+      });
     }
-
-    const next: ModifierEntry = {
-      menu_item_id: dropped.id,
-      name: dropped.name,
-      price_override: dropped.price ?? 0,
-      thumbnail_url: dropped.thumbnail_url ?? null,
-    };
-    emit({
-      recommendations: [...recommendations, next],
-      // Tell handleUpdateModifiers to skip auto-add for this item —
-      // the hook already added it to the menu with the user's selected
-      // canonical category. A second addItemToMenu would overwrite that.
-      ...(hookHandledAdd ? { _hookHandledItemIds: [dropped.id] } : {}),
-    });
+    if (newRecs.length > 0) {
+      emit({
+        recommendations: [...recommendations, ...newRecs],
+        // Tell handleUpdateModifiers to skip auto-add for these items —
+        // the hook already added them to the menu with the user's selected
+        // canonical category. A second addItemToMenu would overwrite that.
+        ...(hookHandledIds.length > 0 ? { _hookHandledItemIds: hookHandledIds } : {}),
+      });
+    }
   }
 
   function removeRecommendation(id: string) {
