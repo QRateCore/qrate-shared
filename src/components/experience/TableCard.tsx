@@ -66,7 +66,7 @@ export default function TableCard({
       )}
 
       {/* Table number + label */}
-      <div className="font-bold text-gray-900">Table {table.table_number}</div>
+      <div className="text-subtitle text-gray-900">Table {table.table_number}</div>
       {table.table_label && (
         <div className="text-xs text-gray-500 mt-0.5">{table.table_label}</div>
       )}

@@ -137,8 +137,8 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff</h1>
-          <p className="text-gray-600 mt-1">Manage team members and their access</p>
+          <h1 className="page-title">Staff</h1>
+          <p className="page-sub mt-1">Manage team members and their access</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
@@ -163,11 +163,11 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
       {/* Add Staff Form */}
       {showForm && (
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h3 className="font-bold text-gray-900 mb-4">Add New Staff Member</h3>
+          <h3 className="text-title text-gray-900 mb-4">Add New Staff Member</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-label text-gray-700 mb-1">Name</label>
                 <input
                   type="text"
                   required
@@ -178,7 +178,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-label text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   required
@@ -189,7 +189,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-label text-gray-700 mb-1">Role</label>
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value as StaffRole)}
@@ -201,7 +201,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+                <label className="block text-label text-gray-700 mb-1">Temporary Password</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -245,8 +245,8 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
       ) : staff.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl shadow-sm">
           <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">No staff members yet</h3>
-          <p className="text-gray-500 text-sm mb-4">Add your first team member to get started</p>
+          <h3 className="text-title text-gray-900 mb-1">No staff members yet</h3>
+          <p className="text-body text-gray-500 mb-4">Add your first team member to get started</p>
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
@@ -271,7 +271,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-semibold text-gray-900">{member.name}</h4>
+                  <h4 className="text-subtitle text-gray-900">{member.name}</h4>
                   <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-700'}`}>
                     {ROLE_LABELS[member.role as StaffRole] || member.role}
                   </span>

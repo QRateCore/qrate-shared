@@ -181,7 +181,7 @@ export default function TableDetailSheet({
         <span className="flex items-center justify-center gap-1">
           Service
           {alertCallCount > 0 && (
-            <span className="bg-red-500 text-white text-[10px] rounded-full w-4 h-4 inline-flex items-center justify-center">
+            <span className="bg-red-500 text-white text-xs rounded-full w-4 h-4 inline-flex items-center justify-center">
               {alertCallCount}
             </span>
           )}
@@ -205,7 +205,7 @@ export default function TableDetailSheet({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Table #{table.table_number}</h3>
+            <h3 className="text-title text-gray-900">Table #{table.table_number}</h3>
             <p className="text-xs text-gray-500">
               {table.guests.length} guest{table.guests.length !== 1 ? 's' : ''}
               {bill.total > 0 && ` · $${bill.total.toFixed(2)}`}
@@ -262,7 +262,7 @@ export default function TableDetailSheet({
                         }`}
                       >
                         <span
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
                             guestFilter === name ? 'bg-white/20 text-white' : 'bg-gray-300 text-gray-700'
                           }`}
                         >
@@ -284,7 +284,7 @@ export default function TableDetailSheet({
                       <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
                         {hasAllergens && (
                           <div>
-                            <p className="text-[11px] font-semibold text-red-600 uppercase tracking-wide mb-1">
+                            <p className="section-header text-red-600 mb-1">
                               <AlertTriangle className="inline h-3 w-3 mr-0.5 -mt-0.5" />
                               Allergens
                             </p>
@@ -303,7 +303,7 @@ export default function TableDetailSheet({
                         )}
                         {hasDietary && (
                           <div>
-                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                            <p className="section-header mb-1">
                               Dietary Preferences
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -327,7 +327,7 @@ export default function TableDetailSheet({
                     return (
                       <div key={group.label}>
                         <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-semibold uppercase tracking-wide ${group.labelCls}`}>
+                          <span className={`section-header ${group.labelCls}`}>
                             {group.label} · {groupItems.length} item{groupItems.length !== 1 ? 's' : ''}
                           </span>
                           {group.actionLabel && group.nextStatus && onStatusUpdate && (
@@ -347,7 +347,7 @@ export default function TableDetailSheet({
                             <div key={idx} className={`flex items-center gap-2 px-3 py-2 ${idx > 0 ? 'border-t border-white/60' : ''}`}>
                               <span className="text-sm text-gray-800 flex-1">{item.quantity}× {item.name}</span>
                               <span className="text-xs text-gray-500">{item.guestName}</span>
-                              <span className="text-sm font-medium text-gray-700 w-14 text-right">${item.lineTotal.toFixed(2)}</span>
+                              <span className="text-sm font-medium text-gray-700 w-14 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>${item.lineTotal.toFixed(2)}</span>
                               {item.status !== 'delivered' && item.status !== 'completed' && item.itemId && onCancelItem && (
                                 <button
                                   onClick={() => onCancelItem(item.orderId, item.itemId!, item.name)}
@@ -370,7 +370,7 @@ export default function TableDetailSheet({
                   {cancelledItems.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-red-600">
+                        <span className="section-header text-red-600">
                           Cancelled · {cancelledItems.length} item{cancelledItems.length !== 1 ? 's' : ''}
                         </span>
                       </div>
@@ -379,7 +379,7 @@ export default function TableDetailSheet({
                           <div key={idx} className={`flex items-center gap-2 px-3 py-2 ${idx > 0 ? 'border-t border-red-100' : ''}`}>
                             <span className="text-sm text-red-300 flex-1 line-through">{item.quantity}× {item.name}</span>
                             <span className="text-xs text-red-300">{item.guestName}</span>
-                            <span className="text-sm font-medium text-red-300 w-14 text-right line-through">${item.lineTotal.toFixed(2)}</span>
+                            <span className="text-sm font-medium text-red-300 w-14 text-right line-through" style={{ fontVariantNumeric: 'tabular-nums' }}>${item.lineTotal.toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -443,7 +443,7 @@ export default function TableDetailSheet({
                   {/* Acknowledged history */}
                   {tableHistory.length > 0 && (
                     <div className="pt-1">
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Completed</p>
+                      <p className="section-header text-gray-400 mb-2">Completed</p>
                       <div className="space-y-1.5">
                         {tableHistory.map(call => (
                           <div key={call.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
@@ -516,14 +516,14 @@ export default function TableDetailSheet({
 
                     return Object.entries(byGuest).map(([name, items]) => (
                       <div key={name}>
-                        <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{name}</h5>
+                        <h5 className="section-header mb-1.5">{name}</h5>
                         {items.map((item, i) => (
                           <div key={`${item.orderId}-${i}`} className="flex items-center justify-between py-1.5">
                             <div className="flex items-center gap-1.5">
                               <span className="text-sm text-gray-800">{item.quantity}x {item.name}</span>
                               <StatusPill status={item.status} />
                             </div>
-                            <span className="text-sm font-medium">${(item.quantity * item.price).toFixed(2)}</span>
+                            <span className="text-sm font-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>${(item.quantity * item.price).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -534,15 +534,15 @@ export default function TableDetailSheet({
                   <div className="border-t border-gray-200 pt-3 space-y-1">
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Subtotal</span>
-                      <span>${bill.subtotal.toFixed(2)}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.subtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Tax</span>
-                      <span>${bill.tax.toFixed(2)}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.tax.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-base font-bold text-gray-900">
                       <span>Total</span>
-                      <span>${bill.total.toFixed(2)}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.total.toFixed(2)}</span>
                     </div>
                   </div>
 
