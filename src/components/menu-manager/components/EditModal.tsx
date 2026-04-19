@@ -2068,7 +2068,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       Add to Dish
                     </div>
                     {(() => {
-                      const availableDishes = allItems.filter((d) => d.item_type !== 'addon' && !associatedDishIds.has(d.id) && d.id !== item.id);
+                      const availableDishes = allItems.filter((d) => !associatedDishIds.has(d.id) && d.id !== item.id);
                       if (availableDishes.length === 0) {
                         return (
                           <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>

@@ -1282,7 +1282,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             item={editItem}
             restaurantId={restaurantId}
             menus={menus}
-            allItems={items}
+            allItems={items.filter((i) => i.item_type !== 'addon')}
             onClose={handleCloseEditModal}
             onComplete={handleEditComplete}
             onNavigateToMenu={handleNavigateToMenu}
