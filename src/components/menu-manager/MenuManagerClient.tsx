@@ -150,7 +150,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingMenu, setAddingMenu] = useState(false);
   const [newMenuName, setNewMenuName] = useState('');
-  const [attentionExpanded, setAttentionExpanded] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<{ message: string; onUndo: () => void } | null>(null);
 
@@ -1246,17 +1245,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   return (
     <MenuManagerServiceProvider value={service}>
     <div className="flex flex-col fixed-height-page-shell" data-testid="menu-manager">
-      {/* Page heading */}
-      <div style={{ padding: '0 0 14px', flexShrink: 0 }}>
-        <h1
-          data-testid="menu-manager-heading"
-          className="page-title"
-          style={{ margin: 0 }}
-        >
-          Menu Management
-        </h1>
-      </div>
-
       {/* Toast */}
       {toast && (
         <div
@@ -1371,8 +1359,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onClearSelect: handleClearSelect,
             onEditItem: setEditItemId,
             onAddItem: handleAddItem,
-            attentionExpanded,
-            onToggleAttention: () => setAttentionExpanded((v) => !v),
             onOpenBulk: (mode) => setBulkMode(mode),
             onOpenBulkModifiers: () => setBulkModifiersOpen(true),
             onDragStart: handleDragStart,
@@ -1446,8 +1432,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onClearSelect={handleClearSelect}
             onEditItem={setEditItemId}
             onAddItem={handleAddItem}
-            attentionExpanded={attentionExpanded}
-            onToggleAttention={() => setAttentionExpanded((v) => !v)}
             onOpenBulk={(mode) => setBulkMode(mode)}
             onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
             onDragStart={handleDragStart}

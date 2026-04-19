@@ -69,8 +69,6 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof ItemPool>> 
     onDragLeavePool: vi.fn(),
     onDropPool: vi.fn(),
     colorMap: () => ({ bg: '#fff', fg: '#000', name: 'white' }) as any,
-    attentionExpanded: false,
-    onToggleAttention: vi.fn(),
     ...overrides,
   };
 }

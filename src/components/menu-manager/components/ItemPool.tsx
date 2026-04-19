@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, ChevronDown, Pencil, Plus, Search, Check, X } from 'lucide-react';
+import { Pencil, Plus, Search, Check, X } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
@@ -45,8 +45,6 @@ interface ItemPoolProps {
   onDragLeavePool: () => void;
   onDropPool: (e: React.DragEvent) => void;
   colorMap: (index: number) => MenuColor;
-  attentionExpanded: boolean;
-  onToggleAttention: () => void;
 }
 
 // ── ItemPoolCard ─────────────────────────────────────────────────────────────
@@ -280,8 +278,6 @@ export default function ItemPool({
   onDragLeavePool,
   onDropPool,
   colorMap,
-  attentionExpanded,
-  onToggleAttention,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
 
@@ -306,13 +302,6 @@ export default function ItemPool({
   };
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
   const someSelected = selected.size > 0;
-
-  // Items needing attention: missing image or no menu assignment
-  const attentionItems = items.filter(
-    (item) =>
-      !item.thumbnail_url ||
-      !(item.menu_associations?.length),
-  );
 
   // Map itemId → list of {menu, index} for chips
   const itemMenuMap = new Map<string, Array<{ menu: MenuSummary; index: number }>>();
@@ -645,122 +634,6 @@ export default function ItemPool({
           gap: 6,
         }}
       >
-        {/* Needs-attention panel */}
-        {attentionItems.length > 0 && (
-          <div style={{ marginBottom: 4 }}>
-            <button
-              type="button"
-              onClick={onToggleAttention}
-              data-testid="attention-toggle"
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                color: '#92400e',
-                background: '#fef3c7',
-                border: '1px solid #fde68a',
-                borderRadius: attentionExpanded ? '4px 4px 0 0' : 'var(--r-xs)',
-                cursor: 'pointer',
-              }}
-            >
-              <AlertCircle size={12} />
-              <span style={{ flex: 1, textAlign: 'left' }}>
-                {attentionItems.length} item{attentionItems.length !== 1 ? 's' : ''} need attention
-              </span>
-              <ChevronDown
-                size={12}
-                style={{ transition: 'transform 0.15s', transform: attentionExpanded ? 'rotate(180deg)' : 'none' }}
-              />
-            </button>
-            {attentionExpanded && (
-              <div
-                style={{
-                  border: '1px solid #fde68a',
-                  borderTop: 'none',
-                  borderRadius: '0 0 4px 4px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-                data-testid="attention-panel"
-              >
-                {attentionItems.map((item) => {
-                  const issues: string[] = [];
-                  if (!item.thumbnail_url) issues.push('No image');
-                  if (!item.menu_associations?.length) issues.push('Unassigned');
-                  return (
-                    <div
-                      key={item.id}
-                      data-testid={`attention-item-${item.id}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '6px 10px',
-                        background: '#fffbeb',
-                        borderBottom: '1px solid #fde68a',
-                      }}
-                    >
-                      <span
-                        style={{
-                          flex: 1,
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: 'var(--text)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {item.name}
-                      </span>
-                      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                        {issues.map((issue) => (
-                          <span
-                            key={issue}
-                            style={{
-                              fontSize: 9,
-                              fontWeight: 700,
-                              color: '#92400e',
-                              background: '#fde68a',
-                              borderRadius: 4,
-                              padding: '1px 5px',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {issue}
-                          </span>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleEditItemTracked(item.id)}
-                        data-testid={`attention-edit-${item.id}`}
-                        aria-label={`Fix ${item.name}`}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: 'var(--text2)',
-                          padding: 2,
-                          display: 'flex',
-                          alignItems: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
         {filtered.length === 0 ? (
           <div
             style={{
