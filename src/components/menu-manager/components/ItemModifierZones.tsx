@@ -21,6 +21,7 @@
  */
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { COLOR_WARNING, COLOR_WARNING_BG, COLOR_WARNING_BG_SM, COLOR_WARNING_TEXT, COLOR_ERROR } from '../../../constants/colors';
 import type { MenuItemDisplay } from '../../../types/restaurant';
 
 export interface ModifierEntry {
@@ -388,7 +389,7 @@ export default function ItemModifierZones({
       <div>
         <div
           className="modifier-section-header modifier-section-header--sides"
-          style={{ background: '#fef3c7', color: '#92400e' }}
+          style={{ background: COLOR_WARNING_BG, color: COLOR_WARNING_TEXT }}
         >
           <span className="modifier-section-title">Includes one by choice</span>
           {sidesOr.length > 0 && <span className="modifier-section-count">{sidesOr.length}</span>}
@@ -397,7 +398,7 @@ export default function ItemModifierZones({
         <div
           data-testid={`sides-or-drop-zone-${parent.id}`}
           className={`modifier-drop-zone${sidesOrDragOver ? ' drag-over' : ''}`}
-          style={sidesOrDragOver ? { borderColor: '#f59e0b', background: '#fffbeb' } : undefined}
+          style={sidesOrDragOver ? { borderColor: COLOR_WARNING, background: COLOR_WARNING_BG_SM } : undefined}
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setSidesOrDragOver(true); }}
           onDragLeave={() => setSidesOrDragOver(false)}
           onDrop={handleDropSidesOr}
@@ -425,8 +426,8 @@ export default function ItemModifierZones({
             fontWeight: 600,
             borderRadius: 6,
             border: '1px solid var(--border)',
-            background: sidesSelectionMode === 'or' ? '#fef3c7' : 'var(--bg2)',
-            color: sidesSelectionMode === 'or' ? '#92400e' : 'var(--text2)',
+            background: sidesSelectionMode === 'or' ? COLOR_WARNING_BG : 'var(--bg2)',
+            color: sidesSelectionMode === 'or' ? COLOR_WARNING_TEXT : 'var(--text2)',
             cursor: 'pointer',
           }}
         >
@@ -539,7 +540,7 @@ export default function ItemModifierZones({
                   // Inline border overrides the base .modifier-card stylesheet
                   // rule (1.5px grey) so the inactive state reads as "not
                   // reaching diners" at a glance. Title explains on hover.
-                  style={inactive ? { border: '2px solid #dc2626' } : undefined}
+                  style={inactive ? { border: `2px solid ${COLOR_ERROR}` } : undefined}
                   title={inactive ? 'This recommendation is not reaching diners — the target item is hidden or off-menu.' : undefined}
                 >
                   <div className="modifier-card-thumb">

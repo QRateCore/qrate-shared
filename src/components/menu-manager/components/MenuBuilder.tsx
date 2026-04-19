@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
+import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
 import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } from './ItemModifierZones';
@@ -688,7 +689,7 @@ function MenuItemRow({
                     : 'border border-[var(--border)] bg-white text-[var(--text2)]'
                 }`}
               >
-                <Star size={11} fill={chefsSpecial ? '#f59e0b' : 'none'} color={chefsSpecial ? '#f59e0b' : 'currentColor'} />
+                <Star size={11} fill={chefsSpecial ? COLOR_WARNING : 'none'} color={chefsSpecial ? COLOR_WARNING : 'currentColor'} />
                 {chefsSpecial ? 'Featured' : 'Not featured'}
               </button>
             </div>
