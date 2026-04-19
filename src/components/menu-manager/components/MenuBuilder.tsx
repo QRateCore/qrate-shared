@@ -624,7 +624,7 @@ function MenuItemRow({
                     onBlur={() => handleCategoryPriceBlur(cat)}
                     placeholder={settings.price != null ? String(settings.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)]"
+                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 ) : (
                   <input
@@ -637,7 +637,7 @@ function MenuItemRow({
                     onBlur={handlePriceBlur}
                     placeholder={item.price != null ? String(item.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)]"
+                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                 )}
               </div>
@@ -718,7 +718,7 @@ function MenuItemRow({
                     onBlur={handlePortionServesBlur}
                     placeholder="4"
                     data-testid={`portion-serves-input-${item.id}`}
-                    className="border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-1.5 text-xs w-10 outline-none"
+                    className="border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-1.5 text-xs w-10 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <span className="text-xs text-[var(--text2)]">guests</span>
                 </div>
