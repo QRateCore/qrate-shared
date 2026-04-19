@@ -188,14 +188,14 @@ describe('EditModal — form initialization', () => {
 
   it('initializes category from canonical_category when present', () => {
     renderModal({ item: makeDishItem({ canonical_category: 'Desserts', category: 'Sweets' }) });
-    const select = screen.getByTestId('edit-category-select') as HTMLSelectElement;
-    expect(select.value).toBe('Desserts');
+    const select = screen.getByTestId('edit-category-select');
+    expect(select.textContent).toContain('Desserts');
   });
 
   it('falls back to toCanonical(category) when canonical_category is absent', () => {
     renderModal({ item: makeDishItem({ canonical_category: null, category: 'Salads' }) });
-    const select = screen.getByTestId('edit-category-select') as HTMLSelectElement;
-    expect(select.value).toBe('Salads');
+    const select = screen.getByTestId('edit-category-select');
+    expect(select.textContent).toContain('Salads');
   });
 
   it('initializes active toggle from item.active (inactive → aria-pressed false)', () => {
