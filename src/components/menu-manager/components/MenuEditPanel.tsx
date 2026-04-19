@@ -10,6 +10,7 @@ import type { MenuSummary, MenuSchedule } from '../../../types/restaurant';
 
 interface MenuEditPanelProps {
   menu: MenuSummary;
+  allMenus: MenuSummary[];
   restaurantId: string;
   onClose: () => void;
   onUpdate: (updated: MenuSummary) => void;
@@ -38,6 +39,7 @@ function scheduleToDaySet(schedule: MenuSchedule | null): Set<number> {
 
 export default function MenuEditPanel({
   menu,
+  allMenus,
   restaurantId,
   onClose,
   onUpdate,
@@ -48,6 +50,7 @@ export default function MenuEditPanel({
   const [name, setName]           = useState(menu.name);
   const [isActive, setIsActive]   = useState(menu.active);
   const [isAllDay, setIsAllDay]   = useState(menu.is_all_day);
+  const [showInactiveWarning, setShowInactiveWarning] = useState(false);
 
   // Schedule: per-day {start, end} pairs
   const [schedule, setSchedule]   = useState<MenuSchedule>(
@@ -104,6 +107,18 @@ export default function MenuEditPanel({
 
   async function handleSave() {
     if (!name.trim()) { setNameError(true); return; }
+
+    // Check if this save would deactivate ALL menus
+    if (!isActive) {
+      const otherActiveMenus = allMenus.filter(
+        (m) => m.id !== menu.id && m.active,
+      );
+      if (otherActiveMenus.length === 0) {
+        setShowInactiveWarning(true);
+        return;
+      }
+    }
+
     const start = Date.now();
     setNameError(false);
     setSaving(true);
@@ -146,7 +161,21 @@ export default function MenuEditPanel({
 
   async function handleDelete() {
     if (deleteStep === 0) { setDeleteStep(1); return; }
-    if (deleteStep === 1) { setDeleteStep(2); return; }
+    if (deleteStep === 1) {
+      // If deleting the last active menu, show warning instead of proceeding
+      if (menu.active) {
+        const otherActiveMenus = allMenus.filter(
+          (m) => m.id !== menu.id && m.active,
+        );
+        if (otherActiveMenus.length === 0) {
+          setShowInactiveWarning(true);
+          setDeleteStep(0);
+          return;
+        }
+      }
+      setDeleteStep(2);
+      return;
+    }
     const start = Date.now();
     setDeleting(true);
     try {
@@ -396,6 +425,57 @@ export default function MenuEditPanel({
           </div>
         </div>
       </div>
+
+      {/* All-menus-inactive warning modal */}
+      {showInactiveWarning && (
+        <>
+          <div
+            onClick={() => setShowInactiveWarning(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.4)' }}
+            data-testid="inactive-warning-backdrop"
+          />
+          <div
+            data-testid="inactive-warning-modal"
+            style={{
+              position: 'fixed', top: '50%', left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 380, maxWidth: 'calc(100vw - 32px)',
+              zIndex: 70,
+              background: 'var(--white, #fff)',
+              borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              padding: 24,
+              display: 'flex', flexDirection: 'column', gap: 16,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text, #111)' }}>
+                Warning
+              </div>
+            </div>
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text, #111)', margin: 0 }}>
+              Please refrain from inactivating all Menus. If you must, please set the end time
+              manually so the menu will turn inactive past the end time. Once inactive, Patrons
+              will not be able to view any drinks or food items.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowInactiveWarning(false)}
+              data-testid="inactive-warning-dismiss"
+              style={{
+                alignSelf: 'flex-end',
+                padding: '8px 20px', fontSize: 13, fontWeight: 600,
+                color: 'white', background: 'var(--blue, #2563eb)',
+                border: 'none', borderRadius: 'var(--r-xs, 4px)',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }

@@ -9,6 +9,7 @@ import type {
   BeverageTags,
 } from "../../types/restaurant";
 import { TAG_CATEGORIES, BEVERAGE_TYPES, BASE_SPIRITS, WINE_VARIETIES, BEER_STYLES, FLAVOR_NOTES, SERVING_STYLES, DRINK_STRENGTHS } from "../../constants/food-tags";
+import Select from "../common/Select";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1252,18 +1253,15 @@ export default function MenuItemsManagement({
               )}
             </div>
 
-            <select
+            <Select
+              fullWidth
               value={filterCat}
               onChange={(e) => setFilterCat(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
-            >
-              <option value="All">All Categories</option>
-              {CANONICAL_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: 'All', label: 'All Categories' },
+                ...CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c })),
+              ]}
+            />
 
             {/* Active / Inactive filter — only shown when toggleActive is available */}
             {service.toggleActive && (
@@ -1885,16 +1883,13 @@ export default function MenuItemsManagement({
                       </button>
                     </div>
                     {editPortionType === 'shared' && (
-                      <select
-                        value={editPortionServes}
+                      <Select
+                        fullWidth
+                        value={String(editPortionServes)}
                         onChange={(e) => { setEditPortionServes(parseInt(e.target.value, 10)); setSaved(false); }}
                         data-testid="portion-serves-select"
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
-                      >
-                        {[2, 3, 4, 5, 6].map((n) => (
-                          <option key={n} value={n}>{n} guests</option>
-                        ))}
-                      </select>
+                        options={[2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `${n} guests` }))}
+                      />
                     )}
                   </div>
                 )}
@@ -2134,17 +2129,17 @@ export default function MenuItemsManagement({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Drink Type</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.beverage_type || ''}
                           onChange={(e) => updateBev('beverage_type', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select type</option>
-                          {BEVERAGE_TYPES.map((t) => (
-                            <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                          ))}
-                        </select>
+                          placeholder="Select type"
+                          options={[
+                            { value: '', label: 'Select type' },
+                            ...BEVERAGE_TYPES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) })),
+                          ]}
+                        />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Alcoholic</label>
@@ -2171,49 +2166,49 @@ export default function MenuItemsManagement({
                     {bev.beverage_type === 'cocktail' && (
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Base Spirit</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.base_spirit || ''}
                           onChange={(e) => updateBev('base_spirit', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select spirit</option>
-                          {BASE_SPIRITS.map((s) => (
-                            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                          ))}
-                        </select>
+                          placeholder="Select spirit"
+                          options={[
+                            { value: '', label: 'Select spirit' },
+                            ...BASE_SPIRITS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                          ]}
+                        />
                       </div>
                     )}
                     {bev.beverage_type === 'wine' && (
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Wine Variety</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.wine_variety || ''}
                           onChange={(e) => updateBev('wine_variety', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select variety</option>
-                          {WINE_VARIETIES.map((v) => (
-                            <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
-                          ))}
-                        </select>
+                          placeholder="Select variety"
+                          options={[
+                            { value: '', label: 'Select variety' },
+                            ...WINE_VARIETIES.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) })),
+                          ]}
+                        />
                       </div>
                     )}
                     {bev.beverage_type === 'beer' && (
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Beer Style</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.beer_style || ''}
                           onChange={(e) => updateBev('beer_style', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select style</option>
-                          {BEER_STYLES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
+                          placeholder="Select style"
+                          options={[
+                            { value: '', label: 'Select style' },
+                            ...BEER_STYLES.map((s) => ({ value: s, label: s })),
+                          ]}
+                        />
                       </div>
                     )}
 
@@ -2251,31 +2246,31 @@ export default function MenuItemsManagement({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Served</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.served || ''}
                           onChange={(e) => updateBev('served', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select style</option>
-                          {SERVING_STYLES.map((s) => (
-                            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                          ))}
-                        </select>
+                          placeholder="Select style"
+                          options={[
+                            { value: '', label: 'Select style' },
+                            ...SERVING_STYLES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                          ]}
+                        />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 mb-1 block">Strength</label>
-                        <select
+                        <Select
+                          fullWidth
                           value={bev.strength || ''}
                           onChange={(e) => updateBev('strength', e.target.value || null)}
                           disabled={!canEditTags}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-purple-300 focus:outline-none disabled:bg-gray-50"
-                        >
-                          <option value="">Select strength</option>
-                          {DRINK_STRENGTHS.map((s) => (
-                            <option key={s} value={s}>{s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                          ))}
-                        </select>
+                          placeholder="Select strength"
+                          options={[
+                            { value: '', label: 'Select strength' },
+                            ...DRINK_STRENGTHS.map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
+                          ]}
+                        />
                       </div>
                     </div>
 

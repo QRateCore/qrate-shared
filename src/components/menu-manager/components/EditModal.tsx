@@ -2221,27 +2221,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               {/* Period selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <label style={{ ...labelStyle, marginBottom: 0 }}>Time period</label>
-                <select
+                <Select
+                  size="sm"
                   value={perfPeriod}
                   onChange={(e) => setPerfPeriod(e.target.value as MenuItemPerformancePeriod)}
                   data-testid="perf-period-select"
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text)',
-                    background: 'white',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '5px 8px',
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  <option value="last_hour">Last hour</option>
-                  <option value="last_day">Last day</option>
-                  <option value="last_3_days">Last 3 days</option>
-                  <option value="last_7_days">Last 7 days</option>
-                  <option value="last_month">Last month</option>
-                </select>
+                  options={[
+                    { value: 'last_hour', label: 'Last hour' },
+                    { value: 'last_day', label: 'Last day' },
+                    { value: 'last_3_days', label: 'Last 3 days' },
+                    { value: 'last_7_days', label: 'Last 7 days' },
+                    { value: 'last_month', label: 'Last month' },
+                  ]}
+                />
               </div>
 
               {/* Loading / error states */}

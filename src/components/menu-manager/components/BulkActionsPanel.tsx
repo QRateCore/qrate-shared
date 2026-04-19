@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
+import Select from '../../common/Select';
 import type { BulkMode } from '../MenuManagerClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -608,25 +609,17 @@ function AssignForm({
           Category override
           <span style={{ fontWeight: 400, color: 'var(--text2)', marginLeft: 4 }}>(optional)</span>
         </div>
-        <select
+        <Select
+          fullWidth
           value={category}
           onChange={(e) => onCategoryChange(e.target.value)}
           data-testid="assign-category-select"
-          style={{
-            width: '100%',
-            fontSize: 12,
-            color: 'var(--text)',
-            background: '#f6f6f6',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-xs)',
-            padding: '7px 10px',
-          }}
-        >
-          <option value="">Use item's own category</option>
-          {[...CANONICAL_CATEGORIES].map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          placeholder="Use item's own category"
+          options={[
+            { value: '', label: "Use item's own category" },
+            ...[...CANONICAL_CATEGORIES].map((c) => ({ value: c, label: c })),
+          ]}
+        />
       </div>
     </div>
   );

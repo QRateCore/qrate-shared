@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
+import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 
 type Tab = 'staff' | 'tables';
@@ -754,14 +755,17 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
                   {/* Management controls (always visible) */}
                   <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                    <select
+                    <Select
+                      fullWidth
+                      size="sm"
                       value={table.assigned_server_id || ''}
                       onChange={e => handleAssignServer(table.id, e.target.value || null)}
-                      className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white text-gray-700"
-                    >
-                      <option value="">No server assigned</option>
-                      {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                      placeholder="No server assigned"
+                      options={[
+                        { value: '', label: 'No server assigned' },
+                        ...staff.map(s => ({ value: s.id, label: s.name })),
+                      ]}
+                    />
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 whitespace-nowrap">Seats:</span>
                       <input

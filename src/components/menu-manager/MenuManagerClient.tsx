@@ -1298,6 +1298,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         return editMenu ? (
           <MenuEditPanel
             menu={editMenu}
+            allMenus={menus}
             restaurantId={restaurantId}
             onClose={() => setEditMenuId(null)}
             onUpdate={handleUpdateMenu}
