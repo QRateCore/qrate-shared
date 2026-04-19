@@ -641,16 +641,6 @@ function MenuItemRow({
                   />
                 )}
               </div>
-              {!multiCat && settings.price != null && (
-                <button
-                  type="button"
-                  onClick={() => { setPriceStr(''); save({ price: null }); }}
-                  className="text-xs text-[var(--text2)] bg-transparent border-none cursor-pointer"
-                  data-testid={`price-clear-${item.id}`}
-                >
-                  ✕
-                </button>
-              )}
             </div>
 
             {/* Divider */}
