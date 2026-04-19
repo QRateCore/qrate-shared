@@ -663,7 +663,7 @@ function MenuItemRow({
                 value={boostLabel ?? ''}
                 onChange={(e) => handleBoostChange(e.target.value || null)}
                 data-testid={`boost-select-${item.id}`}
-                className="text-xs font-semibold border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
+                className="text-xs border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
               >
                 <option value="">None</option>
                 {BOOST_LABELS.map((l) => (
