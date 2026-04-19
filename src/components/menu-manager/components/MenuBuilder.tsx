@@ -451,7 +451,7 @@ function MenuItemRow({
               <span className="text-[var(--text2)] shrink-0">
                 {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               </span>
-              <span className="text-[13px] font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">
+              <span className="text-sm font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">
                 {item.name}
               </span>
               {/* Badges */}
@@ -460,13 +460,14 @@ function MenuItemRow({
                   <Star size={12} fill="#f59e0b" color="#f59e0b" data-testid={`chefs-special-badge-${item.id}`} />
                 )}
                 {boostLabel && (
-                  <span className="badge badge-green text-[10px] !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
+                  <span className="badge badge-green text-xs !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
                     {boostLabel}
                   </span>
                 )}
                 {displayPrice && (
                   <span
-                    className={`text-[11px] font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                    className={`text-xs font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
                     data-testid={`price-display-${item.id}`}
                   >
                     {displayPrice}
@@ -474,10 +475,10 @@ function MenuItemRow({
                   </span>
                 )}
                 {!item.active && (
-                  <span className="badge badge-green text-[10px] !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
+                  <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
                 )}
                 {saving && (
-                  <span className="text-[10px] text-[var(--text2)]">saving…</span>
+                  <span className="text-xs text-[var(--text2)]">saving…</span>
                 )}
               </div>
             </div>
@@ -514,7 +515,7 @@ function MenuItemRow({
             </div>
 
             {/* Name */}
-            <span className="text-[13px] font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
+            <span className="text-sm font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
               {item.name}
             </span>
 
@@ -540,13 +541,14 @@ function MenuItemRow({
                 <Star size={12} fill="#f59e0b" color="#f59e0b" data-testid={`chefs-special-badge-${item.id}`} />
               )}
               {boostLabel && (
-                <span className="badge badge-green text-[10px] !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
+                <span className="badge badge-green text-xs !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
                   {boostLabel}
                 </span>
               )}
               {displayPrice && (
                 <span
-                  className={`text-[11px] font-semibold ${settings.price != null ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                  className={`text-xs font-semibold ${settings.price != null ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
                   data-testid={`price-display-${item.id}`}
                 >
                   {displayPrice}
@@ -554,12 +556,12 @@ function MenuItemRow({
                 </span>
               )}
               {!item.active && (
-                <span className="badge badge-green text-[10px] !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
+                <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
               )}
             </div>
 
             {saving && (
-              <span className="text-[10px] text-[var(--text2)] ml-1">saving…</span>
+              <span className="text-xs text-[var(--text2)] ml-1">saving…</span>
             )}
           </>
         )}
@@ -642,7 +644,7 @@ function MenuItemRow({
                 <button
                   type="button"
                   onClick={() => { setPriceStr(''); save({ price: null }); }}
-                  className="text-[10px] text-[var(--text2)] bg-transparent border-none cursor-pointer"
+                  className="text-xs text-[var(--text2)] bg-transparent border-none cursor-pointer"
                   data-testid={`price-clear-${item.id}`}
                 >
                   ✕
@@ -660,7 +662,7 @@ function MenuItemRow({
                 value={boostLabel ?? ''}
                 onChange={(e) => handleBoostChange(e.target.value || null)}
                 data-testid={`boost-select-${item.id}`}
-                className="text-[11px] font-semibold border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
+                className="text-xs font-semibold border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
               >
                 <option value="">None</option>
                 {BOOST_LABELS.map((l) => (
@@ -680,7 +682,7 @@ function MenuItemRow({
                 onClick={handleChefsSpecial}
                 data-testid={`chefs-special-toggle-${item.id}`}
                 aria-pressed={chefsSpecial}
-                className={`flex items-center gap-1 text-[11px] font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer ${
+                className={`flex items-center gap-1 text-xs font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer ${
                   chefsSpecial
                     ? 'border-2 border-amber-400 bg-amber-50 text-amber-700'
                     : 'border border-[var(--border)] bg-white text-[var(--text2)]'
@@ -704,7 +706,7 @@ function MenuItemRow({
                     type="button"
                     onClick={() => handlePortionType(t)}
                     data-testid={`portion-btn-${t}-${item.id}`}
-                    className={`text-[11px] font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer capitalize ${
+                    className={`text-xs font-semibold py-0.5 px-2 rounded-[var(--r-xs)] cursor-pointer capitalize ${
                       portionType === t
                         ? 'border-2 border-[var(--blue)] bg-[var(--blue-bg)] text-[var(--blue)]'
                         : 'border border-[var(--border)] bg-white text-[var(--text2)]'
@@ -727,7 +729,7 @@ function MenuItemRow({
                     data-testid={`portion-serves-input-${item.id}`}
                     className="border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-1.5 text-xs w-10 outline-none"
                   />
-                  <span className="text-[10px] text-[var(--text2)]">guests</span>
+                  <span className="text-xs text-[var(--text2)]">guests</span>
                 </div>
               )}
             </div>
@@ -850,7 +852,7 @@ function CategoryBucket({
         {bucketEmpty ? (
           <span
             data-testid={`bucket-attention-empty-${category}`}
-            className="text-[10px] font-bold text-white bg-[var(--red)] rounded-full px-2 py-px uppercase tracking-wide"
+            className="text-xs font-bold text-white bg-[var(--red)] rounded-full px-2 py-px uppercase tracking-wide"
             title="No items in this category yet"
           >
             Empty
@@ -858,13 +860,13 @@ function CategoryBucket({
         ) : attentionCount > 0 ? (
           <span
             data-testid={`bucket-attention-count-${category}`}
-            className="text-[10px] font-bold text-white bg-[var(--red)] rounded-full px-1.5 py-px inline-flex items-center gap-0.5"
+            className="text-xs font-bold text-white bg-[var(--red)] rounded-full px-1.5 py-px inline-flex items-center gap-0.5"
             title={`${attentionCount} item${attentionCount === 1 ? '' : 's'} need attention`}
           >
             ⚠ {attentionCount}
           </span>
         ) : null}
-        <span className="text-[10px] font-semibold text-[var(--text2)] bg-[var(--bg)] rounded-full px-1.5 py-px">
+        <span className="text-xs font-semibold text-[var(--text2)] bg-[var(--bg)] rounded-full px-1.5 py-px">
           {bucketItems.length}
         </span>
       </button>
@@ -888,7 +890,7 @@ function CategoryBucket({
           {bucketItems.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
-              className="px-3 py-2.5 text-[11px] text-[var(--text2)] italic"
+              className="px-3 py-2.5 text-xs text-[var(--text2)] italic"
             >
               {isDragOver ? 'Drop to assign here' : 'No items in this category yet'}
             </div>
@@ -1024,11 +1026,11 @@ export default function MenuBuilder({
   if (menus.length === 0) {
     return (
       <div
-        className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] items-center justify-center gap-2 text-[var(--text2)] text-[13px]"
+        className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] items-center justify-center gap-2 text-[var(--text2)]"
         data-testid="menu-builder-panel"
       >
         <span className="text-2xl">🍽</span>
-        <span className="font-semibold">No menus yet</span>
+        <span className="text-lg font-semibold">No menus yet</span>
         <span className="text-xs">Create a menu to start organising items</span>
       </div>
     );
@@ -1131,7 +1133,7 @@ export default function MenuBuilder({
             type="button"
             onClick={() => { setAddingMenu(true); setTimeout(() => newMenuInputRef.current?.focus(), 0); }}
             data-testid="add-menu-btn"
-            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--blue)] bg-transparent border-none cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-[var(--blue)] bg-transparent border-none cursor-pointer whitespace-nowrap shrink-0"
           >
             <Plus size={13} />
             New menu
@@ -1142,11 +1144,11 @@ export default function MenuBuilder({
       {/* Active menu header */}
       {activeMenu && (
         <div className="px-3.5 pt-2.5 pb-2 border-b border-[var(--border)] flex items-center gap-2 shrink-0">
-          <span className="text-[13px] font-bold text-[var(--text)] flex-1">
+          <span className="text-sm font-bold text-[var(--text)] flex-1">
             {activeMenu.name}
           </span>
           <span
-            className="text-[11px] text-[var(--text2)] bg-[var(--bg)] rounded-full px-2 py-0.5"
+            className="text-xs text-[var(--text2)] bg-[var(--bg)] rounded-full px-2 py-0.5"
             data-testid="active-menu-item-count"
           >
             {totalItems} item{totalItems !== 1 ? 's' : ''}
@@ -1156,13 +1158,13 @@ export default function MenuBuilder({
               type="button"
               onClick={() => onCollapseAll(!allCollapsed)}
               data-testid="collapse-expand-all-btn"
-              className="text-[11px] text-[var(--text2)] bg-transparent border-none cursor-pointer opacity-60 hover:opacity-100 transition-opacity whitespace-nowrap"
+              className="text-xs text-[var(--text2)] bg-transparent border-none cursor-pointer opacity-60 hover:opacity-100 transition-opacity whitespace-nowrap"
             >
               {allCollapsed ? 'Expand All' : 'Collapse All'}
             </button>
           )}
           {!activeMenu.active && (
-            <span className="badge badge-green text-[10px] !bg-[var(--red-bg)] !text-[var(--red)]">
+            <span className="badge badge-green text-xs !bg-[var(--red-bg)] !text-[var(--red)]">
               Inactive
             </span>
           )}

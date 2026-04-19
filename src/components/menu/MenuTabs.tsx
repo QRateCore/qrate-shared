@@ -193,7 +193,7 @@ export function MenuTabs({
             {/* Schedule */}
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1">Serving Hours</label>
-              <p className="text-xs text-gray-500 mb-3">Please set time as per local timezone of the restaurant's location.</p>
+              <p className="text-caption mb-3">Please set time as per local timezone of the restaurant's location.</p>
               <MenuScheduleEditor
                 allDay={activeEdit.allDay}
                 schedule={activeEdit.schedule}

@@ -197,7 +197,7 @@ export default function MenuEditPanel({
         <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Edit menu</div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>{menu.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 1 }}>{menu.name}</div>
           </div>
           <button
             type="button" onClick={onClose} data-testid="menu-edit-close"
@@ -221,7 +221,7 @@ export default function MenuEditPanel({
               data-testid="menu-edit-name-input"
               style={{ ...inputStyle, border: nameError ? '1px solid #b91c1c' : '1px solid var(--border)' }}
             />
-            {nameError && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Name is required</div>}
+            {nameError && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 3 }}>Name is required</div>}
           </div>
 
           {/* Active */}
@@ -264,7 +264,7 @@ export default function MenuEditPanel({
           {/* Serving hours */}
           <div>
             <div style={labelStyle}>Serving hours</div>
-            <p style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, marginTop: 2 }}>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10, marginTop: 2 }}>
               Please set times as per the local timezone of the restaurant&apos;s location.
             </p>
 
@@ -300,7 +300,7 @@ export default function MenuEditPanel({
                           data-testid={`schedule-day-check-${idx}`}
                           style={{ accentColor: 'var(--blue)', width: 13, height: 13 }}
                         />
-                        <span style={{ fontSize: 11, fontWeight: 600, color: enabled ? 'var(--text)' : 'var(--text2)' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: enabled ? 'var(--text)' : 'var(--text2)' }}>
                           {dayLabel}
                         </span>
                       </label>
@@ -313,7 +313,7 @@ export default function MenuEditPanel({
                             data-testid={`schedule-start-${idx}`}
                             style={{ ...timeInputStyle }}
                           />
-                          <span style={{ fontSize: 11, color: 'var(--text2)' }}>–</span>
+                          <span style={{ fontSize: 12, color: 'var(--text2)' }}>–</span>
                           <input
                             type="time"
                             value={entry.end}
@@ -323,7 +323,7 @@ export default function MenuEditPanel({
                           />
                         </>
                       ) : (
-                        <span style={{ fontSize: 11, color: 'var(--text2)', fontStyle: 'italic' }}>Closed</span>
+                        <span style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic' }}>Closed</span>
                       )}
                     </div>
                   );
@@ -339,7 +339,7 @@ export default function MenuEditPanel({
             </div>
             {deleteStep === 2 && (
               <div
-                style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 4, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#991b1b' }}
+                style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 4, padding: '8px 10px', marginBottom: 8, fontSize: 12, color: '#991b1b' }}
                 data-testid="delete-menu-warning"
               >
                 This permanently removes the menu and all its item assignments. Item data is preserved.
@@ -373,7 +373,7 @@ export default function MenuEditPanel({
         {/* Footer */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
           {saveError && (
-            <div style={{ fontSize: 11, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <AlertCircle size={12} />
               {saveError}
             </div>
@@ -403,7 +403,7 @@ export default function MenuEditPanel({
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4,
+  fontSize: 12, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4,
 };
 
 const inputStyle: React.CSSProperties = {
