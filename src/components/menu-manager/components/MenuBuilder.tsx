@@ -6,6 +6,7 @@ import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
+import Button from '../../common/Button';
 import Select from '../../common/Select';
 import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } from './ItemModifierZones';
@@ -1033,103 +1034,111 @@ export default function MenuBuilder({
       className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] overflow-hidden"
       data-testid="menu-builder-panel"
     >
-      {/* Tab bar */}
-      <div
-        className="flex items-end px-3 border-b border-[var(--border)] overflow-x-auto shrink-0"
-        data-testid="menu-tab-bar"
-      >
-        {menus.map((menu) => {
-          const isActive = menu.id === activeMenu?.id;
-          return (
-            <div key={menu.id} className="flex items-center">
+      {/* Tab bar + frozen New Menu button */}
+      <div className="flex items-end border-b border-[var(--border)] shrink-0">
+        <div
+          className="flex items-end px-3 overflow-x-auto flex-1 min-w-0"
+          data-testid="menu-tab-bar"
+        >
+          {menus.map((menu) => {
+            const isActive = menu.id === activeMenu?.id;
+            return (
+              <div key={menu.id} className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => onTabChange(menu.id)}
+                  data-testid={`menu-tab-${menu.id}`}
+                  className={`flex items-center gap-1.5 px-3.5 py-3 text-sm border-none cursor-pointer whitespace-nowrap transition-all duration-150 ${
+                    isActive
+                      ? 'font-semibold text-[var(--brand-s)] bg-[rgba(255,107,43,0.05)] border-b-2 border-b-[var(--brand-s)]'
+                      : 'font-medium text-[var(--text2)] bg-transparent border-b-2 border-b-transparent'
+                  }`}
+                >
+                  {menu.name}
+                  {isActive && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onEditMenu(menu.id); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditMenu(menu.id); } }}
+                      data-testid={`edit-menu-tab-${menu.id}`}
+                      aria-label={`Edit ${menu.name}`}
+                      className="inline-flex items-center p-0.5 rounded-[var(--r-xs)] text-[var(--brand-s)] cursor-pointer opacity-70 hover:opacity-100"
+                    >
+                      <Pencil size={11} />
+                    </span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+
+          {/* Inline new-menu form (inside scroll area) */}
+          {addingMenu && (
+            <div className="flex items-center gap-1 px-2 py-1.5 shrink-0">
+              <input
+                ref={newMenuInputRef}
+                type="text"
+                value={newMenuName}
+                onChange={(e) => setNewMenuName(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter') {
+                    if (!newMenuName.trim()) return;
+                    setCreating(true);
+                    await onCreateMenu(newMenuName.trim());
+                    setNewMenuName('');
+                    setAddingMenu(false);
+                    setCreating(false);
+                  }
+                  if (e.key === 'Escape') { setAddingMenu(false); setNewMenuName(''); }
+                }}
+                placeholder="Menu name…"
+                autoFocus
+                data-testid="new-menu-name-input"
+                className="text-xs border border-[var(--blue)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none w-[130px]"
+              />
               <button
                 type="button"
-                onClick={() => onTabChange(menu.id)}
-                data-testid={`menu-tab-${menu.id}`}
-                className={`flex items-center gap-1.5 px-3.5 py-3 text-sm border-none cursor-pointer whitespace-nowrap transition-all duration-150 ${
-                  isActive
-                    ? 'font-semibold text-[var(--brand-s)] bg-[rgba(255,107,43,0.05)] border-b-2 border-b-[var(--brand-s)]'
-                    : 'font-medium text-[var(--text2)] bg-transparent border-b-2 border-b-transparent'
-                }`}
-              >
-                {menu.name}
-                {isActive && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); onEditMenu(menu.id); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditMenu(menu.id); } }}
-                    data-testid={`edit-menu-tab-${menu.id}`}
-                    aria-label={`Edit ${menu.name}`}
-                    className="inline-flex items-center p-0.5 rounded-[var(--r-xs)] text-[var(--brand-s)] cursor-pointer opacity-70 hover:opacity-100"
-                  >
-                    <Pencil size={11} />
-                  </span>
-                )}
-              </button>
-            </div>
-          );
-        })}
-
-        {/* Inline new-menu form / + button */}
-        {addingMenu ? (
-          <div className="flex items-center gap-1 px-2 py-1.5 shrink-0">
-            <input
-              ref={newMenuInputRef}
-              type="text"
-              value={newMenuName}
-              onChange={(e) => setNewMenuName(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key === 'Enter') {
+                disabled={creating || !newMenuName.trim()}
+                onClick={async () => {
                   if (!newMenuName.trim()) return;
                   setCreating(true);
                   await onCreateMenu(newMenuName.trim());
                   setNewMenuName('');
                   setAddingMenu(false);
                   setCreating(false);
-                }
-                if (e.key === 'Escape') { setAddingMenu(false); setNewMenuName(''); }
-              }}
-              placeholder="Menu name…"
-              autoFocus
-              data-testid="new-menu-name-input"
-              className="text-xs border border-[var(--blue)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none w-[130px]"
-            />
-            <button
-              type="button"
-              disabled={creating || !newMenuName.trim()}
-              onClick={async () => {
-                if (!newMenuName.trim()) return;
-                setCreating(true);
-                await onCreateMenu(newMenuName.trim());
-                setNewMenuName('');
-                setAddingMenu(false);
-                setCreating(false);
-              }}
-              data-testid="confirm-new-menu-btn"
-              className="bg-transparent border-none cursor-pointer text-[var(--blue)] flex items-center p-0.5"
+                }}
+                data-testid="confirm-new-menu-btn"
+                className="bg-transparent border-none cursor-pointer text-[var(--blue)] flex items-center p-0.5"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAddingMenu(false); setNewMenuName(''); }}
+                data-testid="cancel-new-menu-btn"
+                className="bg-transparent border-none cursor-pointer text-[var(--text2)] flex items-center p-0.5"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Frozen "+ New Menu" button — always visible, never scrolls */}
+        {!addingMenu && (
+          <div className="shrink-0 px-2 py-1.5 flex items-center">
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus size={13} />}
+              onClick={() => { setAddingMenu(true); setTimeout(() => newMenuInputRef.current?.focus(), 0); }}
+              data-testid="add-menu-btn"
+              aria-label="Add menu"
             >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAddingMenu(false); setNewMenuName(''); }}
-              data-testid="cancel-new-menu-btn"
-              className="bg-transparent border-none cursor-pointer text-[var(--text2)] flex items-center p-0.5"
-            >
-              <X size={14} />
-            </button>
+              New Menu
+            </Button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setAddingMenu(true); setTimeout(() => newMenuInputRef.current?.focus(), 0); }}
-            data-testid="add-menu-btn"
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-[var(--blue)] bg-transparent border-none cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Plus size={13} />
-            New menu
-          </button>
         )}
       </div>
 
