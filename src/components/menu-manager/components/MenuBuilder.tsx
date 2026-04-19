@@ -6,6 +6,7 @@ import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
+import Select from '../../common/Select';
 import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } from './ItemModifierZones';
 import MobileItemModifierPicker from './MobileItemModifierPicker';
@@ -649,17 +650,17 @@ function MenuItemRow({
             {/* Boost dropdown */}
             <div className="flex items-center gap-1.5">
               <span className="section-header !mb-0 shrink-0">Boost</span>
-              <select
+              <Select
+                size="sm"
                 value={boostLabel ?? ''}
                 onChange={(e) => handleBoostChange(e.target.value || null)}
                 data-testid={`boost-select-${item.id}`}
-                className="text-xs border border-[var(--border)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none bg-white cursor-pointer text-[var(--text)]"
-              >
-                <option value="">None</option>
-                {BOOST_LABELS.map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'None' },
+                  ...BOOST_LABELS.map((l) => ({ value: l, label: l })),
+                ]}
+                placeholder="None"
+              />
             </div>
 
             {/* Divider */}

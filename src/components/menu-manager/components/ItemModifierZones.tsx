@@ -22,6 +22,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { COLOR_WARNING, COLOR_WARNING_BG, COLOR_WARNING_BG_SM, COLOR_WARNING_TEXT, COLOR_ERROR } from '../../../constants/colors';
+import Select from '../../common/Select';
 import type { MenuItemDisplay } from '../../../types/restaurant';
 
 export interface ModifierEntry {
@@ -415,25 +416,17 @@ export default function ItemModifierZones({
     <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>
       <div className="modifier-section-header modifier-section-header--sides">
         <span className="modifier-section-title">Sides</span>
-        <select
+        <Select
+          size="sm"
           value={sidesSelectionMode}
           onChange={(e) => changeSelectionMode(e.target.value as 'and' | 'or')}
           data-testid={`sides-selection-mode-${parent.id}`}
-          style={{
-            marginLeft: 8,
-            padding: '2px 6px',
-            fontSize: 11,
-            fontWeight: 600,
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            background: sidesSelectionMode === 'or' ? COLOR_WARNING_BG : 'var(--bg2)',
-            color: sidesSelectionMode === 'or' ? COLOR_WARNING_TEXT : 'var(--text2)',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="and">AND</option>
-          <option value="or">OR</option>
-        </select>
+          options={[
+            { value: 'and', label: 'AND' },
+            { value: 'or', label: 'OR' },
+          ]}
+          style={{ marginLeft: 8 }}
+        />
         {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
       </div>
       <p className="modifier-section-hint">

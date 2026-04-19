@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2 } from 'lucide-react';
+import Select from '../common/Select';
 import type { StaffMember, StaffRole, ExperienceService } from '../../types/experience';
 
 const ROLE_LABELS: Record<StaffRole, string> = {
@@ -190,15 +191,12 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
               </div>
               <div>
                 <label className="block text-label text-gray-700 mb-1">Role</label>
-                <select
+                <Select
+                  fullWidth
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value as StaffRole)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                >
-                  {(Object.entries(ROLE_LABELS) as [StaffRole, string][]).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
+                  options={(Object.entries(ROLE_LABELS) as [StaffRole, string][]).map(([value, label]) => ({ value, label }))}
+                />
               </div>
               <div>
                 <label className="block text-label text-gray-700 mb-1">Temporary Password</label>
