@@ -833,3 +833,91 @@ describe('EditModal — addon removal', () => {
     expect(secondCallAddons[0].menu_item_id).toBe('addon-c');
   });
 });
+
+// ── Cross-tab reactivity — recommendation broadcast ─────────────────────────
+
+describe('EditModal — cross-tab recommendation reactivity', () => {
+  it('broadcasts recommendation change after accepting an AI suggestion', async () => {
+    const { broadcastRecommendationChange: mockBroadcast } = await import(
+      '../../../../utils/recommendation-broadcast'
+    );
+    vi.mocked(mockBroadcast);
+
+    const aiItem = makeDishItem({ id: 'paired-1', name: 'Caesar Salad' });
+    const entree = makeDishItem({
+      id: 'entree-1',
+      name: 'Grilled Chicken',
+      recommendations: [],
+    });
+
+    const service = makeService({
+      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
+      getMenuIntelligence: vi.fn().mockResolvedValue({
+        menu_intelligence: {
+          pairing_graph: [{
+            entree_item_id: 'entree-1',
+            paired_items: [{ item_id: 'paired-1', strength: 0.9 }],
+          }],
+        },
+      }),
+    });
+
+    renderModal({ item: entree, allItems: [entree, aiItem], service });
+
+    // Switch to recommendations tab
+    const recsTab = screen.getByTestId('tab-recommendations');
+    fireEvent.click(recsTab);
+
+    // Wait for recommendations to load
+    await waitFor(() => {
+      expect(service.getItemModifiers).toHaveBeenCalled();
+    });
+
+    // The AI suggestion "Caesar Salad" should appear with an accept button
+    await waitFor(() => {
+      expect(screen.getByText('Caesar Salad')).toBeInTheDocument();
+    });
+
+    // Accept the suggestion
+    const acceptBtn = screen.getByTestId('approve-rec-modal-paired-1');
+    fireEvent.click(acceptBtn);
+
+    // Verify updateItemModifiers was called with the recommendation
+    await waitFor(() => {
+      expect(service.updateItemModifiers).toHaveBeenCalledWith(
+        'entree-1',
+        expect.objectContaining({
+          recommendations: expect.arrayContaining([
+            expect.objectContaining({ menu_item_id: 'paired-1' }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  it('refetches recommendations on visibilitychange when tab is active', async () => {
+    const entree = makeDishItem({ id: 'entree-1', recommendations: [] });
+    const service = makeService({
+      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
+      getMenuIntelligence: vi.fn().mockResolvedValue({ menu_intelligence: { pairing_graph: [] } }),
+    });
+
+    renderModal({ item: entree, service });
+
+    // Switch to recommendations tab to activate the listener
+    fireEvent.click(screen.getByTestId('tab-recommendations'));
+    await waitFor(() => expect(service.getItemModifiers).toHaveBeenCalledTimes(1));
+
+    // Simulate the user switching away and back to this browser tab
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    // getItemModifiers should have been called again (refetch on visibility restore)
+    await waitFor(() => {
+      expect(service.getItemModifiers).toHaveBeenCalledTimes(2);
+    });
+  });
+});

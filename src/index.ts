@@ -50,3 +50,7 @@ export { STATUS_DISPLAY, getNextStatus, getNextStatusLabel, ACTIVE_STATUSES, isA
 
 // Constants
 export { TAG_CATEGORIES, COMPACT_TAG_CATEGORIES, HEAT_LABELS, CALORIE_OPTIONS } from './constants';
+
+// Utils — Recommendation Broadcast (cross-tab reactivity)
+export { broadcastRecommendationChange, onRecommendationChange } from './utils/recommendation-broadcast';
+export type { RecommendationChangeMessage } from './utils/recommendation-broadcast';

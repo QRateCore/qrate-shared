@@ -10,6 +10,7 @@ import Select from '../../common/Select';
 import { computeAddonCascadeTargets, applyAddonPriceCascade } from '../lib/addonHelpers';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
+import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -333,8 +334,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       .finally(() => setAddonsLoading(false));
   }, [activeTab, restaurantId]);
 
-  useEffect(() => {
-    if (activeTab !== 'recommendations' || !restaurantId) return;
+  // Refetch recommendations from backend — used on initial load, cross-tab
+  // broadcast, and tab-visibility restore.
+  const fetchRecs = useRef<() => void>(() => {});
+  fetchRecs.current = () => {
+    if (!restaurantId) return;
     setRecsLoading(true);
     setRecsError(null);
     Promise.all([
@@ -364,6 +368,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     })
     .catch((e: unknown) => setRecsError(e instanceof Error ? e.message : 'Failed to load recommendations'))
     .finally(() => setRecsLoading(false));
+  };
+
+  // Initial fetch when recommendations tab becomes active
+  useEffect(() => {
+    if (activeTab !== 'recommendations' || !restaurantId) return;
+    fetchRecs.current();
+  }, [activeTab, restaurantId, item.id]);
+
+  // Cross-tab reactivity: refetch when another tab modifies recommendations
+  // for this item, and when user switches back to this tab.
+  useEffect(() => {
+    if (activeTab !== 'recommendations' || !restaurantId) return;
+
+    // Listen for BroadcastChannel messages from other tabs
+    const unsubBroadcast = onRecommendationChange((msg) => {
+      if (msg.itemId === item.id && msg.restaurantId === restaurantId) {
+        fetchRecs.current();
+      }
+    });
+
+    // Refetch when the browser tab regains focus (covers cases where
+    // BroadcastChannel isn't available or the change came from the setup guide
+    // in the same tab but a different route)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRecs.current();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      unsubBroadcast();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [activeTab, restaurantId, item.id]);
 
   // ── Image handlers ──────────────────────────────────────────────────────
@@ -560,6 +598,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           thumbnail_url: r.thumbnail_url ?? null,
         })),
       });
+      if (restaurantId) broadcastRecommendationChange(item.id, restaurantId);
     } catch {
       setItemRecs(itemRecs);
       setAiSugs(aiSugs);
@@ -584,6 +623,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           thumbnail_url: r.thumbnail_url ?? null,
         })),
       });
+      if (restaurantId) broadcastRecommendationChange(item.id, restaurantId);
     } catch {
       setItemRecs(itemRecs);
     }
