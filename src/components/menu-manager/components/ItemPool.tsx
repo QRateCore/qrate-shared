@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, ChevronDown, Pencil, Plus, Search, Check } from 'lucide-react';
+import { AlertCircle, ChevronDown, Pencil, Plus, Search, Check, X } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
@@ -156,8 +156,8 @@ function ItemPoolCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <span
             style={{
-              fontSize: 13,
-              fontWeight: 700,
+              fontSize: 14,
+              fontWeight: 500,
               color: 'var(--text)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -360,7 +360,7 @@ export default function ItemPool({
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 11, color: 'var(--text2)' }}>Total count of Food Items</span>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>Total count of Food Items</span>
           <span data-testid="item-pool-count" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{items.length}</span>
         </div>
         <Button
@@ -394,7 +394,7 @@ export default function ItemPool({
               border: filterTags.length === 0 ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
               background: filterTags.length === 0 ? 'rgba(255,107,43,0.08)' : 'var(--white)',
               color: filterTags.length === 0 ? 'var(--brand-s)' : 'var(--text2)',
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: filterTags.length === 0 ? 700 : 400,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
@@ -419,7 +419,7 @@ export default function ItemPool({
                   border: active ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
                   background: active ? 'rgba(255,107,43,0.08)' : 'var(--white)',
                   color: active ? 'var(--brand-s)' : 'var(--text2)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: active ? 700 : 400,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
@@ -462,6 +462,24 @@ export default function ItemPool({
               minWidth: 0,
             }}
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              aria-label="Clear search"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text2)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 2,
+              }}
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
 
         {/* Combined filter row — item type + visibility. Wraps on narrow viewports to prevent clipping. */}
@@ -556,7 +574,7 @@ export default function ItemPool({
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--text2)',
             background: 'transparent',
             border: 'none',
@@ -587,7 +605,7 @@ export default function ItemPool({
             onClick={handleOpenBulkModifiersTracked}
             data-testid="bulk-assign-modifiers-btn"
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 600,
               color: '#92400e',
               background: 'transparent',
@@ -605,7 +623,7 @@ export default function ItemPool({
             onClick={() => handleOpenBulkTracked('assign')}
             data-testid="bulk-actions-btn"
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 600,
               color: 'var(--blue)',
               background: 'transparent',
@@ -649,7 +667,7 @@ export default function ItemPool({
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 10px',
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
                 color: '#92400e',
                 background: '#fef3c7',

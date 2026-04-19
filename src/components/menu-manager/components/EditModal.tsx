@@ -94,7 +94,7 @@ function TagInput({
 
   return (
     <div>
-      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>
+      <label className="section-header" style={{ display: 'block', marginBottom: 4 }}>
         {label}
       </label>
       <div
@@ -113,12 +113,11 @@ function TagInput({
         {values.map((v) => (
           <span
             key={v}
+            className="text-xs font-medium"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 3,
-              fontSize: 11,
-              fontWeight: 500,
               background: '#f0f0f0',
               color: 'var(--text)',
               borderRadius: 4,
@@ -130,6 +129,7 @@ function TagInput({
               type="button"
               onClick={() => onChange(values.filter((t) => t !== v))}
               data-testid={`remove-tag-${fieldKey}-${v}`}
+              className="text-xs"
               style={{
                 background: 'none',
                 border: 'none',
@@ -137,7 +137,6 @@ function TagInput({
                 padding: 0,
                 lineHeight: 1,
                 color: 'var(--text2)',
-                fontSize: 11,
               }}
             >
               ×
@@ -1166,7 +1165,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {saveError && (
             <div
               data-testid="edit-save-error"
-              style={{ fontSize: 11, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+              className="text-caption"
+              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
             >
               <AlertCircle size={12} />
               {saveError}
@@ -1174,7 +1174,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           )}
           {deleteError && (
             <div
-              style={{ fontSize: 11, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+              className="text-caption"
+              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
             >
               <AlertCircle size={12} />
               {deleteError}
@@ -1273,7 +1274,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 }}
               >
                 {imgBusy ? (
-                  <span style={{ fontSize: 12, color: 'var(--text2)', textAlign: 'center', padding: 12 }}>
+                  <span className="text-caption" style={{ textAlign: 'center', padding: 12 }}>
                     {imgBusyLabel[imgBusy]}
                   </span>
                 ) : thumbnail ? (
@@ -1281,7 +1282,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 ) : (
                   <div style={{ textAlign: 'center', color: 'var(--text2)' }}>
                     <div style={{ fontSize: 28, marginBottom: 6 }}>🍽</div>
-                    <div style={{ fontSize: 11 }}>Add an image</div>
+                    <div className="text-caption">Add an image</div>
                   </div>
                 )}
               </div>
@@ -1361,7 +1362,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
               {/* Image error */}
               {imgError && (
-                <div style={{ fontSize: 11, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div className="text-caption" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <AlertCircle size={11} />
                   {imgError}
                 </div>
@@ -1371,8 +1372,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               {!thumbnail && !imgBusy && (
                 <div
                   data-testid="no-image-warning"
+                  className="text-caption"
                   style={{
-                    fontSize: 11,
                     color: '#92400e',
                     background: '#fffbeb',
                     border: '1px solid #fde68a',
@@ -1432,7 +1433,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   }}
                 />
                 {nameError && (
-                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Name is required</div>
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Name is required</div>
                 )}
               </div>
 
@@ -1455,7 +1456,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   }}
                 />
                 {descError && (
-                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Description is required</div>
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Description is required</div>
                 )}
               </div>
 
@@ -1555,7 +1556,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   }}
                 />
                 {nameError && (
-                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>Name is required</div>
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Name is required</div>
                 )}
               </div>
 
@@ -1599,14 +1600,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       aria-label="Clear price"
                       onClick={() => { setPrice(null); setPriceError(null); }}
                       data-testid="edit-price-clear"
-                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, fontSize: 11, whiteSpace: 'nowrap' }}
+                      className="text-xs"
+                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
                     >
                       × clear
                     </button>
                   )}
                 </div>
                 {priceError && (
-                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
                 )}
               </div>
             </div>
@@ -1726,7 +1728,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {activeTab === 'addons' && (
             <section style={{ marginBottom: 4 }}>
               {!restaurantId && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '20px 0', textAlign: 'center' }}>
+                <div className="text-caption" style={{ padding: '20px 0', textAlign: 'center' }}>
                   Add-on data unavailable — no restaurant context.
                 </div>
               )}
@@ -1735,14 +1737,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 <>
                   {/* Mutation error banner */}
                   {addonsError && (
-                    <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <AlertCircle size={14} /> {addonsError}
                     </div>
                   )}
                   {/* AI Suggestions — pending approval */}
                   {itemAddons.filter((a) => a.status === 'suggested').length > 0 && (
                     <div style={{ marginBottom: 20 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                      <div className="section-header" style={{ color: '#92400e', marginBottom: 8 }}>
                         AI Suggestions
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1761,11 +1763,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
                   {/* Assigned add-ons */}
                   <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                    <div className="section-header" style={{ marginBottom: 8 }}>
                       Assigned Add-ons
                     </div>
                     {itemAddons.filter((a) => a.status === 'approved').length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                      <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                         No add-ons assigned yet — add from the pool below.
                       </div>
                     ) : (
@@ -1784,38 +1786,64 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
                   {/* Add from pool */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                    <div className="section-header" style={{ marginBottom: 8 }}>
                       Add from Pool
                     </div>
                     {addonsLoading && (
-                      <div style={{ fontSize: 12, color: 'var(--text2)', padding: '8px 0' }}>Loading…</div>
+                      <div className="text-caption" style={{ padding: '8px 0' }}>Loading…</div>
                     )}
                     {addonsError && !addonsLoading && (
-                      <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
+                      <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
                         {addonsError}
                       </div>
                     )}
                     {!addonsLoading && !addonsError && addonPool.length === 0 && (
-                      <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                      <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                         No add-on items found. Mark items as &quot;Add-on&quot; in their editor to make them available here.
                       </div>
                     )}
                     {!addonsLoading && addonPool.length > 0 && (
                       <>
                         {/* Pool search */}
-                        <input
-                          type="text"
-                          value={poolSearch}
-                          onChange={(e) => setPoolSearch(e.target.value)}
-                          placeholder="Search add-ons…"
-                          data-testid="addon-pool-search"
-                          style={{
-                            ...inputStyle,
-                            fontSize: 12,
-                            padding: '6px 10px',
-                            marginBottom: 8,
-                          }}
-                        />
+                        <div style={{ position: 'relative', marginBottom: 8 }}>
+                          <input
+                            type="text"
+                            value={poolSearch}
+                            onChange={(e) => setPoolSearch(e.target.value)}
+                            placeholder="Search add-ons…"
+                            data-testid="addon-pool-search"
+                            style={{
+                              ...inputStyle,
+                              fontSize: 12,
+                              padding: '6px 10px',
+                              paddingRight: 28,
+                              width: '100%',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                          {poolSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setPoolSearch('')}
+                              aria-label="Clear search"
+                              style={{
+                                position: 'absolute',
+                                right: 6,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: 'var(--text2)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: 2,
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {addonPool
                           // exclude already-assigned
@@ -1842,24 +1870,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                                 background: '#fafafa',
                               }}
                             >
-                              <div
-                                style={{
-                                  width: 32, height: 32, borderRadius: 4,
-                                  background: '#f0f0f0', overflow: 'hidden',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: 14, flexShrink: 0,
-                                }}
-                              >
-                                {poolItem.thumbnail_url ? (
-                                  <img src={poolItem.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : '🍽'}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {poolItem.name}
                                 </div>
                                 {poolItem.price != null && (
-                                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
                                     ${poolItem.price.toFixed(2)}
                                   </div>
                                 )}
@@ -1891,16 +1907,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {activeTab === 'recommendations' && (
             <section style={{ marginBottom: 4 }}>
               {recsLoading && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '8px 0' }}>Loading…</div>
+                <div className="text-caption" style={{ padding: '8px 0' }}>Loading…</div>
               )}
               {recsError && !recsLoading && (
-                <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
+                <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
                   {recsError}
                 </div>
               )}
               {!recsLoading && !recsError && (
                 aiSugs.length === 0 && itemRecs.length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>
+                  <div className="text-caption" style={{ fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>
                     No recommendations generated yet. Run Menu Intelligence to generate AI pairings for this dish.
                   </div>
                 ) : (
@@ -1908,7 +1924,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     {/* AI Suggestions — from pairing_graph, pending acceptance */}
                     {aiSugs.length > 0 && (
                       <div style={{ marginBottom: 20 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        <div className="section-header" style={{ color: '#92400e', marginBottom: 8 }}>
                           AI Suggestions
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1926,11 +1942,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
                     {/* Accepted pairings — confirmed in menu_item_recommendations */}
                     <div style={{ marginBottom: 20 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                      <div className="section-header" style={{ marginBottom: 8 }}>
                         Accepted Pairings
                       </div>
                       {itemRecs.length === 0 ? (
-                        <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                        <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                           No pairings accepted yet — use the Accept button on AI suggestions above.
                         </div>
                       ) : (
@@ -1955,18 +1971,18 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {activeTab === 'dishes' && (
             <section style={{ marginBottom: 4 }}>
               {!allItems || allItems.length === 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '20px 0', textAlign: 'center' }}>
+                <div className="text-caption" style={{ padding: '20px 0', textAlign: 'center' }}>
                   No dish data available.
                 </div>
               ) : (
                 <>
                   {/* Associated dishes */}
                   <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                    <div className="section-header" style={{ marginBottom: 8 }}>
                       Associated Dishes
                     </div>
                     {associatedDishIds.size === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                      <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                         Not assigned to any dish yet — add from the pool below.
                       </div>
                     ) : (
@@ -1999,7 +2015,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                                   {dish.name}
                                 </div>
                                 {dish.price != null && (
-                                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>${Number(dish.price).toFixed(2)}</div>
+                                  <div className="text-caption">${Number(dish.price).toFixed(2)}</div>
                                 )}
                               </div>
                               <button
@@ -2018,14 +2034,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
                   {/* Add from dish pool */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                    <div className="section-header" style={{ marginBottom: 8 }}>
                       Add to Dish
                     </div>
                     {(() => {
                       const availableDishes = allItems.filter((d) => !associatedDishIds.has(d.id) && d.id !== item.id);
                       if (availableDishes.length === 0) {
                         return (
-                          <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                          <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                             All dishes are already associated with this add-on.
                           </div>
                         );
@@ -2036,19 +2052,77 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       return (
                         <>
                           <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
-                            <input
-                              type="text"
-                              value={dishSearch}
-                              onChange={(e) => setDishSearch(e.target.value)}
-                              placeholder="Search dishes..."
-                              data-testid="dish-pool-search"
-                              style={{
-                                ...inputStyle,
-                                fontSize: 12,
-                                padding: '6px 10px',
-                                flex: 1,
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <input
+                                type="text"
+                                value={dishSearch}
+                                onChange={(e) => setDishSearch(e.target.value)}
+                                placeholder="Search dishes..."
+                                data-testid="dish-pool-search"
+                                style={{
+                                  ...inputStyle,
+                                  fontSize: 12,
+                                  padding: '6px 10px',
+                                  paddingRight: 28,
+                                  width: '100%',
+                                  boxSizing: 'border-box',
+                                }}
+                              />
+                              {dishSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDishSearch('')}
+                                  aria-label="Clear search"
+                                  style={{
+                                    position: 'absolute',
+                                    right: 6,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'var(--text2)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: 2,
+                                  }}
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              data-testid="select-all-dishes"
+                              onClick={() => {
+                                const allFilteredIds = filtered.map((d) => d.id);
+                                const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedDishIds.has(id));
+                                if (allSelected) {
+                                  setSelectedDishIds((prev) => {
+                                    const next = new Set(prev);
+                                    allFilteredIds.forEach((id) => next.delete(id));
+                                    return next;
+                                  });
+                                } else {
+                                  setSelectedDishIds((prev) => {
+                                    const next = new Set(prev);
+                                    allFilteredIds.forEach((id) => next.add(id));
+                                    return next;
+                                  });
+                                }
                               }}
-                            />
+                              style={{
+                                fontSize: 11, fontWeight: 700, padding: '6px 12px',
+                                background: filtered.length > 0 && filtered.every((d) => selectedDishIds.has(d.id)) ? '#fef3c7' : '#f9fafb',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text)', borderRadius: 4, cursor: 'pointer',
+                                whiteSpace: 'nowrap', flexShrink: 0, minWidth: 105,
+                                textAlign: 'center',
+                              }}
+                            >
+                              {filtered.length > 0 && filtered.every((d) => selectedDishIds.has(d.id)) ? 'Deselect All' : 'Select All'}
+                              {dishSearch.trim() ? ` (${filtered.length})` : ''}
+                            </button>
                             {selectedDishIds.size > 0 && (
                               <button
                                 type="button"
@@ -2066,7 +2140,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                             )}
                           </div>
                           {filtered.length === 0 ? (
-                            <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic', padding: '8px 0' }}>
+                            <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
                               No dishes match your search.
                             </div>
                           ) : (
@@ -2116,7 +2190,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                                         {dish.name}
                                       </div>
                                       {dish.price != null && (
-                                        <div style={{ fontSize: 11, color: 'var(--text2)' }}>${Number(dish.price).toFixed(2)}</div>
+                                        <div className="text-caption">${Number(dish.price).toFixed(2)}</div>
                                       )}
                                     </div>
                                     <button
@@ -2177,7 +2251,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 </div>
               )}
               {perfError && !perfLoading && (
-                <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <AlertCircle size={12} />
                   {perfError}
                 </div>
@@ -2195,7 +2269,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
               {/* No restaurant context */}
               {!restaurantId && !perfLoading && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', padding: '20px 0', textAlign: 'center' }}>
+                <div className="text-caption" style={{ padding: '20px 0', textAlign: 'center' }}>
                   Performance data unavailable — no restaurant context.
                 </div>
               )}
@@ -2329,7 +2403,7 @@ function AddonCard({
           )}
         </div>
         <div
-          style={{ fontSize: 11, color: 'var(--text2)' }}
+          className="text-caption"
           data-testid={`addon-price-${addon.menu_item_id}`}
         >
           {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
@@ -2372,7 +2446,7 @@ function PerfCard({ label, value, highlight }: { label: string; value: string; h
         gap: 4,
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <div className="section-header" style={{ marginBottom: 0 }}>
         {label}
       </div>
       <div style={{ fontSize: 22, fontWeight: 700, color: highlight ? 'var(--brand)' : 'var(--text)' }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, GripVertical, Check, Plus } from 'lucide-react';
+import { Search, GripVertical, Check, Plus, X } from 'lucide-react';
 import type { MenuItem } from '../../types';
 import { getCategoryColor } from './categoryUtils';
 
@@ -47,6 +47,25 @@ export default function PairableSidebar({ items, pairedItemIds, isTouchDevice, o
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text3)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 2,
+                flexShrink: 0,
+              }}
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       </div>
       <div className="pairable-sidebar-list">

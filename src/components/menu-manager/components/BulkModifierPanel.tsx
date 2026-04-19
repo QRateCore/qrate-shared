@@ -264,6 +264,24 @@ export default function BulkModifierPanel({
                 minWidth: 0,
               }}
             />
+            {dishSearch && (
+              <button
+                type="button"
+                onClick={() => setDishSearch('')}
+                aria-label="Clear search"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 2,
+                }}
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         </div>
 
