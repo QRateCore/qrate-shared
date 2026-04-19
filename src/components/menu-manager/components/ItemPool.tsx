@@ -339,10 +339,9 @@ export default function ItemPool({
           gap: 8,
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 12, color: 'var(--text2)' }}>Total count of Food Items</span>
-          <span data-testid="item-pool-count" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{items.length}</span>
-        </div>
+        <span data-testid="item-pool-count" style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+          Food Items ({items.length})
+        </span>
         <Button
           variant="primary"
           size="sm"
