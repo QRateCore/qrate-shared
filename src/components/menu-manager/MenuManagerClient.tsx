@@ -1100,7 +1100,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       id: tempId,
       name: 'New item',
       description: null,
-      price: 0,
+      price: null,
       category: '',
       food_tags: {},
       thumbnail_url: null,
@@ -1128,7 +1128,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const created = await service.addMenuItem(restaurantId, {
         name: data.name,
         description: data.description,
-        price: data.price ?? 0,
+        price: data.price ?? undefined,
         category: data.category,
       });
       // If the user chose addon type, set it in a follow-up update
