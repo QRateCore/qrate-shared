@@ -196,6 +196,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value as StaffRole)}
                   options={(Object.entries(ROLE_LABELS) as [StaffRole, string][]).map(([value, label]) => ({ value, label }))}
+                  data-testid="staff-role-select"
                 />
               </div>
               <div>

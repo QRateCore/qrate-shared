@@ -132,6 +132,7 @@ export default function Select({
       {/* ── Dropdown panel ── */}
       <div
         role="listbox"
+        data-testid={testId ? `${testId}-listbox` : undefined}
         className={[
           'absolute left-0 top-full mt-1 z-50 min-w-full',
           'bg-white border border-[var(--border)] rounded-[var(--r)] py-1',
