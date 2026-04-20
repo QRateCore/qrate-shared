@@ -586,14 +586,14 @@ export default function ItemPool({
             style={{
               fontSize: 12,
               fontWeight: 600,
-              color: '#92400e',
+              color: 'var(--blue)',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
               padding: 0,
             }}
           >
-            Assign to dishes →
+            Bulk Actions →
           </button>
         )}
         {someSelected && itemTypeFilter === 'dishes' && (
