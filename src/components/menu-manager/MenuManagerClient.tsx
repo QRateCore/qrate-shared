@@ -1220,15 +1220,18 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // ── Bulk modifier assign complete ─────────────────────────────────────────
   const handleBulkModifiersComplete = useCallback(
     (updatedItems: MenuItemDisplay[]) => {
+      const updatedIds = new Set(updatedItems.map((u) => u.id));
       setItems((prev) =>
-        prev.map((i) => {
-          const updated = updatedItems.find((u) => u.id === i.id);
-          return updated ?? i;
-        }),
+        prev
+          .filter((i) => updatedIds.has(i.id))
+          .map((i) => {
+            const updated = updatedItems.find((u) => u.id === i.id);
+            return updated ?? i;
+          }),
       );
       setBulkModifiersOpen(false);
       setSelected(new Set());
-      showToast('Addons assigned to dishes');
+      showToast('Done');
     },
     [showToast],
   );
@@ -1363,7 +1366,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         <BulkModifierPanel
           restaurantId={restaurantId}
           selectedAddons={items.filter((i) => selected.has(i.id))}
-          dishItems={items.filter((i) => i.item_type !== 'addon')}
+          dishItems={items}
           onClose={() => setBulkModifiersOpen(false)}
           onComplete={handleBulkModifiersComplete}
         />
