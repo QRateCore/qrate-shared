@@ -753,7 +753,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     // Add-on price validation: required when creating a new add-on; optional when editing.
     // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
     if (isAddon) {
-      if (price === null) {
+      if (isNewItem && price === null) {
         setPriceError('Price is required');
         hasError = true;
       } else if (price !== null) {
