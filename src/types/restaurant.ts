@@ -135,6 +135,8 @@ export interface MenuItem {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /** Pipeline-assigned canonical category (set by the categorize stage) */
+  canonical_category?: string | null;
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
   /** Number of guests the item serves (only set when portion_type = 'shared') */

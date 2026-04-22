@@ -9,12 +9,15 @@ const HEAT_ICONS: Record<string, string> = {
   Mild: '❄️', Warm: '🌶️', Medium: '🌶️🌶️', Hot: '🔥', Fiery: '🔥🔥',
 };
 
+const SPICE_EXCLUDED_CATEGORIES = new Set(['Beverages', 'Desserts']);
+
 interface FoodTagEditorFormProps {
   tags: FoodTags;
   onChange: (tags: FoodTags) => void;
+  canonicalCategory?: string | null;
 }
 
-export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
+export function FoodTagEditorForm({ tags, onChange, canonicalCategory }: FoodTagEditorFormProps) {
   const updateArrayTag = (key: string, values: string[]) => {
     onChange({ ...tags, [key]: values });
   };
@@ -34,8 +37,8 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
 
   return (
     <div className="space-y-4" data-testid="food-tag-editor">
-      {/* Heat / Spice — single-select pill group */}
-      <div>
+      {/* Heat / Spice — single-select pill group (hidden for Beverages & Desserts) */}
+      {!SPICE_EXCLUDED_CATEGORIES.has(canonicalCategory ?? '') && <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">🌶️ Heat / Spice Level</label>
         <div className="flex flex-wrap gap-2" data-testid="heat-spice-selector">
           {HEAT_LABELS.map((label) => {
@@ -59,9 +62,10 @@ export function FoodTagEditorForm({ tags, onChange }: FoodTagEditorFormProps) {
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {/* Array-based tag categories (heat_spice excluded — handled above) */}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {TAG_CATEGORIES.filter(({ key }) => key !== 'heat_spice').map(({ key, label, color, icon }) => (
           <TagInput

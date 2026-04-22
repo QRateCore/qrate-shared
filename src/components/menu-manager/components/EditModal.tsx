@@ -1901,8 +1901,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             <section style={{ marginBottom: 4 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-                {/* Heat / Spice — predefined pill selector */}
-                <div>
+                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts) */}
+                {category !== 'Beverages' && category !== 'Desserts' && <div>
                   <label style={labelStyle}>Heat / Spice</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {HEAT_SPICE_OPTIONS.map((option) => (
@@ -1929,7 +1929,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       </button>
                     ))}
                   </div>
-                </div>
+                </div>}
 
                 {/* Allergens — multi-select pills backed by dietary-tags API */}
                 {dietaryTagService && restaurantId && !isNewItem && (
