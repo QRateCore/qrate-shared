@@ -28,7 +28,7 @@ import type {
 } from '../../../../types/restaurant';
 
 // ── Local BulkMode replica (avoids importing the 4000-line MenuManagerClient) ─
-type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete';
+type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'dietary';
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 

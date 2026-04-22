@@ -24,7 +24,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'dietary';
 
 export interface DragState {
   itemIds: string[];
@@ -86,6 +86,10 @@ interface Props {
   enableAndOrSplit?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
   dietaryTagService?: DietaryTagService;
+  /** Optional: bulk spice level update for the Spice tab in BulkActionsPanel. */
+  onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
+  /** Optional: bulk dietary/allergen tag add for the Dietary tab in BulkActionsPanel. */
+  onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -94,7 +98,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1361,6 +1365,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           initialMode={bulkMode}
           onClose={() => setBulkMode(null)}
           onComplete={handleBulkComplete}
+          onBulkSpice={onBulkSpice}
+          onBulkDietary={onBulkDietary}
         />
       )}
 

@@ -3,11 +3,35 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
 import type { BulkMode } from '../MenuManagerClient';
+
+// ── Dietary & Spice constants ─────────────────────────────────────────────────
+
+const HEAT_LABELS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
+type HeatLabel = typeof HEAT_LABELS[number];
+
+const HEAT_META: Record<HeatLabel, { icon: string; bg: string; border: string; text: string }> = {
+  Mild:   { icon: '❄️', bg: '#f0f9ff', border: '#7dd3fc', text: '#0369a1' },
+  Warm:   { icon: '🌶️', bg: '#fff7ed', border: '#fdba74', text: '#c2410c' },
+  Medium: { icon: '🌶️🌶️', bg: '#fff7ed', border: '#fb923c', text: '#c2410c' },
+  Hot:    { icon: '🔥', bg: '#fef2f2', border: '#f87171', text: '#b91c1c' },
+  Fiery:  { icon: '🔥🔥', bg: '#fef2f2', border: '#ef4444', text: '#991b1b' },
+};
+
+const FDA_BIG_9 = ['dairy', 'eggs', 'fish', 'crustacean shellfish', 'tree nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'] as const;
+const DIETARY_RESTRICTIONS_LIST = ['vegetarian', 'vegan', 'gluten-free', 'kosher', 'halal'] as const;
+
+const ALLERGEN_LABELS: Record<string, string> = {
+  'dairy': 'Dairy', 'eggs': 'Eggs', 'fish': 'Fish', 'crustacean shellfish': 'Shellfish',
+  'tree nuts': 'Tree Nuts', 'peanuts': 'Peanuts', 'wheat': 'Wheat', 'soybeans': 'Soybeans', 'sesame': 'Sesame',
+};
+const DIETARY_LABELS: Record<string, string> = {
+  'vegetarian': 'Vegetarian', 'vegan': 'Vegan', 'gluten-free': 'Gluten-Free', 'kosher': 'Kosher', 'halal': 'Halal',
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +43,10 @@ interface BulkActionsPanelProps {
   onClose: () => void;
   /** Called with the full updated items array after successful apply */
   onComplete: (updatedItems: MenuItemDisplay[], clearedIds: Set<string>) => void;
+  /** Optional: bulk spice update — owner app wires this to the dietary-tags API */
+  onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
+  /** Optional: bulk dietary/allergen tag add */
+  onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
 }
 
 // ── Mode config ───────────────────────────────────────────────────────────────
@@ -29,6 +57,8 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   { key: 'boost',        label: 'Boost',        icon: <Zap size={13} /> },
   { key: 'special',      label: 'Special',      icon: <Star size={13} /> },
   { key: 'availability', label: 'Availability', icon: <Eye size={13} /> },
+  { key: 'spice',        label: 'Spice',        icon: <Flame size={13} /> },
+  { key: 'dietary',      label: 'Dietary',      icon: <Leaf size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -54,6 +84,8 @@ export default function BulkActionsPanel({
   initialMode,
   onClose,
   onComplete,
+  onBulkSpice,
+  onBulkDietary,
 }: BulkActionsPanelProps) {
   const service = useMenuManagerService();
   const trackAction = useTrackAction();
@@ -70,6 +102,8 @@ export default function BulkActionsPanel({
   const [chefsSpecial, setChefsSpecial] = useState<boolean>(true);
   const [setActive, setSetActive] = useState<boolean>(true);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [pickedHeat, setPickedHeat] = useState<HeatLabel | null>(null);
+  const [pickedDietaryTags, setPickedDietaryTags] = useState<Set<string>>(new Set());
 
   const selectedItems = items.filter((i) => selected.has(i.id));
   const count = selectedItems.length;
@@ -168,6 +202,50 @@ export default function BulkActionsPanel({
     });
   }
 
+  async function runSpice() {
+    if (!pickedHeat) { setError('Select a spice level'); return; }
+    if (!onBulkSpice) { onComplete(items, selected); return; }
+    setExecuting(true);
+    setError(null);
+    const itemIds = selectedItems.map((i) => i.id);
+    setProgress({ done: 0, total: itemIds.length });
+    let failed = 0;
+    for (const itemId of itemIds) {
+      try { await onBulkSpice(pickedHeat, [itemId]); } catch { failed++; }
+      setProgress((p) => p ? { ...p, done: p.done + 1 } : null);
+    }
+    setExecuting(false);
+    setProgress(null);
+    if (failed > 0) {
+      setError(`${failed} item${failed !== 1 ? 's' : ''} failed — others updated`);
+    }
+    if (failed < itemIds.length) onComplete(items, selected);
+  }
+
+  async function runDietary() {
+    if (pickedDietaryTags.size === 0) { setError('Select at least one tag'); return; }
+    if (!onBulkDietary) { onComplete(items, selected); return; }
+    const tags = [...pickedDietaryTags].map((name) => ({
+      name,
+      type: (FDA_BIG_9 as readonly string[]).includes(name) ? 'allergen' as const : 'dietary' as const,
+    }));
+    const itemIds = selectedItems.map((i) => i.id);
+    setExecuting(true);
+    setError(null);
+    setProgress({ done: 0, total: itemIds.length });
+    let failed = 0;
+    for (const itemId of itemIds) {
+      try { await onBulkDietary(tags, [itemId]); } catch { failed++; }
+      setProgress((p) => p ? { ...p, done: p.done + 1 } : null);
+    }
+    setExecuting(false);
+    setProgress(null);
+    if (failed > 0) {
+      setError(`${failed} item${failed !== 1 ? 's' : ''} failed — others updated`);
+    }
+    if (failed < itemIds.length) onComplete(items, selected);
+  }
+
   async function executeAll(
     tasks: Array<() => Promise<{ itemId: string; associations: MenuAssociation[] }>>,
     onSuccess: (updates: Array<{ itemId: string; associations: MenuAssociation[] }>) => void,
@@ -231,6 +309,8 @@ export default function BulkActionsPanel({
         case 'boost':        await runBoost(); break;
         case 'special':      await runSpecial(); break;
         case 'availability': await runAvailability(); break;
+        case 'spice':        await runSpice(); break;
+        case 'dietary':      await runDietary(); break;
         case 'delete':       await runDelete(); break;
       }
       trackAction(actionName, {
@@ -434,6 +514,21 @@ export default function BulkActionsPanel({
           )}
           {mode === 'availability' && (
             <AvailabilityForm value={setActive} onChange={setSetActive} />
+          )}
+          {mode === 'spice' && (
+            <SpiceForm pickedHeat={pickedHeat} onChange={setPickedHeat} />
+          )}
+          {mode === 'dietary' && (
+            <DietaryForm
+              pickedTags={pickedDietaryTags}
+              onToggle={(tag) =>
+                setPickedDietaryTags((prev) => {
+                  const next = new Set(prev);
+                  next.has(tag) ? next.delete(tag) : next.add(tag);
+                  return next;
+                })
+              }
+            />
           )}
           {mode === 'delete' && (
             <DeleteForm count={count} confirmed={deleteConfirm} />
@@ -830,6 +925,136 @@ function AvailabilityForm({
           86'd — hidden from diners
         </button>
       </div>
+    </div>
+  );
+}
+
+function SpiceForm({
+  pickedHeat,
+  onChange,
+}: {
+  pickedHeat: HeatLabel | null;
+  onChange: (v: HeatLabel | null) => void;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+        Set spice level
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+        Applied to all selected items. Click again to deselect.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {HEAT_LABELS.map((label) => {
+          const meta = HEAT_META[label];
+          const selected = pickedHeat === label;
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onChange(selected ? null : label)}
+              data-testid={`spice-option-${label.toLowerCase()}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 'var(--r-xs)',
+                border: selected ? `2px solid ${meta.border}` : '1px solid var(--border)',
+                background: selected ? meta.bg : 'white',
+                color: selected ? meta.text : 'var(--text)',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{meta.icon}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DietaryForm({
+  pickedTags,
+  onToggle,
+}: {
+  pickedTags: Set<string>;
+  onToggle: (tag: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+          Allergens
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {FDA_BIG_9.map((name) => {
+            const selected = pickedTags.has(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onToggle(name)}
+                data-testid={`bulk-allergen-${name.replace(/\s+/g, '-')}`}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '5px 10px',
+                  borderRadius: 20,
+                  border: selected ? '2px solid #6366f1' : '1px solid var(--border)',
+                  background: selected ? '#eef2ff' : 'white',
+                  color: selected ? '#4338ca' : 'var(--text2)',
+                  cursor: 'pointer',
+                }}
+              >
+                {ALLERGEN_LABELS[name] ?? name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+          Dietary Restrictions
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {DIETARY_RESTRICTIONS_LIST.map((name) => {
+            const selected = pickedTags.has(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onToggle(name)}
+                data-testid={`bulk-dietary-${name.replace(/\s+/g, '-')}`}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '5px 10px',
+                  borderRadius: 20,
+                  border: selected ? '2px solid #f59e0b' : '1px solid var(--border)',
+                  background: selected ? '#fef3c7' : 'white',
+                  color: selected ? '#b45309' : 'var(--text2)',
+                  cursor: 'pointer',
+                }}
+              >
+                {DIETARY_LABELS[name] ?? name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {pickedTags.size > 0 && (
+        <p style={{ fontSize: 11, color: 'var(--text2)', margin: 0 }}>
+          {pickedTags.size} tag{pickedTags.size !== 1 ? 's' : ''} selected — will be added to all selected items.
+        </p>
+      )}
     </div>
   );
 }
