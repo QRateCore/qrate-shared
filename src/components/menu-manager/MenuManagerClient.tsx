@@ -15,7 +15,7 @@ import MenuBuilder, { type ModifierUpdatePayload } from './components/MenuBuilde
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkModifierPanel from './components/BulkModifierPanel';
-import EditModal from './components/EditModal';
+import EditModal, { type DietaryTagService } from './components/EditModal';
 import MenuEditPanel from './components/MenuEditPanel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { MenuManagerService } from '../../types/restaurant';
@@ -84,6 +84,8 @@ interface Props {
    * STR-342.
    */
   enableAndOrSplit?: boolean;
+  /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
+  dietaryTagService?: DietaryTagService;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -92,7 +94,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1330,6 +1332,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDishAddonsChange={handleDishAddonsChanged}
             isNewItem={newlyCreatedItemIdRef.current === editItemId}
             onSaveNewItem={handleSaveNewItem}
+            dietaryTagService={dietaryTagService}
           />
         ) : null;
       })()}

@@ -1,5 +1,6 @@
 export { default as MenuManagerClient } from './MenuManagerClient';
 export type { BulkMode, DragState } from './MenuManagerClient';
+export type { DietaryTagService, DietaryTagRecord } from './components/EditModal';
 export {
   TrackActionProvider,
   useTrackAction,

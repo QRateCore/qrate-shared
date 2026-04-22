@@ -33,6 +33,7 @@ export { MenuItemsManagement } from './components/menu-items';
 // Components — Menu Manager (full two-pane menu management UI)
 export { MenuManagerClient } from './components/menu-manager';
 export type { BulkMode, DragState } from './components/menu-manager';
+export type { DietaryTagService, DietaryTagRecord } from './components/menu-manager';
 export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
 

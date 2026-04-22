@@ -2,7 +2,7 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
@@ -50,20 +50,62 @@ interface EditModalProps {
     item_type: 'dish' | 'addon';
     price?: number | null;
   }) => Promise<MenuItemDisplay>;
+  /** When provided, allergens and dietary restrictions use the dietary-tags API instead of free-text input. */
+  dietaryTagService?: DietaryTagService;
 }
 
-// ── Food tag fields shown in the editor (heat_spice handled separately as pills) ──
+// ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
 
 const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string }[] = [
   { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…' },
-  { key: 'dietary',        label: 'Dietary',         placeholder: 'e.g. vegetarian, vegan…' },
-  { key: 'allergens',      label: 'Allergens',        placeholder: 'e.g. gluten, dairy…' },
   { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…' },
   { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…' },
   { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…' },
   { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…' },
   { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…' },
 ];
+
+// ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
+
+const FDA_BIG_9_ALLERGENS = [
+  'dairy', 'eggs', 'fish', 'crustacean shellfish',
+  'tree nuts', 'peanuts', 'wheat', 'soybeans', 'sesame',
+] as const;
+
+const DIETARY_RESTRICTIONS_LIST = [
+  'vegetarian', 'vegan', 'gluten-free', 'kosher', 'halal',
+] as const;
+
+const ALLERGEN_LABELS: Record<string, string> = {
+  dairy: 'Dairy', eggs: 'Eggs', fish: 'Fish',
+  'crustacean shellfish': 'Shellfish', 'tree nuts': 'Tree Nuts',
+  peanuts: 'Peanuts', wheat: 'Wheat', soybeans: 'Soybeans', sesame: 'Sesame',
+};
+
+const DIETARY_LABELS: Record<string, string> = {
+  vegetarian: 'Vegetarian', vegan: 'Vegan', 'gluten-free': 'Gluten-Free',
+  kosher: 'Kosher', halal: 'Halal',
+};
+
+// ── Dietary tag service interface (injected from consumer app) ─────────────────
+
+export interface DietaryTagRecord {
+  id: string;
+  tag_name: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+export interface DietaryTagService {
+  /** Fetch the accepted/pending tags for a single item. Returns null if item has no tags yet. */
+  getTagsForItem: (restaurantId: string, itemId: string) => Promise<{
+    allergenTags: DietaryTagRecord[];
+    dietaryTags: DietaryTagRecord[];
+  } | null>;
+  /** Create or re-accept a tag for an item. */
+  addTag: (restaurantId: string, tagName: string, tagType: 'allergen' | 'dietary', itemId: string) => Promise<void>;
+  /** Reject (deselect) an existing tag by ID. */
+  rejectTag: (restaurantId: string, tagId: string) => Promise<void>;
+}
 
 // ── Heat/spice predefined values ──────────────────────────────────────────────
 
@@ -169,9 +211,87 @@ function TagInput({
   );
 }
 
+// ── DietaryMultiSelect ────────────────────────────────────────────────────────
+
+function DietaryMultiSelect({
+  label,
+  options,
+  labels,
+  type,
+  tagMap,
+  loading,
+  onToggle,
+}: {
+  label: string;
+  options: readonly string[];
+  labels: Record<string, string>;
+  type: 'allergen' | 'dietary';
+  tagMap: Map<string, DietaryTagRecord>;
+  loading: boolean;
+  onToggle: (tagName: string) => void;
+}) {
+  const [busyTag, setBusyTag] = useState<string | null>(null);
+  const selectedBg     = type === 'allergen' ? '#6366f1' : '#d97706';
+  const selectedBorder = type === 'allergen' ? '#6366f1' : '#d97706';
+
+  const handleClick = async (tagName: string) => {
+    if (busyTag) return;
+    setBusyTag(tagName);
+    try {
+      onToggle(tagName);
+    } finally {
+      // Keep busy state until the parent refreshes (small UX delay)
+      setTimeout(() => setBusyTag(null), 600);
+    }
+  };
+
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+        {label}
+      </label>
+      {loading ? (
+        <div style={{ fontSize: 12, color: 'var(--text3)', padding: '6px 0' }}>Loading…</div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {options.map((name) => {
+            const existing = tagMap.get(name);
+            const isSelected = existing ? existing.status !== 'rejected' : false;
+            const isBusy = busyTag === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                data-testid={`dietary-pill-${type}-${name.replace(/\s+/g, '-')}`}
+                onClick={() => void handleClick(name)}
+                disabled={isBusy}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: isSelected ? 600 : 400,
+                  border: `1.5px solid ${isSelected ? selectedBorder : 'rgba(0,0,0,0.15)'}`,
+                  background: isSelected ? selectedBg : 'transparent',
+                  color: isSelected ? '#fff' : 'var(--text3)',
+                  cursor: isBusy ? 'wait' : 'pointer',
+                  opacity: isBusy ? 0.5 : 1,
+                  transition: 'all 0.12s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {labels[name] ?? name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService }: EditModalProps) {
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -210,6 +330,47 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
     return result;
   });
+
+  // Dietary tag state — loaded from the dietary-tags API when dietaryTagService is provided
+  const [allergenTagMap, setAllergenTagMap] = useState<Map<string, DietaryTagRecord>>(new Map());
+  const [dietaryTagMap, setDietaryTagMap]   = useState<Map<string, DietaryTagRecord>>(new Map());
+  const [dietaryLoading, setDietaryLoading] = useState(false);
+
+  // Reload dietary tags from the API (called on mount and after each toggle)
+  const refreshDietaryTags = useCallback(async () => {
+    if (!dietaryTagService || !restaurantId || !item.id || isNewItem) return;
+    const result = await dietaryTagService.getTagsForItem(restaurantId, item.id);
+    if (!result) return;
+    const aMap = new Map<string, DietaryTagRecord>();
+    for (const t of result.allergenTags) aMap.set(t.tag_name, t);
+    const dMap = new Map<string, DietaryTagRecord>();
+    for (const t of result.dietaryTags) dMap.set(t.tag_name, t);
+    setAllergenTagMap(aMap);
+    setDietaryTagMap(dMap);
+  }, [dietaryTagService, restaurantId, item.id, isNewItem]);
+
+  useEffect(() => {
+    if (!dietaryTagService || !restaurantId || !item.id || isNewItem) return;
+    setDietaryLoading(true);
+    void refreshDietaryTags().finally(() => setDietaryLoading(false));
+  }, [dietaryTagService, restaurantId, item.id, isNewItem, refreshDietaryTags]);
+
+  // Wrap service toggle calls so state refreshes after each change
+  const handleDietaryToggle = useCallback(async (
+    tagName: string,
+    tagType: 'allergen' | 'dietary',
+    tagMap: Map<string, DietaryTagRecord>,
+  ) => {
+    if (!dietaryTagService || !restaurantId || !item.id) return;
+    const existing = tagMap.get(tagName);
+    const isSelected = existing ? existing.status !== 'rejected' : false;
+    if (isSelected && existing) {
+      await dietaryTagService.rejectTag(restaurantId, existing.id);
+    } else {
+      await dietaryTagService.addTag(restaurantId, tagName, tagType, item.id);
+    }
+    await refreshDietaryTags();
+  }, [dietaryTagService, restaurantId, item.id, refreshDietaryTags]);
 
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
@@ -1769,6 +1930,32 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     ))}
                   </div>
                 </div>
+
+                {/* Allergens — multi-select pills backed by dietary-tags API */}
+                {dietaryTagService && restaurantId && !isNewItem && (
+                  <DietaryMultiSelect
+                    label="Allergens"
+                    options={FDA_BIG_9_ALLERGENS}
+                    labels={ALLERGEN_LABELS}
+                    type="allergen"
+                    tagMap={allergenTagMap}
+                    loading={dietaryLoading}
+                    onToggle={(name) => void handleDietaryToggle(name, 'allergen', allergenTagMap)}
+                  />
+                )}
+
+                {/* Dietary restrictions — multi-select pills backed by dietary-tags API */}
+                {dietaryTagService && restaurantId && !isNewItem && (
+                  <DietaryMultiSelect
+                    label="Dietary Restrictions"
+                    options={DIETARY_RESTRICTIONS_LIST}
+                    labels={DIETARY_LABELS}
+                    type="dietary"
+                    tagMap={dietaryTagMap}
+                    loading={dietaryLoading}
+                    onToggle={(name) => void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
+                  />
+                )}
 
                 {/* Other tag fields */}
                 {TAG_FIELDS.map(({ key, label, placeholder }) => (
