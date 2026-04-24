@@ -90,6 +90,8 @@ interface Props {
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add for the Dietary tab in BulkActionsPanel. */
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
+  /** Per-restaurant spice scale labels forwarded to BulkActionsPanel. */
+  heatLabels?: string[];
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -98,7 +100,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, heatLabels }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -141,7 +143,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [activeMenuId, setActiveMenuId] = useState<string | null>(
     initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null,
   );
-  const [filterTags, setFilterTags] = useState<string[]>([]);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
@@ -287,10 +288,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // ── Filtered item list for ItemPool ──────────────────────────────────────
 
-  // Always expose all 8 canonical categories as filter options — owners should
-  // always see the full canonical taxonomy, not just categories present in items.
-  const canonicalCategories = useMemo(() => [...CANONICAL_CATEGORIES], []);
-
   const handleCollapseAll = (collapse: boolean) => {
     if (!activeMenuId) return;
     setCollapsed((prev) => {
@@ -317,17 +314,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         i.name.toLowerCase().includes(q) || (i.description ?? '').toLowerCase().includes(q),
       );
     }
-    if (filterTags.length > 0) {
-      // Prefer AI-pipeline canonical_category; fall back to raw→canonical mapping
-      result = result.filter((i) => {
-        const canon = i.canonical_category ?? toCanonical(i.category);
-        return filterTags.some((tag) => canon === tag);
-      });
-    }
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
     return result;
-  }, [items, search, filterTags, visibilityFilter, itemTypeFilter]);
+  }, [items, search, visibilityFilter, itemTypeFilter]);
 
   // ── Select handlers ───────────────────────────────────────────────────────
 
@@ -393,17 +383,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     selectionAnchorRef.current = null;
   }, [restaurantId, trackAction]);
 
-  // Tracked filter setters — fire one metric per filter change.
-  const handleCategoryFilterChange = useCallback(
-    (tag: string) => {
-      setFilterTags((prev) => {
-        const next = tag === 'All' ? [] : prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag];
-        trackAction('menu.manager.categoryFilter', { restaurantId, metadata: { tags: next } });
-        return next;
-      });
-    },
-    [restaurantId, trackAction],
-  );
+  const handleSelectCategoryItems = useCallback((ids: string[], selectAll: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (selectAll) {
+        ids.forEach((id) => next.add(id));
+      } else {
+        ids.forEach((id) => next.delete(id));
+      }
+      return next;
+    });
+  }, []);
 
   const handleVisibilityFilterChange = useCallback(
     (value: 'All' | 'Visible' | 'Hidden') => {
@@ -423,7 +413,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         metadata: { value },
       });
       setItemTypeFilter(value);
-      setFilterTags([]);
       setSelected(new Set());
       selectionAnchorRef.current = null;
     },
@@ -1367,6 +1356,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           onComplete={handleBulkComplete}
           onBulkSpice={onBulkSpice}
           onBulkDietary={onBulkDietary}
+          heatLabels={heatLabels}
         />
       )}
 
@@ -1395,13 +1385,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             filtered,
             selected,
             search,
-            filterTags,
-            canonicalCategories,
             dragOver: dragOver === 'pool' ? 'pool' : null,
             dragging,
             editItemId,
             onSearchChange: setSearch,
-            onFilterChange: handleCategoryFilterChange,
             visibilityFilter,
             onVisibilityFilterChange: handleVisibilityFilterChange,
             itemTypeFilter,
@@ -1409,6 +1396,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSelectClick: handleSelectClick,
             onSelectAll: handleSelectAll,
             onClearSelect: handleClearSelect,
+            onSelectCategoryItems: handleSelectCategoryItems,
             onEditItem: setEditItemId,
             onAddItem: handleAddItem,
             onOpenBulk: (mode) => setBulkMode(mode),
@@ -1468,13 +1456,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             filtered={filtered}
             selected={selected}
             search={search}
-            filterTags={filterTags}
-            canonicalCategories={canonicalCategories}
             dragOver={dragOver === 'pool' ? 'pool' : null}
             dragging={dragging}
             editItemId={editItemId}
             onSearchChange={setSearch}
-            onFilterChange={handleCategoryFilterChange}
             visibilityFilter={visibilityFilter}
             onVisibilityFilterChange={handleVisibilityFilterChange}
             itemTypeFilter={itemTypeFilter}
@@ -1482,6 +1467,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSelectClick={handleSelectClick}
             onSelectAll={handleSelectAll}
             onClearSelect={handleClearSelect}
+            onSelectCategoryItems={handleSelectCategoryItems}
             onEditItem={setEditItemId}
             onAddItem={handleAddItem}
             onOpenBulk={(mode) => setBulkMode(mode)}

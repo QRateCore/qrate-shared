@@ -1,8 +1,9 @@
 'use client';
 
-import { Pencil, Plus, Search, Check, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Pencil, Plus, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
-import { type MenuColor } from '../lib/menuUtils';
+import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import Button from '../../common/Button';
 import { useTrackAction } from '../track-action-context';
@@ -15,14 +16,10 @@ interface ItemPoolProps {
   filtered: MenuItemDisplay[];
   selected: Set<string>;
   search: string;
-  filterTags: string[];
-  /** Canonical categories present in the current item set — drives the category pill filter. */
-  canonicalCategories: string[];
   dragOver: 'pool' | null;
   dragging: DragState | null;
   editItemId: string | null;
   onSearchChange: (v: string) => void;
-  onFilterChange: (v: string) => void;
   onSelectClick: (
     e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
     itemId: string,
@@ -31,6 +28,7 @@ interface ItemPoolProps {
   ) => void;
   onSelectAll: () => void;
   onClearSelect: () => void;
+  onSelectCategoryItems: (ids: string[], selectAll: boolean) => void;
   onEditItem: (id: string) => void;
   onAddItem: () => void;
   visibilityFilter: 'All' | 'Visible' | 'Hidden';
@@ -246,6 +244,160 @@ function ItemPoolCard({
   );
 }
 
+// ── CategorySection ───────────────────────────────────────────────────────────
+
+function CategorySection({
+  category,
+  categoryItems,
+  dishCount,
+  includedCount,
+  selected,
+  editItemId,
+  itemMenuMap,
+  colorMap,
+  collapsed,
+  onToggleCollapse,
+  onSelectCategory,
+  onSelectClick,
+  onEdit,
+  onDragStart,
+  onDragEnd,
+}: {
+  category: string;
+  categoryItems: MenuItemDisplay[];
+  dishCount: number;
+  includedCount: number;
+  selected: Set<string>;
+  editItemId: string | null;
+  itemMenuMap: Map<string, Array<{ menu: MenuSummary; index: number }>>;
+  colorMap: (index: number) => MenuColor;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onSelectCategory: (ids: string[], selectAll: boolean) => void;
+  onSelectClick: (e: React.MouseEvent, itemId: string) => void;
+  onEdit: (id: string) => void;
+  onDragStart: (e: React.DragEvent, itemId: string) => void;
+  onDragEnd: () => void;
+}) {
+  const categoryIds = categoryItems.map((i) => i.id);
+  const allSelected = categoryIds.length > 0 && categoryIds.every((id) => selected.has(id));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* Category header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 4px 6px 0',
+          borderBottom: '1px solid var(--border)',
+          marginBottom: collapsed ? 0 : 6,
+        }}
+      >
+        {/* Collapse toggle */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-label={collapsed ? `Expand ${category}` : `Collapse ${category}`}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text2)',
+            padding: 2,
+            display: 'flex',
+            alignItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {collapsed
+            ? <ChevronRight size={14} />
+            : <ChevronDown size={14} />
+          }
+        </button>
+
+        {/* Category name */}
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', flex: 1, minWidth: 0 }}>
+          {category}
+        </span>
+
+        {/* Counts */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {dishCount > 0 && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: 'var(--brand-s)',
+              background: 'rgba(255,107,43,0.08)',
+              borderRadius: 4,
+              padding: '1px 5px',
+              whiteSpace: 'nowrap',
+            }}>
+              {dishCount}d
+            </span>
+          )}
+          {includedCount > 0 && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: '#0369a1',
+              background: '#e0f2fe',
+              borderRadius: 4,
+              padding: '1px 5px',
+              whiteSpace: 'nowrap',
+            }}>
+              {includedCount}i
+            </span>
+          )}
+        </div>
+
+        {/* Select-all checkbox for category */}
+        <button
+          type="button"
+          onClick={() => onSelectCategory(categoryIds, !allSelected)}
+          aria-label={allSelected ? `Deselect all in ${category}` : `Select all in ${category}`}
+          aria-pressed={allSelected}
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: 3,
+            border: allSelected ? '2px solid var(--blue)' : '2px solid #ccc',
+            background: allSelected ? 'var(--blue)' : 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+        >
+          {allSelected && <Check size={9} color="white" strokeWidth={3} />}
+        </button>
+      </div>
+
+      {/* Items */}
+      {!collapsed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+          {categoryItems.map((item) => (
+            <ItemPoolCard
+              key={item.id}
+              item={item}
+              isSelected={selected.has(item.id)}
+              isEditing={editItemId === item.id}
+              itemMenus={itemMenuMap.get(item.id) ?? []}
+              colorMap={colorMap}
+              onSelectClick={(e) => onSelectClick(e, item.id)}
+              onEdit={onEdit}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ItemPool ─────────────────────────────────────────────────────────────────
 
 export default function ItemPool({
@@ -254,16 +406,14 @@ export default function ItemPool({
   filtered,
   selected,
   search,
-  filterTags,
-  canonicalCategories,
   dragOver,
   dragging: _dragging,
   editItemId,
   onSearchChange,
-  onFilterChange,
   onSelectClick,
   onSelectAll,
   onClearSelect,
+  onSelectCategoryItems,
   onEditItem,
   onAddItem,
   visibilityFilter,
@@ -280,6 +430,17 @@ export default function ItemPool({
   colorMap,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
+
+  // Per-category collapsed state (local — no need to persist)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = (cat: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  };
 
   const handleAddItemTracked = () => {
     trackAction('menu.itemPool.addNewItem');
@@ -300,19 +461,61 @@ export default function ItemPool({
     trackAction('menu.itemPool.openEdit', { metadata: { itemId: id } });
     onEditItem(id);
   };
+
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
   const someSelected = selected.size > 0;
 
   // Map itemId → list of {menu, index} for chips
-  const itemMenuMap = new Map<string, Array<{ menu: MenuSummary; index: number }>>();
-  for (const item of items) {
-    const assocMenuIds = new Set((item.menu_associations ?? []).map((a) => a.menu_id));
-    const matched: Array<{ menu: MenuSummary; index: number }> = [];
-    menus.forEach((menu, idx) => {
-      if (assocMenuIds.has(menu.id)) matched.push({ menu, index: idx });
-    });
-    itemMenuMap.set(item.id, matched);
-  }
+  const itemMenuMap = useMemo(() => {
+    const map = new Map<string, Array<{ menu: MenuSummary; index: number }>>();
+    for (const item of items) {
+      const assocMenuIds = new Set((item.menu_associations ?? []).map((a) => a.menu_id));
+      const matched: Array<{ menu: MenuSummary; index: number }> = [];
+      menus.forEach((menu, idx) => {
+        if (assocMenuIds.has(menu.id)) matched.push({ menu, index: idx });
+      });
+      map.set(item.id, matched);
+    }
+    return map;
+  }, [items, menus]);
+
+  // Per-category dish/included counts from ALL items (not just filtered)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, { dishes: number; included: number }> = {};
+    for (const item of items) {
+      if (item.item_type === 'addon') continue;
+      const cat = item.canonical_category ?? toCanonical(item.category) ?? 'Other';
+      if (!counts[cat]) counts[cat] = { dishes: 0, included: 0 };
+      if (item.item_type === 'included') {
+        counts[cat].included++;
+      } else {
+        counts[cat].dishes++;
+      }
+    }
+    return counts;
+  }, [items]);
+
+  // Group filtered items by canonical category (only for dishes/included tabs)
+  const groupedItems = useMemo(() => {
+    if (itemTypeFilter === 'addons') return null;
+    const groups: Record<string, MenuItemDisplay[]> = {};
+    for (const item of filtered) {
+      const cat = item.canonical_category ?? toCanonical(item.category) ?? 'Other';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    }
+    return groups;
+  }, [filtered, itemTypeFilter]);
+
+  // Category render order: canonical order first, then any uncategorised
+  const orderedCategories = useMemo(() => {
+    if (!groupedItems) return [];
+    const canonical = (CANONICAL_CATEGORIES as readonly string[]).filter((c) => (groupedItems[c]?.length ?? 0) > 0);
+    const others = Object.keys(groupedItems).filter(
+      (c) => !(CANONICAL_CATEGORIES as readonly string[]).includes(c) && (groupedItems[c]?.length ?? 0) > 0,
+    );
+    return [...canonical, ...others];
+  }, [groupedItems]);
 
   return (
     <div
@@ -356,62 +559,6 @@ export default function ItemPool({
 
       {/* Search + filter */}
       <div style={{ padding: '10px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Category filter pills — canonical categories only */}
-        <div
-          data-testid="item-pool-category-filter"
-          aria-label="Filter by category"
-          style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}
-        >
-          <button
-            type="button"
-            onClick={() => onFilterChange('All')}
-            data-testid="item-pool-category-filter-all"
-            aria-pressed={filterTags.length === 0}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 20,
-              border: filterTags.length === 0 ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
-              background: filterTags.length === 0 ? 'rgba(255,107,43,0.08)' : 'var(--white)',
-              color: filterTags.length === 0 ? 'var(--brand-s)' : 'var(--text2)',
-              fontSize: 12,
-              fontWeight: filterTags.length === 0 ? 700 : 400,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              lineHeight: 1.4,
-              transition: 'all 0.12s ease',
-            }}
-          >
-            All
-          </button>
-          {canonicalCategories.map((c) => {
-            const active = filterTags.includes(c);
-            return (
-              <button
-                key={c}
-                type="button"
-                onClick={() => onFilterChange(c)}
-                data-testid={`item-pool-category-filter-${c.toLowerCase()}`}
-                aria-pressed={active}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  border: active ? '1.5px solid var(--brand-s)' : '1.5px solid var(--border)',
-                  background: active ? 'rgba(255,107,43,0.08)' : 'var(--white)',
-                  color: active ? 'var(--brand-s)' : 'var(--text2)',
-                  fontSize: 12,
-                  fontWeight: active ? 700 : 400,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  lineHeight: 1.4,
-                  transition: 'all 0.12s ease',
-                }}
-              >
-                {c}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Search input */}
         <div
           style={{
@@ -463,7 +610,7 @@ export default function ItemPool({
 
         {/* Combined filter row — item type + visibility. Wraps on narrow viewports to prevent clipping. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6, columnGap: 6 }}>
-          {/* Dishes / Add-ons toggle */}
+          {/* Dishes / Included / Add-ons toggle */}
           <div
             style={{
               display: 'inline-flex',
@@ -473,7 +620,7 @@ export default function ItemPool({
               flexShrink: 0,
             }}
           >
-            {(['dishes', 'addons', 'included'] as const).map((tab, idx, arr) => (
+            {(['dishes', 'included', 'addons'] as const).map((tab, idx, arr) => (
               <button
                 key={tab}
                 type="button"
@@ -493,7 +640,7 @@ export default function ItemPool({
                   transition: 'background 0.12s, color 0.12s',
                 }}
               >
-                {tab === 'dishes' ? 'Dishes' : tab === 'addons' ? 'Add-ons' : 'Included'}
+                {tab === 'dishes' ? 'Dishes' : tab === 'included' ? 'Included' : 'Add-ons'}
               </button>
             ))}
           </div>
@@ -630,7 +777,7 @@ export default function ItemPool({
           padding: '0 12px 12px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 6,
+          gap: 0,
         }}
       >
         {filtered.length === 0 ? (
@@ -644,25 +791,58 @@ export default function ItemPool({
               color: 'var(--text2)',
             }}
           >
-            {search || filterTags.length > 0 ? 'No items match' : 'No items yet'}
+            {search ? 'No items match' : 'No items yet'}
+          </div>
+        ) : itemTypeFilter === 'addons' ? (
+          /* Flat list for addons — no category grouping */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+            {filtered.map((item) => (
+              <ItemPoolCard
+                key={item.id}
+                item={item}
+                isSelected={selected.has(item.id)}
+                isEditing={editItemId === item.id}
+                itemMenus={itemMenuMap.get(item.id) ?? []}
+                colorMap={colorMap}
+                onSelectClick={(e) =>
+                  onSelectClick(e, item.id, 'pool', filtered.map((i) => i.id))
+                }
+                onEdit={handleEditItemTracked}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+              />
+            ))}
           </div>
         ) : (
-          filtered.map((item) => (
-            <ItemPoolCard
-              key={item.id}
-              item={item}
-              isSelected={selected.has(item.id)}
-              isEditing={editItemId === item.id}
-              itemMenus={itemMenuMap.get(item.id) ?? []}
-              colorMap={colorMap}
-              onSelectClick={(e) =>
-                onSelectClick(e, item.id, 'pool', filtered.map((i) => i.id))
-              }
-              onEdit={handleEditItemTracked}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-            />
-          ))
+          /* Grouped by category for dishes / included */
+          <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4 }}>
+            {orderedCategories.map((cat) => {
+              const catItems = groupedItems![cat] ?? [];
+              const counts = categoryCounts[cat] ?? { dishes: 0, included: 0 };
+              return (
+                <CategorySection
+                  key={cat}
+                  category={cat}
+                  categoryItems={catItems}
+                  dishCount={counts.dishes}
+                  includedCount={counts.included}
+                  selected={selected}
+                  editItemId={editItemId}
+                  itemMenuMap={itemMenuMap}
+                  colorMap={colorMap}
+                  collapsed={collapsedCategories.has(cat)}
+                  onToggleCollapse={() => toggleCategory(cat)}
+                  onSelectCategory={onSelectCategoryItems}
+                  onSelectClick={(e, itemId) =>
+                    onSelectClick(e, itemId, `pool:${cat}`, catItems.map((i) => i.id))
+                  }
+                  onEdit={handleEditItemTracked}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                />
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
