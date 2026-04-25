@@ -887,7 +887,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const newRecItems = payload.recommendations.filter(
         (r) => !currentRecIds.has(r.menu_item_id) && !hookHandled.has(r.menu_item_id),
       );
-      if (newRecItems.length === 0) return;
+      if (newRecItems.length === 0) {
+        // STR-398: hook-handled drop with no other new recs — refresh now to
+        // pull fresh menu_associations + the just-PUT recommendation in one
+        // coherent snapshot. Doing this earlier (in the hook's onSuccess)
+        // raced the PUT and clobbered the optimistic recommendation insert.
+        if (hookHandled.size > 0) onRefresh?.();
+        return;
+      }
 
       // Determine the parent's canonical category on the active menu
       const parentAssoc = parent.menu_associations?.find((a) => a.menu_id === activeMenuId);
@@ -969,8 +976,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             : `${addedCount} items auto-added to ${targetCat} in ${activeMenu.name}`,
         );
       }
+
+      // STR-398: hook-handled drop where auto-add also ran — refresh now
+      // (after both PUT and auto-add POSTs settled) so the page snapshot
+      // includes the new recommendation, the new menu placement of the
+      // hook-added item, and any auto-add side effects.
+      if (hookHandled.size > 0) onRefresh?.();
     },
-    [items, menus, activeMenuId, showToast, service, enableAndOrSplit],
+    [items, menus, activeMenuId, showToast, service, enableAndOrSplit, onRefresh],
   );
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
