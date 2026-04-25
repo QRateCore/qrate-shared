@@ -23,12 +23,13 @@ import {
 // position (index) from the shared default palette — renaming a label does
 // NOT change which icon it gets.
 
-const FDA_BIG_9 = ['dairy', 'eggs', 'fish', 'crustacean shellfish', 'tree nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'] as const;
+// Canonical slugs — must match backend FDA_BIG_9 and CANONICAL_DIETARY sets exactly.
+const FDA_BIG_9 = ['dairy', 'eggs', 'fish', 'shellfish', 'tree-nuts', 'peanuts', 'wheat', 'soy', 'sesame'] as const;
 const DIETARY_RESTRICTIONS_LIST = ['vegetarian', 'vegan', 'gluten-free', 'kosher', 'halal'] as const;
 
 const ALLERGEN_LABELS: Record<string, string> = {
-  'dairy': 'Dairy', 'eggs': 'Eggs', 'fish': 'Fish', 'crustacean shellfish': 'Shellfish',
-  'tree nuts': 'Tree Nuts', 'peanuts': 'Peanuts', 'wheat': 'Wheat', 'soybeans': 'Soybeans', 'sesame': 'Sesame',
+  'dairy': 'Dairy', 'eggs': 'Eggs', 'fish': 'Fish', 'shellfish': 'Shellfish',
+  'tree-nuts': 'Tree Nuts', 'peanuts': 'Peanuts', 'wheat': 'Wheat', 'soy': 'Soy', 'sesame': 'Sesame',
 };
 const DIETARY_LABELS: Record<string, string> = {
   'vegetarian': 'Vegetarian', 'vegan': 'Vegan', 'gluten-free': 'Gluten-Free', 'kosher': 'Kosher', 'halal': 'Halal',

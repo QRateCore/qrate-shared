@@ -67,9 +67,10 @@ const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string }[] 
 
 // ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
 
+// Canonical slugs — must match backend FDA_BIG_9 and CANONICAL_DIETARY sets exactly.
 const FDA_BIG_9_ALLERGENS = [
-  'dairy', 'eggs', 'fish', 'crustacean shellfish',
-  'tree nuts', 'peanuts', 'wheat', 'soybeans', 'sesame',
+  'dairy', 'eggs', 'fish', 'shellfish',
+  'tree-nuts', 'peanuts', 'wheat', 'soy', 'sesame',
 ] as const;
 
 const DIETARY_RESTRICTIONS_LIST = [
@@ -78,8 +79,8 @@ const DIETARY_RESTRICTIONS_LIST = [
 
 const ALLERGEN_LABELS: Record<string, string> = {
   dairy: 'Dairy', eggs: 'Eggs', fish: 'Fish',
-  'crustacean shellfish': 'Shellfish', 'tree nuts': 'Tree Nuts',
-  peanuts: 'Peanuts', wheat: 'Wheat', soybeans: 'Soybeans', sesame: 'Sesame',
+  shellfish: 'Shellfish', 'tree-nuts': 'Tree Nuts',
+  peanuts: 'Peanuts', wheat: 'Wheat', soy: 'Soy', sesame: 'Sesame',
 };
 
 const DIETARY_LABELS: Record<string, string> = {
