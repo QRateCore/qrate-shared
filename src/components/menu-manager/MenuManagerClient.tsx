@@ -1348,15 +1348,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       {/* Bulk Actions Panel */}
       {bulkMode && selected.size > 0 && (
         <BulkActionsPanel
-          selected={selected}
-          items={items}
-          menus={menus}
-          initialMode={bulkMode}
-          onClose={() => setBulkMode(null)}
-          onComplete={handleBulkComplete}
-          onBulkSpice={onBulkSpice}
-          onBulkDietary={onBulkDietary}
-          heatLabels={heatLabels}
+          {...{
+            selected,
+            items,
+            menus,
+            initialMode: bulkMode,
+            onClose: () => setBulkMode(null),
+            onComplete: handleBulkComplete,
+            onBulkSpice,
+            onBulkDietary,
+            heatLabels,
+          }}
         />
       )}
 
