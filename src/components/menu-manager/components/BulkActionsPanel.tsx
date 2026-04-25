@@ -8,19 +8,20 @@ import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../typ
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
 import type { BulkMode } from '../MenuManagerClient';
+import {
+  DEFAULT_HEAT_LABELS,
+  DEFAULT_HEAT_ICONS,
+  DEFAULT_HEAT_BG,
+  DEFAULT_HEAT_BORDER,
+  DEFAULT_HEAT_COLOR,
+} from '../../../constants/food-tags';
 
 // ── Dietary & Spice constants ─────────────────────────────────────────────────
-
-const HEAT_LABELS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
-type HeatLabel = typeof HEAT_LABELS[number];
-
-const HEAT_META: Record<HeatLabel, { icon: string; bg: string; border: string; text: string }> = {
-  Mild:   { icon: '❄️', bg: '#f0f9ff', border: '#7dd3fc', text: '#0369a1' },
-  Warm:   { icon: '🌶️', bg: '#fff7ed', border: '#fdba74', text: '#c2410c' },
-  Medium: { icon: '🌶️🌶️', bg: '#fff7ed', border: '#fb923c', text: '#c2410c' },
-  Hot:    { icon: '🔥', bg: '#fef2f2', border: '#f87171', text: '#b91c1c' },
-  Fiery:  { icon: '🔥🔥', bg: '#fef2f2', border: '#ef4444', text: '#991b1b' },
-};
+//
+// Spice labels arrive from the consumer as a prop (`heatLabels`) so each
+// restaurant's custom scale can be rendered. Icons/colors are looked up by
+// position (index) from the shared default palette — renaming a label does
+// NOT change which icon it gets.
 
 const FDA_BIG_9 = ['dairy', 'eggs', 'fish', 'crustacean shellfish', 'tree nuts', 'peanuts', 'wheat', 'soybeans', 'sesame'] as const;
 const DIETARY_RESTRICTIONS_LIST = ['vegetarian', 'vegan', 'gluten-free', 'kosher', 'halal'] as const;
@@ -47,6 +48,8 @@ interface BulkActionsPanelProps {
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add */
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
+  /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
+  heatLabels?: string[];
 }
 
 // ── Mode config ───────────────────────────────────────────────────────────────
@@ -86,7 +89,11 @@ export default function BulkActionsPanel({
   onComplete,
   onBulkSpice,
   onBulkDietary,
+  heatLabels,
 }: BulkActionsPanelProps) {
+  const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
+    ? heatLabels
+    : [...DEFAULT_HEAT_LABELS];
   const service = useMenuManagerService();
   const trackAction = useTrackAction();
   const [mode, setMode] = useState<BulkMode>(initialMode);
@@ -102,7 +109,7 @@ export default function BulkActionsPanel({
   const [chefsSpecial, setChefsSpecial] = useState<boolean>(true);
   const [setActive, setSetActive] = useState<boolean>(true);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [pickedHeat, setPickedHeat] = useState<HeatLabel | null>(null);
+  const [pickedHeat, setPickedHeat] = useState<string | null>(null);
   const [pickedDietaryTags, setPickedDietaryTags] = useState<Set<string>>(new Set());
 
   const selectedItems = items.filter((i) => selected.has(i.id));
@@ -516,7 +523,7 @@ export default function BulkActionsPanel({
             <AvailabilityForm value={setActive} onChange={setSetActive} />
           )}
           {mode === 'spice' && (
-            <SpiceForm pickedHeat={pickedHeat} onChange={setPickedHeat} />
+            <SpiceForm heatLabels={activeHeatLabels} pickedHeat={pickedHeat} onChange={setPickedHeat} />
           )}
           {mode === 'dietary' && (
             <DietaryForm
@@ -930,12 +937,15 @@ function AvailabilityForm({
 }
 
 function SpiceForm({
+  heatLabels,
   pickedHeat,
   onChange,
 }: {
-  pickedHeat: HeatLabel | null;
-  onChange: (v: HeatLabel | null) => void;
+  heatLabels: string[];
+  pickedHeat: string | null;
+  onChange: (v: string | null) => void;
 }) {
+  const palette = DEFAULT_HEAT_ICONS.length;
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
@@ -945,8 +955,12 @@ function SpiceForm({
         Applied to all selected items. Click again to deselect.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {HEAT_LABELS.map((label) => {
-          const meta = HEAT_META[label];
+        {heatLabels.map((label, i) => {
+          const idx = Math.min(i, palette - 1);
+          const icon = DEFAULT_HEAT_ICONS[idx];
+          const bg = DEFAULT_HEAT_BG[idx];
+          const border = DEFAULT_HEAT_BORDER[idx];
+          const color = DEFAULT_HEAT_COLOR[idx];
           const selected = pickedHeat === label;
           return (
             <button
@@ -962,14 +976,14 @@ function SpiceForm({
                 fontSize: 13,
                 fontWeight: 600,
                 borderRadius: 'var(--r-xs)',
-                border: selected ? `2px solid ${meta.border}` : '1px solid var(--border)',
-                background: selected ? meta.bg : 'white',
-                color: selected ? meta.text : 'var(--text)',
+                border: selected ? `2px solid ${border}` : '1px solid var(--border)',
+                background: selected ? bg : 'white',
+                color: selected ? color : 'var(--text)',
                 cursor: 'pointer',
                 textAlign: 'left',
               }}
             >
-              <span style={{ fontSize: 16, lineHeight: 1 }}>{meta.icon}</span>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{icon}</span>
               {label}
             </button>
           );

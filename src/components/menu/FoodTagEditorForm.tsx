@@ -1,13 +1,13 @@
 'use client';
 
-import { TAG_CATEGORIES, CALORIE_OPTIONS } from '../../constants/food-tags';
+import {
+  TAG_CATEGORIES,
+  CALORIE_OPTIONS,
+  DEFAULT_HEAT_LABELS,
+  DEFAULT_HEAT_ICONS,
+} from '../../constants/food-tags';
 import { TagInput } from './TagInput';
 import type { FoodTags } from '../../types';
-
-const HEAT_LABELS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
-const HEAT_ICONS: Record<string, string> = {
-  Mild: '❄️', Warm: '🌶️', Medium: '🌶️🌶️', Hot: '🔥', Fiery: '🔥🔥',
-};
 
 const SPICE_EXCLUDED_CATEGORIES = new Set(['Beverages', 'Desserts']);
 
@@ -15,9 +15,14 @@ interface FoodTagEditorFormProps {
   tags: FoodTags;
   onChange: (tags: FoodTags) => void;
   canonicalCategory?: string | null;
+  /** Per-restaurant spice scale labels. Falls back to the default 5-level scale. */
+  heatLabels?: string[];
 }
 
-export function FoodTagEditorForm({ tags, onChange, canonicalCategory }: FoodTagEditorFormProps) {
+export function FoodTagEditorForm({ tags, onChange, canonicalCategory, heatLabels }: FoodTagEditorFormProps) {
+  const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
+    ? heatLabels
+    : [...DEFAULT_HEAT_LABELS];
   const updateArrayTag = (key: string, values: string[]) => {
     onChange({ ...tags, [key]: values });
   };
@@ -41,8 +46,9 @@ export function FoodTagEditorForm({ tags, onChange, canonicalCategory }: FoodTag
       {!SPICE_EXCLUDED_CATEGORIES.has(canonicalCategory ?? '') && <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">🌶️ Heat / Spice Level</label>
         <div className="flex flex-wrap gap-2" data-testid="heat-spice-selector">
-          {HEAT_LABELS.map((label) => {
+          {activeHeatLabels.map((label, i) => {
             const selected = currentHeat === label;
+            const icon = DEFAULT_HEAT_ICONS[Math.min(i, DEFAULT_HEAT_ICONS.length - 1)];
             return (
               <button
                 key={label}
@@ -57,7 +63,7 @@ export function FoodTagEditorForm({ tags, onChange, canonicalCategory }: FoodTag
                     : 'bg-white border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-500')
                 }
               >
-                {HEAT_ICONS[label]} {label}
+                {icon} {label}
               </button>
             );
           })}

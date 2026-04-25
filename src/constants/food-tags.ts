@@ -17,6 +17,42 @@ export const TAG_CATEGORIES: { key: ArrayTagKey; label: string; color: string; i
 
 export const HEAT_LABELS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
 
+// Default 5-level scale for restaurants that haven't customized. Kept in sync
+// with the backend `DEFAULT_HEAT_LABELS` in owner_dietary.py.
+export const DEFAULT_HEAT_LABELS: readonly string[] = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'];
+
+// Position-indexed visual palette — length 8 matches MAX_SPICE_SCALE_LEVELS.
+// When rendering a custom spice scale, consumers look up icon/color by *index*,
+// not by label, so renamed labels don't affect the visual progression.
+export const DEFAULT_HEAT_ICONS: readonly string[] = [
+  '❄️', '🌶️', '🌶️🌶️', '🔥', '🔥🔥', '🔥🔥🔥', '🔥🔥🔥🔥', '🔥🔥🔥🔥🔥',
+];
+
+export const DEFAULT_HEAT_BG: readonly string[] = [
+  'rgba(59,130,246,0.08)',
+  'rgba(251,146,60,0.10)',
+  'rgba(239,68,68,0.10)',
+  'rgba(220,38,38,0.14)',
+  'rgba(153,27,27,0.16)',
+  'rgba(124,10,10,0.18)',
+  'rgba(91,0,0,0.20)',
+  'rgba(60,0,0,0.22)',
+];
+
+export const DEFAULT_HEAT_BORDER: readonly string[] = [
+  '#3b82f6', '#fb923c', '#ef4444', '#dc2626', '#991b1b', '#7c0a0a', '#5b0000', '#3c0000',
+];
+
+export const DEFAULT_HEAT_COLOR: readonly string[] = [
+  '#3b82f6', '#c2410c', '#dc2626', '#b91c1c', '#7f1d1d', '#660909', '#460000', '#2a0000',
+];
+
+// Scale-length and label-length limits — must match backend owner_dietary.py.
+export const MIN_SPICE_SCALE_LEVELS = 3;
+export const MAX_SPICE_SCALE_LEVELS = 8;
+export const SPICE_LABEL_MIN = 2;
+export const SPICE_LABEL_MAX = 24;
+
 // ─── Beverage Tag Options ────────────────────────────────────────────────
 
 export const BEVERAGE_TYPES = [

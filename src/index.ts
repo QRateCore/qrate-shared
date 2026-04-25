@@ -50,7 +50,21 @@ export { createMenuManagerService } from './services/createMenuManagerService';
 export { STATUS_DISPLAY, getNextStatus, getNextStatusLabel, ACTIVE_STATUSES, isActiveStatus } from './utils/order-status-display';
 
 // Constants
-export { TAG_CATEGORIES, COMPACT_TAG_CATEGORIES, HEAT_LABELS, CALORIE_OPTIONS } from './constants';
+export {
+  TAG_CATEGORIES,
+  COMPACT_TAG_CATEGORIES,
+  HEAT_LABELS,
+  CALORIE_OPTIONS,
+  DEFAULT_HEAT_LABELS,
+  DEFAULT_HEAT_ICONS,
+  DEFAULT_HEAT_BG,
+  DEFAULT_HEAT_BORDER,
+  DEFAULT_HEAT_COLOR,
+  MIN_SPICE_SCALE_LEVELS,
+  MAX_SPICE_SCALE_LEVELS,
+  SPICE_LABEL_MIN,
+  SPICE_LABEL_MAX,
+} from './constants';
 
 // Utils — Recommendation Broadcast (cross-tab reactivity)
 export { broadcastRecommendationChange, onRecommendationChange } from './utils/recommendation-broadcast';
