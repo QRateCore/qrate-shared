@@ -312,7 +312,13 @@ describe('BulkModifierPanel — apply', () => {
     });
   });
 
-  it('shows skipped info message and still calls onComplete when some were skipped', async () => {
+  it('shows skipped info message and KEEPS panel open (does NOT call onComplete) when some were skipped', async () => {
+    // Behavior change 2026-04-25: previously the panel called onComplete
+    // immediately on partial success, which closed the panel via the parent's
+    // setBulkModifiersOpen(false) before the user could see the skipped count.
+    // Now the panel stays open with the message and the user dismisses
+    // explicitly via Cancel/×. Parent state will pick up new assignments on
+    // the next refresh.
     const user = userEvent.setup();
     const service = makeService({
       bulkAssignModifiers: vi.fn().mockResolvedValue({ created: 1, skipped: 1, total: 2 }),
@@ -329,8 +335,9 @@ describe('BulkModifierPanel — apply', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('bulk-modifier-error')).toHaveTextContent('already existed');
-      expect(onComplete).toHaveBeenCalled();
     });
+    // Confirm onComplete is NOT called on partial success
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
   it('shows error message on API failure', async () => {
