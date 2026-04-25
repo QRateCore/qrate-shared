@@ -44,7 +44,6 @@ export type { QRateLogoProps, SelectProps, SelectOption, SelectSize } from './co
 // Services
 export { createMenuItemsService, fetchCanonicalCategoryMap } from './services/createMenuItemsService';
 export type { CreateMenuItemsServiceOptions } from './services/createMenuItemsService';
-export { createMenuManagerService } from './services/createMenuManagerService';
 
 // Utils — Order Status Display
 export { STATUS_DISPLAY, getNextStatus, getNextStatusLabel, ACTIVE_STATUSES, isActiveStatus } from './utils/order-status-display';
