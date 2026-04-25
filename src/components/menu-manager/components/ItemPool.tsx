@@ -325,29 +325,37 @@ function CategorySection({
         {/* Counts */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {dishCount > 0 && (
-            <span style={{
-              fontSize: 10,
-              fontWeight: 600,
-              color: 'var(--brand-s)',
-              background: 'rgba(255,107,43,0.08)',
-              borderRadius: 4,
-              padding: '1px 5px',
-              whiteSpace: 'nowrap',
-            }}>
-              {dishCount}d
+            <span
+              aria-label={`${dishCount} ${dishCount === 1 ? 'dish' : 'dishes'}`}
+              title={`${dishCount} ${dishCount === 1 ? 'dish' : 'dishes'}`}
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: 'var(--brand-s)',
+                background: 'rgba(255,107,43,0.08)',
+                borderRadius: 4,
+                padding: '1px 5px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {dishCount}
             </span>
           )}
           {includedCount > 0 && (
-            <span style={{
-              fontSize: 10,
-              fontWeight: 600,
-              color: '#0369a1',
-              background: '#e0f2fe',
-              borderRadius: 4,
-              padding: '1px 5px',
-              whiteSpace: 'nowrap',
-            }}>
-              {includedCount}i
+            <span
+              aria-label={`${includedCount} ${includedCount === 1 ? 'included item' : 'included items'}`}
+              title={`${includedCount} ${includedCount === 1 ? 'included item' : 'included items'}`}
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: '#0369a1',
+                background: '#e0f2fe',
+                borderRadius: 4,
+                padding: '1px 5px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {includedCount}
             </span>
           )}
         </div>

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 /**
- * Unit tests for ItemPool — item-type filter toggle (Dishes / Add-ons / Included).
+ * Unit tests for ItemPool.
  *
  * Covers:
- *  - All three toggle buttons render with correct labels
+ *  - Item-type filter toggle (Dishes / Add-ons / Included)
  *  - Active state styling matches the selected filter
  *  - Clicking a tab calls onItemTypeFilterChange with the correct value
  *  - data-testid attributes are present for E2E selectors
+ *  - Category-row count badges (STR-401): bare-integer text, aria-label and title
+ *    with singular/plural grammar; pill is hidden when count is zero.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -120,5 +122,110 @@ describe('ItemPool — item-type filter toggle', () => {
     expect(screen.getByTestId('item-type-filter-included').style.color).toBe('white');
     expect(screen.getByTestId('item-type-filter-dishes').style.color).not.toBe('white');
     expect(screen.getByTestId('item-type-filter-addons').style.color).not.toBe('white');
+  });
+});
+
+describe('ItemPool — category count badges (STR-401)', () => {
+  it('renders bare integer text (no "d" or "i" suffix)', () => {
+    render(<ItemPool {...defaultProps()} />);
+
+    const dishPill = screen.getByLabelText('2 dishes');
+    expect(dishPill).toHaveTextContent(/^2$/);
+    expect(dishPill).not.toHaveTextContent(/d/);
+
+    const includedPill = screen.getByLabelText('2 included items');
+    expect(includedPill).toHaveTextContent(/^2$/);
+    expect(includedPill).not.toHaveTextContent(/i/);
+  });
+
+  it('sets matching title attribute on each pill', () => {
+    render(<ItemPool {...defaultProps()} />);
+
+    expect(screen.getByLabelText('2 dishes')).toHaveAttribute('title', '2 dishes');
+    expect(screen.getByLabelText('2 included items')).toHaveAttribute('title', '2 included items');
+  });
+
+  it('uses singular grammar when count is exactly 1', () => {
+    const oneDish = [makeItem('d-solo', 'Lone Dish')];
+    const oneIncluded = [makeItem('i-solo', 'Solo Bread', 'included')];
+    render(
+      <ItemPool
+        {...defaultProps({
+          items: [...oneDish, ...oneIncluded],
+          filtered: oneDish,
+          itemTypeFilter: 'dishes',
+        })}
+      />,
+    );
+
+    const dishPill = screen.getByLabelText('1 dish');
+    expect(dishPill).toHaveTextContent(/^1$/);
+    expect(dishPill).toHaveAttribute('title', '1 dish');
+
+    const includedPill = screen.getByLabelText('1 included item');
+    expect(includedPill).toHaveTextContent(/^1$/);
+    expect(includedPill).toHaveAttribute('title', '1 included item');
+  });
+
+  it('hides the dish pill when dishCount is zero', () => {
+    // Only included items — no dishes — dish pill MUST NOT render
+    const includedOnly = [makeItem('i1', 'Bread', 'included'), makeItem('i2', 'Water', 'included')];
+    render(
+      <ItemPool
+        {...defaultProps({
+          items: includedOnly,
+          filtered: includedOnly,
+          itemTypeFilter: 'included',
+        })}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/dishes?$/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('2 included items')).toBeInTheDocument();
+  });
+
+  it('hides the included pill when includedCount is zero', () => {
+    // Only dishes — no included — included pill MUST NOT render
+    const dishesOnly = [makeItem('d1', 'A'), makeItem('d2', 'B')];
+    render(
+      <ItemPool
+        {...defaultProps({
+          items: dishesOnly,
+          filtered: dishesOnly,
+          itemTypeFilter: 'dishes',
+        })}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/included item/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('2 dishes')).toBeInTheDocument();
+  });
+
+  it('renders bare integer for large counts (no locale formatting leak)', () => {
+    const big = Array.from({ length: 47 }, (_, i) => makeItem(`d-${i}`, `Dish ${i}`));
+    render(
+      <ItemPool
+        {...defaultProps({
+          items: big,
+          filtered: big,
+          itemTypeFilter: 'dishes',
+        })}
+      />,
+    );
+
+    const pill = screen.getByLabelText('47 dishes');
+    expect(pill).toHaveTextContent(/^47$/);
+    expect(pill).toHaveAttribute('title', '47 dishes');
+  });
+
+  it('both pills render simultaneously with distinct accessible names', () => {
+    render(<ItemPool {...defaultProps()} />);
+
+    const dishPill = screen.getByLabelText('2 dishes');
+    const includedPill = screen.getByLabelText('2 included items');
+
+    expect(dishPill).toBeInTheDocument();
+    expect(includedPill).toBeInTheDocument();
+    expect(dishPill).not.toBe(includedPill);
   });
 });
