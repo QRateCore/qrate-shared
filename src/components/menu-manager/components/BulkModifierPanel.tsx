@@ -209,8 +209,11 @@ export default function BulkModifierPanel({
       });
       if (skipped > 0) {
         setError(`${created} assigned, ${skipped} already existed — skipped`);
-        // Still call onComplete with updated items
-        onComplete(updatedItems);
+        // Keep the panel open so the user actually reads the partial-success
+        // message — calling onComplete here would close the panel via the
+        // parent's setBulkModifiersOpen(false) and the user would never know
+        // some assignments were skipped. The user explicitly clicks Cancel/×
+        // to dismiss; parent state will pick up the change on the next refresh.
       } else {
         onComplete(updatedItems);
       }
