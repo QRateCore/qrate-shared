@@ -436,6 +436,7 @@ export default function BulkActionsPanel({
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
+              title={item.name}
             >
               {item.name}
             </span>

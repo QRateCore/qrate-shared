@@ -96,7 +96,7 @@ export default function TableCard({
                     title={idleLabel ? `Idle ${idleLabel}` : 'Phone away'}
                   />
                 )}
-                <span className={`text-xs truncate ${isIdle ? 'text-gray-400 italic' : 'text-gray-600'}`}>
+                <span title={guest.name || 'Guest'} className={`text-xs truncate ${isIdle ? 'text-gray-400 italic' : 'text-gray-600'}`}>
                   {guest.name || 'Guest'}
                   {idleLabel && <span className="text-gray-300 ml-0.5">({idleLabel})</span>}
                 </span>

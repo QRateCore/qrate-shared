@@ -209,6 +209,7 @@ function ItemCard({
           <div className="flex items-center gap-1 flex-wrap">
             <span
               data-testid={`menu-item-name-${item.id}`}
+              title={item.name || "Unnamed Item"}
               className={
                 "font-semibold text-sm truncate " +
                 (item.active === false ? "text-gray-400" : "text-gray-800")
@@ -238,7 +239,7 @@ function ItemCard({
               <span className="text-xs">{"\u2726"}</span>
             )}
           </div>
-          <div className="text-xs text-gray-400 truncate mt-0.5">
+          <div title={item.category || "No category"} className="text-xs text-gray-400 truncate mt-0.5">
             {item.category || "No category"}
           </div>
         </div>
@@ -1096,7 +1097,7 @@ export default function MenuItemsManagement({
                               ) : (
                                 <div className="w-7 h-7 rounded-md bg-gray-100 shrink-0" />
                               )}
-                              <span className="text-sm font-medium text-gray-800 truncate">{item.name}</span>
+                              <span title={item.name} className="text-sm font-medium text-gray-800 truncate">{item.name}</span>
                             </div>
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-500">{item.category || '\u2014'}</td>
@@ -1169,7 +1170,7 @@ export default function MenuItemsManagement({
                       <div className="max-h-20 overflow-y-auto text-xs text-red-600 space-y-0.5">
                         {Array.from(attentionBulkSelected).map((id) => {
                           const entry = attentionItems.find((a) => a.item.id === id);
-                          return <div key={id} className="truncate">{entry?.item.name || id}</div>;
+                          return <div key={id} title={entry?.item.name || id} className="truncate">{entry?.item.name || id}</div>;
                         })}
                       </div>
                       <p className="text-[10px] text-red-500">This action cannot be undone.</p>
@@ -1377,7 +1378,7 @@ export default function MenuItemsManagement({
                   <div className="max-h-24 overflow-y-auto text-xs text-red-600 space-y-0.5">
                     {Array.from(bulkSelected).map((id) => {
                       const item = items.find((i) => i.id === id);
-                      return <div key={id} className="truncate">{item?.name || id}</div>;
+                      return <div key={id} title={item?.name || id} className="truncate">{item?.name || id}</div>;
                     })}
                   </div>
                   <p className="text-[10px] text-red-500">This action cannot be undone.</p>
@@ -1408,7 +1409,7 @@ export default function MenuItemsManagement({
           <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-gray-50/50">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-800 truncate max-w-lg">
+              <h2 title={isCreatingNew ? (editName || "New Item") : (canEdit ? editName : selected!.name)} className="text-xl font-bold text-gray-800 truncate max-w-lg">
                 {isCreatingNew
                   ? editName || "New Item"
                   : canEdit
