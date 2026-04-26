@@ -41,6 +41,8 @@ export interface TableGuest {
   idle?: boolean;
   /** ISO timestamp of when patron went idle/disconnected */
   idle_since?: string | null;
+  /** Dining occasion selected by this patron (e.g. 'celebration', 'date', 'family') */
+  occasion?: string | null;
 }
 
 export interface TableCart {
