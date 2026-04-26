@@ -525,6 +525,13 @@ export default function ItemPool({
     return [...canonical, ...others];
   }, [groupedItems]);
 
+  // True only when every visible category is in the collapsed set — survives async category additions.
+  const allCollapsed = orderedCategories.length > 0 && orderedCategories.every((c) => collapsedCategories.has(c));
+
+  const handleCollapseAllCategories = (collapse: boolean) => {
+    setCollapsedCategories(collapse ? new Set(orderedCategories) : new Set());
+  };
+
   return (
     <div
       data-testid="item-pool"
@@ -733,42 +740,67 @@ export default function ItemPool({
           {someSelected ? `${selected.size} selected` : 'Select all'}
         </button>
 
-        {someSelected && itemTypeFilter === 'addons' && (
-          <button
-            type="button"
-            onClick={handleOpenBulkModifiersTracked}
-            data-testid="bulk-assign-modifiers-btn"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--blue)',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            Bulk Actions →
-          </button>
-        )}
-        {someSelected && itemTypeFilter === 'dishes' && (
-          <button
-            type="button"
-            onClick={() => handleOpenBulkTracked('assign')}
-            data-testid="bulk-actions-btn"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--blue)',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            Bulk actions →
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {someSelected && itemTypeFilter === 'addons' && (
+            <button
+              type="button"
+              onClick={handleOpenBulkModifiersTracked}
+              data-testid="bulk-assign-modifiers-btn"
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--blue)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Bulk Actions →
+            </button>
+          )}
+          {someSelected && itemTypeFilter === 'dishes' && (
+            <button
+              type="button"
+              onClick={() => handleOpenBulkTracked('assign')}
+              data-testid="bulk-actions-btn"
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--blue)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Bulk actions →
+            </button>
+          )}
+          {orderedCategories.length > 0 && (
+            <button
+              type="button"
+              onClick={() => handleCollapseAllCategories(!allCollapsed)}
+              data-testid="food-items-collapse-expand-all-btn"
+              aria-pressed={allCollapsed}
+              style={{
+                fontSize: 12,
+                color: 'var(--text2)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                whiteSpace: 'nowrap',
+                opacity: 0.6,
+                transition: 'opacity 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
+            >
+              {allCollapsed ? 'Expand All' : 'Collapse All'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Item list (also acts as drop-to-remove target) */}
