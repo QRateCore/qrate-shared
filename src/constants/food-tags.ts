@@ -53,6 +53,30 @@ export const MAX_SPICE_SCALE_LEVELS = 8;
 export const SPICE_LABEL_MIN = 2;
 export const SPICE_LABEL_MAX = 24;
 
+// ─── Sweetness Scale ────────────────────────────────────────────────────────
+
+export const DEFAULT_SWEETNESS_LABELS: readonly string[] = ['Lightly Sweet', 'Sweet', 'Very Sweet', 'Indulgent'];
+
+// Position-indexed visual palette for sweetness (up to 8 levels, pink→purple progression)
+export const DEFAULT_SWEETNESS_ICONS: readonly string[] = [
+  '✦', '✦✦', '✦✦✦', '✦✦✦✦', '✦✦✦✦✦', '✦✦✦✦✦✦', '✦✦✦✦✦✦✦', '✦✦✦✦✦✦✦✦',
+];
+export const DEFAULT_SWEETNESS_BG: readonly string[] = [
+  'rgba(249,168,212,0.10)', 'rgba(236,72,153,0.12)', 'rgba(168,85,247,0.10)',
+  'rgba(126,34,206,0.14)', 'rgba(107,33,168,0.16)', 'rgba(88,28,135,0.18)',
+  'rgba(59,7,100,0.20)', 'rgba(40,0,80,0.22)',
+];
+export const DEFAULT_SWEETNESS_BORDER: readonly string[] = [
+  '#f9a8d4', '#ec4899', '#a855f7', '#7e22ce', '#6b21a8', '#581c87', '#3b0764', '#28004e',
+];
+export const DEFAULT_SWEETNESS_COLOR: readonly string[] = [
+  '#db2777', '#be185d', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95', '#3b0764', '#2e065a',
+];
+export const MIN_SWEETNESS_SCALE_LEVELS = 3;
+export const MAX_SWEETNESS_SCALE_LEVELS = 8;
+export const SWEETNESS_LABEL_MIN = 2;
+export const SWEETNESS_LABEL_MAX = 24;
+
 // ─── Beverage Tag Options ────────────────────────────────────────────────
 
 export const BEVERAGE_TYPES = [
