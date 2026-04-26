@@ -6,6 +6,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
+import { DEFAULT_HEAT_LABELS } from '../../../constants/food-tags';
 import Select from '../../common/Select';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -52,6 +53,8 @@ interface EditModalProps {
   }) => Promise<MenuItemDisplay>;
   /** When provided, allergens and dietary restrictions use the dietary-tags API instead of free-text input. */
   dietaryTagService?: DietaryTagService;
+  /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
+  heatLabels?: string[];
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -107,10 +110,6 @@ export interface DietaryTagService {
   /** Reject (deselect) an existing tag by ID. */
   rejectTag: (restaurantId: string, tagId: string) => Promise<void>;
 }
-
-// ── Heat/spice predefined values ──────────────────────────────────────────────
-
-const HEAT_SPICE_OPTIONS = ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'] as const;
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
 
@@ -292,7 +291,10 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels }: EditModalProps) {
+  const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
+    ? heatLabels
+    : [...DEFAULT_HEAT_LABELS];
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1906,7 +1908,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 {category !== 'Beverages' && category !== 'Desserts' && <div>
                   <label style={labelStyle}>Heat / Spice</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {HEAT_SPICE_OPTIONS.map((option) => (
+                    {activeHeatLabels.map((option) => (
                       <button
                         key={option}
                         type="button"

@@ -1339,6 +1339,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             isNewItem={newlyCreatedItemIdRef.current === editItemId}
             onSaveNewItem={handleSaveNewItem}
             dietaryTagService={dietaryTagService}
+            heatLabels={heatLabels}
           />
         ) : null;
       })()}
