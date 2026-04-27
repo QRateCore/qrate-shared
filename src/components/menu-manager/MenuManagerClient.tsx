@@ -1520,7 +1520,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             getSettings,
             onTabChange: setActiveMenuId,
             onToggleCollapse: (key) =>
-              setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) })),
+              setCollapsed((prev) => ({ ...prev, [key]: !prev[key] })),
             onCollapseAll: handleCollapseAll,
             onUpdateSettings: handleUpdateSettings,
             onDragStart: handleMenuItemDragStart,
@@ -1634,7 +1634,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             getSettings={getSettings}
             onTabChange={setActiveMenuId}
             onToggleCollapse={(key) =>
-              setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
+              setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
             }
             onCollapseAll={handleCollapseAll}
             onUpdateSettings={handleUpdateSettings}

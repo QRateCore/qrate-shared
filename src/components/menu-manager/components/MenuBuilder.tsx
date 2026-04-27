@@ -1023,7 +1023,7 @@ export default function MenuBuilder({
     : 0;
 
   const allCollapsed = activeMenu
-    ? visibleBuckets.every((cat) => collapsed[`${activeMenu.id}:${cat}`] ?? true)
+    ? visibleBuckets.every((cat) => collapsed[`${activeMenu.id}:${cat}`])
     : false;
 
   if (menus.length === 0) {
@@ -1199,7 +1199,7 @@ export default function MenuBuilder({
                 itemIds={activeAssignments[cat] ?? []}
                 itemsById={itemsById}
                 menuId={activeMenu!.id}
-                collapsed={collapsed[collapseKey] ?? true}
+                collapsed={collapsed[collapseKey] ?? false}
                 getSettings={getSettings}
                 color={activeColor}
                 onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}
