@@ -280,7 +280,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-500 truncate">{member.email}</p>
+                <p title={member.email} className="text-sm text-gray-500 truncate">{member.email}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button

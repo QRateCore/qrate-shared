@@ -375,6 +375,7 @@ export default function BulkModifierPanel({
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
+                title={addon.name}
               >
                 {addon.name}
               </span>
@@ -582,6 +583,7 @@ export default function BulkModifierPanel({
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}
+                      title={dish.name}
                     >
                       {dish.name}
                     </div>

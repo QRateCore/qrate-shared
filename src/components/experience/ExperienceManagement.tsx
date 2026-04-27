@@ -618,7 +618,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                       <div className="flex items-baseline gap-2">
                         <h3 className="font-bold text-base text-gray-900 whitespace-nowrap">Table {table.table_number}</h3>
                         {serverName && (
-                          <span className="text-xs text-gray-400 truncate">Server: {serverName}</span>
+                          <span title={`Server: ${serverName}`} className="text-xs text-gray-400 truncate">Server: {serverName}</span>
                         )}
                       </div>
                     </div>
@@ -654,7 +654,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${avatarColor(g.name)}`}>
                                 {initials(g.name)}
                               </span>
-                              <span className="truncate max-w-[90px]">{g.name || 'Guest'}</span>
+                              <span title={g.name || 'Guest'} className="truncate max-w-[90px]">{g.name || 'Guest'}</span>
                             </span>
                           ))}
                         </div>
@@ -704,11 +704,11 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                                   <div key={item.key} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
                                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                       <span className="text-gray-900 font-medium whitespace-nowrap">{item.quantity}&times;</span>
-                                      <span className="text-gray-700 truncate">{item.name}</span>
+                                      <span title={item.name} className="text-gray-700 truncate">{item.name}</span>
                                     </div>
                                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                       {item.dinerName && (
-                                        <span className="text-gray-400 text-[11px] truncate max-w-[60px]">{item.dinerName}</span>
+                                        <span title={item.dinerName} className="text-gray-400 text-[11px] truncate max-w-[60px]">{item.dinerName}</span>
                                       )}
                                       <span className="text-gray-600 font-medium whitespace-nowrap">${(item.price * item.quantity).toFixed(2)}</span>
                                     </div>
@@ -734,7 +734,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                                     : <BellRing className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
                                   }
                                   <div className="min-w-0">
-                                    <p className="text-xs font-medium text-gray-800 truncate">{callTypeLabel(call.call_type ?? '')}</p>
+                                    <p title={callTypeLabel(call.call_type ?? '')} className="text-xs font-medium text-gray-800 truncate">{callTypeLabel(call.call_type ?? '')}</p>
                                     <p className={`text-[11px] ${call.status === 'overdue' ? 'text-orange-500' : 'text-red-400'}`}>{timeSince(call.created_at)}</p>
                                   </div>
                                 </div>

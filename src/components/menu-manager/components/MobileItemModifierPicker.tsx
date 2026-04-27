@@ -751,6 +751,7 @@ function SearchPicker({
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
+                title={item.name}
               >
                 {item.name}
               </span>

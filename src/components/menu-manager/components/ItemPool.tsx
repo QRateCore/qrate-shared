@@ -163,6 +163,7 @@ function ItemPoolCard({
               minWidth: 0,
               flex: '1 1 0',
             }}
+            title={item.name}
           >
             {item.name}
           </span>
@@ -209,6 +210,7 @@ function ItemPoolCard({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}
+                  title={menu.name}
                 >
                   {menu.name}
                 </span>

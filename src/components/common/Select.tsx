@@ -160,7 +160,7 @@ export default function Select({
                   : 'text-[var(--text)] hover:bg-[var(--bg2)]',
               ].join(' ')}
             >
-              <span className="flex-1 truncate">{opt.label}</span>
+              <span title={opt.label} className="flex-1 truncate">{opt.label}</span>
               {isSelected && (
                 <Check
                   size={size === 'sm' ? 10 : 12}
