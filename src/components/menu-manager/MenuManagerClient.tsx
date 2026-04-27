@@ -10,6 +10,7 @@ import {
   toCanonical,
   type MenuColor,
 } from './lib/menuUtils';
+import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload } from './components/MenuBuilder';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
@@ -124,9 +125,34 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // drop's addItemToMenu in the owner hook) never reach internal state
   // because useState ignores subsequent prop changes.
   const prevRefreshingRef = useRef(refreshing);
+  // STR-409: items with an in-flight server write (PUT/POST). The refresh-edge
+  // useEffect below preserves the optimistic state of any item still in this
+  // set. STR-398 closed the immediate race for handleUpdateModifiers; this
+  // ref is a defense-in-depth backstop for every other optimistic-write path.
+  // Each write site adds the item id before its `await service.<X>()` call
+  // and deletes it in `finally` (covers both success and rollback).
+  // Out of scope (different semantics): handleSaveNewItem (id unknown at PUT
+  // init), handleCloseEditModal soft-delete (we WANT the deletion preserved
+  // on race), and bulk paths (writes happen inside child components).
+  //
+  // Same-id concurrent-write caveat: a Set ignores duplicate adds. If two
+  // sites are ever wired to track the SAME itemId concurrently (e.g. a future
+  // optimistic-write surface that overlaps with handleUpdateSettings), the
+  // first site's `finally` will delete the id while the second is still in
+  // flight, and a refresh-edge in the remaining window will clobber the
+  // second's optimistic state. The 7 sites instrumented in STR-409 are
+  // mutually exclusive at the user-action level (different drag/edit/menu
+  // surfaces), so this is currently academic. If a new same-id site is added,
+  // upgrade this to `Map<string, number>` (refcount) — increment on add,
+  // decrement on settle, treat any non-zero count as pending. STR-411 P3
+  // follow-up tracks this.
+  const pendingWriteItemIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (prevRefreshingRef.current && !refreshing) {
-      setItems(initialItems);
+      // STR-409: merge the server snapshot with local optimistic state for
+      // any item whose write is still in flight. Pure logic lives in
+      // `mergePendingWriteItems` for direct unit testing.
+      setItems((prev) => mergePendingWriteItems(initialItems, prev, pendingWriteItemIdsRef.current));
       setMenus(initialMenus);
     }
     prevRefreshingRef.current = refreshing;
@@ -546,6 +572,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         ),
       );
 
+      // STR-409: track every id as in-flight up-front so a refresh-edge
+      // mid-loop preserves later items' optimistic state until their PUT runs.
+      for (const id of idsInMenu) pendingWriteItemIdsRef.current.add(id);
+
       // Sequential API calls — best-effort, per-item rollback on failure
       let failed = 0;
       const processRemovals = async () => {
@@ -566,6 +596,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 prev.map((item) => (item.id !== id ? item : original)),
               );
             }
+          } finally {
+            pendingWriteItemIdsRef.current.delete(id);
           }
         }
         if (failed > 0) {
@@ -683,6 +715,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             };
           }),
         );
+        // STR-409: track all merge-candidate ids up-front so a refresh-edge
+        // mid-loop preserves later items' optimistic canonical_categories.
+        for (const item of alreadyInMenu) pendingWriteItemIdsRef.current.add(item.id);
         const processCategories = async () => {
           let failed = 0;
           for (const item of alreadyInMenu) {
@@ -700,6 +735,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               failed++;
               const original = prevItems.find((o) => o.id === item.id);
               if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
+            } finally {
+              pendingWriteItemIdsRef.current.delete(item.id);
             }
           }
           if (failed > 0) {
@@ -747,6 +784,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       if (fromMenuId === null) {
         setMobileDrawerOpen(false);
       }
+      // STR-409: track all assign-candidate ids up-front so a refresh-edge
+      // mid-loop preserves later items' optimistic association.
+      for (const item of notInMenu) pendingWriteItemIdsRef.current.add(item.id);
       // Sequential API calls — best-effort, per-item rollback on failure
       const processAssigns = async () => {
         let failed = 0;
@@ -761,6 +801,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             // Rollback this single item
             const original = prevItems.find((o) => o.id === item.id);
             if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
+          } finally {
+            pendingWriteItemIdsRef.current.delete(item.id);
           }
         }
         if (failed > 0) {
@@ -838,6 +880,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           };
         }),
       );
+      // STR-409: track parent as in-flight so a refresh-edge mid-PUT does
+      // not clobber the optimistic sides/recs/addons state above. `finally`
+      // runs even when the catch block returns early.
+      pendingWriteItemIdsRef.current.add(parentId);
       try {
         // STR-342: flag-gate the PATCH body. Backend rejects mixing legacy
         // `sides` with split `sides_and` / `sides_or` (400) — we only ever
@@ -867,6 +913,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         setItems(prevItems);
         showToast('Failed to save modifiers — please try again');
         return; // Don't proceed to auto-add if modifier save failed
+      } finally {
+        pendingWriteItemIdsRef.current.delete(parentId);
       }
 
       // ── Auto-add new recommendation items to the active menu ────────────
@@ -940,6 +988,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           }),
         );
 
+        // STR-409: track per-iteration auto-add as in-flight so a
+        // refresh-edge mid-loop preserves this rec's optimistic association.
+        pendingWriteItemIdsRef.current.add(recItem.id);
         try {
           const associations = await service.addItemToMenu(
             recItem.id,
@@ -964,6 +1015,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               };
             }),
           );
+        } finally {
+          pendingWriteItemIdsRef.current.delete(recItem.id);
         }
       }
 
@@ -1028,6 +1081,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         ),
       );
 
+      // STR-409: track removal as in-flight so a refresh-edge mid-DELETE
+      // does not re-merge the just-removed association from initialItems.
+      pendingWriteItemIdsRef.current.add(itemId);
       service
         .removeItemFromMenu(itemId, menuId)
         .then((associations) => {
@@ -1040,9 +1096,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           dismissUndoToast();
           const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to remove — please try again';
           showToast(msg);
+        })
+        .finally(() => {
+          pendingWriteItemIdsRef.current.delete(itemId);
         });
 
       showUndoToast(`Removed from ${menuName}`, () => {
+        // STR-409: track undo's add as in-flight independently of the
+        // removal — by the time undo runs, the removal has already settled
+        // (so its pending entry is gone). The undo's own add/rollback is a
+        // fresh write-window that needs its own pending entry.
+        pendingWriteItemIdsRef.current.add(itemId);
         // Re-add with the snapshot. The backend's ON CONFLICT upsert handles
         // the soft-delete reactivation cleanly.
         service
@@ -1055,6 +1119,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           })
           .catch(() => {
             showToast('Could not undo — please retry');
+          })
+          .finally(() => {
+            pendingWriteItemIdsRef.current.delete(itemId);
           });
       });
     },
@@ -1076,6 +1143,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       };
       // Optimistic update
       setJunctionSettings((s) => ({ ...s, [key]: { ...prev, ...patch } }));
+      // STR-409: track this PATCH as in-flight so a refresh-edge mid-call
+      // does not clobber the optimistic junction settings via items[]
+      // adoption. `finally` runs on both success and rollback paths.
+      pendingWriteItemIdsRef.current.add(itemId);
       try {
         const associations = await service.updateMenuItemInMenu(itemId, menuId, patch);
         // STR-262: Write server-returned associations back into items so the
@@ -1091,6 +1162,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         // Rollback
         setJunctionSettings((s) => ({ ...s, [key]: prev }));
         showToast('Failed to save — please try again');
+      } finally {
+        pendingWriteItemIdsRef.current.delete(itemId);
       }
     },
     [junctionSettings, showToast],
