@@ -218,6 +218,24 @@ function ItemPoolCard({
             })}
           </div>
         )}
+
+        {/* Sweetness chip — Desserts only */}
+        {item.canonical_categories?.includes('Desserts') && item.food_tags?.sweetness_label && (
+          <div style={{ marginTop: 4 }}>
+            <span
+              style={{
+                fontSize: 10,
+                color: '#be185d',
+                background: 'rgba(249,168,212,0.18)',
+                border: '1px solid #f9a8d4',
+                borderRadius: 4,
+                padding: '1px 5px',
+              }}
+            >
+              ✦ {item.food_tags.sweetness_label}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Edit button */}

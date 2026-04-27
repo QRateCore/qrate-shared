@@ -30,6 +30,7 @@ export interface FoodTags {
   allergens?: string[];
   heat?: number;
   heat_spice?: string[];
+  sweetness_label?: string | null;
   cooking_method?: string[];
   textures?: string[];
   dietary?: string[];

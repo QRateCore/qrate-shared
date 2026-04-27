@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
@@ -14,6 +14,11 @@ import {
   DEFAULT_HEAT_BG,
   DEFAULT_HEAT_BORDER,
   DEFAULT_HEAT_COLOR,
+  DEFAULT_SWEETNESS_LABELS,
+  DEFAULT_SWEETNESS_ICONS,
+  DEFAULT_SWEETNESS_BG,
+  DEFAULT_SWEETNESS_BORDER,
+  DEFAULT_SWEETNESS_COLOR,
 } from '../../../constants/food-tags';
 
 // ── Dietary & Spice constants ─────────────────────────────────────────────────
@@ -49,8 +54,12 @@ interface BulkActionsPanelProps {
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add */
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
+  /** Optional: bulk sweetness update — owner app wires this to the sweetness API */
+  onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
+  /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
+  sweetnessLabels?: string[];
 }
 
 // ── Mode config ───────────────────────────────────────────────────────────────
@@ -62,6 +71,7 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   { key: 'special',      label: 'Special',      icon: <Star size={13} /> },
   { key: 'availability', label: 'Availability', icon: <Eye size={13} /> },
   { key: 'spice',        label: 'Spice',        icon: <Flame size={13} /> },
+  { key: 'sweetness',    label: 'Sweetness',    icon: <Sparkles size={13} /> },
   { key: 'dietary',      label: 'Dietary',      icon: <Leaf size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
@@ -90,11 +100,16 @@ export default function BulkActionsPanel({
   onComplete,
   onBulkSpice,
   onBulkDietary,
+  onBulkSweetness,
   heatLabels,
+  sweetnessLabels,
 }: BulkActionsPanelProps) {
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
+  const activeSweetnessLabels: string[] = (sweetnessLabels && sweetnessLabels.length > 0)
+    ? sweetnessLabels
+    : [...DEFAULT_SWEETNESS_LABELS];
   const service = useMenuManagerService();
   const trackAction = useTrackAction();
   const [mode, setMode] = useState<BulkMode>(initialMode);
@@ -111,6 +126,7 @@ export default function BulkActionsPanel({
   const [setActive, setSetActive] = useState<boolean>(true);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [pickedHeat, setPickedHeat] = useState<string | null>(null);
+  const [pickedSweetness, setPickedSweetness] = useState<string | null>(null);
   const [pickedDietaryTags, setPickedDietaryTags] = useState<Set<string>>(new Set());
 
   const selectedItems = items.filter((i) => selected.has(i.id));
@@ -230,6 +246,26 @@ export default function BulkActionsPanel({
     if (failed < itemIds.length) onComplete(items, selected);
   }
 
+  async function runSweetness() {
+    if (!pickedSweetness) { setError('Select a sweetness level'); return; }
+    if (!onBulkSweetness) { onComplete(items, selected); return; }
+    setExecuting(true);
+    setError(null);
+    const itemIds = selectedItems.map((i) => i.id);
+    setProgress({ done: 0, total: itemIds.length });
+    let failed = 0;
+    for (const itemId of itemIds) {
+      try { await onBulkSweetness(pickedSweetness, [itemId]); } catch { failed++; }
+      setProgress((p) => p ? { ...p, done: p.done + 1 } : null);
+    }
+    setExecuting(false);
+    setProgress(null);
+    if (failed > 0) {
+      setError(`${failed} item${failed !== 1 ? 's' : ''} failed — others updated`);
+    }
+    if (failed < itemIds.length) onComplete(items, selected);
+  }
+
   async function runDietary() {
     if (pickedDietaryTags.size === 0) { setError('Select at least one tag'); return; }
     if (!onBulkDietary) { onComplete(items, selected); return; }
@@ -318,6 +354,7 @@ export default function BulkActionsPanel({
         case 'special':      await runSpecial(); break;
         case 'availability': await runAvailability(); break;
         case 'spice':        await runSpice(); break;
+        case 'sweetness':    await runSweetness(); break;
         case 'dietary':      await runDietary(); break;
         case 'delete':       await runDelete(); break;
       }
@@ -526,6 +563,9 @@ export default function BulkActionsPanel({
           )}
           {mode === 'spice' && (
             <SpiceForm heatLabels={activeHeatLabels} pickedHeat={pickedHeat} onChange={setPickedHeat} />
+          )}
+          {mode === 'sweetness' && (
+            <SweetnessForm sweetnessLabels={activeSweetnessLabels} pickedSweetness={pickedSweetness} onChange={setPickedSweetness} />
           )}
           {mode === 'dietary' && (
             <DietaryForm
@@ -970,6 +1010,63 @@ function SpiceForm({
               type="button"
               onClick={() => onChange(selected ? null : label)}
               data-testid={`spice-option-${label.toLowerCase()}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 'var(--r-xs)',
+                border: selected ? `2px solid ${border}` : '1px solid var(--border)',
+                background: selected ? bg : 'white',
+                color: selected ? color : 'var(--text)',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{icon}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SweetnessForm({
+  sweetnessLabels,
+  pickedSweetness,
+  onChange,
+}: {
+  sweetnessLabels: string[];
+  pickedSweetness: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  const palette = DEFAULT_SWEETNESS_ICONS.length;
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+        Set sweetness level
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+        Applied to all selected dessert items. Click again to deselect.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {sweetnessLabels.map((label, i) => {
+          const idx = Math.min(i, palette - 1);
+          const icon = DEFAULT_SWEETNESS_ICONS[idx];
+          const bg = DEFAULT_SWEETNESS_BG[idx];
+          const border = DEFAULT_SWEETNESS_BORDER[idx];
+          const color = DEFAULT_SWEETNESS_COLOR[idx];
+          const selected = pickedSweetness === label;
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onChange(selected ? null : label)}
+              data-testid={`sweetness-option-${label.toLowerCase().replace(/\s+/g, '-')}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',

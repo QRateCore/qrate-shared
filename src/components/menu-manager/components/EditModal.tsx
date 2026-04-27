@@ -6,7 +6,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
-import { DEFAULT_HEAT_LABELS } from '../../../constants/food-tags';
+import { DEFAULT_HEAT_LABELS, DEFAULT_SWEETNESS_LABELS } from '../../../constants/food-tags';
 import Select from '../../common/Select';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -55,6 +55,10 @@ interface EditModalProps {
   dietaryTagService?: DietaryTagService;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
+  /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
+  sweetnessLabels?: string[];
+  /** Called when the owner changes the sweetness label on a Desserts item — persists via the sweetness API. */
+  onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -291,10 +295,13 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate }: EditModalProps) {
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
+  const activeSweetnessLabels: string[] = (sweetnessLabels && sweetnessLabels.length > 0)
+    ? sweetnessLabels
+    : [...DEFAULT_SWEETNESS_LABELS];
   const trackAction = useTrackAction();
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -322,6 +329,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     if (typeof hs === 'string') return hs || null;
     return null;
   });
+
+  // Sweetness — extracted from food_tags for Desserts items
+  const [sweetnessLabel, setSweetnessLabel] = useState<string | null>(
+    item.food_tags?.sweetness_label ?? null,
+  );
 
   // Other food tags (heat_spice handled separately)
   const [tags, setTags] = useState<Record<string, string[]>>(() => {
@@ -940,7 +952,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setSaving(true);
     setSaveError(null);
 
-    // Build food tags — other fields from TAG_FIELDS + heat_spice from pill state
+    // Build food tags — other fields from TAG_FIELDS + heat_spice + sweetness_label from pill state
     const foodTags: FoodTags = {};
     for (const { key } of TAG_FIELDS) {
       const fieldName = FOOD_TAG_FIELD_MAP[key] ?? key;
@@ -951,6 +963,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
     if (heatSpice) {
       (foodTags as Record<string, string>).heat_spice = heatSpice;
+    }
+    if (sweetnessLabel) {
+      foodTags.sweetness_label = sweetnessLabel;
     }
 
     try {
@@ -1023,10 +1038,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         }
       }
 
+      const sweetnessChanged = sweetnessLabel !== (item.food_tags?.sweetness_label ?? null);
       const [saved] = await Promise.all([
         service.updateMenuItem(item.id, updates),
         isActive !== (item.active !== false)
           ? service.toggleMenuItemActive(item.id, isActive)
+          : Promise.resolve(),
+        sweetnessChanged && onSweetnessUpdate && restaurantId
+          ? onSweetnessUpdate(item.id, sweetnessLabel)
           : Promise.resolve(),
       ]);
 
@@ -1925,6 +1944,36 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                           cursor: 'pointer',
                           fontSize: 12,
                           fontWeight: heatSpice === option ? 600 : 400,
+                          transition: 'all 0.1s',
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>}
+
+                {/* Sweetness — predefined pill selector (shown only for Desserts) */}
+                {category === 'Desserts' && <div>
+                  <label style={labelStyle}>Sweetness</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {activeSweetnessLabels.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        data-testid={`sweetness-pill-${option.toLowerCase().replace(/\s+/g, '-')}`}
+                        aria-pressed={sweetnessLabel === option}
+                        onClick={() => setSweetnessLabel(sweetnessLabel === option ? null : option)}
+                        style={{
+                          padding: '4px 14px',
+                          borderRadius: 20,
+                          border: '1px solid',
+                          borderColor: sweetnessLabel === option ? '#db2777' : 'var(--border)',
+                          background: sweetnessLabel === option ? '#fdf2f8' : 'transparent',
+                          color: sweetnessLabel === option ? '#9d174d' : 'var(--text2)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: sweetnessLabel === option ? 600 : 400,
                           transition: 'all 0.1s',
                         }}
                       >

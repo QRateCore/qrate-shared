@@ -480,6 +480,11 @@ function MenuItemRow({
                 {!item.active && (
                   <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
                 )}
+                {cat === 'Desserts' && item.food_tags?.sweetness_label && (
+                  <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
+                    ✦ {item.food_tags.sweetness_label}
+                  </span>
+                )}
                 {saving && (
                   <span className="text-xs text-[var(--text2)]">saving…</span>
                 )}
@@ -560,6 +565,11 @@ function MenuItemRow({
               )}
               {!item.active && (
                 <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
+              )}
+              {cat === 'Desserts' && item.food_tags?.sweetness_label && (
+                <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
+                  ✦ {item.food_tags.sweetness_label}
+                </span>
               )}
             </div>
 

@@ -25,7 +25,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'dietary';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary';
 
 export interface DragState {
   itemIds: string[];
@@ -91,8 +91,14 @@ interface Props {
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add for the Dietary tab in BulkActionsPanel. */
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
-  /** Per-restaurant spice scale labels forwarded to BulkActionsPanel. */
+  /** Optional: bulk sweetness update for the Sweetness tab in BulkActionsPanel. */
+  onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
+  /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
+  onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
+  /** Per-restaurant spice scale labels forwarded to BulkActionsPanel and EditModal. */
   heatLabels?: string[];
+  /** Per-restaurant sweetness scale labels forwarded to BulkActionsPanel and EditModal. */
+  sweetnessLabels?: string[];
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -101,7 +107,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, heatLabels }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1413,6 +1419,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSaveNewItem={handleSaveNewItem}
             dietaryTagService={dietaryTagService}
             heatLabels={heatLabels}
+            sweetnessLabels={sweetnessLabels}
+            onSweetnessUpdate={onSweetnessUpdate}
           />
         ) : null;
       })()}
@@ -1444,7 +1452,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onComplete: handleBulkComplete,
             onBulkSpice,
             onBulkDietary,
+            onBulkSweetness,
             heatLabels,
+            sweetnessLabels,
           }}
         />
       )}
