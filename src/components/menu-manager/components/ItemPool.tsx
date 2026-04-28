@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Pencil, Plus, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
@@ -460,7 +460,9 @@ export default function ItemPool({
   const trackAction = useTrackAction();
 
   // Per-category collapsed state (local — no need to persist)
+  // Start all-collapsed; initialised once when categories first populate
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const initialCollapseApplied = useRef(false);
 
   const toggleCategory = (cat: string) => {
     setCollapsedCategories((prev) => {
@@ -544,6 +546,14 @@ export default function ItemPool({
     );
     return [...canonical, ...others];
   }, [groupedItems]);
+
+  // Auto-collapse all categories on first data load
+  useEffect(() => {
+    if (!initialCollapseApplied.current && orderedCategories.length > 0) {
+      initialCollapseApplied.current = true;
+      setCollapsedCategories(new Set(orderedCategories));
+    }
+  }, [orderedCategories]);
 
   // True only when every visible category is in the collapsed set — survives async category additions.
   const allCollapsed = orderedCategories.length > 0 && orderedCategories.every((c) => collapsedCategories.has(c));
