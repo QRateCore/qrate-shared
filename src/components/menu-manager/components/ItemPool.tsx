@@ -807,6 +807,32 @@ export default function ItemPool({
               Bulk actions →
             </button>
           )}
+          {/* STR-415: reverse-direction entry — pre-selected entrees → BulkModifierPanel.
+              Visually differentiated from sibling "Bulk actions →" via Plus icon
+              prefix to avoid twin-button muscle-memory misclicks (Phase 6 UX-Reviewer
+              feedback 2026-04-29). */}
+          {someSelected && itemTypeFilter === 'dishes' && (
+            <button
+              type="button"
+              onClick={handleOpenBulkModifiersTracked}
+              data-testid="bulk-modifier-reverse-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--blue)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              Assign addons →
+            </button>
+          )}
           {orderedCategories.length > 0 && (
             <button
               type="button"

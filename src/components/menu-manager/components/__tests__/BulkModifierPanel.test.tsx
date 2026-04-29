@@ -19,7 +19,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import BulkModifierPanel from '../BulkModifierPanel';
+import BulkModifierPanel, {
+  groupDishesByCategory,
+  calcDiff,
+  formatSelfAssocMessage,
+} from '../BulkModifierPanel';
 import { MenuManagerServiceProvider } from '../../context';
 import type { MenuItemDisplay, MenuManagerService } from '../../../../types/restaurant';
 
@@ -69,6 +73,8 @@ function makeDish(id: string, name: string): MenuItemDisplay {
 
 function makeService(overrides: Partial<MenuManagerService> = {}): MenuManagerService {
   return {
+    // STR-415: default to []; renderPanel patches this to resolve with dishItems
+    // so the panel's race-safe refetch settles isRefetching AND keeps the seed.
     getAllMenuItems: vi.fn().mockResolvedValue([]),
     getMenus: vi.fn().mockResolvedValue([]),
     addMenuItem: vi.fn().mockResolvedValue(makeAddon('a1', 'Extra Sauce')),
@@ -112,6 +118,11 @@ function renderPanel(config: RenderConfig = {}) {
     onComplete = vi.fn(),
   } = config;
 
+  // STR-415: ensure the panel's race-safe refetch resolves with the same dishItems
+  // the test passed as a prop — keeps the seed AND settles isRefetching.
+  // Tests that need a different refetch return value can override before render.
+  (service.getAllMenuItems as ReturnType<typeof vi.fn>).mockResolvedValue(dishItems);
+
   render(
     <MenuManagerServiceProvider value={service}>
       <BulkModifierPanel
@@ -152,10 +163,19 @@ describe('BulkModifierPanel — rendering', () => {
     expect(screen.getByText('+2 more')).toBeInTheDocument();
   });
 
-  it('renders each dish as a selectable row', () => {
+  it('renders each dish as a selectable row (after expanding category)', async () => {
+    const user = userEvent.setup();
     renderPanel();
+    // Categories are collapsed by default per STR-415 — must expand first
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
     expect(screen.getByTestId('bulk-modifier-dish-dish-1')).toBeInTheDocument();
     expect(screen.getByTestId('bulk-modifier-dish-dish-2')).toBeInTheDocument();
+  });
+
+  it('renders categories collapsed by default (no dish rows in DOM)', () => {
+    renderPanel();
+    expect(screen.queryByTestId('bulk-modifier-dish-dish-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bulk-cat-toggle-Entrees')).toBeInTheDocument();
   });
 
   it('shows "No dishes available" when dishItems is empty', () => {
@@ -173,15 +193,18 @@ describe('BulkModifierPanel — dish selection', () => {
   it('clicking a dish row selects it and updates apply button text', async () => {
     const user = userEvent.setup();
     renderPanel();
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
 
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
 
-    expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Assign to 1 dish');
+    // STR-415: new diff-aware label format
+    expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Apply (+1 / =0)');
   });
 
   it('clicking the same dish a second time deselects it', async () => {
     const user = userEvent.setup();
     renderPanel();
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
 
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
@@ -189,13 +212,13 @@ describe('BulkModifierPanel — dish selection', () => {
     expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Select dishes first');
   });
 
-  it('select-all selects every visible dish', async () => {
+  it('select-all selects every filtered dish (works regardless of expansion)', async () => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(screen.getByTestId('bulk-modifier-select-all'));
 
-    expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Assign to 2 dishes');
+    expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Apply (+2 / =0)');
     expect(screen.getByTestId('bulk-modifier-select-all')).toHaveTextContent('2 dishes selected');
   });
 
@@ -211,13 +234,14 @@ describe('BulkModifierPanel — dish selection', () => {
 });
 
 describe('BulkModifierPanel — search filtering', () => {
-  it('filters dish list by search term', async () => {
+  it('filters dish list by search term (after expanding category)', async () => {
     const user = userEvent.setup();
     renderPanel({
       dishItems: [makeDish('d1', 'Truffle Pasta'), makeDish('d2', 'Caesar Salad')],
     });
 
     await user.type(screen.getByTestId('bulk-modifier-dish-search'), 'pasta');
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
 
     expect(screen.getByTestId('bulk-modifier-dish-d1')).toBeInTheDocument();
     expect(screen.queryByTestId('bulk-modifier-dish-d2')).not.toBeInTheDocument();
@@ -249,6 +273,7 @@ describe('BulkModifierPanel — validation', () => {
     const user = userEvent.setup();
     renderPanel();
 
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
 
     expect(screen.getByTestId('bulk-modifier-apply')).not.toBeDisabled();
@@ -267,6 +292,7 @@ describe('BulkModifierPanel — apply', () => {
       onComplete,
     });
 
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
     await user.click(screen.getByTestId('bulk-modifier-apply'));
 
@@ -295,6 +321,7 @@ describe('BulkModifierPanel — apply', () => {
       onComplete,
     });
 
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
     await user.click(screen.getByTestId('bulk-modifier-apply'));
 
@@ -347,6 +374,7 @@ describe('BulkModifierPanel — apply', () => {
     });
     renderPanel({ service });
 
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
     await user.click(screen.getByTestId('bulk-modifier-dish-dish-1'));
     await user.click(screen.getByTestId('bulk-modifier-apply'));
 
@@ -384,3 +412,254 @@ describe('BulkModifierPanel — close behaviour', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── STR-415: bulk addon↔entree many-to-many — new tests ───────────────────────
+
+describe('BulkModifierPanel — STR-415 pure helpers', () => {
+  it('groupDishesByCategory groups by category and falls back to "Uncategorised"', () => {
+    const d1 = makeDish('d1', 'Pasta');
+    d1.category = 'Mains';
+    const d2 = makeDish('d2', 'Risotto');
+    d2.category = 'Mains';
+    const d3 = makeDish('d3', 'Soup');
+    d3.category = null;
+    const d4 = makeDish('d4', 'Salad');
+    d4.category = '   ';
+
+    const groups = groupDishesByCategory([d1, d2, d3, d4]);
+    const cats = groups.map((g) => g.category);
+    expect(cats).toContain('Mains');
+    expect(cats).toContain('Uncategorised');
+    expect(groups.find((g) => g.category === 'Mains')!.dishes).toHaveLength(2);
+    expect(groups.find((g) => g.category === 'Uncategorised')!.dishes).toHaveLength(2);
+  });
+
+  it('calcDiff partitions to-create vs already-existing addons', () => {
+    const dish1 = makeDish('d1', 'Pasta');
+    dish1.addons = [
+      { menu_item_id: 'a1', name: 'Sauce', price_override: 1, thumbnail_url: null, status: 'approved', suggestion_source: 'manual' },
+    ];
+    const dish2 = makeDish('d2', 'Risotto');
+    dish2.addons = [];
+
+    expect(calcDiff([dish1, dish2], ['a1', 'a2'])).toEqual({ create: 3, existing: 1 });
+    expect(calcDiff([], ['a1'])).toEqual({ create: 0, existing: 0 });
+    expect(calcDiff([dish1], [])).toEqual({ create: 0, existing: 0 });
+  });
+
+  it('formatSelfAssocMessage handles singular/plural', () => {
+    expect(formatSelfAssocMessage(1)).toBe('1 addon excluded — addons can only be attached to dishes');
+    expect(formatSelfAssocMessage(3)).toBe('3 addons excluded — addons can only be attached to dishes');
+  });
+});
+
+describe('BulkModifierPanel — STR-415 forward direction (legacy preserved)', () => {
+  it('all-addons input → forward direction; addon preview shown', () => {
+    renderPanel({
+      selectedAddons: [makeAddon('a1', 'Extra Sauce')],
+      dishItems: [makeDish('d1', 'Pasta')],
+    });
+    expect(screen.getByTestId('bulk-modifier-panel')).toHaveAttribute('data-direction', 'forward');
+    expect(screen.queryByTestId('bulk-modifier-self-assoc-notice')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-modifier-addon-picker')).not.toBeInTheDocument();
+  });
+});
+
+describe('BulkModifierPanel — STR-415 reverse direction', () => {
+  it('mixed-input (entree + addon) → reverse direction; entrees pre-selected; addon picker shown', () => {
+    const entree = makeDish('e1', 'Salmon');
+    const addon = makeAddon('a1', 'Extra Sauce');
+    renderPanel({
+      selectedAddons: [entree, addon], // mixed input via prop name
+      dishItems: [entree, addon, makeAddon('a2', 'Bacon')],
+    });
+
+    const panel = screen.getByTestId('bulk-modifier-panel');
+    expect(panel).toHaveAttribute('data-direction', 'reverse');
+    // Pre-selected entree visible (category auto-expanded)
+    expect(screen.getByTestId('bulk-modifier-dish-e1')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-modifier-addon-picker')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-modifier-self-assoc-notice')).toHaveTextContent(
+      '1 addon excluded',
+    );
+  });
+
+  it('all-entrees input → reverse direction; NO self-assoc notice', () => {
+    const entree = makeDish('e1', 'Salmon');
+    renderPanel({
+      selectedAddons: [entree],
+      dishItems: [entree, makeAddon('a1', 'Sauce')],
+    });
+    expect(screen.getByTestId('bulk-modifier-panel')).toHaveAttribute('data-direction', 'reverse');
+    expect(screen.queryByTestId('bulk-modifier-self-assoc-notice')).not.toBeInTheDocument();
+  });
+
+  it('reverse: hide Delete tab', () => {
+    const entree = makeDish('e1', 'Salmon');
+    renderPanel({
+      selectedAddons: [entree],
+      dishItems: [entree, makeAddon('a1', 'Sauce')],
+    });
+    expect(screen.queryByTestId('bulk-modifier-tab-delete')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bulk-modifier-tab-assign')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-modifier-tab-remove')).toBeInTheDocument();
+  });
+
+  it('reverse: Apply calls bulkAssignModifiers with user-picked addon and pre-selected entree', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+    const entree = makeDish('e1', 'Salmon');
+    const addon = makeAddon('a1', 'Sauce');
+
+    renderPanel({
+      selectedAddons: [entree],
+      dishItems: [entree, addon],
+      service,
+    });
+
+    await user.click(screen.getByTestId('bulk-modifier-addon-a1'));
+    await user.click(screen.getByTestId('bulk-modifier-apply'));
+
+    await waitFor(() => {
+      expect(service.bulkAssignModifiers).toHaveBeenCalledWith('rest-1', {
+        modifier_type: 'addon',
+        modifier_item_ids: ['a1'],
+        dish_ids: ['e1'],
+      });
+    });
+  });
+});
+
+describe('BulkModifierPanel — STR-415 category grouping', () => {
+  it('renders category header with tri-state checkbox; click header toggles all', async () => {
+    const user = userEvent.setup();
+    const d1 = makeDish('d1', 'Pasta');
+    d1.category = 'Mains';
+    const d2 = makeDish('d2', 'Risotto');
+    d2.category = 'Mains';
+    renderPanel({
+      selectedAddons: [makeAddon('a1', 'Sauce')],
+      dishItems: [d1, d2],
+    });
+
+    const toggle = screen.getByTestId('bulk-cat-toggle-Mains');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('bulk-modifier-apply')).toHaveTextContent('Apply (+2 / =0)');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('partial category selection → aria-checked="mixed"', async () => {
+    const user = userEvent.setup();
+    const d1 = makeDish('d1', 'Pasta');
+    d1.category = 'Mains';
+    const d2 = makeDish('d2', 'Risotto');
+    d2.category = 'Mains';
+    renderPanel({
+      selectedAddons: [makeAddon('a1', 'Sauce')],
+      dishItems: [d1, d2],
+    });
+
+    await user.click(screen.getByTestId('bulk-cat-expand-Mains'));
+    await user.click(screen.getByTestId('bulk-modifier-dish-d1'));
+    expect(screen.getByTestId('bulk-cat-toggle-Mains')).toHaveAttribute('aria-checked', 'mixed');
+  });
+
+  it('chevron click toggles expansion only (no selection change)', async () => {
+    const user = userEvent.setup();
+    renderPanel(); // default Entrees category, collapsed
+
+    expect(screen.queryByTestId('bulk-modifier-dish-dish-1')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('bulk-cat-expand-Entrees'));
+    expect(screen.getByTestId('bulk-modifier-dish-dish-1')).toBeInTheDocument();
+    // Selection still empty
+    expect(screen.getByTestId('bulk-cat-toggle-Entrees')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('per-category counter renders +N / =M when category has selection', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByTestId('bulk-cat-toggle-Entrees')); // select all in Entrees
+    expect(screen.getByTestId('bulk-modifier-cat-counter-Entrees')).toHaveTextContent('+2 / =0');
+  });
+});
+
+describe('BulkModifierPanel — STR-415 diff preview', () => {
+  it('Apply button label shows Apply (+N / =M) and bulk-modifier-diff-total testid present', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByTestId('bulk-modifier-select-all'));
+    expect(screen.getByTestId('bulk-modifier-diff-total')).toHaveTextContent('Apply (+2 / =0)');
+  });
+
+  it('predicted diff matches mock service result (deterministic)', async () => {
+    const user = userEvent.setup();
+    const service = makeService({
+      bulkAssignModifiers: vi.fn().mockResolvedValue({ created: 1, skipped: 1, total: 2 }),
+    });
+    const dishWithExisting = makeDish('d1', 'Pasta');
+    dishWithExisting.addons = [
+      {
+        menu_item_id: 'a1',
+        name: 'Sauce',
+        price_override: 1,
+        thumbnail_url: null,
+        status: 'approved',
+        suggestion_source: 'manual',
+      },
+    ];
+    const dishFresh = makeDish('d2', 'Risotto');
+
+    renderPanel({
+      selectedAddons: [makeAddon('a1', 'Sauce')],
+      dishItems: [dishWithExisting, dishFresh],
+      service,
+    });
+
+    await user.click(screen.getByTestId('bulk-modifier-select-all'));
+    // Predicted: dish-d2 = +1 (new), dish-d1 = =1 (existing)
+    expect(screen.getByTestId('bulk-modifier-diff-total')).toHaveTextContent('Apply (+1 / =1)');
+  });
+});
+
+describe('BulkModifierPanel — STR-415 refetch race-safety', () => {
+  it('calls service.getAllMenuItems on mount with restaurantId', async () => {
+    const service = makeService();
+    renderPanel({ service });
+    await waitFor(() => {
+      expect(service.getAllMenuItems).toHaveBeenCalledWith('rest-1');
+    });
+  });
+
+  it('does not throw if component unmounts before refetch resolves', async () => {
+    let resolveRefetch: (value: MenuItemDisplay[]) => void;
+    const refetchPromise = new Promise<MenuItemDisplay[]>((res) => {
+      resolveRefetch = res;
+    });
+    const service = makeService({
+      getAllMenuItems: vi.fn().mockReturnValue(refetchPromise),
+    });
+    const { unmount } = render(
+      <MenuManagerServiceProvider value={service}>
+        <BulkModifierPanel
+          restaurantId="rest-1"
+          selectedAddons={[makeAddon('a1', 'Sauce')]}
+          dishItems={[makeDish('d1', 'Pasta')]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+
+    unmount();
+    // resolve AFTER unmount — should not throw
+    resolveRefetch!([makeDish('d2', 'Late')]);
+    await refetchPromise;
+    // No assertion needed — absence of "setState on unmounted component" warning is the test
+  });
+});
+
