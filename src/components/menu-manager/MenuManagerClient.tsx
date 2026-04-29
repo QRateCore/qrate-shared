@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRangeSelection } from '../../hooks/useRangeSelection';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags } from '../../types/restaurant';
 import {
   buildAssignments,
@@ -178,7 +179,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const {
+    selected,
+    setSelected,
+    handleSelectClick: _rangeSelectClick,
+    clearSelection: _clearSelection,
+    selectAll: _selectAll,
+  } = useRangeSelection();
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [editMenuId, setEditMenuId] = useState<string | null>(null);
   const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
@@ -353,12 +360,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // ── Select handlers ───────────────────────────────────────────────────────
 
-  // Anchor used by shift+click range selection. Keyed by list ('pool' or
-  // `${menuId}:${category}` for MenuBuilder rows). STR-251 #12.
-  const selectionAnchorRef = useRef<{ list: string; itemId: string } | null>(null);
-
-  // Modifier-aware click. Plain → reset to [id]; Shift → range from anchor;
-  // Meta/Ctrl → toggle without resetting. STR-251 #12.
+  // Modifier-aware click. Delegates range/toggle logic to useRangeSelection;
+  // adds trackAction instrumentation on top. STR-251 #12.
   const handleSelectClick = useCallback(
     (
       e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
@@ -370,53 +373,22 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         e.shiftKey ? 'menu.manager.selectRange' : 'menu.manager.selectItem',
         { restaurantId },
       );
-      const anchor = selectionAnchorRef.current;
-      if (e.shiftKey && anchor && anchor.list === listKey) {
-        const fromIdx = orderedIds.indexOf(anchor.itemId);
-        const toIdx = orderedIds.indexOf(itemId);
-        if (fromIdx === -1 || toIdx === -1) {
-          // Anchor item is no longer in this list — fall back to plain click
-          setSelected(new Set([itemId]));
-          selectionAnchorRef.current = { list: listKey, itemId };
-          return;
-        }
-        const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
-        setSelected(new Set(orderedIds.slice(lo, hi + 1)));
-        // Anchor stays put on shift-click (standard explorer behaviour)
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        setSelected((prev) => {
-          const next = new Set(prev);
-          if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
-          return next;
-        });
-        selectionAnchorRef.current = { list: listKey, itemId };
-        return;
-      }
-      // Plain click — toggle item (checkbox behaviour). STR-268.
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
-        return next;
-      });
-      selectionAnchorRef.current = { list: listKey, itemId };
+      _rangeSelectClick(e, itemId, orderedIds, listKey);
     },
-    [restaurantId, trackAction],
+    [restaurantId, trackAction, _rangeSelectClick],
   );
 
   const handleSelectAll = useCallback(() => {
-    setSelected(new Set(filtered.map((i) => i.id)));
-  }, [filtered]);
+    _selectAll(filtered.map((i) => i.id));
+  }, [filtered, _selectAll]);
 
   const handleClearSelect = useCallback(() => {
     trackAction('menu.manager.clearSelect', { restaurantId });
-    setSelected(new Set());
-    selectionAnchorRef.current = null;
-  }, [restaurantId, trackAction]);
+    _clearSelection();
+  }, [restaurantId, trackAction, _clearSelection]);
 
   const handleSelectCategoryItems = useCallback((ids: string[], selectAll: boolean) => {
-    setSelected((prev) => {
+    setSelected((prev: Set<string>) => {
       const next = new Set(prev);
       if (selectAll) {
         ids.forEach((id) => next.add(id));
@@ -445,10 +417,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         metadata: { value },
       });
       setItemTypeFilter(value);
-      setSelected(new Set());
-      selectionAnchorRef.current = null;
+      _clearSelection();
     },
-    [restaurantId, trackAction],
+    [restaurantId, trackAction, _clearSelection],
   );
 
   const handleRefresh = useCallback(() => {
@@ -1293,7 +1264,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const handleBulkComplete = useCallback(
     (updatedItems: MenuItemDisplay[], clearedIds: Set<string>) => {
       setItems(updatedItems);
-      setSelected((prev) => {
+      setSelected((prev: Set<string>) => {
         const next = new Set(prev);
         for (const id of clearedIds) next.delete(id);
         return next;

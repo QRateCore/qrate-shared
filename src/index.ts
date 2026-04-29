@@ -1,6 +1,9 @@
 // Types
 export * from './types';
 
+// Hooks
+export { useRangeSelection } from './hooks/useRangeSelection';
+
 // Components — Pairings
 export {
   EntreeCard,
