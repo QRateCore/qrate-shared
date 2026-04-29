@@ -419,12 +419,16 @@ describe('BulkModifierPanel — STR-415 pure helpers', () => {
   it('groupDishesByCategory groups by category and falls back to "Uncategorised"', () => {
     const d1 = makeDish('d1', 'Pasta');
     d1.category = 'Mains';
+    d1.canonical_category = 'Mains';
     const d2 = makeDish('d2', 'Risotto');
     d2.category = 'Mains';
+    d2.canonical_category = 'Mains';
     const d3 = makeDish('d3', 'Soup');
     d3.category = null;
+    d3.canonical_category = null;
     const d4 = makeDish('d4', 'Salad');
     d4.category = '   ';
+    d4.canonical_category = null;
 
     const groups = groupDishesByCategory([d1, d2, d3, d4]);
     const cats = groups.map((g) => g.category);
@@ -432,6 +436,26 @@ describe('BulkModifierPanel — STR-415 pure helpers', () => {
     expect(cats).toContain('Uncategorised');
     expect(groups.find((g) => g.category === 'Mains')!.dishes).toHaveLength(2);
     expect(groups.find((g) => g.category === 'Uncategorised')!.dishes).toHaveLength(2);
+  });
+
+  it('groupDishesByCategory prefers canonical_category over owner-typed category', () => {
+    // Real Farm + Oak data shape: AI pipeline sets canonical_category, owner
+    // often leaves the display `category` field empty. Group by canonical first.
+    const d1 = makeDish('d1', 'Pasta');
+    d1.category = '';
+    d1.canonical_category = 'Entrees';
+    const d2 = makeDish('d2', 'Salad');
+    d2.category = '';
+    d2.canonical_category = 'Appetizers';
+    const d3 = makeDish('d3', 'Tiramisu');
+    d3.category = 'Sweet things'; // owner-typed
+    d3.canonical_category = 'Desserts'; // canonical wins
+
+    const groups = groupDishesByCategory([d1, d2, d3]);
+    const cats = groups.map((g) => g.category);
+    expect(cats).toEqual(expect.arrayContaining(['Entrees', 'Appetizers', 'Desserts']));
+    expect(cats).not.toContain('Sweet things');
+    expect(cats).not.toContain('Uncategorised');
   });
 
   it('calcDiff partitions to-create vs already-existing addons', () => {
@@ -534,9 +558,9 @@ describe('BulkModifierPanel — STR-415 category grouping', () => {
   it('renders category header with tri-state checkbox; click header toggles all', async () => {
     const user = userEvent.setup();
     const d1 = makeDish('d1', 'Pasta');
-    d1.category = 'Mains';
+    d1.canonical_category = 'Mains'; // group key (canonical takes precedence)
     const d2 = makeDish('d2', 'Risotto');
-    d2.category = 'Mains';
+    d2.canonical_category = 'Mains';
     renderPanel({
       selectedAddons: [makeAddon('a1', 'Sauce')],
       dishItems: [d1, d2],
@@ -556,9 +580,9 @@ describe('BulkModifierPanel — STR-415 category grouping', () => {
   it('partial category selection → aria-checked="mixed"', async () => {
     const user = userEvent.setup();
     const d1 = makeDish('d1', 'Pasta');
-    d1.category = 'Mains';
+    d1.canonical_category = 'Mains';
     const d2 = makeDish('d2', 'Risotto');
-    d2.category = 'Mains';
+    d2.canonical_category = 'Mains';
     renderPanel({
       selectedAddons: [makeAddon('a1', 'Sauce')],
       dishItems: [d1, d2],
