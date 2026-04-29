@@ -42,9 +42,14 @@ const UNCATEGORISED = 'Uncategorised';
 export function groupDishesByCategory(
   dishes: MenuItemDisplay[],
 ): Array<{ category: string; dishes: MenuItemDisplay[] }> {
+  // Prefer canonical_category (AI pipeline-assigned, consistently populated)
+  // over the owner-typed `category` field (often empty until the owner sets it).
+  // Falls through to "Uncategorised" only when both are missing.
   const map = new Map<string, MenuItemDisplay[]>();
   for (const d of dishes) {
-    const key = (d.category && d.category.trim()) || UNCATEGORISED;
+    const canonical = d.canonical_category && d.canonical_category.trim();
+    const display = d.category && d.category.trim();
+    const key = canonical || display || UNCATEGORISED;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(d);
   }
