@@ -3,7 +3,8 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
+import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
 import { DEFAULT_HEAT_LABELS, DEFAULT_SWEETNESS_LABELS } from '../../../constants/food-tags';
@@ -389,6 +390,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [imgBusy, setImgBusy]       = useState<'uploading' | 'enhancing' | 'removing' | null>(null);
   const [imgError, setImgError]     = useState<string | null>(null);
 
@@ -774,16 +776,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     await task;
   }
 
-  async function handleApproveAddon(addon: AddonEntry) {
+  async function handleApproveAddon(addon: AddonEntry, priceOverride?: number) {
+    const resolvedPrice = priceOverride ?? addon.price_override;
     const prev = itemAddonsRef.current;
     const next = prev.map((a) =>
-      a.menu_item_id === addon.menu_item_id ? { ...a, status: 'approved' as const } : a,
+      a.menu_item_id === addon.menu_item_id ? { ...a, status: 'approved' as const, price_override: resolvedPrice } : a,
     );
     setItemAddons(next);
     const task = addonMutexRef.current.then(async () => {
       try {
         if (addon.id) {
-          await service.approveAddonSuggestion(item.id, addon.id);
+          await service.approveAddonSuggestion(item.id, addon.id, priceOverride);
         } else {
           await service.updateItemModifiers(item.id, { addons: next });
         }
@@ -1600,6 +1603,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       <Trash2 size={12} />
                       {imgBusy === 'removing' ? 'Removing…' : 'Remove'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOpen(true)}
+                      disabled={!!imgBusy}
+                      data-testid="preview-button"
+                      style={imgActionStyle()}
+                    >
+                      <ScanEye size={12} />
+                      Preview
+                    </button>
                   </>
                 )}
               </div>
@@ -2053,7 +2066,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                             key={addon.menu_item_id}
                             addon={addon}
                             basePrice={addonPool.find((p) => p.id === addon.menu_item_id)?.price ?? null}
-                            onApprove={() => void handleApproveAddon(addon)}
+                            onApprove={(price) => void handleApproveAddon(addon, price)}
                             onRemove={() => void handleRemoveAddon(addon.menu_item_id)}
                           />
                         ))}
@@ -2184,10 +2197,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                                 type="button"
                                 onClick={() => void handleAddAddon(poolItem)}
                                 data-testid={`add-addon-${poolItem.id}`}
+                                disabled={poolItem.price == null || poolItem.price <= 0}
+                                title={poolItem.price == null || poolItem.price <= 0 ? 'Set a price on this add-on item before adding' : undefined}
                                 style={{
                                   fontSize: 11, fontWeight: 700, padding: '4px 10px',
-                                  background: '#fff7ed', border: '1px solid #f59e0b',
-                                  color: '#92400e', borderRadius: 4, cursor: 'pointer', flexShrink: 0,
+                                  background: poolItem.price != null && poolItem.price > 0 ? '#fff7ed' : '#f3f4f6',
+                                  border: `1px solid ${poolItem.price != null && poolItem.price > 0 ? '#f59e0b' : '#d1d5db'}`,
+                                  color: poolItem.price != null && poolItem.price > 0 ? '#92400e' : '#9ca3af',
+                                  borderRadius: 4,
+                                  cursor: poolItem.price != null && poolItem.price > 0 ? 'pointer' : 'not-allowed',
+                                  flexShrink: 0,
                                 }}
                               >
                                 + Add
@@ -2571,6 +2590,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         </div>
 
       </div>
+
+      {/* Food item patron preview overlay */}
+      {previewOpen && (
+        <FoodItemPreviewModal
+          item={{ ...item, thumbnail_url: thumbnail }}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -2644,14 +2671,21 @@ function AddonCard({
   addon: AddonEntry;
   /** Price read from the addon item itself — always authoritative, never from the association. */
   basePrice: number | null;
-  onApprove?: () => void;
+  onApprove?: (price: number) => void;
   onRemove: () => void;
 }) {
+  const isSuggested = addon.status === 'suggested' && !!onApprove;
+  const [priceInput, setPriceInput] = useState(
+    basePrice != null && basePrice > 0 ? basePrice.toFixed(2) : ''
+  );
+  const parsedPrice = parseFloat(priceInput);
+  const priceValid = !isNaN(parsedPrice) && parsedPrice > 0;
+
   return (
     <div
       style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: isSuggested ? 'flex-start' : 'center',
         gap: 10,
         padding: '8px 10px',
         borderRadius: 'var(--r-xs)',
@@ -2669,21 +2703,58 @@ function AddonCard({
               AI
             </span>
           )}
-          <div
-            style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}
-            data-testid={`addon-price-${addon.menu_item_id}`}
-          >
-            {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
-          </div>
+          {!isSuggested && (
+            <div
+              style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}
+              data-testid={`addon-price-${addon.menu_item_id}`}
+            >
+              {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
+            </div>
+          )}
         </div>
+        {isSuggested && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>Price:</span>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <span style={{ position: 'absolute', left: 6, fontSize: 11, color: 'var(--text-secondary)', pointerEvents: 'none' }}>$</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                placeholder="0.00"
+                data-testid={`approve-addon-price-${addon.menu_item_id}`}
+                style={{
+                  fontSize: 12,
+                  padding: '3px 6px 3px 16px',
+                  border: `1px solid ${priceValid ? '#86efac' : '#d1d5db'}`,
+                  borderRadius: 4,
+                  width: 80,
+                  outline: 'none',
+                  background: '#fff',
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0, paddingTop: isSuggested ? 2 : 0 }}>
         {addon.status === 'suggested' && onApprove && (
           <button
             type="button"
-            onClick={onApprove}
+            onClick={() => priceValid && onApprove(parsedPrice)}
+            disabled={!priceValid}
             data-testid={`approve-addon-modal-${addon.menu_item_id}`}
-            style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', borderRadius: 4, cursor: 'pointer' }}
+            title={priceValid ? undefined : 'Enter a price to approve this add-on'}
+            style={{
+              fontSize: 11, fontWeight: 700, padding: '4px 8px',
+              background: priceValid ? '#dcfce7' : '#f3f4f6',
+              border: `1px solid ${priceValid ? '#86efac' : '#d1d5db'}`,
+              color: priceValid ? '#15803d' : '#9ca3af',
+              borderRadius: 4,
+              cursor: priceValid ? 'pointer' : 'not-allowed',
+            }}
           >
             Approve
           </button>

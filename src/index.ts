@@ -42,6 +42,10 @@ export type { TrackActionFn, TrackActionOptions } from './components/menu-manage
 
 // Components — Common
 export { QRateLogo, Button, Card, Select } from './components/common';
+
+// Components — Preview (owner-side patron view mockups)
+export { PhoneFrame, WelcomeScreenPreview, GoodbyeScreenPreview, CarouselPreviewPhone, CompositionPreviewPhone, FoodItemPreviewModal } from './components/preview';
+export type { PhoneFrameProps, WelcomeScreenPreviewProps, GoodbyeScreenPreviewProps, CarouselPreviewPhoneProps, CompositionPreviewPhoneProps, FoodItemPreviewModalProps } from './components/preview';
 export type { QRateLogoProps, SelectProps, SelectOption, SelectSize } from './components/common';
 
 // Services
