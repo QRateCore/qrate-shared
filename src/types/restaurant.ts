@@ -426,7 +426,7 @@ export interface MenuManagerService {
     sides_selection_mode?: 'and' | 'or';
     addons?: AddonEntry[];
   }): Promise<void>;
-  approveAddonSuggestion(itemId: string, assocId: string): Promise<void>;
+  approveAddonSuggestion(itemId: string, assocId: string, priceOverride?: number): Promise<void>;
   getAddonItems(restaurantId: string): Promise<MenuItemDisplay[]>;
   bulkAssignModifiers(restaurantId: string, payload: { modifier_type: 'addon' | 'side'; modifier_item_ids: string[]; dish_ids: string[] }): Promise<{ created: number; skipped: number; total: number }>;
 
