@@ -2,7 +2,7 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
@@ -60,6 +60,19 @@ interface EditModalProps {
   sweetnessLabels?: string[];
   /** Called when the owner changes the sweetness label on a Desserts item — persists via the sweetness API. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
+  /**
+   * Optional render-prop slot for an external image-library button (e.g. the
+   * Setup Guide v2 AssociateImageModal flow). Rendered in the image actions
+   * row only when the item has no thumbnail. The consumer renders the trigger
+   * + its own modal, and calls `onPicked(thumbnailUrl)` once an image is
+   * attached so EditModal updates its local thumbnail state without needing
+   * a full reopen.
+   */
+  imageLibrarySlot?: (handlers: {
+    itemId: string;
+    itemName: string;
+    onPicked: (thumbnailUrl: string) => void;
+  }) => ReactNode;
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -296,7 +309,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, imageLibrarySlot }: EditModalProps) {
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -1581,6 +1594,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   <Upload size={12} />
                   {imgBusy === 'uploading' ? 'Uploading…' : 'Upload'}
                 </button>
+                {!thumbnail && imageLibrarySlot && imageLibrarySlot({
+                  itemId: item.id,
+                  itemName: name,
+                  onPicked: (url) => setThumbnail(url),
+                })}
                 {thumbnail && (
                   <>
                     <button

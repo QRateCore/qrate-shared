@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags } from '../../types/restaurant';
 import {
@@ -102,6 +102,12 @@ interface Props {
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels forwarded to BulkActionsPanel and EditModal. */
   sweetnessLabels?: string[];
+  /** Optional render-prop slot forwarded to EditModal — see EditModal.imageLibrarySlot. */
+  imageLibrarySlot?: (handlers: {
+    itemId: string;
+    itemName: string;
+    onPicked: (thumbnailUrl: string) => void;
+  }) => ReactNode;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -110,7 +116,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1442,6 +1448,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             heatLabels={heatLabels}
             sweetnessLabels={sweetnessLabels}
             onSweetnessUpdate={onSweetnessUpdate}
+            imageLibrarySlot={imageLibrarySlot}
           />
         ) : null;
       })()}
