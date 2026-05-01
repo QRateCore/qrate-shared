@@ -7,6 +7,8 @@ import {
   buildAssignments,
   buildJunctionSettings,
   getMenuColor,
+  getSideItemIds,
+  isItemUsedAsSideElsewhere,
   CANONICAL_CATEGORIES,
   toCanonical,
   type MenuColor,
@@ -892,6 +894,54 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         return; // Don't proceed to auto-add if modifier save failed
       } finally {
         pendingWriteItemIdsRef.current.delete(parentId);
+      }
+
+      // ── Sync item_type for items that just entered or left a sides zone ──
+      // When an item is dropped into ANY sides zone (legacy `sides`, or the
+      // split `sides_and` / `sides_or`), mark its item_type='included' so the
+      // ItemPool's "Included" filter surfaces it. When an item is removed
+      // and is no longer a side anywhere on the menu, revert to 'dish'.
+      // Best-effort, non-blocking — modifier save already succeeded.
+      const oldParent = prevItems.find((i) => i.id === parentId);
+      const oldSideIds = oldParent ? getSideItemIds(oldParent) : new Set<string>();
+      const newSideIds = new Set<string>([
+        ...(payload.sides ?? []).map((s) => s.menu_item_id),
+        ...(payload.sides_and ?? []).map((s) => s.menu_item_id),
+        ...(payload.sides_or ?? []).map((s) => s.menu_item_id),
+      ]);
+      const enteredSides = [...newSideIds].filter((id) => !oldSideIds.has(id));
+      const leftSides = [...oldSideIds].filter((id) => !newSideIds.has(id));
+
+      // Mark newly-added side items as 'included' (skip addons — they have
+      // their own item_type and never become 'included' implicitly).
+      for (const id of enteredSides) {
+        const it = items.find((i) => i.id === id);
+        if (!it || it.item_type === 'addon' || it.item_type === 'included') continue;
+        try {
+          await service.updateMenuItem(id, { item_type: 'included' });
+          setItems((prev) =>
+            prev.map((i) => (i.id === id ? { ...i, item_type: 'included' as const } : i)),
+          );
+        } catch {
+          // Non-blocking — keep the modifier save win even if item_type sync fails
+        }
+      }
+
+      // Revert items that left this parent's sides AND are no longer a side
+      // anywhere else. The cross-check excludes the current parent (whose
+      // sides have just been replaced by the new payload).
+      for (const id of leftSides) {
+        const it = items.find((i) => i.id === id);
+        if (!it || it.item_type !== 'included') continue;
+        if (isItemUsedAsSideElsewhere(items, id, parentId)) continue;
+        try {
+          await service.updateMenuItem(id, { item_type: 'dish' });
+          setItems((prev) =>
+            prev.map((i) => (i.id === id ? { ...i, item_type: 'dish' as const } : i)),
+          );
+        } catch {
+          // Non-blocking
+        }
       }
 
       // ── Auto-add new recommendation items to the active menu ────────────
