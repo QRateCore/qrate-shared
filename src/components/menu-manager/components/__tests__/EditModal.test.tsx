@@ -559,29 +559,6 @@ describe('EditModal — close behaviour', () => {
 });
 
 describe('EditModal — image actions', () => {
-  it('calls enhanceMenuItemImage and updates thumbnail on enhance', async () => {
-    const user = userEvent.setup();
-    const service = makeService({
-      enhanceMenuItemImage: vi.fn().mockResolvedValue({ thumbnail_url: 'https://cdn.example.com/enhanced.jpg' }),
-    });
-    renderModal({
-      item: makeDishItem({ thumbnail_url: 'https://cdn.example.com/original.jpg' }),
-      service,
-    });
-
-    const enhanceBtn = screen.getByTestId('edit-enhance-btn');
-    await user.click(enhanceBtn);
-
-    await waitFor(() => {
-      // edit-thumbnail is a <div>; the actual <img> is nested inside it
-      const thumbDiv = screen.getByTestId('edit-thumbnail');
-      const img = thumbDiv.querySelector('img') as HTMLImageElement;
-      expect(img).not.toBeNull();
-      expect(img.src).toContain('enhanced.jpg');
-    });
-    expect(service.enhanceMenuItemImage).toHaveBeenCalledWith('item-1');
-  });
-
   it('calls removeMenuItemImage and clears thumbnail on remove', async () => {
     const user = userEvent.setup();
     const service = makeService({
@@ -604,7 +581,6 @@ describe('EditModal — image actions', () => {
   it('shows no-image-warning when item has no thumbnail', () => {
     renderModal({ item: makeDishItem({ thumbnail_url: null }) });
     expect(screen.getByTestId('no-image-warning')).toBeInTheDocument();
-    expect(screen.queryByTestId('edit-enhance-btn')).not.toBeInTheDocument();
   });
 });
 

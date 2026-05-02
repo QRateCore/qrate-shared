@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { X, Upload, Camera, Wand2, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
+import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
@@ -404,7 +404,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [imgBusy, setImgBusy]       = useState<'uploading' | 'enhancing' | 'removing' | null>(null);
+  const [imgBusy, setImgBusy]       = useState<'uploading' | 'removing' | null>(null);
   const [imgError, setImgError]     = useState<string | null>(null);
 
   // Add-on type
@@ -684,33 +684,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       setImgBusy(null);
       if (fileRef.current) fileRef.current.value = '';
       if (cameraRef.current) cameraRef.current.value = '';
-    }
-  }
-
-  async function handleEnhance() {
-    const start = Date.now();
-    setImgBusy('enhancing');
-    setImgError(null);
-    try {
-      const { thumbnail_url } = await service.enhanceMenuItemImage(item.id);
-      setThumbnail(thumbnail_url);
-      trackAction('menu.imageUpload.aiEnhance', {
-        restaurantId,
-        metadata: { itemId: item.id },
-        success: true,
-        durationMs: Date.now() - start,
-      });
-    } catch (err) {
-      trackAction('menu.imageUpload.aiEnhance', {
-        restaurantId,
-        metadata: { itemId: item.id },
-        success: false,
-        durationMs: Date.now() - start,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
-      setImgError(err instanceof Error ? err.message : 'Enhancement failed');
-    } finally {
-      setImgBusy(null);
     }
   }
 
@@ -1163,7 +1136,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
   const imgBusyLabel: Record<NonNullable<typeof imgBusy>, string> = {
     uploading:  'Uploading…',
-    enhancing:  'Enhancing…',
     removing:   'Removing…',
   };
 
@@ -1601,16 +1573,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 })}
                 {thumbnail && (
                   <>
-                    <button
-                      type="button"
-                      onClick={handleEnhance}
-                      disabled={!!imgBusy}
-                      data-testid="edit-enhance-btn"
-                      style={imgActionStyle('blue')}
-                    >
-                      <Wand2 size={12} />
-                      {imgBusy === 'enhancing' ? 'Enhancing…' : 'Enhance'}
-                    </button>
                     <button
                       type="button"
                       onClick={handleRemoveImage}
