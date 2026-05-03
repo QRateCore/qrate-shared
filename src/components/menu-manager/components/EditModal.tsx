@@ -60,6 +60,8 @@ interface EditModalProps {
   sweetnessLabels?: string[];
   /** Called when the owner changes the sweetness label on a Desserts item — persists via the sweetness API. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
+  /** Called when the owner changes the heat/spice label on an item — persists via the spice API. */
+  onHeatSpiceUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /**
    * Optional render-prop slot for an external image-library button (e.g. the
    * Setup Guide v2 AssociateImageModal flow). Rendered in the image actions
@@ -309,7 +311,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, imageLibrarySlot }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot }: EditModalProps) {
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -941,7 +943,18 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setSaving(true);
     setSaveError(null);
 
-    // Build food tags — other fields from TAG_FIELDS + heat_spice + sweetness_label from pill state
+    // Build food tags — other fields from TAG_FIELDS only.
+    //
+    // heat_spice and sweetness_label are NOT embedded here; they're written
+    // through the canonical /spice/{itemId} and /sweetness/{itemId} endpoints
+    // via the onHeatSpiceUpdate / onSweetnessUpdate callbacks below. Those
+    // endpoints atomically update both the int columns (spice_level /
+    // sweetness_level) and the JSONB labels in one transaction. Embedding
+    // them in this food_tags payload would race with the canonical write.
+    //
+    // Falls back gracefully when the consumer hasn't wired the callbacks: in
+    // that case (legacy consumers without scale support), we still embed the
+    // labels so existing behaviour is preserved.
     const foodTags: FoodTags = {};
     for (const { key } of TAG_FIELDS) {
       const fieldName = FOOD_TAG_FIELD_MAP[key] ?? key;
@@ -950,10 +963,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         (foodTags as Record<string, string[]>)[fieldName] = vals;
       }
     }
-    if (heatSpice) {
+    if (heatSpice && !onHeatSpiceUpdate) {
       (foodTags as Record<string, string>).heat_spice = heatSpice;
     }
-    if (sweetnessLabel) {
+    if (sweetnessLabel && !onSweetnessUpdate) {
       foodTags.sweetness_label = sweetnessLabel;
     }
 
@@ -1027,11 +1040,21 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         }
       }
 
+      const previousHeatSpice = (() => {
+        const hs = item.food_tags?.heat_spice;
+        if (Array.isArray(hs)) return (hs as string[])[0] ?? null;
+        if (typeof hs === 'string') return hs || null;
+        return null;
+      })();
+      const heatSpiceChanged = heatSpice !== previousHeatSpice;
       const sweetnessChanged = sweetnessLabel !== (item.food_tags?.sweetness_label ?? null);
       const [saved] = await Promise.all([
         service.updateMenuItem(item.id, updates),
         isActive !== (item.active !== false)
           ? service.toggleMenuItemActive(item.id, isActive)
+          : Promise.resolve(),
+        heatSpiceChanged && onHeatSpiceUpdate && restaurantId
+          ? onHeatSpiceUpdate(item.id, heatSpice)
           : Promise.resolve(),
         sweetnessChanged && onSweetnessUpdate && restaurantId
           ? onSweetnessUpdate(item.id, sweetnessLabel)
@@ -1059,13 +1082,23 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         }
       }
 
+      // heat_spice / sweetness_label live in food_tags JSONB but are written via
+      // the canonical /spice and /sweetness endpoints, not service.updateMenuItem.
+      // The `saved` payload from updateMenuItem reflects only what we sent it
+      // (without those keys when callbacks are wired) — re-attach them in local
+      // state so the UI shows the canonical write's effect immediately.
+      const mergedFoodTags = {
+        ...((saved.food_tags ?? foodTags) as FoodTags),
+        ...(onHeatSpiceUpdate ? { heat_spice: heatSpice ?? undefined } : {}),
+        ...(onSweetnessUpdate ? { sweetness_label: sweetnessLabel ?? undefined } : {}),
+      } as FoodTags;
       const updated: MenuItemDisplay = {
         ...item,
         name: saved.name ?? name.trim(),
         description: (saved.description ?? description.trim()) || null,
         category: (saved as { category?: string }).category ?? (category.trim() || item.category),
         canonical_category: category.trim() || item.canonical_category,
-        food_tags: (saved.food_tags ?? foodTags) as FoodTags,
+        food_tags: mergedFoodTags,
         active: isActive,
         thumbnail_url: thumbnail,
         item_type: isAddon ? 'addon' : 'dish',

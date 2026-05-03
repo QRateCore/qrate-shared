@@ -104,6 +104,8 @@ interface Props {
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
+  /** Optional: called when the owner changes the heat/spice label in EditModal. */
+  onHeatSpiceUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Per-restaurant spice scale labels forwarded to BulkActionsPanel and EditModal. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels forwarded to BulkActionsPanel and EditModal. */
@@ -122,7 +124,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1454,6 +1456,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             heatLabels={heatLabels}
             sweetnessLabels={sweetnessLabels}
             onSweetnessUpdate={onSweetnessUpdate}
+            onHeatSpiceUpdate={onHeatSpiceUpdate}
             imageLibrarySlot={imageLibrarySlot}
           />
         ) : null;
