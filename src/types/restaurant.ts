@@ -317,6 +317,51 @@ export interface MenuItemDisplay {
   recommendations?: RecommendationEntry[];
   addons?: AddonEntry[];
   sides_selection_mode?: 'and' | 'or';
+  /**
+   * BYO PDD (2026-05-02) — unified groupings model. Additive new field;
+   * legacy fields above are kept in sync via the backend compat shim.
+   * Owner-webapp BYO authoring (Step 7) consumes this; until then it's
+   * informational and used by GroupZone for canonical grouping IDs.
+   */
+  pricing_mode?: 'base_plus_components' | 'components_only';
+  groupings?: Grouping[];
+}
+
+/** BYO PDD selection rule shape (Step 5 OpenAPI). */
+export interface SelectionRule {
+  min_select: number;
+  max_select: number | null;
+  default_select: 'all' | 'none' | 'first';
+}
+
+/** BYO PDD grouping member shape (Step 5 OpenAPI). */
+export interface GroupingItem {
+  id: string;
+  menu_item_id: string;
+  name?: string;
+  thumbnail_url?: string | null;
+  item_type: 'dish' | 'addon' | 'included';
+  position?: number;
+  price_override?: number | null;
+  status?: 'suggested' | 'approved';
+  suggestion_source?: 'manual' | 'ai';
+  ai_confidence?: number | null;
+}
+
+/** BYO PDD grouping shape (Step 5 OpenAPI). */
+export interface Grouping {
+  id: string;
+  kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | null;
+  name: string;
+  position: number;
+  is_default: boolean;
+  is_deletable: boolean;
+  is_symmetric: boolean;
+  min_select: number;
+  max_select: number | null;
+  default_select: 'all' | 'none' | 'first';
+  pricing_contribution: 'additive' | 'replace_base' | 'none';
+  items: GroupingItem[];
 }
 
 export interface MenuItemsService {

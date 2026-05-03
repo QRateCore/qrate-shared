@@ -88,6 +88,12 @@ interface Props {
    * STR-342.
    */
   enableAndOrSplit?: boolean;
+  /**
+   * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
+   * When provided, MenuBuilder forwards them to ItemModifierZones, which
+   * renders [+ Add grouping], [⋮] menu, rule pill, and inline rename.
+   */
+  byoHandlers?: import('./components/ItemModifierZones').BYOHandlers;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
   dietaryTagService?: DietaryTagService;
   /** Optional: bulk spice level update for the Spice tab in BulkActionsPanel. */
@@ -116,7 +122,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1687,6 +1693,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 `Already in ${group === 'included' ? 'Includes All' : 'Includes one by choice'} — remove first`,
               )
             }
+            byoHandlers={byoHandlers}
           />
           </div>
         </div>

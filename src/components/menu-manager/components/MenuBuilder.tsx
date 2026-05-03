@@ -74,6 +74,12 @@ interface MenuBuilderProps {
    * `enableAndOrSplit` is true.
    */
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
+  /**
+   * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
+   * Forwarded to ItemModifierZones; when present, [+ Add grouping], [⋮]
+   * menu, rule pill, and inline rename affordances render.
+   */
+  byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -132,6 +138,7 @@ function MenuItemRow({
   onConfirmRecommendationDrop,
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
+  byoHandlers,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -149,6 +156,8 @@ function MenuItemRow({
   enableAndOrSplit?: boolean;
   /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
+  /** BYO PDD Step 7b — forwarded to ItemModifierZones. */
+  byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -758,6 +767,7 @@ function MenuItemRow({
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
+                byoHandlers={byoHandlers}
               />
             )}
           </div>
@@ -783,6 +793,7 @@ function CategoryBucket({
   onConfirmRecommendationDrop,
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
+  byoHandlers,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -807,6 +818,8 @@ function CategoryBucket({
   enableAndOrSplit?: boolean;
   /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
+  /** BYO PDD Step 7b — forwarded to ItemModifierZones via MenuItemRow. */
+  byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -911,6 +924,7 @@ function CategoryBucket({
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
+                byoHandlers={byoHandlers}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => {
@@ -966,6 +980,7 @@ export default function MenuBuilder({
   onConfirmRecommendationDrop,
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
+  byoHandlers,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -1208,6 +1223,7 @@ export default function MenuBuilder({
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
+                byoHandlers={byoHandlers}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}
