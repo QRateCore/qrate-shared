@@ -277,6 +277,17 @@ export interface MenuItemDisplay {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /**
+   * Canonical heat/spice level (1..N indexing into the per-restaurant
+   * spice_scale). Source of truth alongside `food_tags.heat_spice` (label).
+   * EditModal falls back to this when the JSONB label is missing.
+   */
+  spice_level?: number | null;
+  /**
+   * Canonical sweetness level (1..N indexing into the per-restaurant
+   * sweetness_scale). Source of truth alongside `food_tags.sweetness_label`.
+   */
+  sweetness_level?: number | null;
   /** Pipeline-assigned canonical category (set by the categorize stage, independent of menu assignment) */
   canonical_category?: string | null;
   canonical_categories?: string[];

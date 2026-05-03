@@ -338,18 +338,31 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isActive, setIsActive]     = useState(item.active !== false);
 
-  // Heat/spice — extracted from food_tags into its own state
+  // Heat/spice — read the JSONB label first, then fall back to the int
+  // spice_level + per-restaurant scale. The fallback covers rows where
+  // food_tags.heat_spice was never written (pre-Phase-A drift) but the int
+  // column is set, so the modal still highlights the correct pill.
   const [heatSpice, setHeatSpice] = useState<string | null>(() => {
     const hs = item.food_tags?.heat_spice;
-    if (Array.isArray(hs)) return (hs as string[])[0] ?? null;
-    if (typeof hs === 'string') return hs || null;
+    if (Array.isArray(hs) && hs[0]) return (hs as string[])[0];
+    if (typeof hs === 'string' && hs) return hs;
+    const lvl = item.spice_level;
+    if (typeof lvl === 'number' && lvl >= 1 && lvl <= activeHeatLabels.length) {
+      return activeHeatLabels[lvl - 1] ?? null;
+    }
     return null;
   });
 
-  // Sweetness — extracted from food_tags for Desserts items
-  const [sweetnessLabel, setSweetnessLabel] = useState<string | null>(
-    item.food_tags?.sweetness_label ?? null,
-  );
+  // Sweetness — same fallback shape as heat/spice for drift resilience.
+  const [sweetnessLabel, setSweetnessLabel] = useState<string | null>(() => {
+    const sl = item.food_tags?.sweetness_label;
+    if (typeof sl === 'string' && sl) return sl;
+    const lvl = item.sweetness_level;
+    if (typeof lvl === 'number' && lvl >= 1 && lvl <= activeSweetnessLabels.length) {
+      return activeSweetnessLabels[lvl - 1] ?? null;
+    }
+    return null;
+  });
 
   // Other food tags (heat_spice handled separately)
   const [tags, setTags] = useState<Record<string, string[]>>(() => {
