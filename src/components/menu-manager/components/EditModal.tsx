@@ -75,6 +75,16 @@ interface EditModalProps {
     itemName: string;
     onPicked: (thumbnailUrl: string) => void;
   }) => ReactNode;
+  /**
+   * 'modal' (default) — fixed-position overlay with backdrop. Used by the
+   * Menu page when the owner clicks the pencil-edit icon on a row.
+   * 'inline' — renders the same body inside its parent (no backdrop, no
+   * fixed positioning, fills 100% of parent width/height). Used by the
+   * Food Items page where the editor is the always-visible right panel.
+   * In inline mode the close button still calls `onClose`, but consumers
+   * can choose to map that to "clear selection" rather than "dismiss".
+   */
+  displayMode?: 'modal' | 'inline';
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -311,7 +321,8 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, displayMode = 'modal' }: EditModalProps) {
+  const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -1185,62 +1196,76 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     removing:   'Removing…',
   };
 
+  // Container styles vary by displayMode. Inline mode fills its parent —
+  // no fixed position, no backdrop, no shadow — so the same body renders
+  // as the right panel of the Food Items page without changing any of the
+  // form internals.
+  const containerStyle: React.CSSProperties = isInline
+    ? {
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        background: 'var(--white)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }
+    : isMobile
+      ? {
+          // Mobile: full-screen sheet with the existing dark backdrop preserved.
+          // `dvh` accounts for iOS Safari's collapsing URL bar.
+          position: 'fixed',
+          inset: 0,
+          zIndex: 70,
+          width: '100dvw',
+          maxWidth: '100dvw',
+          height: '100dvh',
+          maxHeight: '100dvh',
+          background: 'var(--white)',
+          borderRadius: 0,
+          boxShadow: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }
+      : {
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 70,
+          width: 720,
+          maxWidth: 'calc(100vw - 32px)',
+          height: '90vh',
+          maxHeight: '90vh',
+          background: 'var(--white)',
+          borderRadius: 'var(--r)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        };
+
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 60,
-          background: 'rgba(0,0,0,0.4)',
-        }}
-        data-testid="edit-modal-backdrop"
-      />
+      {/* Backdrop — modal mode only */}
+      {!isInline && (
+        <div
+          onClick={onClose}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(0,0,0,0.4)',
+          }}
+          data-testid="edit-modal-backdrop"
+        />
+      )}
 
-      {/* Modal */}
+      {/* Modal / inline editor — same body in both modes */}
       <div
         data-testid="edit-item-modal"
         data-mobile={isMobile ? 'true' : undefined}
-        style={
-          isMobile
-            ? {
-                // Mobile: full-screen sheet with the existing dark backdrop preserved.
-                // STR-251 mobile + camera (2026-04-08).
-                // `dvh` (dynamic viewport height) accounts for iOS Safari's
-                // collapsing URL bar — using `vh` would let the bar overlay
-                // the sticky footer / save buttons.
-                position: 'fixed',
-                inset: 0,
-                zIndex: 70,
-                width: '100dvw',
-                maxWidth: '100dvw',
-                height: '100dvh',
-                maxHeight: '100dvh',
-                background: 'var(--white)',
-                borderRadius: 0,
-                boxShadow: 'none',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }
-            : {
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 70,
-                width: 720,
-                maxWidth: 'calc(100vw - 32px)',
-                height: '90vh',
-                maxHeight: '90vh',
-                background: 'var(--white)',
-                borderRadius: 'var(--r)',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }
-        }
+        data-display-mode={displayMode}
+        style={containerStyle}
       >
         {/* Header */}
         <div
