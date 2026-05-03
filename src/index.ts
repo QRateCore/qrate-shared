@@ -40,6 +40,8 @@ export { EditModal, MenuManagerServiceProvider } from './components/menu-manager
 export type { DietaryTagService, DietaryTagRecord } from './components/menu-manager';
 export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
+export { SelectionRuleEditor } from './components/menu-manager';
+export type { RulePresetKind } from './components/menu-manager';
 
 // Components — Common
 export { QRateLogo, Button, Card, Select } from './components/common';

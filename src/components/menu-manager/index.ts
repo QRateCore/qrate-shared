@@ -11,3 +11,7 @@ export type {
   TrackActionFn,
   TrackActionOptions,
 } from './track-action-context';
+
+// BYO authoring primitives (Step 13 — usable on the Food Items page).
+export { default as SelectionRuleEditor } from './components/SelectionRuleEditor';
+export type { RulePresetKind } from './components/SelectionRuleEditor';
