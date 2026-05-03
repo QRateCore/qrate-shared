@@ -43,6 +43,23 @@ interface ItemPoolProps {
   onDragLeavePool: () => void;
   onDropPool: (e: React.DragEvent) => void;
   colorMap: (index: number) => MenuColor;
+  /**
+   * When true, clicking the row body (not just the pencil icon) calls
+   * `onEdit(id)`. Used by the Food Items page to make the whole row act
+   * as the "open editor" affordance, since the right panel IS the editor
+   * and there's no separate drag-into-menu interaction.
+   * Default: false (Menu page behavior — row click bulk-selects, pencil
+   * opens the edit modal).
+   */
+  activateOnRowClick?: boolean;
+  /**
+   * When false, hides the Menu-page-specific bulk action buttons in the
+   * select-all bar ("Bulk Actions →", "Bulk actions →", "Assign addons →").
+   * Used by the Food Items page which has its own bulk-actions bar with
+   * different actions (Activate / Deactivate / Delete / Boost / Add to menu).
+   * Default: true (Menu page behavior).
+   */
+  showBulkActions?: boolean;
 }
 
 // ── ItemPoolCard ─────────────────────────────────────────────────────────────
@@ -57,6 +74,7 @@ function ItemPoolCard({
   onEdit,
   onDragStart,
   onDragEnd,
+  activateOnRowClick = false,
 }: {
   item: MenuItemDisplay;
   isSelected: boolean;
@@ -67,6 +85,7 @@ function ItemPoolCard({
   onEdit: (id: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   onDragEnd: () => void;
+  activateOnRowClick?: boolean;
 }) {
   const bg = isEditing
     ? 'var(--blue-bg)'
@@ -86,6 +105,7 @@ function ItemPoolCard({
       draggable
       onDragStart={(e) => onDragStart(e, item.id)}
       onDragEnd={onDragEnd}
+      onClick={activateOnRowClick ? () => onEdit(item.id) : undefined}
       data-testid={`item-card-${item.id}`}
       style={{
         background: bg,
@@ -95,7 +115,7 @@ function ItemPoolCard({
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        cursor: 'grab',
+        cursor: activateOnRowClick ? 'pointer' : 'grab',
         userSelect: 'none',
         transition: 'background 0.1s',
       }}
@@ -282,6 +302,7 @@ function CategorySection({
   onEdit,
   onDragStart,
   onDragEnd,
+  activateOnRowClick = false,
 }: {
   category: string;
   categoryItems: MenuItemDisplay[];
@@ -298,6 +319,7 @@ function CategorySection({
   onEdit: (id: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   onDragEnd: () => void;
+  activateOnRowClick?: boolean;
 }) {
   const categoryIds = categoryItems.map((i) => i.id);
   const allSelected = categoryIds.length > 0 && categoryIds.every((id) => selected.has(id));
@@ -418,6 +440,7 @@ function CategorySection({
               onEdit={onEdit}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              activateOnRowClick={activateOnRowClick}
             />
           ))}
         </div>
@@ -456,6 +479,8 @@ export default function ItemPool({
   onDragLeavePool,
   onDropPool,
   colorMap,
+  activateOnRowClick = false,
+  showBulkActions = true,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
 
@@ -771,7 +796,7 @@ export default function ItemPool({
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {someSelected && itemTypeFilter === 'addons' && (
+          {showBulkActions && someSelected && itemTypeFilter === 'addons' && (
             <button
               type="button"
               onClick={handleOpenBulkModifiersTracked}
@@ -789,7 +814,7 @@ export default function ItemPool({
               Bulk Actions →
             </button>
           )}
-          {someSelected && itemTypeFilter === 'dishes' && (
+          {showBulkActions && someSelected && itemTypeFilter === 'dishes' && (
             <button
               type="button"
               onClick={() => handleOpenBulkTracked('assign')}
@@ -811,7 +836,7 @@ export default function ItemPool({
               Visually differentiated from sibling "Bulk actions →" via Plus icon
               prefix to avoid twin-button muscle-memory misclicks (Phase 6 UX-Reviewer
               feedback 2026-04-29). */}
-          {someSelected && itemTypeFilter === 'dishes' && (
+          {showBulkActions && someSelected && itemTypeFilter === 'dishes' && (
             <button
               type="button"
               onClick={handleOpenBulkModifiersTracked}
@@ -935,6 +960,7 @@ export default function ItemPool({
                   onEdit={handleEditItemTracked}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
+                  activateOnRowClick={activateOnRowClick}
                 />
               );
             })}
