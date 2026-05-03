@@ -76,6 +76,15 @@ interface EditModalProps {
     onPicked: (thumbnailUrl: string) => void;
   }) => ReactNode;
   /**
+   * Optional render-slot for the BYO Groupings authoring UI. When provided,
+   * a "Groupings" tab is added to the tab bar (next to Recommendations) and
+   * the slot's content is rendered inside that tab. The consumer is
+   * responsible for the BYO predicate (only pass a slot for BYO dishes).
+   * Reason: the grouping authoring API lives in the consumer app's service
+   * layer, not in this shared package.
+   */
+  groupingsSlot?: ReactNode;
+  /**
    * 'modal' (default) — fixed-position overlay with backdrop. Used by the
    * Menu page when the owner clicks the pencil-edit icon on a row.
    * 'inline' — renders the same body inside its parent (no backdrop, no
@@ -321,7 +330,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, displayMode = 'modal' }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, displayMode = 'modal' }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -466,8 +475,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
-  // Tab state — Food Tags | Add-ons | Recommendations | Performance (dish items) or Performance | Dishes (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'recommendations' | 'dishes' | 'performance'>('food_tags');
+  // Tab state — Food Tags | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
+  const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
   //   Dishes  → [food_tags, addons, performance]
@@ -1940,7 +1949,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
               : (isNewItem
                 ? (['food_tags', 'addons', 'recommendations'] as const)
-                : (['food_tags', 'addons', 'recommendations', 'performance'] as const))
+                : (groupingsSlot
+                  ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
+                  : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
@@ -1950,9 +1961,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     ? `Add-ons${itemAddons.length > 0 ? ` (${itemAddons.length})` : ''}`
                     : tab === 'recommendations'
                       ? `Recommendations${(aiSugs.length + itemRecs.length) > 0 ? ` (${aiSugs.length + itemRecs.length})` : ''}`
-                      : tab === 'dishes'
-                        ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                        : 'Performance';
+                      : tab === 'groupings'
+                        ? 'Groupings'
+                        : tab === 'dishes'
+                          ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
+                          : 'Performance';
               return (
                 <button
                   key={tab}
@@ -2334,6 +2347,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </>
                 )
               )}
+            </section>
+          )}
+
+          {/* ── Groupings tab (BYO dishes — content provided by consumer) */}
+          {activeTab === 'groupings' && groupingsSlot && (
+            <section style={{ marginBottom: 4 }}>
+              {groupingsSlot}
             </section>
           )}
 
