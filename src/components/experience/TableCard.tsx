@@ -39,6 +39,7 @@ export default function TableCard({
       {/* Service request badge */}
       {activeCall && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onAcknowledgeCall?.(activeCall.id);
