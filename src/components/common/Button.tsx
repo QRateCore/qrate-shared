@@ -49,6 +49,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     return (
       <button
+        // Default to type="button" so the button never accidentally
+        // submits an ancestor form (and reloads the page). Callers that
+        // genuinely want a submit button can override via {...props}.
+        type="button"
         ref={ref}
         disabled={isDisabled}
         className={[
