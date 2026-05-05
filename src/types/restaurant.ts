@@ -25,15 +25,24 @@ export interface BeverageTags {
   key_ingredients?: string[];
 }
 
+/** Per-item review state for allergens / dietary restrictions.
+ *  - 'ai_suggested': enrichment generated tags (or none); owner hasn't reviewed.
+ *  - 'manually_accepted': owner has actively reviewed — added/removed/accepted
+ *    /rejected a tag, or marked "None apply". Excluded from the
+ *    "Allergens & Dietary" filter on the Food Items page. */
+export type TagReviewState = 'ai_suggested' | 'manually_accepted';
+
 export interface FoodTags {
   ingredients?: string[];
   allergens?: string[];
+  allergens_state?: TagReviewState;
   heat?: number;
   heat_spice?: string[];
   sweetness_label?: string | null;
   cooking_method?: string[];
   textures?: string[];
   dietary?: string[];
+  dietary_state?: TagReviewState;
   calorie_count?: string;
   taste_profile?: string[];
   seasons?: string[];
