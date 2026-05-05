@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
+import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
@@ -432,6 +432,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const service = useMenuManagerService();
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   // Form state — initialized from item
@@ -1440,11 +1441,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         >
           {/* Item name — inline-editable. The title in the EditModal
               header IS the canonical Name field; the duplicate input
-              that lived in Basic Info has been removed. Errors render
-              below the header in the body so the layout stays
-              compact at the top. */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              that lived in Basic Info has been removed. The pencil
+              affordance to the right is the visible cue that the
+              title is editable — clicking it focuses the input and
+              selects all text for fast rename. Errors render below
+              the header in the body so the layout stays compact. */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
             <input
+              ref={nameInputRef}
               id="edit-name"
               type="text"
               value={name}
@@ -1462,8 +1466,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 border: nameError ? '1px solid #b91c1c' : '1px solid transparent',
                 borderRadius: 6,
                 padding: '4px 8px',
-                margin: '-4px -8px',
-                width: 'calc(100% + 16px)',
+                margin: '-4px 0 -4px -8px',
+                flex: 1,
                 minWidth: 0,
                 outline: 'none',
                 fontFamily: 'inherit',
@@ -1478,6 +1482,36 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 e.currentTarget.style.background = 'transparent';
               }}
             />
+            <button
+              type="button"
+              data-testid="edit-name-pencil"
+              aria-label="Edit name"
+              onClick={() => {
+                const el = nameInputRef.current;
+                if (!el) return;
+                el.focus();
+                el.select();
+              }}
+              style={{
+                flexShrink: 0,
+                width: 28,
+                height: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text)',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-neutral-gray-100, #f3f4f6)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <Pencil size={14} strokeWidth={2.25} />
+            </button>
           </div>
 
           {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon) */}
