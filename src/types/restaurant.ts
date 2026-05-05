@@ -317,6 +317,14 @@ export interface MenuItemDisplay {
   enriched_at?: string | null;
   /** true = visible to diners; false = hidden from diners but visible in owner dashboard */
   active?: boolean;
+  /** Display-time allergen / dietary arrays for the food-items page —
+   *  derived server-side from menu_item_dietary_tags (junction is
+   *  canonical for owner-curated state) with a fallback to the
+   *  food_tags JSONB arrays when an item has no junction rows yet.
+   *  Reading from food_tags.{allergens,dietary} on the table/grid
+   *  drops owner-added tags that never write back to JSONB. */
+  display_allergens?: string[];
+  display_dietary?: string[];
   /**
    * Per-item modifiers stored in dedicated join tables.
    * `sides` — legacy combined list (menu_item_sides table, unfiltered).
