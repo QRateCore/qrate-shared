@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Check } from 'lucide-react';
+import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
@@ -94,6 +94,13 @@ interface EditModalProps {
    * can choose to map that to "clear selection" rather than "dismiss".
    */
   displayMode?: 'modal' | 'inline';
+  /** Optional optimistic-update hook fired when in-modal mutations
+   *  (dietary tag chips, N/A toggles) change food_tags on the server.
+   *  Lets the parent patch its items mirror so derived UI — e.g. the
+   *  Food Items page "Allergens & Dietary" filter counter — reflects
+   *  the change without a full refetch. Receives a partial item; the
+   *  parent merges it onto the existing record. */
+  onItemUpdate?: (patch: { id: string; food_tags: FoodTags }) => void;
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -148,11 +155,16 @@ export interface DietaryTagService {
   addTag: (restaurantId: string, tagName: string, tagType: 'allergen' | 'dietary', itemId: string) => Promise<void>;
   /** Reject (deselect) an existing tag by ID. */
   rejectTag: (restaurantId: string, tagId: string) => Promise<void>;
-  /** Flip per-item review state to 'manually_accepted' — used by the
-   *  "Mark reviewed — none apply" button when the owner confirms no
-   *  allergens / no dietary restrictions without picking any tags.
-   *  Optional so consumers that don't surface the affordance don't break. */
-  markReviewed?: (itemId: string, type: 'allergens' | 'dietary') => Promise<void>;
+  /** Set the per-item review state for one tag category. Drives the N/A
+   *  chip in the EditModal — clicking it toggles state between
+   *  'ai_suggested' (yellow background) and 'manually_accepted' (no
+   *  background). Defaults to 'manually_accepted' for backward compat
+   *  with callers that just want the one-shot "I've reviewed" action. */
+  markReviewed?: (
+    itemId: string,
+    type: 'allergens' | 'dietary',
+    state?: 'ai_suggested' | 'manually_accepted',
+  ) => Promise<void>;
 }
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
@@ -265,6 +277,8 @@ function DietaryMultiSelect({
   tagMap,
   loading,
   onToggle,
+  reviewed,
+  onToggleNa,
 }: {
   label: string;
   options: readonly string[];
@@ -273,6 +287,13 @@ function DietaryMultiSelect({
   tagMap: Map<string, DietaryTagRecord>;
   loading: boolean;
   onToggle: (tagName: string) => void;
+  /** True when the section's review state is 'manually_accepted'. Drives
+   *  the yellow AI-suggested background and the N/A chip's active state. */
+  reviewed: boolean;
+  /** Click handler for the trailing N/A chip. Toggles the section's
+   *  review state between 'ai_suggested' and 'manually_accepted' without
+   *  touching tag rows. */
+  onToggleNa: () => void;
 }) {
   const [busyTag, setBusyTag] = useState<string | null>(null);
   const selectedBg     = type === 'allergen' ? '#6366f1' : '#d97706';
@@ -289,10 +310,52 @@ function DietaryMultiSelect({
     }
   };
 
+  // Count currently-selected (non-rejected) tag rows. N/A is "active"
+  // only when the section is reviewed AND no tag is selected — i.e.
+  // the owner explicitly confirmed nothing applies. Mixing N/A active
+  // with selected tag chips would read as contradictory.
+  let selectedCount = 0;
+  for (const t of tagMap.values()) {
+    if (t.status !== 'rejected') selectedCount++;
+  }
+  const naActive = reviewed && selectedCount === 0;
+
+  // Yellow tint = "AI suggested, not yet reviewed". Disappears the
+  // moment the owner takes any action (toggle a chip or click N/A).
+  const sectionStyle: React.CSSProperties = !reviewed
+    ? {
+        background: '#fef9c3',
+        border: '1px solid #fde047',
+        borderRadius: 8,
+        padding: 10,
+        transition: 'background 0.18s ease, border-color 0.18s ease',
+      }
+    : {
+        background: 'transparent',
+        border: '1px solid transparent',
+        borderRadius: 8,
+        padding: 10,
+        transition: 'background 0.18s ease, border-color 0.18s ease',
+      };
+
   return (
-    <div>
+    <div data-testid={`dietary-section-${type}`} data-reviewed={reviewed} style={sectionStyle}>
       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
         {label}
+        {!reviewed && (
+          <span
+            style={{
+              marginLeft: 8,
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#a16207',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            AI suggested
+          </span>
+        )}
       </label>
       {loading ? (
         <div style={{ fontSize: 12, color: 'var(--text3)', padding: '6px 0' }}>Loading…</div>
@@ -327,83 +390,37 @@ function DietaryMultiSelect({
               </button>
             );
           })}
+          {/* N/A chip — explicit "none apply" affordance. Clicking
+              flips the review state without touching tag rows. */}
+          <button
+            type="button"
+            data-testid={`dietary-pill-${type}-na`}
+            aria-pressed={naActive}
+            onClick={onToggleNa}
+            style={{
+              padding: '3px 10px',
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: naActive ? 600 : 500,
+              border: `1.5px dashed ${naActive ? '#15803d' : 'rgba(0,0,0,0.25)'}`,
+              background: naActive ? '#ecfdf5' : 'transparent',
+              color: naActive ? '#15803d' : 'var(--text3)',
+              cursor: 'pointer',
+              transition: 'all 0.12s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            N/A
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-// ── ReviewStateRow ────────────────────────────────────────────────────────────
-//
-// Sits beneath each DietaryMultiSelect chip group. When the owner has
-// reviewed the section (state = 'manually_accepted'), shows a green
-// "Reviewed" pill — a confirmation that the item won't appear in the
-// Food Items page "Allergens & Dietary" filter. Otherwise renders a
-// dashed-border button that flips the state via the markReviewed
-// service call (covers the case where the owner has no tags to add but
-// wants to confirm the section is done).
-
-function ReviewStateRow({
-  reviewed,
-  busy,
-  type,
-  onMark,
-}: {
-  reviewed: boolean;
-  busy: boolean;
-  type: 'allergens' | 'dietary';
-  onMark: () => void;
-}) {
-  if (reviewed) {
-    return (
-      <div
-        data-testid={`review-state-${type}-confirmed`}
-        style={{
-          marginTop: 6,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '3px 8px',
-          borderRadius: 4,
-          background: '#ecfdf5',
-          color: '#15803d',
-          fontSize: 11,
-          fontWeight: 600,
-        }}
-      >
-        <Check size={12} /> Reviewed
-      </div>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onMark}
-      disabled={busy}
-      data-testid={`mark-reviewed-${type}-btn`}
-      style={{
-        marginTop: 6,
-        background: 'transparent',
-        border: '1px dashed var(--border)',
-        color: 'var(--text2)',
-        borderRadius: 4,
-        padding: '4px 10px',
-        fontSize: 11,
-        fontWeight: 500,
-        cursor: busy ? 'wait' : 'pointer',
-        opacity: busy ? 0.5 : 1,
-        fontFamily: 'inherit',
-      }}
-    >
-      Mark reviewed — none apply
-    </button>
-  );
-}
-
-
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, displayMode = 'modal' }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -484,7 +501,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [dietaryReviewed, setDietaryReviewed] = useState<boolean>(
     item.food_tags?.dietary_state === 'manually_accepted',
   );
-  const [reviewMarkBusy, setReviewMarkBusy] = useState<'allergens' | 'dietary' | null>(null);
 
   // Reload dietary tags from the API (called on mount and after each toggle)
   const refreshDietaryTags = useCallback(async () => {
@@ -520,29 +536,55 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       await dietaryTagService.addTag(restaurantId, tagName, tagType, item.id);
     }
     // Backend flips food_tags.{allergens|dietary}_state to 'manually_accepted'
-    // as a side effect of any tag mutation. Mirror that locally so the
-    // "Mark reviewed" affordance updates without needing an item refetch.
+    // as a side effect of any tag mutation. Mirror that locally and
+    // propagate to the parent so the Food Items page filter count
+    // updates without a full refetch.
+    const stateKey = tagType === 'allergen' ? 'allergens_state' : 'dietary_state';
     if (tagType === 'allergen') setAllergensReviewed(true);
     else setDietaryReviewed(true);
+    onItemUpdate?.({
+      id: item.id,
+      food_tags: { ...(item.food_tags ?? {}), [stateKey]: 'manually_accepted' },
+    });
     await refreshDietaryTags();
-  }, [dietaryTagService, restaurantId, item.id, refreshDietaryTags]);
+  }, [dietaryTagService, restaurantId, item.id, item.food_tags, onItemUpdate, refreshDietaryTags]);
 
-  // Click handler for the "Mark reviewed — none apply" button below
-  // each chip group. Only fires the API call if the consumer wired the
-  // markReviewed method; falls back to local-only state flip otherwise.
-  const handleMarkReviewed = useCallback(async (type: 'allergens' | 'dietary') => {
+  // Toggle the review state for one tag category between 'ai_suggested'
+  // and 'manually_accepted'. Wired to the trailing N/A chip in
+  // DietaryMultiSelect — clicking flips the section's yellow
+  // "AI suggested" tint on or off and persists via markReviewed.
+  const handleToggleReviewed = useCallback(async (type: 'allergens' | 'dietary') => {
     if (!item.id || isNewItem) return;
-    setReviewMarkBusy(type);
+    const wasReviewed = type === 'allergens' ? allergensReviewed : dietaryReviewed;
+    const nextState: 'ai_suggested' | 'manually_accepted' =
+      wasReviewed ? 'ai_suggested' : 'manually_accepted';
+    // Optimistic local + parent update so the yellow tint and the Food
+    // Items filter count flip immediately. Roll back on API failure.
+    if (type === 'allergens') setAllergensReviewed(!wasReviewed);
+    else setDietaryReviewed(!wasReviewed);
+    const stateKey = type === 'allergens' ? 'allergens_state' : 'dietary_state';
+    onItemUpdate?.({
+      id: item.id,
+      food_tags: { ...(item.food_tags ?? {}), [stateKey]: nextState },
+    });
     try {
       if (dietaryTagService?.markReviewed) {
-        await dietaryTagService.markReviewed(item.id, type);
+        await dietaryTagService.markReviewed(item.id, type, nextState);
       }
-      if (type === 'allergens') setAllergensReviewed(true);
-      else setDietaryReviewed(true);
-    } finally {
-      setReviewMarkBusy(null);
+    } catch (err) {
+      // Roll back on failure.
+      if (type === 'allergens') setAllergensReviewed(wasReviewed);
+      else setDietaryReviewed(wasReviewed);
+      onItemUpdate?.({
+        id: item.id,
+        food_tags: {
+          ...(item.food_tags ?? {}),
+          [stateKey]: wasReviewed ? 'manually_accepted' : 'ai_suggested',
+        },
+      });
+      console.error('markReviewed failed', err);
     }
-  }, [dietaryTagService, item.id, isNewItem]);
+  }, [dietaryTagService, item.id, item.food_tags, isNewItem, allergensReviewed, dietaryReviewed, onItemUpdate]);
 
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
@@ -2170,44 +2212,32 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
                 {/* Allergens — multi-select pills backed by dietary-tags API */}
                 {dietaryTagService && restaurantId && !isNewItem && (
-                  <div>
-                    <DietaryMultiSelect
-                      label="Allergens"
-                      options={FDA_BIG_9_ALLERGENS}
-                      labels={ALLERGEN_LABELS}
-                      type="allergen"
-                      tagMap={allergenTagMap}
-                      loading={dietaryLoading}
-                      onToggle={(name) => void handleDietaryToggle(name, 'allergen', allergenTagMap)}
-                    />
-                    <ReviewStateRow
-                      reviewed={allergensReviewed}
-                      busy={reviewMarkBusy === 'allergens'}
-                      type="allergens"
-                      onMark={() => void handleMarkReviewed('allergens')}
-                    />
-                  </div>
+                  <DietaryMultiSelect
+                    label="Allergens"
+                    options={FDA_BIG_9_ALLERGENS}
+                    labels={ALLERGEN_LABELS}
+                    type="allergen"
+                    tagMap={allergenTagMap}
+                    loading={dietaryLoading}
+                    onToggle={(name) => void handleDietaryToggle(name, 'allergen', allergenTagMap)}
+                    reviewed={allergensReviewed}
+                    onToggleNa={() => void handleToggleReviewed('allergens')}
+                  />
                 )}
 
                 {/* Dietary restrictions — multi-select pills backed by dietary-tags API */}
                 {dietaryTagService && restaurantId && !isNewItem && (
-                  <div>
-                    <DietaryMultiSelect
-                      label="Dietary Restrictions"
-                      options={DIETARY_RESTRICTIONS_LIST}
-                      labels={DIETARY_LABELS}
-                      type="dietary"
-                      tagMap={dietaryTagMap}
-                      loading={dietaryLoading}
-                      onToggle={(name) => void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
-                    />
-                    <ReviewStateRow
-                      reviewed={dietaryReviewed}
-                      busy={reviewMarkBusy === 'dietary'}
-                      type="dietary"
-                      onMark={() => void handleMarkReviewed('dietary')}
-                    />
-                  </div>
+                  <DietaryMultiSelect
+                    label="Dietary Restrictions"
+                    options={DIETARY_RESTRICTIONS_LIST}
+                    labels={DIETARY_LABELS}
+                    type="dietary"
+                    tagMap={dietaryTagMap}
+                    loading={dietaryLoading}
+                    onToggle={(name) => void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
+                    reviewed={dietaryReviewed}
+                    onToggleNa={() => void handleToggleReviewed('dietary')}
+                  />
                 )}
 
                 {/* Other tag fields */}
