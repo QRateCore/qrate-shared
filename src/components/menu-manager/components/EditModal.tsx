@@ -1763,6 +1763,28 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </div>
           )}
 
+          {/* Layout container — for dish mode on desktop the basic-info
+              column (image + description + category + appears-in) sits
+              beside the tabs section in a 280px-1fr grid. Mobile and
+              addon mode collapse to flex-column so everything stacks
+              naturally. The body wrapper above stays flex-column either
+              way; this nested container localises the dish-side grid. */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              ...(!isAddon && !isMobile
+                ? {
+                    display: 'grid',
+                    gridTemplateColumns: '280px 1fr',
+                    columnGap: 20,
+                  }
+                : {
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }),
+            }}
+          >
           {/* ── Body — layout branches on isAddon (STR-303) ───────────────────
               Dishes mode: full two-column (image + basic info + food-tag fields via tabs)
               Add-ons mode: simplified single-column (Name + Price + Description) */}
@@ -1771,19 +1793,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             data-testid="dish-basic-info"
             style={{
               display: 'flex',
-              flexDirection: isMobile ? 'column' : 'row',
-              gap: 20,
-              marginBottom: 20,
-              alignItems: 'flex-start',
+              flexDirection: 'column',
+              gap: 14,
+              ...(!isMobile ? { overflowY: 'auto', paddingRight: 4, paddingBottom: 4 } : { marginBottom: 20 }),
             }}
           >
 
-            {/* Left column — large image panel */}
+            {/* Image panel — image + buttons + warnings */}
             <div
               data-testid="item-image-panel"
               style={{
-                width: isMobile ? '100%' : 260,
-                flexShrink: 0,
+                width: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 8,
@@ -1928,68 +1948,63 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               )}
             </div>
 
-            {/* Right column — required fields */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <SectionLabel>Basic Info</SectionLabel>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="edit-category">
-                    Category <span style={{ color: '#b91c1c' }}>*</span>
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Select
-                      id="edit-category"
-                      value={category}
-                      onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
-                      data-testid="edit-category-select"
-                      options={CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c }))}
-                      placeholder="— Select category —"
-                      error={categoryError}
-                    />
-                    {categoryError && (
-                      <span style={{ fontSize: 10, color: '#b91c1c' }}>Category is required</span>
-                    )}
-                  </div>
-                </div>
+            {/* Name field moved to the modal header — see the
+                inline-editable title at the top of EditModal. The
+                error state surfaces here as a single row so layout
+                doesn't shift when the user blanks the field. */}
+            {nameError && (
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                Name is required
               </div>
+            )}
 
-              {/* Name field moved to the modal header — see the
-                  inline-editable title at the top of EditModal. The
-                  error state surfaces here as a single row so layout
-                  doesn't shift when the user blanks the field. */}
-              {nameError && (
-                <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
-                  Name is required
-                </div>
+            {/* Description — sits right under the image so the owner
+                can scan the dish then immediately confirm/edit copy. */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-description">
+                Description <span style={{ color: '#b91c1c' }}>*</span>
+              </label>
+              <textarea
+                id="edit-description"
+                value={description}
+                onChange={(e) => { setDesc(e.target.value); setDescError(false); }}
+                rows={4}
+                data-testid="edit-description-input"
+                style={{
+                  ...inputStyle,
+                  resize: 'vertical',
+                  minHeight: 88,
+                  border: descError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                }}
+              />
+              {descError && (
+                <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Description is required</div>
               )}
+            </div>
 
-              {/* Description */}
+            {/* Category */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-category">
+                Category <span style={{ color: '#b91c1c' }}>*</span>
+              </label>
+              <Select
+                id="edit-category"
+                value={category}
+                onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
+                data-testid="edit-category-select"
+                options={CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                placeholder="— Select category —"
+                error={categoryError}
+              />
+              {categoryError && (
+                <span style={{ fontSize: 10, color: '#b91c1c' }}>Category is required</span>
+              )}
+            </div>
+
+            {/* ── Appears in menus ──────────────────────────────── */}
+            {(item.menu_associations ?? []).length > 0 && (
               <div>
-                <label style={labelStyle} htmlFor="edit-description">
-                  Description <span style={{ color: '#b91c1c' }}>*</span>
-                </label>
-                <textarea
-                  id="edit-description"
-                  value={description}
-                  onChange={(e) => { setDesc(e.target.value); setDescError(false); }}
-                  rows={4}
-                  data-testid="edit-description-input"
-                  style={{
-                    ...inputStyle,
-                    resize: 'vertical',
-                    minHeight: 88,
-                    border: descError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                  }}
-                />
-                {descError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Description is required</div>
-                )}
-              </div>
-
-              {/* ── Appears in menus ──────────────────────────────── */}
-              {(item.menu_associations ?? []).length > 0 && (
-                <div>
-                  <SectionLabel>Appears in</SectionLabel>
+                <SectionLabel>Appears in</SectionLabel>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {(item.menu_associations ?? []).map((assoc) => {
                       const canNavigate = !!onNavigateToMenu;
@@ -2039,11 +2054,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                         </button>
                       );
                     })}
-                  </div>
                 </div>
-              )}
-
-            </div>
+              </div>
+            )}
           </section>
           )}
 
@@ -2130,6 +2143,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           </section>
           )}
 
+          {/* Tabs section wrapper — groups bar + content as a single
+              flex-column block. In dish + desktop mode the parent
+              layout container lays this out as the right column of a
+              grid; in addon mode (or mobile) it sits as a flex item
+              filling the remaining vertical space below basic-info. */}
+          <div
+            data-testid="edit-modal-tabs-section"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              flex: 1,
+            }}
+          >
           {/* ── Tab bar: context-aware based on toggle state ───────────
               Dishes mode:   Food Tags | Add-ons | Performance
               Add-ons mode:  Performance | Dishes                  */}
@@ -2859,6 +2886,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </section>
           )}
           </div>{/* end scrollable tab content */}
+          </div>{/* end tabs section wrapper */}
+          </div>{/* end layout container */}
         </div>
 
       </div>
