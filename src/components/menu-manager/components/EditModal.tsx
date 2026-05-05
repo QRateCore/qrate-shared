@@ -1438,9 +1438,46 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             flexWrap: 'wrap',
           }}
         >
-          {/* Item name */}
-          <div title={item.name} style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {item.name}
+          {/* Item name — inline-editable. The title in the EditModal
+              header IS the canonical Name field; the duplicate input
+              that lived in Basic Info has been removed. Errors render
+              below the header in the body so the layout stays
+              compact at the top. */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <input
+              id="edit-name"
+              type="text"
+              value={name}
+              placeholder={isNewItem ? (item.name || 'Item name') : 'Item name'}
+              onChange={(e) => { setName(e.target.value); setNameError(false); }}
+              aria-label="Item name"
+              aria-required="true"
+              aria-invalid={nameError || undefined}
+              data-testid="edit-name-input"
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: 'var(--text)',
+                background: 'transparent',
+                border: nameError ? '1px solid #b91c1c' : '1px solid transparent',
+                borderRadius: 6,
+                padding: '4px 8px',
+                margin: '-4px -8px',
+                width: 'calc(100% + 16px)',
+                minWidth: 0,
+                outline: 'none',
+                fontFamily: 'inherit',
+                transition: 'border-color 0.12s ease, background 0.12s ease',
+              }}
+              onFocus={(e) => {
+                if (!nameError) e.currentTarget.style.borderColor = 'var(--border)';
+                e.currentTarget.style.background = '#fff';
+              }}
+              onBlur={(e) => {
+                if (!nameError) e.currentTarget.style.borderColor = 'transparent';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            />
           </div>
 
           {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon) */}
@@ -1882,27 +1919,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 </div>
               </div>
 
-              {/* Name */}
-              <div>
-                <label style={labelStyle} htmlFor="edit-name">
-                  Name <span style={{ color: '#b91c1c' }}>*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  type="text"
-                  value={name}
-                  placeholder={isNewItem ? item.name : ''}
-                  onChange={(e) => { setName(e.target.value); setNameError(false); }}
-                  data-testid="edit-name-input"
-                  style={{
-                    ...inputStyle,
-                    border: nameError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                  }}
-                />
-                {nameError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Name is required</div>
-                )}
-              </div>
+              {/* Name field moved to the modal header — see the
+                  inline-editable title at the top of EditModal. The
+                  error state surfaces here as a single row so layout
+                  doesn't shift when the user blanks the field. */}
+              {nameError && (
+                <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                  Name is required
+                </div>
+              )}
 
               {/* Description */}
               <div>
@@ -2004,29 +2029,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           >
             <SectionLabel>Basic Info</SectionLabel>
 
-            {/* Name + Price row — wraps on narrow viewports (<~340px) */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: '1 1 180px' }}>
-                <label style={labelStyle} htmlFor="edit-name">
-                  Name <span style={{ color: '#b91c1c' }}>*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  type="text"
-                  value={name}
-                  placeholder={isNewItem ? item.name : ''}
-                  onChange={(e) => { setName(e.target.value); setNameError(false); }}
-                  data-testid="edit-name-input"
-                  style={{
-                    ...inputStyle,
-                    border: nameError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                  }}
-                />
-                {nameError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Name is required</div>
-                )}
+            {/* Name lives in the modal header — see inline-editable
+                title at the top. Surface its error state here so the
+                user sees it adjacent to the rest of Basic Info. */}
+            {nameError && (
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                Name is required
               </div>
+            )}
 
+            {/* Price */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ flex: '0 0 160px' }}>
                 <label style={labelStyle} htmlFor="edit-price-input">
                   Price{isNewItem && isAddon && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
