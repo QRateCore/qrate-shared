@@ -91,6 +91,13 @@ interface Props {
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO authoring callbacks — when present, BYO affordances render. */
   byoHandlers?: BYOHandlers;
+  /** When false, the Add-ons drop zone is omitted. Default true. */
+  showAddons?: boolean;
+  /** When false, the Recommendations drop zone is omitted. Default true. */
+  showRecommendations?: boolean;
+  /** When false, the [+ Add grouping] button is omitted (BYO authoring still
+   *  works for existing groupings via byoHandlers). Default true. */
+  showAddGrouping?: boolean;
 }
 
 export default function ItemModifierZones({
@@ -102,6 +109,9 @@ export default function ItemModifierZones({
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
   byoHandlers,
+  showAddons = true,
+  showRecommendations = true,
+  showAddGrouping = true,
 }: Props) {
   const onCreateCustomGrouping = byoHandlers?.onCreateCustomGrouping;
   const onRenameGrouping = byoHandlers?.onRenameGrouping;
@@ -609,37 +619,41 @@ export default function ItemModifierZones({
     >
       {sidesColumn}
 
-      <GroupZone
-        kind="addons"
-        groupingId={groupingIdForKind('addons')}
-        parentItemId={parent.id}
-        title={addonsGrouping?.name ?? 'Add-ons'}
-        hint="Drag add-on items here to link them to this dish"
-        count={addons.length}
-        emptyText="Drop add-ons here"
-        onDrop={handleDropAddon}
-        legacyTestIdPrefix="addons-drop-zone"
-        titleOverride={renderTitleOverride(addonsGrouping)}
-        headerExtras={renderHeaderExtras({ grouping: addonsGrouping, isDeletable: false, showRulePill: true })}
-      >
-        {addons.map(renderAddonCard)}
-      </GroupZone>
+      {showAddons && (
+        <GroupZone
+          kind="addons"
+          groupingId={groupingIdForKind('addons')}
+          parentItemId={parent.id}
+          title={addonsGrouping?.name ?? 'Add-ons'}
+          hint="Drag add-on items here to link them to this dish"
+          count={addons.length}
+          emptyText="Drop add-ons here"
+          onDrop={handleDropAddon}
+          legacyTestIdPrefix="addons-drop-zone"
+          titleOverride={renderTitleOverride(addonsGrouping)}
+          headerExtras={renderHeaderExtras({ grouping: addonsGrouping, isDeletable: false, showRulePill: true })}
+        >
+          {addons.map(renderAddonCard)}
+        </GroupZone>
+      )}
 
-      <GroupZone
-        kind="recommendations"
-        groupingId={groupingIdForKind('recommendations')}
-        parentItemId={parent.id}
-        title={recsGrouping?.name ?? 'Recommendations'}
-        hint="Recommended dishes - shown on patron food cart"
-        count={recommendations.length}
-        emptyText="Drop items here"
-        onDrop={handleDropRecommendation}
-        legacyTestIdPrefix="recommendations-drop-zone"
-        titleOverride={renderTitleOverride(recsGrouping)}
-        headerExtras={renderHeaderExtras({ grouping: recsGrouping, isDeletable: false, showRulePill: true })}
-      >
-        {recommendations.map(renderRecommendationCard)}
-      </GroupZone>
+      {showRecommendations && (
+        <GroupZone
+          kind="recommendations"
+          groupingId={groupingIdForKind('recommendations')}
+          parentItemId={parent.id}
+          title={recsGrouping?.name ?? 'Recommendations'}
+          hint="Recommended dishes - shown on patron food cart"
+          count={recommendations.length}
+          emptyText="Drop items here"
+          onDrop={handleDropRecommendation}
+          legacyTestIdPrefix="recommendations-drop-zone"
+          titleOverride={renderTitleOverride(recsGrouping)}
+          headerExtras={renderHeaderExtras({ grouping: recsGrouping, isDeletable: false, showRulePill: true })}
+        >
+          {recommendations.map(renderRecommendationCard)}
+        </GroupZone>
+      )}
 
       {/* BYO PDD Step 7 — custom (kind=null) groupings rendered after defaults */}
       {customGroupings.map((g) => {
@@ -697,7 +711,7 @@ export default function ItemModifierZones({
       })}
 
       {/* BYO PDD Step 7 — `[+ Add grouping]` affordance, only when callback provided */}
-      {onCreateCustomGrouping ? (
+      {showAddGrouping && onCreateCustomGrouping ? (
         <div style={{ flex: '0 0 auto', alignSelf: 'flex-start', marginTop: 6 }}>
           <AddGroupingButton
             onCreate={(body) => onCreateCustomGrouping(parent.id, body)}

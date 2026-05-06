@@ -94,6 +94,14 @@ interface Props {
    * renders [+ Add grouping], [⋮] menu, rule pill, and inline rename.
    */
   byoHandlers?: import('./components/ItemModifierZones').BYOHandlers;
+  /** When false, the per-item Add-ons drop zone is hidden in the menu builder. Default true. */
+  showAddons?: boolean;
+  /** When false, the per-item Recommendations drop zone is hidden in the menu builder. Default true. */
+  showRecommendations?: boolean;
+  /** When false, the per-item [+ Add grouping] button is hidden in the menu builder. Default true. */
+  showAddGrouping?: boolean;
+  /** When false, the Visible / Hidden toggle is hidden in the ItemPool filter row. Default true. */
+  showVisibilityFilter?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
   dietaryTagService?: DietaryTagService;
   /** Optional: bulk spice level update for the Spice tab in BulkActionsPanel. */
@@ -124,7 +132,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1543,6 +1551,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragLeavePool: handleDragLeavePool,
             onDropPool: handleDropPool,
             colorMap,
+            showVisibilityFilter,
           }}
           menuBuilderProps={{
             items,
@@ -1614,6 +1623,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragLeavePool={handleDragLeavePool}
             onDropPool={handleDropPool}
             colorMap={colorMap}
+            showVisibilityFilter={showVisibilityFilter}
           />
           </div>
 
@@ -1697,6 +1707,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               )
             }
             byoHandlers={byoHandlers}
+            showAddons={showAddons}
+            showRecommendations={showRecommendations}
+            showAddGrouping={showAddGrouping}
           />
           </div>
         </div>

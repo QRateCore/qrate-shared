@@ -1394,7 +1394,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 70,
-          width: 720,
+          width: 960,
           maxWidth: 'calc(100vw - 32px)',
           height: '90vh',
           maxHeight: '90vh',

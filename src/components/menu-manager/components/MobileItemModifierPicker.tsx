@@ -55,6 +55,9 @@ interface Props {
    * renders.
    */
   enableAndOrSplit?: boolean;
+  /** When false, the Recommendations section is omitted. Default true.
+   *  (Mobile picker has no Add-ons section, so there is no `showAddons` knob.) */
+  showRecommendations?: boolean;
 }
 
 export default function MobileItemModifierPicker({
@@ -64,6 +67,7 @@ export default function MobileItemModifierPicker({
   onUpdate,
   onConfirmRecommendationDrop,
   enableAndOrSplit = false,
+  showRecommendations = true,
 }: Props) {
   const sides: ModifierEntry[] = (parent.sides ?? []) as ModifierEntry[];
   const sidesAnd: ModifierEntry[] = (parent.sides_and ?? []) as ModifierEntry[];
@@ -520,6 +524,7 @@ export default function MobileItemModifierPicker({
       )}
 
       {/* ── Recommendations section ── */}
+      {showRecommendations && (
       <div className="modifier-section">
         <div className="modifier-section-header modifier-section-header--recommendations">
           <span className="modifier-section-title">Recommendations</span>
@@ -591,6 +596,7 @@ export default function MobileItemModifierPicker({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

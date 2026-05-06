@@ -60,6 +60,12 @@ interface ItemPoolProps {
    * Default: true (Menu page behavior).
    */
   showBulkActions?: boolean;
+  /**
+   * When false, hides the Visible / Hidden toggle in the filter row. The
+   * filter state still exists in the parent — it just stays at 'All'.
+   * Default: true.
+   */
+  showVisibilityFilter?: boolean;
 }
 
 // ── ItemPoolCard ─────────────────────────────────────────────────────────────
@@ -481,6 +487,7 @@ export default function ItemPool({
   colorMap,
   activateOnRowClick = false,
   showBulkActions = true,
+  showVisibilityFilter = true,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
 
@@ -715,39 +722,41 @@ export default function ItemPool({
             ))}
           </div>
           {/* Visible / Hidden toggle */}
-          <div
-            style={{
-              display: 'inline-flex',
-              borderRadius: 20,
-              border: '1px solid var(--border)',
-              overflow: 'hidden',
-              flexShrink: 0,
-            }}
-          >
-            {(['Visible', 'Hidden'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                data-testid={`visibility-filter-${tab.toLowerCase()}`}
-                aria-pressed={visibilityFilter === tab}
-                aria-label={`Show only ${tab.toLowerCase()} items (click to show all)`}
-                onClick={() => onVisibilityFilterChange(visibilityFilter === tab ? 'All' : tab)}
-                style={{
-                  padding: '4px 14px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  borderRight: tab === 'Visible' ? '1px solid var(--border)' : 'none',
-                  background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
-                  color: visibilityFilter === tab ? 'white' : 'var(--text2)',
-                  transition: 'background 0.12s, color 0.12s',
-                }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          {showVisibilityFilter && (
+            <div
+              style={{
+                display: 'inline-flex',
+                borderRadius: 20,
+                border: '1px solid var(--border)',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              {(['Visible', 'Hidden'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  data-testid={`visibility-filter-${tab.toLowerCase()}`}
+                  aria-pressed={visibilityFilter === tab}
+                  aria-label={`Show only ${tab.toLowerCase()} items (click to show all)`}
+                  onClick={() => onVisibilityFilterChange(visibilityFilter === tab ? 'All' : tab)}
+                  style={{
+                    padding: '4px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderRight: tab === 'Visible' ? '1px solid var(--border)' : 'none',
+                    background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
+                    color: visibilityFilter === tab ? 'white' : 'var(--text2)',
+                    transition: 'background 0.12s, color 0.12s',
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

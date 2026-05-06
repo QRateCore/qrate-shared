@@ -80,6 +80,12 @@ interface MenuBuilderProps {
    * menu, rule pill, and inline rename affordances render.
    */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
+  /** When false, the Add-ons drop zone is omitted from the per-item editor. Default true. */
+  showAddons?: boolean;
+  /** When false, the Recommendations drop zone is omitted from the per-item editor. Default true. */
+  showRecommendations?: boolean;
+  /** When false, the [+ Add grouping] button is omitted from the per-item editor. Default true. */
+  showAddGrouping?: boolean;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -139,6 +145,9 @@ function MenuItemRow({
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
   byoHandlers,
+  showAddons = true,
+  showRecommendations = true,
+  showAddGrouping = true,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -158,6 +167,11 @@ function MenuItemRow({
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
+  /** Forwarded to ItemModifierZones / MobileItemModifierPicker. Default true. */
+  showAddons?: boolean;
+  showRecommendations?: boolean;
+  /** Forwarded to ItemModifierZones — gates the [+ Add grouping] button. Default true. */
+  showAddGrouping?: boolean;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -757,6 +771,7 @@ function MenuItemRow({
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 enableAndOrSplit={enableAndOrSplit}
+                showRecommendations={showRecommendations}
               />
             ) : (
               <ItemModifierZones
@@ -768,6 +783,9 @@ function MenuItemRow({
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
+                showAddons={showAddons}
+                showRecommendations={showRecommendations}
+                showAddGrouping={showAddGrouping}
               />
             )}
           </div>
@@ -794,6 +812,9 @@ function CategoryBucket({
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
   byoHandlers,
+  showAddons = true,
+  showRecommendations = true,
+  showAddGrouping = true,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -820,6 +841,11 @@ function CategoryBucket({
   onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones via MenuItemRow. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
+  /** Forwarded to MenuItemRow → ItemModifierZones / MobileItemModifierPicker. Default true. */
+  showAddons?: boolean;
+  showRecommendations?: boolean;
+  /** Forwarded to MenuItemRow → ItemModifierZones — gates the [+ Add grouping] button. Default true. */
+  showAddGrouping?: boolean;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -925,6 +951,9 @@ function CategoryBucket({
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
+                showAddons={showAddons}
+                showRecommendations={showRecommendations}
+                showAddGrouping={showAddGrouping}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => {
@@ -981,6 +1010,9 @@ export default function MenuBuilder({
   enableAndOrSplit = false,
   onCrossGroupDuplicate,
   byoHandlers,
+  showAddons = true,
+  showRecommendations = true,
+  showAddGrouping = true,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -1224,6 +1256,9 @@ export default function MenuBuilder({
                 enableAndOrSplit={enableAndOrSplit}
                 onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
+                showAddons={showAddons}
+                showRecommendations={showRecommendations}
+                showAddGrouping={showAddGrouping}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}
