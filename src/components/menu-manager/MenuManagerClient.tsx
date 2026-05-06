@@ -47,6 +47,10 @@ interface Props {
   refreshing?: boolean;
   /** Optional: auto-open this item's edit modal on mount (e.g. navigated from another page). */
   openItemId?: string | null;
+  /** Optional: pre-select this menu tab on mount (e.g. navigated from a menu chip on the food-item profile). */
+  initialMenuId?: string | null;
+  /** Optional: scroll to + expand this item on mount without opening the modal. Useful for "where is this item?" navigation from the food-item profile. */
+  initialScrollToItemId?: string | null;
   /**
    * Optional gate called before a dropped item is added as a recommendation.
    * Consumer apps (e.g., owner dashboard) use this to prompt for canonical
@@ -132,7 +136,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -197,9 +201,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
 
   // UI state
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(
-    initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null,
-  );
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(() => {
+    // Pre-selected menu tab from URL beats the default-active fallback. Only
+    // honoured when the supplied id matches one of this restaurant's menus —
+    // a stale id from another restaurant would otherwise leave the page tab-
+    // less.
+    if (initialMenuId && initialMenus.some((m) => m.id === initialMenuId)) {
+      return initialMenuId;
+    }
+    return initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null;
+  });
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
@@ -216,7 +227,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [dragOver, setDragOver] = useState<{ menuId: string; cat: string } | 'pool' | null>(null);
-  const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
+  const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingMenu, setAddingMenu] = useState(false);
   const [newMenuName, setNewMenuName] = useState('');
@@ -348,6 +359,32 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     if (!openItemId || items.length === 0) return;
     setEditItemId(openItemId);
   }, [openItemId, items]);
+
+  // Scroll-to-item navigation — used by the "Appears in" menu chips on the
+  // food-item profile drawer. The MenuBuilder scroll effect queries the DOM
+  // for [data-item-row-id]; that element only renders when the item's
+  // canonical category bucket is expanded. Uncollapse every bucket the item
+  // belongs to within the active menu so the row is in the DOM before the
+  // 150ms scroll timer fires. Runs once when items hydrate so a deep-link
+  // landing on a still-loading page doesn't miss the item.
+  useEffect(() => {
+    if (!initialScrollToItemId || items.length === 0 || !activeMenuId) return;
+    const item = items.find((i) => i.id === initialScrollToItemId);
+    if (!item) return;
+    const assoc = item.menu_associations?.find((a) => a.menu_id === activeMenuId);
+    const cats = assoc?.canonical_categories ?? [];
+    if (cats.length === 0) return;
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      for (const cat of cats) {
+        next[`${activeMenuId}:${cat}`] = false;
+      }
+      return next;
+    });
+    // Re-arm the scroll trigger after the buckets uncollapse so the
+    // MenuBuilder effect runs against rendered rows.
+    setScrollToItemId(initialScrollToItemId);
+  }, [initialScrollToItemId, items, activeMenuId]);
 
   // ── Filtered item list for ItemPool ──────────────────────────────────────
 
