@@ -263,18 +263,17 @@ describe('EditModal — tab defaults', () => {
     expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
   });
 
-  it('hides the recommendations tab for new dish items (draft has no DB id)', () => {
-    // Recommendations call GET /owner/menu-items/{id}/modifiers — for a draft,
-    // {id} is the synthetic '__draft__' sentinel which Postgres rejects as a
-    // non-UUID, returning 500. The tab must not be reachable until the item
-    // has been saved and has a real id.
+  it('shows the recommendations tab for new dish items as a seed picker', () => {
+    // Replaces the legacy "hide tab" guard. The tab is now safe on drafts
+    // because the picker reads from local allItems and defers backend
+    // writes — the GET /owner/menu-items/__draft__/modifiers 500 is avoided
+    // by skipping the fetch entirely when isNewItem is true.
     renderModal({
       item: makeDishItem({ id: '__draft__', name: '' }),
       isNewItem: true,
       onSaveNewItem: vi.fn(),
     });
-    expect(screen.queryByTestId('tab-recommendations')).not.toBeInTheDocument();
-    // food_tags + addons remain available
+    expect(screen.getByTestId('tab-recommendations')).toBeInTheDocument();
     expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
     expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
   });
@@ -1269,5 +1268,116 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
     expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'peanuts', 'allergen', 'real-dish-42');
     expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'vegan', 'dietary', 'real-dish-42');
     expect(dietary.addTag).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('EditModal — recommendations seed picker for new dish items', () => {
+  const draftDish = (): MenuItemDisplay =>
+    makeDishItem({ id: '__draft__', name: '', description: '', category: 'Uncategorized' });
+
+  const dishA = makeDishItem({ id: 'dish-a', name: 'Truffle Pasta', price: 22 });
+  const dishB = makeDishItem({ id: 'dish-b', name: 'Wagyu Burger', price: 28 });
+  const addonA = makeAddonItem({ id: 'addon-a', name: 'Extra Cheese' });
+
+  function makeSaveNewItem(realId = 'real-dish-99') {
+    return vi.fn(async (data: { name: string; description: string; category: string; food_tags: Record<string, unknown>; item_type: 'dish' | 'addon'; price?: number | null }) => {
+      const created: MenuItemDisplay = {
+        ...makeDishItem(),
+        id: realId,
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        food_tags: data.food_tags,
+      };
+      return created;
+    });
+  }
+
+  it('renders the seed picker UI with available dishes (excluding self + addons)', () => {
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem: makeSaveNewItem(),
+      allItems: [dishA, dishB, addonA],
+    });
+    fireEvent.click(screen.getByTestId('tab-recommendations'));
+    expect(screen.getByTestId('recommendations-seed-picker')).toBeInTheDocument();
+    // Dishes available
+    expect(screen.getByTestId('recs-seed-add-dish-a')).toBeInTheDocument();
+    expect(screen.getByTestId('recs-seed-add-dish-b')).toBeInTheDocument();
+    // Add-ons excluded
+    expect(screen.queryByTestId('recs-seed-add-addon-a')).not.toBeInTheDocument();
+  });
+
+  it('does NOT call getItemModifiers/getMenuIntelligence on draft mount', () => {
+    const service = makeService({
+      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
+      getMenuIntelligence: vi.fn().mockResolvedValue({ menu_intelligence: { pairing_graph: [] } }),
+    });
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem: makeSaveNewItem(),
+      service,
+      allItems: [dishA, dishB],
+    });
+    fireEvent.click(screen.getByTestId('tab-recommendations'));
+    expect(service.getItemModifiers).not.toHaveBeenCalled();
+    expect(service.getMenuIntelligence).not.toHaveBeenCalled();
+  });
+
+  it('adds + removes seed pairings without hitting updateItemModifiers on a draft', async () => {
+    const service = makeService();
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem: makeSaveNewItem(),
+      service,
+      allItems: [dishA, dishB],
+    });
+    fireEvent.click(screen.getByTestId('tab-recommendations'));
+    fireEvent.click(screen.getByTestId('recs-seed-add-dish-a'));
+    fireEvent.click(screen.getByTestId('recs-seed-add-dish-b'));
+    // No backend writes during pick
+    expect(service.updateItemModifiers).not.toHaveBeenCalled();
+    // The picker collapses items it has already accepted, so dish-a is gone
+    expect(screen.queryByTestId('recs-seed-add-dish-a')).not.toBeInTheDocument();
+  });
+
+  it('flushes seed pairings via updateItemModifiers with the real id on save', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+    const onSaveNewItem = makeSaveNewItem('real-dish-77');
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem,
+      service,
+      allItems: [dishA, dishB],
+    });
+    fireEvent.click(screen.getByTestId('tab-recommendations'));
+    fireEvent.click(screen.getByTestId('recs-seed-add-dish-a'));
+    fireEvent.click(screen.getByTestId('recs-seed-add-dish-b'));
+
+    // Fill required dish fields, then save
+    fireEvent.click(screen.getByTestId('tab-food_tags'));
+    await user.type(screen.getByTestId('edit-name-input'), 'Pad Thai');
+    await user.type(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    // Flush against the real id, not '__draft__'
+    expect(service.updateItemModifiers).toHaveBeenCalledWith(
+      'real-dish-77',
+      expect.objectContaining({
+        recommendations: [
+          expect.objectContaining({ menu_item_id: 'dish-a', name: 'Truffle Pasta' }),
+          expect.objectContaining({ menu_item_id: 'dish-b', name: 'Wagyu Burger' }),
+        ],
+      }),
+    );
   });
 });

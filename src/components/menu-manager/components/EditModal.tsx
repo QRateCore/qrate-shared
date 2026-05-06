@@ -722,6 +722,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [aiSugs, setAiSugs] = useState<RecommendationEntry[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState<string | null>(null);
+  // Search input state for the new-item Recommendations seed picker.
+  const [recsPickerSearch, setRecsPickerSearch] = useState('');
 
   // Dishes tab state (used when editing an addon item) — tracks which dishes have this addon
   const [associatedDishIds, setAssociatedDishIds] = useState<Set<string>>(() => {
@@ -818,7 +820,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // broadcast, and tab-visibility restore.
   const fetchRecs = useRef<() => void>(() => {});
   fetchRecs.current = () => {
-    if (!restaurantId) return;
+    // Drafts have no DB id and don't exist in the pairing graph yet — skip
+    // both backend calls. Owner picks seed pairings via the inline picker
+    // and they're flushed via updateItemModifiers after onSaveNewItem.
+    if (!restaurantId || isNewItem) return;
     setRecsLoading(true);
     setRecsError(null);
     Promise.all([
@@ -1071,6 +1076,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   async function handleRemoveRec(menuItemId: string) {
     const next = itemRecs.filter((r) => r.menu_item_id !== menuItemId);
     setItemRecs(next);
+    // Drafts: state-only mutation, flushed via updateItemModifiers after
+    // onSaveNewItem returns the real id.
+    if (isNewItem) return;
     try {
       await service.updateItemModifiers(item.id, {
         recommendations: next.map((r) => ({
@@ -1084,6 +1092,24 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     } catch {
       setItemRecs(itemRecs);
     }
+  }
+
+  // Add a seed pairing on a new (draft) dish from the inline picker.
+  // State-only — flushed via updateItemModifiers after onSaveNewItem.
+  function handleAddSeedRec(picked: MenuItemDisplay) {
+    setItemRecs((prev) => {
+      if (prev.some((r) => r.menu_item_id === picked.id)) return prev;
+      return [
+        ...prev,
+        {
+          menu_item_id: picked.id,
+          name: picked.name,
+          price_override: null,
+          thumbnail_url: picked.thumbnail_url ?? null,
+          recommendation_type: 'manual',
+        },
+      ];
+    });
   }
 
   // ── Dishes tab handlers (used when editing an addon item) ───────────────
@@ -1270,6 +1296,24 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           if (tagWrites.length > 0) {
             try { await Promise.all(tagWrites); }
             catch (err) { console.error('Failed to flush draft dietary tags', err); }
+          }
+        }
+
+        // Flush deferred seed recommendations the owner picked in the
+        // Recommendations tab. Same fail-soft policy as dietary.
+        if (!isAddon && created.id && itemRecs.length > 0) {
+          try {
+            await service.updateItemModifiers(created.id, {
+              recommendations: itemRecs.map((r) => ({
+                menu_item_id: r.menu_item_id,
+                name: r.name,
+                price_override: null,
+                thumbnail_url: r.thumbnail_url ?? null,
+              })),
+            });
+            if (restaurantId) broadcastRecommendationChange(created.id, restaurantId);
+          } catch (err) {
+            console.error('Failed to flush draft recommendations', err);
           }
         }
 
@@ -2261,7 +2305,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {(isAddon
               ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
               : (isNewItem
-                ? (['food_tags', 'addons'] as const)
+                ? (['food_tags', 'addons', 'recommendations'] as const)
                 : (groupingsSlot
                   ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
                   : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
@@ -2615,7 +2659,120 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           )}
 
           {/* ── Recommendations tab (shown when editing a dish item) ──── */}
-          {activeTab === 'recommendations' && (
+          {activeTab === 'recommendations' && isNewItem && (
+            <section style={{ marginBottom: 4 }} data-testid="recommendations-seed-picker">
+              <div className="text-caption" style={{ marginBottom: 12, color: 'var(--text2)' }}>
+                Seed cross-sell pairings — items the patron will be encouraged to add when they order this dish.
+                AI will refine these once your menu has run through Menu Intelligence.
+              </div>
+
+              {/* Selected seeds */}
+              <div style={{ marginBottom: 16 }}>
+                <div className="section-header" style={{ marginBottom: 8 }}>
+                  Seeded Pairings ({itemRecs.length})
+                </div>
+                {itemRecs.length === 0 ? (
+                  <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
+                    None yet — pick from the list below.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {itemRecs.map((rec) => (
+                      <RecommendationCard
+                        key={rec.menu_item_id}
+                        rec={rec}
+                        onRemove={() => void handleRemoveRec(rec.menu_item_id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Picker — search across allItems, exclude self/addons/already-seeded */}
+              <div>
+                <div className="section-header" style={{ marginBottom: 8 }}>
+                  Add a Pairing
+                </div>
+                {(() => {
+                  const seededIds = new Set(itemRecs.map((r) => r.menu_item_id));
+                  const available = (allItems ?? []).filter((d) =>
+                    d.id !== item.id &&
+                    (d.item_type ?? 'dish') !== 'addon' &&
+                    !seededIds.has(d.id),
+                  );
+                  if (available.length === 0) {
+                    return (
+                      <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
+                        No more dishes available to seed.
+                      </div>
+                    );
+                  }
+                  const filtered = available.filter(
+                    (d) => !recsPickerSearch.trim() || d.name.toLowerCase().includes(recsPickerSearch.toLowerCase()),
+                  );
+                  return (
+                    <>
+                      <div style={{ position: 'relative', marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={recsPickerSearch}
+                          onChange={(e) => setRecsPickerSearch(e.target.value)}
+                          placeholder="Search dishes..."
+                          data-testid="recs-seed-picker-search"
+                          style={{ ...inputStyle, fontSize: 12, padding: '6px 10px', paddingRight: 28, width: '100%', boxSizing: 'border-box' }}
+                        />
+                        {recsPickerSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setRecsPickerSearch('')}
+                            aria-label="Clear search"
+                            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', padding: 2 }}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      {filtered.length === 0 ? (
+                        <div className="text-caption" style={{ fontStyle: 'italic', padding: '8px 0' }}>
+                          No matches.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+                          {filtered.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => handleAddSeedRec(d)}
+                              data-testid={`recs-seed-add-${d.id}`}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: '#fafafa', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+                            >
+                              <div style={{ width: 32, height: 32, borderRadius: 4, background: '#f0f0f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                                {d.thumbnail_url ? (
+                                  <img src={d.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : '🍽'}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div title={d.name} style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {d.name}
+                                </div>
+                                {d.price != null && (
+                                  <div className="text-caption">${Number(d.price).toFixed(2)}</div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-s)' }}>+ Add</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </section>
+          )}
+
+          {/* ── Recommendations tab — saved-item path (AI suggestions + accepted) */}
+          {activeTab === 'recommendations' && !isNewItem && (
             <section style={{ marginBottom: 4 }}>
               {recsLoading && (
                 <div className="text-caption" style={{ padding: '8px 0' }}>Loading…</div>
