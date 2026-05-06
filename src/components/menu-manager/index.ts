@@ -2,6 +2,8 @@ export { default as MenuManagerClient } from './MenuManagerClient';
 export type { BulkMode, DragState } from './MenuManagerClient';
 export { default as EditModal } from './components/EditModal';
 export type { DietaryTagService, DietaryTagRecord } from './components/EditModal';
+export { default as BulkActionsPanel } from './components/BulkActionsPanel';
+export { default as BulkModifierPanel } from './components/BulkModifierPanel';
 export { MenuManagerServiceProvider } from './context';
 export {
   TrackActionProvider,
@@ -20,5 +22,5 @@ export type { RulePresetKind } from './components/SelectionRuleEditor';
 // the Menu page's left column. `activateOnRowClick` + `showBulkActions=false`
 // adapt it to the Food Items "click row → open editor" interaction.
 export { default as ItemPool } from './components/ItemPool';
-export { getMenuColor } from './lib/menuUtils';
-export type { MenuColor, MenuColorName } from './lib/menuUtils';
+export { getMenuColor, CANONICAL_CATEGORIES, toCanonical } from './lib/menuUtils';
+export type { MenuColor, MenuColorName, CanonicalCategory } from './lib/menuUtils';

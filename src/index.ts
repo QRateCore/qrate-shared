@@ -36,14 +36,14 @@ export { MenuItemsManagement } from './components/menu-items';
 // Components — Menu Manager (full two-pane menu management UI)
 export { MenuManagerClient } from './components/menu-manager';
 export type { BulkMode, DragState } from './components/menu-manager';
-export { EditModal, MenuManagerServiceProvider } from './components/menu-manager';
+export { EditModal, MenuManagerServiceProvider, BulkActionsPanel, BulkModifierPanel } from './components/menu-manager';
 export type { DietaryTagService, DietaryTagRecord } from './components/menu-manager';
 export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
 export { SelectionRuleEditor } from './components/menu-manager';
 export type { RulePresetKind } from './components/menu-manager';
-export { ItemPool, getMenuColor } from './components/menu-manager';
-export type { MenuColor, MenuColorName } from './components/menu-manager';
+export { ItemPool, getMenuColor, CANONICAL_CATEGORIES, toCanonical } from './components/menu-manager';
+export type { MenuColor, MenuColorName, CanonicalCategory } from './components/menu-manager';
 
 // Components — Common
 export { QRateLogo, Button, Card, Select } from './components/common';
