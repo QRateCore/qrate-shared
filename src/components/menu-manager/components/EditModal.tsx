@@ -390,8 +390,12 @@ function DietaryMultiSelect({
               </button>
             );
           })}
-          {/* N/A chip — explicit "none apply" affordance. Clicking
-              flips the review state without touching tag rows. */}
+          {/* N/A chip — explicit "none apply" affordance. One-way:
+              clicking deselects every tag in this section AND flips the
+              review state to manually_accepted. There's no path back to
+              ai_suggested via this chip; owners re-add tag pills directly
+              if they change their mind. Idempotent when already active so
+              the click acts as a self-heal in case server state drifted. */}
           <button
             type="button"
             data-testid={`dietary-pill-${type}-na`}
@@ -550,42 +554,74 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     await refreshDietaryTags();
   }, [dietaryTagService, restaurantId, item.id, item.food_tags, onItemUpdate, refreshDietaryTags]);
 
-  // Toggle the review state for one tag category between 'ai_suggested'
-  // and 'manually_accepted'. Wired to the trailing N/A chip in
-  // DietaryMultiSelect — clicking flips the section's yellow
-  // "AI suggested" tint on or off and persists via markReviewed.
-  const handleToggleReviewed = useCallback(async (type: 'allergens' | 'dietary') => {
-    if (!item.id || isNewItem) return;
-    const wasReviewed = type === 'allergens' ? allergensReviewed : dietaryReviewed;
-    const nextState: 'ai_suggested' | 'manually_accepted' =
-      wasReviewed ? 'ai_suggested' : 'manually_accepted';
-    // Optimistic local + parent update so the yellow tint and the Food
-    // Items filter count flip immediately. Roll back on API failure.
-    if (type === 'allergens') setAllergensReviewed(!wasReviewed);
-    else setDietaryReviewed(!wasReviewed);
+  // One-way "none apply" affordance for the N/A chip. Clicking N/A:
+  //   1. Rejects every currently-selected tag in the section (so the row
+  //      drops out of the bulk-panel view and the chip pills go un-filled).
+  //   2. Flips the review state to 'manually_accepted' — never the reverse.
+  //      ai_suggested → manually_accepted is one-way; the only way back to
+  //      ai_suggested is a re-enrichment pipeline run.
+  // Idempotent when already in N/A state (no tags + manually_accepted) — the
+  // markReviewed call is still made so a clobbered backend state self-heals.
+  const handleClickNa = useCallback(async (type: 'allergens' | 'dietary') => {
+    if (!item.id || isNewItem || !restaurantId) return;
+    const tagMap = type === 'allergens' ? allergenTagMap : dietaryTagMap;
+    const tagsToReject: DietaryTagRecord[] = [];
+    for (const t of tagMap.values()) {
+      if (t.status !== 'rejected') tagsToReject.push(t);
+    }
+
+    // Optimistic local + parent update — yellow tint clears, pills go
+    // unfilled, Food Items filter count drops by 1. Roll back on failure.
     const stateKey = type === 'allergens' ? 'allergens_state' : 'dietary_state';
+    const arrKey = type === 'allergens' ? 'allergens' : 'dietary';
+    if (type === 'allergens') setAllergensReviewed(true);
+    else setDietaryReviewed(true);
     onItemUpdate?.({
       id: item.id,
-      food_tags: { ...(item.food_tags ?? {}), [stateKey]: nextState },
+      food_tags: {
+        ...(item.food_tags ?? {}),
+        [stateKey]: 'manually_accepted',
+        [arrKey]: [],
+      },
     });
+
     try {
-      if (dietaryTagService?.markReviewed) {
-        await dietaryTagService.markReviewed(item.id, type, nextState);
+      if (dietaryTagService) {
+        // Reject every selected tag in parallel. Each rejection flips the
+        // backend state to manually_accepted as a side effect, so the
+        // explicit markReviewed is only needed when nothing was selected.
+        if (tagsToReject.length > 0) {
+          await Promise.all(
+            tagsToReject.map((t) => dietaryTagService.rejectTag(restaurantId, t.id)),
+          );
+        } else if (dietaryTagService.markReviewed) {
+          await dietaryTagService.markReviewed(item.id, type, 'manually_accepted');
+        }
+        await refreshDietaryTags();
       }
     } catch (err) {
-      // Roll back on failure.
-      if (type === 'allergens') setAllergensReviewed(wasReviewed);
-      else setDietaryReviewed(wasReviewed);
-      onItemUpdate?.({
-        id: item.id,
-        food_tags: {
-          ...(item.food_tags ?? {}),
-          [stateKey]: wasReviewed ? 'manually_accepted' : 'ai_suggested',
-        },
-      });
-      console.error('markReviewed failed', err);
+      // Roll back on failure — re-fetch authoritative state from the server.
+      console.error('N/A click failed', err);
+      await refreshDietaryTags();
+      // Re-derive reviewed flag from the fresh tagMap + food_tags.
+      const stillReviewed =
+        type === 'allergens'
+          ? item.food_tags?.allergens_state === 'manually_accepted'
+          : item.food_tags?.dietary_state === 'manually_accepted';
+      if (type === 'allergens') setAllergensReviewed(stillReviewed);
+      else setDietaryReviewed(stillReviewed);
     }
-  }, [dietaryTagService, item.id, item.food_tags, isNewItem, allergensReviewed, dietaryReviewed, onItemUpdate]);
+  }, [
+    dietaryTagService,
+    restaurantId,
+    item.id,
+    item.food_tags,
+    isNewItem,
+    allergenTagMap,
+    dietaryTagMap,
+    onItemUpdate,
+    refreshDietaryTags,
+  ]);
 
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
@@ -2295,7 +2331,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     loading={dietaryLoading}
                     onToggle={(name) => void handleDietaryToggle(name, 'allergen', allergenTagMap)}
                     reviewed={allergensReviewed}
-                    onToggleNa={() => void handleToggleReviewed('allergens')}
+                    onToggleNa={() => void handleClickNa('allergens')}
                   />
                 )}
 
@@ -2310,7 +2346,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     loading={dietaryLoading}
                     onToggle={(name) => void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
                     reviewed={dietaryReviewed}
-                    onToggleNa={() => void handleToggleReviewed('dietary')}
+                    onToggleNa={() => void handleClickNa('dietary')}
                   />
                 )}
 
