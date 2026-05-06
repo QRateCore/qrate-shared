@@ -422,6 +422,30 @@ function DietaryMultiSelect({
   );
 }
 
+// ── Draft helpers (deferred-creation dietary state) ───────────────────────────
+
+// Build a synthetic tagMap from a Set of selected names so DietaryMultiSelect
+// renders the right "selected" pills even though no DB record exists yet.
+function draftTagMap(names: Set<string>): Map<string, DietaryTagRecord> {
+  const m = new Map<string, DietaryTagRecord>();
+  for (const name of names) {
+    m.set(name, { id: `__draft-${name}`, tag_name: name, status: 'accepted' });
+  }
+  return m;
+}
+
+function toggleDraftSet(
+  setFn: React.Dispatch<React.SetStateAction<Set<string>>>,
+  name: string,
+): void {
+  setFn((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    return next;
+  });
+}
+
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
 export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, displayMode = 'modal', onItemUpdate }: EditModalProps) {
@@ -494,6 +518,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [allergenTagMap, setAllergenTagMap] = useState<Map<string, DietaryTagRecord>>(new Map());
   const [dietaryTagMap, setDietaryTagMap]   = useState<Map<string, DietaryTagRecord>>(new Map());
   const [dietaryLoading, setDietaryLoading] = useState(false);
+
+  // Draft selections used in deferred-creation mode (isNewItem). The dietary-
+  // tags API is keyed by item id, but new drafts have no DB row yet — so we
+  // collect selections in local state and flush them via dietaryTagService
+  // .addTag(...) after onSaveNewItem returns the real id.
+  const [draftAllergens, setDraftAllergens] = useState<Set<string>>(new Set());
+  const [draftDietary, setDraftDietary]     = useState<Set<string>>(new Set());
 
   // Per-item review state mirror — tracks whether the owner has reviewed
   // the allergen / dietary tag groups. 'manually_accepted' = reviewed
@@ -1225,6 +1256,23 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           }
         }
 
+        // Flush deferred allergen + dietary selections via the dietary-tags
+        // API now that the item has a real DB id. Failures are logged but
+        // don't block the create — the owner can re-tag from the saved item.
+        if (dietaryTagService && restaurantId && created.id) {
+          const tagWrites: Promise<void>[] = [];
+          for (const name of draftAllergens) {
+            tagWrites.push(dietaryTagService.addTag(restaurantId, name, 'allergen', created.id));
+          }
+          for (const name of draftDietary) {
+            tagWrites.push(dietaryTagService.addTag(restaurantId, name, 'dietary', created.id));
+          }
+          if (tagWrites.length > 0) {
+            try { await Promise.all(tagWrites); }
+            catch (err) { console.error('Failed to flush draft dietary tags', err); }
+          }
+        }
+
         trackAction('menu.editModal.save', {
           restaurantId,
           metadata: { itemId: created.id, isAddon, hasImage: false, activeToggled: false, convertedToAddon: false },
@@ -1236,10 +1284,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       }
 
       // ── Existing-item update path ──────────────────────────────────────────
+      // The dropdown edits canonical_category only — the raw scraped `category`
+      // field is preserved untouched so the kitchen's original menu label stays
+      // intact.
       const updates: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim(),
-        category: category.trim() || undefined,
+        canonical_category: category.trim() || undefined,
         food_tags: foodTags,
         item_type: isAddon ? 'addon' : 'dish',
         // STR-303: add-on mode is the sole per-item price surface in this modal.
@@ -1316,7 +1367,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         ...item,
         name: saved.name ?? name.trim(),
         description: (saved.description ?? description.trim()) || null,
-        category: (saved as { category?: string }).category ?? (category.trim() || item.category),
+        category: (saved as { category?: string }).category ?? item.category,
         canonical_category: category.trim() || item.canonical_category,
         food_tags: mergedFoodTags,
         active: isActive,
@@ -2018,10 +2069,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               )}
             </div>
 
-            {/* Category */}
+            {/* Mapped Course — edits canonical_category; raw scraped `category` is preserved. */}
             <div>
               <label style={labelStyle} htmlFor="edit-category">
-                Category <span style={{ color: '#b91c1c' }}>*</span>
+                Mapped Course <span style={{ color: '#b91c1c' }}>*</span>
               </label>
               <Select
                 id="edit-category"
@@ -2029,11 +2080,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
                 data-testid="edit-category-select"
                 options={CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c }))}
-                placeholder="— Select category —"
+                placeholder="— Select course —"
                 error={categoryError}
               />
               {categoryError && (
-                <span style={{ fontSize: 10, color: '#b91c1c' }}>Category is required</span>
+                <span style={{ fontSize: 10, color: '#b91c1c' }}>Mapped course is required</span>
               )}
             </div>
 
@@ -2208,7 +2259,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {(isAddon
               ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
               : (isNewItem
-                ? (['food_tags', 'addons', 'recommendations'] as const)
+                ? (['food_tags', 'addons'] as const)
                 : (groupingsSlot
                   ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
                   : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
@@ -2320,33 +2371,44 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 </div>}
 
-                {/* Allergens — multi-select pills backed by dietary-tags API */}
-                {dietaryTagService && restaurantId && !isNewItem && (
+                {/* Allergens — multi-select pills backed by dietary-tags API.
+                    New items: deferred-creation mode (no DB id yet), so we
+                    drive the section from local draftAllergens state and flush
+                    on save. */}
+                {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Allergens"
                     options={FDA_BIG_9_ALLERGENS}
                     labels={ALLERGEN_LABELS}
                     type="allergen"
-                    tagMap={allergenTagMap}
-                    loading={dietaryLoading}
-                    onToggle={(name) => void handleDietaryToggle(name, 'allergen', allergenTagMap)}
-                    reviewed={allergensReviewed}
-                    onToggleNa={() => void handleClickNa('allergens')}
+                    tagMap={isNewItem ? draftTagMap(draftAllergens) : allergenTagMap}
+                    loading={isNewItem ? false : dietaryLoading}
+                    onToggle={(name) => isNewItem
+                      ? toggleDraftSet(setDraftAllergens, name)
+                      : void handleDietaryToggle(name, 'allergen', allergenTagMap)}
+                    reviewed={isNewItem ? true : allergensReviewed}
+                    onToggleNa={() => isNewItem
+                      ? setDraftAllergens(new Set())
+                      : void handleClickNa('allergens')}
                   />
                 )}
 
                 {/* Dietary restrictions — multi-select pills backed by dietary-tags API */}
-                {dietaryTagService && restaurantId && !isNewItem && (
+                {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
                     options={DIETARY_RESTRICTIONS_LIST}
                     labels={DIETARY_LABELS}
                     type="dietary"
-                    tagMap={dietaryTagMap}
-                    loading={dietaryLoading}
-                    onToggle={(name) => void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
-                    reviewed={dietaryReviewed}
-                    onToggleNa={() => void handleClickNa('dietary')}
+                    tagMap={isNewItem ? draftTagMap(draftDietary) : dietaryTagMap}
+                    loading={isNewItem ? false : dietaryLoading}
+                    onToggle={(name) => isNewItem
+                      ? toggleDraftSet(setDraftDietary, name)
+                      : void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
+                    reviewed={isNewItem ? true : dietaryReviewed}
+                    onToggleNa={() => isNewItem
+                      ? setDraftDietary(new Set())
+                      : void handleClickNa('dietary')}
                   />
                 )}
 

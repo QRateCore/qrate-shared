@@ -31,6 +31,7 @@ import type {
   MenuSummary,
   MenuManagerService,
 } from '../../../../types/restaurant';
+import type { DietaryTagService } from '../EditModal';
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -143,6 +144,7 @@ interface RenderConfig {
   onSaveNewItem?: (data: { name: string; description: string; category: string; food_tags: Record<string, unknown>; item_type: 'dish' | 'addon'; price?: number | null }) => Promise<MenuItemDisplay>;
   onDishAddonsChange?: (dishId: string, nextAddons: unknown[]) => void;
   service?: MenuManagerService;
+  dietaryTagService?: DietaryTagService;
   onClose?: () => void;
   onComplete?: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
 }
@@ -158,6 +160,7 @@ function renderModal(config: RenderConfig = {}) {
     onSaveNewItem,
     onDishAddonsChange,
     service = makeService(),
+    dietaryTagService,
     onClose = vi.fn(),
     onComplete = vi.fn(),
   } = config;
@@ -174,13 +177,24 @@ function renderModal(config: RenderConfig = {}) {
         preselectedDishIds={preselectedDishIds}
         onSaveNewItem={onSaveNewItem}
         onDishAddonsChange={onDishAddonsChange}
+        dietaryTagService={dietaryTagService}
         onClose={onClose}
         onComplete={onComplete}
       />
     </MenuManagerServiceProvider>,
   );
 
-  return { service, onClose, onComplete };
+  return { service, dietaryTagService, onClose, onComplete };
+}
+
+function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): DietaryTagService {
+  return {
+    getTagsForItem: vi.fn().mockResolvedValue({ allergenTags: [], dietaryTags: [] }),
+    addTag: vi.fn().mockResolvedValue(undefined),
+    rejectTag: vi.fn().mockResolvedValue(undefined),
+    markReviewed: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -247,6 +261,22 @@ describe('EditModal — tab defaults', () => {
     renderModal({ item: makeAddonItem() });
     // Performance tab should be the default active tab for addons
     expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
+  });
+
+  it('hides the recommendations tab for new dish items (draft has no DB id)', () => {
+    // Recommendations call GET /owner/menu-items/{id}/modifiers — for a draft,
+    // {id} is the synthetic '__draft__' sentinel which Postgres rejects as a
+    // non-UUID, returning 500. The tab must not be reachable until the item
+    // has been saved and has a real id.
+    renderModal({
+      item: makeDishItem({ id: '__draft__', name: '' }),
+      isNewItem: true,
+      onSaveNewItem: vi.fn(),
+    });
+    expect(screen.queryByTestId('tab-recommendations')).not.toBeInTheDocument();
+    // food_tags + addons remain available
+    expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
   });
 });
 
@@ -1163,5 +1193,81 @@ describe('EditModal — deferred dish association for new addons', () => {
 
     // No dish association calls for a dish item
     expect(service.updateItemModifiers).not.toHaveBeenCalled();
+  });
+});
+
+describe('EditModal — deferred dietary/allergen tags for new dish items', () => {
+  const draftDish = (): MenuItemDisplay =>
+    makeDishItem({ id: '__draft__', name: '', description: '', category: 'Uncategorized' });
+
+  function makeSaveNewItem(realId = 'real-dish-1') {
+    return vi.fn(async (data: { name: string; description: string; category: string; food_tags: Record<string, unknown>; item_type: 'dish' | 'addon'; price?: number | null }) => {
+      const created: MenuItemDisplay = {
+        ...makeDishItem(),
+        id: realId,
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        food_tags: data.food_tags,
+      };
+      return created;
+    });
+  }
+
+  it('renders Allergens + Dietary Restrictions sections for new dish items', () => {
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem: makeSaveNewItem(),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    expect(screen.getByTestId('dietary-section-allergen')).toBeInTheDocument();
+    expect(screen.getByTestId('dietary-section-dietary')).toBeInTheDocument();
+  });
+
+  it('does NOT call dietaryTagService.addTag while toggling pills on a draft', async () => {
+    const dietary = makeDietaryTagService();
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem: makeSaveNewItem(),
+      dietaryTagService: dietary,
+    });
+    fireEvent.click(screen.getByTestId('dietary-pill-allergen-peanuts'));
+    fireEvent.click(screen.getByTestId('dietary-pill-dietary-vegan'));
+    // No backend writes — drafts hold selections in local state until save
+    expect(dietary.addTag).not.toHaveBeenCalled();
+    expect(dietary.getTagsForItem).not.toHaveBeenCalled();
+  });
+
+  it('flushes draft allergen + dietary selections via addTag with the real id on save', async () => {
+    const user = userEvent.setup();
+    const dietary = makeDietaryTagService();
+    const onSaveNewItem = makeSaveNewItem('real-dish-42');
+
+    renderModal({
+      item: draftDish(),
+      isNewItem: true,
+      onSaveNewItem,
+      dietaryTagService: dietary,
+    });
+
+    // Pick one allergen + one dietary
+    fireEvent.click(screen.getByTestId('dietary-pill-allergen-peanuts'));
+    fireEvent.click(screen.getByTestId('dietary-pill-dietary-vegan'));
+
+    // Fill the required dish fields, then save
+    await user.type(screen.getByTestId('edit-name-input'), 'Pad Thai');
+    await user.type(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
+    });
+
+    // Both draft selections flushed against the real DB id, not '__draft__'
+    expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'peanuts', 'allergen', 'real-dish-42');
+    expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'vegan', 'dietary', 'real-dish-42');
+    expect(dietary.addTag).toHaveBeenCalledTimes(2);
   });
 });
