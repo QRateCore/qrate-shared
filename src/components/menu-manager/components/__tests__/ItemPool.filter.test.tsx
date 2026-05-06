@@ -58,7 +58,6 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof ItemPool>> 
     onSelectAll: vi.fn(),
     onClearSelect: vi.fn(),
     onEditItem: vi.fn(),
-    onAddItem: vi.fn(),
     visibilityFilter: 'All' as const,
     onVisibilityFilterChange: vi.fn(),
     itemTypeFilter: 'dishes' as const,

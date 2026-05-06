@@ -395,6 +395,24 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     setScrollToItemId(initialScrollToItemId);
   }, [initialScrollToItemId, items, activeMenuId]);
 
+  // Auto-expand every category bucket in the active menu while the
+  // missing-price filter is on. The filter is the owner's "show me what
+  // needs a price" affordance — leaving any bucket collapsed would hide
+  // matching rows behind a chevron and defeat the point. Re-runs on tab
+  // switch so flipping menus while the filter is on keeps every bucket
+  // open. Turning the filter off does NOT auto-collapse — the owner can
+  // tidy up manually.
+  useEffect(() => {
+    if (!missingPriceFilter || !activeMenuId) return;
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      for (const cat of CANONICAL_CATEGORIES) {
+        next[`${activeMenuId}:${cat}`] = false;
+      }
+      return next;
+    });
+  }, [missingPriceFilter, activeMenuId]);
+
   // ── Filtered item list for ItemPool ──────────────────────────────────────
 
   const handleCollapseAll = (collapse: boolean) => {
@@ -1288,31 +1306,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [junctionSettings, showToast],
   );
 
-  // ── Add item ──────────────────────────────────────────────────────────────
-
-  // Deferred-creation: open the modal with a local-only draft item. The DB row is
-  // only written when the user clicks Save (via handleSaveNewItem → onSaveNewItem).
-  // This eliminates orphaned "New item" rows that previously appeared when the modal
-  // was dismissed or the fire-and-forget delete failed.
-  const handleAddItem = useCallback(() => {
-    const tempId = `__draft__${Date.now()}`;
-    const draft: MenuItemDisplay = {
-      id: tempId,
-      name: 'New item',
-      description: null,
-      price: null,
-      category: '',
-      food_tags: {},
-      thumbnail_url: null,
-      gallery_urls: [],
-      active: true,
-      menu_associations: [],
-    };
-    setItems((prev) => [draft, ...prev]);
-    newlyCreatedItemIdRef.current = tempId;
-    setEditItemId(tempId);
-    trackAction('menu.manager.addNewItem', { restaurantId });
-  }, [restaurantId, trackAction]);
+  // Add-item from the menu page is gone — new dishes are authored solely
+  // on /owner/food-items. The handleSaveNewItem path below remains because
+  // the EditModal can still surface a Save flow for items that were drafted
+  // elsewhere and routed into the menu page via openItemId.
 
   // Called from EditModal (via onSaveNewItem) when the user saves a new item.
   // Creates the DB row with the completed form data.
@@ -1686,7 +1683,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onClearSelect: handleClearSelect,
             onSelectCategoryItems: handleSelectCategoryItems,
             onEditItem: setEditItemId,
-            onAddItem: handleAddItem,
             onOpenBulk: (mode) => setBulkMode(mode),
             onOpenBulkModifiers: () => setBulkModifiersOpen(true),
             onDragStart: handleDragStart,
@@ -1758,7 +1754,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onClearSelect={handleClearSelect}
             onSelectCategoryItems={handleSelectCategoryItems}
             onEditItem={setEditItemId}
-            onAddItem={handleAddItem}
             onOpenBulk={(mode) => setBulkMode(mode)}
             onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
             onDragStart={handleDragStart}

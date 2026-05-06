@@ -5,7 +5,6 @@ import { Pencil, Plus, Search, Check, X, ChevronDown, ChevronRight } from 'lucid
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
-import Button from '../../common/Button';
 import { useTrackAction } from '../track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -30,7 +29,6 @@ interface ItemPoolProps {
   onClearSelect: () => void;
   onSelectCategoryItems: (ids: string[], selectAll: boolean) => void;
   onEditItem: (id: string) => void;
-  onAddItem: () => void;
   visibilityFilter: 'All' | 'Visible' | 'Hidden';
   onVisibilityFilterChange: (v: 'All' | 'Visible' | 'Hidden') => void;
   itemTypeFilter: 'dishes' | 'addons' | 'included';
@@ -472,7 +470,6 @@ export default function ItemPool({
   onClearSelect,
   onSelectCategoryItems,
   onEditItem,
-  onAddItem,
   visibilityFilter,
   onVisibilityFilterChange,
   itemTypeFilter,
@@ -502,11 +499,6 @@ export default function ItemPool({
       if (next.has(cat)) next.delete(cat); else next.add(cat);
       return next;
     });
-  };
-
-  const handleAddItemTracked = () => {
-    trackAction('menu.itemPool.addNewItem');
-    onAddItem();
   };
 
   const handleOpenBulkTracked = (mode: BulkMode) => {
@@ -608,30 +600,21 @@ export default function ItemPool({
         overflow: 'hidden',
       }}
     >
-      {/* Header */}
+      {/* Header — count only. New items are created exclusively from the
+          /owner/food-items library; the menu page is for arranging the
+          existing pool into menus, not authoring new dishes. */}
       <div
         style={{
           padding: '14px 14px 10px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           gap: 8,
         }}
       >
         <span data-testid="item-pool-count" style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
           Food Items ({items.length})
         </span>
-        <Button
-          variant="primary"
-          size="sm"
-          icon={<Plus size={13} />}
-          onClick={handleAddItemTracked}
-          data-testid="add-item-btn"
-          aria-label="Add menu item"
-        >
-          New Food Item
-        </Button>
       </div>
 
       {/* Search + filter */}
