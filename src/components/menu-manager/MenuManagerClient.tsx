@@ -15,7 +15,7 @@ import {
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
-import MenuBuilder, { type ModifierUpdatePayload } from './components/MenuBuilder';
+import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkModifierPanel from './components/BulkModifierPanel';
@@ -51,6 +51,11 @@ interface Props {
   initialMenuId?: string | null;
   /** Optional: scroll to + expand this item on mount without opening the modal. Useful for "where is this item?" navigation from the food-item profile. */
   initialScrollToItemId?: string | null;
+  /** When true, render the menu-stats banner above the page. Shows the
+   *  count of crawler-discovered menus and a per-active-menu "items missing
+   *  price" filter pill. Default false so other consumers (e.g.
+   *  qrate-waiter-webapp) don't get the owner-only banner. */
+  showMenuStatsBanner?: boolean;
   /**
    * Optional gate called before a dropped item is added as a recommendation.
    * Consumer apps (e.g., owner dashboard) use this to prompt for canonical
@@ -136,7 +141,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -228,6 +233,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [dragOver, setDragOver] = useState<{ menuId: string; cat: string } | 'pool' | null>(null);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
+  // Banner-driven filter — pulls every category bucket down to only the
+  // items missing a price within the active menu. Shared across menu tabs
+  // so flipping it on then switching tabs surfaces the same problem set.
+  const [missingPriceFilter, setMissingPriceFilter] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingMenu, setAddingMenu] = useState(false);
   const [newMenuName, setNewMenuName] = useState('');
@@ -418,6 +427,30 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
     return result;
   }, [items, search, visibilityFilter, itemTypeFilter]);
+
+  // Stats banner — count menus the crawler discovered (source_url present)
+  // and the per-active-menu missing-price item count. Only consumed when
+  // showMenuStatsBanner is true, but the memo runs unconditionally so the
+  // dep arrays are stable across re-renders.
+  const crawlerMenuCount = useMemo(
+    () => menus.filter((m) => !!m.source_url).length,
+    [menus],
+  );
+  const missingPriceCountForActiveMenu = useMemo(() => {
+    if (!activeMenuId) return 0;
+    const menuAssign = assignments[activeMenuId] ?? {};
+    const itemIdsInMenu = new Set<string>();
+    for (const cat of Object.keys(menuAssign)) {
+      for (const id of menuAssign[cat] ?? []) itemIdsInMenu.add(id);
+    }
+    let n = 0;
+    for (const id of itemIdsInMenu) {
+      const item = items.find((i) => i.id === id);
+      if (!item) continue;
+      if (itemHasAttention(item, getSettings(activeMenuId, id))) n++;
+    }
+    return n;
+  }, [activeMenuId, assignments, items, getSettings]);
 
   // ── Select handlers ───────────────────────────────────────────────────────
 
@@ -1482,6 +1515,80 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         </div>
       )}
 
+      {/* Menu stats banner — owner /owner/menu only.
+          Mirrors the dark-gradient stat banner on the food-items page so the
+          two pages feel like a pair. The "items missing price" pill is the
+          actionable affordance: click to filter every category bucket down
+          to just those items in the active menu. */}
+      {showMenuStatsBanner && (menus.length > 0) && (
+        <div
+          data-testid="menu-stats-banner"
+          style={{
+            margin: '14px 14px 0',
+            padding: '14px 18px',
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #2a1f3d 100%)',
+            borderRadius: 14,
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            position: 'relative',
+            overflow: 'hidden',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: -40,
+              right: -20,
+              width: 160,
+              height: 160,
+              borderRadius: 999,
+              background: 'radial-gradient(circle, rgba(255,140,66,.3), transparent 60%)',
+            }}
+          />
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: 'var(--brand-gradient, linear-gradient(135deg,#ff8c42,#ff6b2b))',
+              display: 'grid',
+              placeItems: 'center',
+              flexShrink: 0,
+              position: 'relative',
+              fontSize: 18,
+            }}
+          >
+            🍽
+          </div>
+          <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              {crawlerMenuCount === 0
+                ? 'No crawler-discovered menus yet — add menus manually to get started'
+                : `${crawlerMenuCount} ${crawlerMenuCount === 1 ? 'menu' : 'menus'} discovered from your website`}
+              {missingPriceCountForActiveMenu > 0 && (
+                <span style={{ color: 'rgba(255,255,255,.7)', fontWeight: 500 }}>
+                  {' '}· Some items in this menu need a price
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <BannerFilterPill
+                label="Missing a price"
+                count={missingPriceCountForActiveMenu}
+                active={missingPriceFilter}
+                disabled={missingPriceCountForActiveMenu === 0 && !missingPriceFilter}
+                onClick={() => setMissingPriceFilter((p) => !p)}
+                testId="menu-banner-filter-missing-price"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Item Modal */}
       {editItemId && (() => {
         const editItem = items.find((i) => i.id === editItemId);
@@ -1747,11 +1854,63 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showAddons={showAddons}
             showRecommendations={showRecommendations}
             showAddGrouping={showAddGrouping}
+            missingPriceFilter={missingPriceFilter}
           />
           </div>
         </div>
       )}
     </div>
     </MenuManagerServiceProvider>
+  );
+}
+
+interface BannerFilterPillProps {
+  label: string;
+  count: number;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  testId: string;
+}
+
+function BannerFilterPill({ label, count, active, disabled = false, onClick, testId }: BannerFilterPillProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+      aria-pressed={active}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '5px 12px',
+        background: active ? '#fff' : 'rgba(255,255,255,.12)',
+        color: active ? '#1a1a2e' : 'rgba(255,255,255,.92)',
+        border: '1px solid rgba(255,255,255,.18)',
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
+        fontFamily: 'inherit',
+        transition: 'background .15s, color .15s',
+      }}
+    >
+      {label}
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          padding: '1px 7px',
+          borderRadius: 999,
+          background: active ? '#1a1a2e' : 'rgba(255,255,255,.16)',
+          color: active ? '#fff' : 'rgba(255,255,255,.92)',
+        }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }

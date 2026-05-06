@@ -22,7 +22,11 @@ export type { ModifierEntry };
 // i.e. neither the per-menu price override nor the base item price is set.
 // Used to paint a red border on the MenuItemRow + a count badge on the bucket
 // header. STR-251 round 3.
-function itemHasAttention(item: MenuItemDisplay, settings: MenuItemJunctionSettings): boolean {
+//
+// Exported so MenuManagerClient can drive the "X items missing price" pill on
+// the menu-stats banner with the same predicate the bucket attention badge
+// uses — keeping the banner count and the bucket badges in lock-step.
+export function itemHasAttention(item: MenuItemDisplay, settings: MenuItemJunctionSettings): boolean {
   if (settings.price != null) return false;
   if (item.price != null) return false;
   return true;
@@ -95,6 +99,11 @@ interface MenuBuilderProps {
   refreshing?: boolean;
   /** Collapse or expand all category buckets at once. */
   onCollapseAll?: (collapse: boolean) => void;
+  /** When true, each category bucket only renders items with itemHasAttention
+   *  (i.e. missing both per-menu and base price). Driven by the menu-stats
+   *  banner pill on the owner /owner/menu page. Empty filtered buckets still
+   *  render their header but show "No items missing price". */
+  missingPriceFilter?: boolean;
 }
 
 // ── ModifierCounter ───────────────────────────────────────────────────────────
@@ -823,12 +832,14 @@ function CategoryBucket({
   onDragEnd,
   onRemoveItem,
   onEditItem,
+  missingPriceFilter = false,
 }: {
   category: string;
   itemIds: string[];
   itemsById: Map<string, MenuItemDisplay>;
   menuId: string;
   collapsed: boolean;
+  missingPriceFilter?: boolean;
   getSettings: (menuId: string, itemId: string) => MenuItemJunctionSettings;
   color: MenuColor;
   onToggleCollapse: () => void;
@@ -855,16 +866,23 @@ function CategoryBucket({
   onRemoveItem: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
 }) {
-  const bucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
+  const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
   // STR-251 round 3 — rollup attention indicator. Empty buckets are themselves
   // "needs attention". Non-empty buckets show the count of items whose
   // displayed price is missing.
-  const attentionCount = bucketItems.reduce(
+  const attentionCount = allBucketItems.reduce(
     (n, it) => n + (itemHasAttention(it, getSettings(menuId, it.id)) ? 1 : 0),
     0,
   );
-  const bucketEmpty = bucketItems.length === 0;
+
+  // Visible items honour the missing-price filter. Counts (attention + total)
+  // stay anchored on the unfiltered list so the bucket header doesn't flicker
+  // as the user toggles the filter.
+  const bucketItems = missingPriceFilter
+    ? allBucketItems.filter((it) => itemHasAttention(it, getSettings(menuId, it.id)))
+    : allBucketItems;
+  const bucketEmpty = allBucketItems.length === 0;
   const bucketHasAttention = bucketEmpty || attentionCount > 0;
 
   return (
@@ -934,7 +952,11 @@ function CategoryBucket({
               data-testid={`category-empty-${category}`}
               className="px-3 py-2.5 text-xs text-[var(--text2)] italic"
             >
-              {isDragOver ? 'Drop to assign here' : 'No items in this category yet'}
+              {isDragOver
+                ? 'Drop to assign here'
+                : missingPriceFilter && allBucketItems.length > 0
+                  ? 'No items missing a price'
+                  : 'No items in this category yet'}
             </div>
           ) : (
             bucketItems.map((item) => (
@@ -1018,6 +1040,7 @@ export default function MenuBuilder({
   onRefresh,
   refreshing = false,
   onCollapseAll,
+  missingPriceFilter = false,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -1267,6 +1290,7 @@ export default function MenuBuilder({
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
+                missingPriceFilter={missingPriceFilter}
               />
             );
           })}

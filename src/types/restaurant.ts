@@ -207,6 +207,8 @@ export interface MenuSummary {
   days_of_week: number[];
   is_all_day: boolean;
   schedule: MenuSchedule | null;
+  /** Crawler-set source URL. NULL for menus the owner created manually. */
+  source_url?: string | null;
   item_count: number;
   created_at?: string;
   updated_at?: string;

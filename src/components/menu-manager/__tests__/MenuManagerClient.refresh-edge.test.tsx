@@ -196,6 +196,11 @@ vi.mock('../components/MenuBuilder', () => ({
     lastBuilderProps = props;
     return <div data-testid="menu-builder-mock" />;
   },
+  // MenuManagerClient now imports itemHasAttention from MenuBuilder for the
+  // stats banner's missing-price count. The real predicate returns true when
+  // both the per-menu and base price are missing — for these tests we
+  // hard-return false so the banner count stays stable across cases.
+  itemHasAttention: () => false,
 }));
 
 vi.mock('../components/ItemPool', () => ({
