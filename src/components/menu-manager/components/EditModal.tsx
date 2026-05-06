@@ -1539,7 +1539,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               id="edit-name"
               type="text"
               value={name}
-              placeholder={isNewItem ? (item.name || 'Item name') : 'Item name'}
+              placeholder={isAddon
+                ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
+                : (isNewItem ? (item.name || 'Item name') : 'Item name')}
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
               aria-label="Item name"
               aria-required="true"
