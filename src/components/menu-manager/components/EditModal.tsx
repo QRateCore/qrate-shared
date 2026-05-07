@@ -76,6 +76,22 @@ interface EditModalProps {
     onPicked: (thumbnailUrl: string) => void;
   }) => ReactNode;
   /**
+   * Optional render-prop slot for an in-place image gallery panel that
+   * takes over the right-side tab content area when the owner clicks
+   * the "Choose from Gallery" button below the image. Differs from
+   * imageLibrarySlot (which opens an external modal): this slot stays
+   * within the EditModal and replaces the tab bar + content with the
+   * gallery picker UI. The slot is responsible for rendering its own
+   * back/close affordance — calling `onClose` returns to the tab view.
+   * `onPicked(url)` updates the local thumbnail and dismisses the panel.
+   */
+  galleryPanelSlot?: (handlers: {
+    itemId: string;
+    itemName: string;
+    onPicked: (thumbnailUrl: string) => void;
+    onClose: () => void;
+  }) => ReactNode;
+  /**
    * Optional render-slot for the BYO Groupings authoring UI. When provided,
    * a "Groupings" tab is added to the tab bar (next to Recommendations) and
    * the slot's content is rendered inside that tab. The consumer is
@@ -290,6 +306,7 @@ function DietaryMultiSelect({
   onToggle,
   reviewed,
   onToggleNa,
+  onAcceptAi,
 }: {
   label: string;
   options: readonly string[];
@@ -305,6 +322,11 @@ function DietaryMultiSelect({
    *  review state between 'ai_suggested' and 'manually_accepted' without
    *  touching tag rows. */
   onToggleNa: () => void;
+  /** Optional click handler for the inline "Accept" pill rendered next
+   *  to the "AI suggested" label when !reviewed. Accepts the AI's
+   *  picks as-is — flips the review state to 'manually_accepted'
+   *  without touching tag rows. */
+  onAcceptAi?: () => void;
 }) {
   const [busyTag, setBusyTag] = useState<string | null>(null);
   const selectedBg     = type === 'allergen' ? '#6366f1' : '#d97706';
@@ -351,23 +373,57 @@ function DietaryMultiSelect({
 
   return (
     <div data-testid={`dietary-section-${type}`} data-reviewed={reviewed} style={sectionStyle}>
-      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-        {label}
-        {!reviewed && (
-          <span
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {label}
+          {!reviewed && (
+            <span
+              style={{
+                marginLeft: 8,
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#a16207',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}
+            >
+              AI suggested
+            </span>
+          )}
+        </label>
+        {!reviewed && onAcceptAi && (
+          <button
+            type="button"
+            data-testid={`dietary-accept-ai-${type}`}
+            onClick={onAcceptAi}
+            title="Accept AI-suggested tags as-is"
             style={{
-              marginLeft: 8,
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 700,
-              color: '#a16207',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
+              color: '#fff',
+              background: '#15803d',
+              border: '1px solid #15803d',
+              borderRadius: 6,
+              padding: '3px 10px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
+              transition: 'background 0.15s',
             }}
           >
-            AI suggested
-          </span>
+            Accept
+          </button>
         )}
-      </label>
+      </div>
       {loading ? (
         <div style={{ fontSize: 12, color: 'var(--text3)', padding: '6px 0' }}>Loading…</div>
       ) : (
@@ -459,7 +515,7 @@ function toggleDraftSet(
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -672,6 +728,52 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [previewOpen, setPreviewOpen] = useState(false);
   const [imgBusy, setImgBusy]       = useState<'uploading' | 'removing' | null>(null);
   const [imgError, setImgError]     = useState<string | null>(null);
+
+  // "Choose from Gallery" state — true when the right-side tab content is
+  // replaced by the consumer's galleryPanelSlot. Reset on item change so
+  // navigating between rows in inline (drawer) mode doesn't leave the
+  // gallery open against a stale item.
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  useEffect(() => { setGalleryOpen(false); }, [item.id]);
+
+  // Accept-AI for an entire allergens/dietary section in one click. Flips
+  // food_tags.{allergens|dietary}_state to 'manually_accepted' WITHOUT
+  // touching tag rows — the existing AI-suggested chips stand. Distinct
+  // from the N/A chip which rejects everything before flipping state.
+  const handleAcceptAi = useCallback(async (type: 'allergens' | 'dietary') => {
+    if (!item.id || isNewItem || !restaurantId) return;
+    if (!dietaryTagService?.markReviewed) return;
+    const stateKey = type === 'allergens' ? 'allergens_state' : 'dietary_state';
+    if (type === 'allergens') setAllergensReviewed(true);
+    else setDietaryReviewed(true);
+    onItemUpdate?.({
+      id: item.id,
+      food_tags: {
+        ...(item.food_tags ?? {}),
+        [stateKey]: 'manually_accepted',
+      },
+    });
+    try {
+      await dietaryTagService.markReviewed(item.id, type, 'manually_accepted');
+      await refreshDietaryTags();
+    } catch (err) {
+      console.error('Accept AI failed', err);
+      await refreshDietaryTags();
+      const stillReviewed = type === 'allergens'
+        ? item.food_tags?.allergens_state !== 'ai_suggested'
+        : item.food_tags?.dietary_state !== 'ai_suggested';
+      if (type === 'allergens') setAllergensReviewed(stillReviewed);
+      else setDietaryReviewed(stillReviewed);
+    }
+  }, [
+    dietaryTagService,
+    restaurantId,
+    item.id,
+    item.food_tags,
+    isNewItem,
+    onItemUpdate,
+    refreshDietaryTags,
+  ]);
 
   // Add-on type
   const [isAddon, setIsAddon]       = useState(forceAddon || item.item_type === 'addon');
@@ -2090,6 +2192,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 )}
               </div>
 
+              {/* Choose from Gallery — opens an in-place picker that
+                  takes over the right-side tab content. Distinct from
+                  imageLibrarySlot (external modal): this is a sibling
+                  of Upload that swaps the right pane with a gallery
+                  view (Yelp / Google / Drive tabs). */}
+              {galleryPanelSlot && (
+                <button
+                  type="button"
+                  data-testid="edit-choose-from-gallery-btn"
+                  onClick={() => setGalleryOpen(true)}
+                  disabled={!!imgBusy}
+                  style={{
+                    width: '100%',
+                    height: 38,
+                    border: '1px solid var(--border)',
+                    background: '#fff',
+                    color: 'var(--text)',
+                    borderRadius: 'var(--r-xs)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: imgBusy ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    transition: 'background 0.15s, border-color 0.15s',
+                  }}
+                >
+                  <Eye size={13} />
+                  Choose from Gallery
+                </button>
+              )}
+
               {/* Image error */}
               {imgError && (
                 <div className="text-caption" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2329,6 +2465,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               flex: 1,
             }}
           >
+          {/* When the owner clicked "Choose from Gallery", the tab bar +
+              content are replaced by the consumer-provided picker. The
+              slot owns its own header (back chevron, title) — calling
+              `onClose` returns to the tab view; `onPicked(url)` updates
+              the local thumbnail and dismisses. */}
+          {galleryOpen && galleryPanelSlot ? (
+            galleryPanelSlot({
+              itemId: item.id,
+              itemName: name,
+              onPicked: (url) => { setThumbnail(url); setGalleryOpen(false); },
+              onClose: () => setGalleryOpen(false),
+            })
+          ) : (<>
           {/* ── Tab bar: context-aware based on toggle state ───────────
               Dishes mode:   Food Tags | Add-ons | Performance
               Add-ons mode:  Performance | Dishes                  */}
@@ -2477,6 +2626,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     onToggleNa={() => isNewItem
                       ? setDraftAllergens(new Set())
                       : void handleClickNa('allergens')}
+                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
                   />
                 )}
 
@@ -2496,6 +2646,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     onToggleNa={() => isNewItem
                       ? setDraftDietary(new Set())
                       : void handleClickNa('dietary')}
+                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
                   />
                 )}
 
@@ -3184,6 +3335,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </section>
           )}
           </div>{/* end scrollable tab content */}
+          </>)}{/* end gallery / tabs branch */}
           </div>{/* end tabs section wrapper */}
           </div>{/* end layout container */}
         </div>
