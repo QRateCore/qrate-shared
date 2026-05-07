@@ -85,6 +85,17 @@ interface EditModalProps {
    */
   groupingsSlot?: ReactNode;
   /**
+   * When true, render in Build-Your-Own mode: the right-side tab bar is
+   * restricted to ['food_tags', 'groupings'] (no Add-ons, Recommendations,
+   * or Performance), the Dishes/Add-ons type toggle is hidden, and a small
+   * "Build-your-own" badge is shown next to the name. Everything else
+   * (image box, description, mapped course, save/delete chrome) is identical
+   * to a regular dish so the two interfaces share the same skeleton.
+   * Consumers are still expected to pass `groupingsSlot` for the Groupings
+   * tab content — without it the tab is rendered empty.
+   */
+  byoMode?: boolean;
+  /**
    * 'modal' (default) — fixed-position overlay with backdrop. Used by the
    * Menu page when the owner clicks the pencil-edit icon on a row.
    * 'inline' — renders the same body inside its parent (no backdrop, no
@@ -448,7 +459,7 @@ function toggleDraftSet(
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -526,16 +537,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [draftAllergens, setDraftAllergens] = useState<Set<string>>(new Set());
   const [draftDietary, setDraftDietary]     = useState<Set<string>>(new Set());
 
-  // Per-item review state mirror — tracks whether the owner has reviewed
-  // the allergen / dietary tag groups. 'manually_accepted' = reviewed
-  // (excludes the item from the Food Items page "Allergens & Dietary"
-  // filter). Initialised from food_tags JSONB; flipped optimistically
-  // when the owner toggles a tag pill or clicks "None apply".
+  // Per-item review state mirror — drives the yellow "AI suggested" tint
+  // on the allergens / dietary sections. The yellow nudge only applies when
+  // the AI enrichment pipeline has produced suggestions awaiting review
+  // (`state === 'ai_suggested'`). Items with no state set (e.g. a freshly
+  // created BYO dish before any AI run) are treated as reviewed — nothing
+  // to review yet, so no yellow + no "AI suggested" label.
   const [allergensReviewed, setAllergensReviewed] = useState<boolean>(
-    item.food_tags?.allergens_state === 'manually_accepted',
+    item.food_tags?.allergens_state !== 'ai_suggested',
   );
   const [dietaryReviewed, setDietaryReviewed] = useState<boolean>(
-    item.food_tags?.dietary_state === 'manually_accepted',
+    item.food_tags?.dietary_state !== 'ai_suggested',
   );
 
   // Reload dietary tags from the API (called on mount and after each toggle)
@@ -634,11 +646,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       // Roll back on failure — re-fetch authoritative state from the server.
       console.error('N/A click failed', err);
       await refreshDietaryTags();
-      // Re-derive reviewed flag from the fresh tagMap + food_tags.
+      // Re-derive reviewed flag from the fresh tagMap + food_tags. Same
+      // convention as the initialiser: only 'ai_suggested' un-reviews.
       const stillReviewed =
         type === 'allergens'
-          ? item.food_tags?.allergens_state === 'manually_accepted'
-          : item.food_tags?.dietary_state === 'manually_accepted';
+          ? item.food_tags?.allergens_state !== 'ai_suggested'
+          : item.food_tags?.dietary_state !== 'ai_suggested';
       if (type === 'allergens') setAllergensReviewed(stillReviewed);
       else setDietaryReviewed(stillReviewed);
     }
@@ -1647,8 +1660,34 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </button>
           </div>
 
-          {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon) */}
-          {isNewItem && !forceAddon && (
+          {/* Build-your-own indicator — small chip next to the name so the
+              owner knows they're editing a BYO dish even though the rest of
+              the chrome is identical to a Dish editor. */}
+          {byoMode && (
+            <span
+              data-testid="byo-mode-badge"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 10px',
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--orange-text, #c2410c)',
+                background: 'var(--orange-bg, #fff4ee)',
+                border: '1px solid #ffd5b8',
+                borderRadius: 999,
+                flexShrink: 0,
+              }}
+            >
+              Build-your-own
+            </span>
+          )}
+
+          {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon or byoMode) */}
+          {isNewItem && !forceAddon && !byoMode && (
             <div
               role="radiogroup"
               aria-label="Item type"
@@ -2302,13 +2341,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               flexShrink: 0,
             }}
           >
-            {(isAddon
-              ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
-              : (isNewItem
-                ? (['food_tags', 'addons', 'recommendations'] as const)
-                : (groupingsSlot
-                  ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
-                  : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
+            {(byoMode
+              ? (['food_tags', 'groupings'] as const)
+              : (isAddon
+                ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
+                : (isNewItem
+                  ? (['food_tags', 'addons', 'recommendations'] as const)
+                  : (groupingsSlot
+                    ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
+                    : (['food_tags', 'addons', 'recommendations', 'performance'] as const))))
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
