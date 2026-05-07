@@ -38,7 +38,16 @@ export interface FoodTags {
   allergens_state?: TagReviewState;
   heat?: number;
   heat_spice?: string[];
+  /** Review state for the spice level on this item. Flipped to
+   *  'manually_accepted' by either the row-level Accept button OR by
+   *  the inline-edit canonical /spice endpoint (set or clear) as a
+   *  side effect. Gates the Setup Hub "With tags accepted" coverage
+   *  bar — items count as covered only when ALL FOUR review states
+   *  are 'manually_accepted'. Added 2026-05-07. */
+  spice_state?: TagReviewState;
   sweetness_label?: string | null;
+  /** Review state for the sweetness level. Same semantics as spice_state. */
+  sweetness_state?: TagReviewState;
   cooking_method?: string[];
   textures?: string[];
   dietary?: string[];
