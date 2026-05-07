@@ -427,14 +427,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   };
 
   const filtered = useMemo(() => {
-    // Filter by item type: addons, included, or dishes (dish + included).
-    // 'included' items (e.g. naan, raita, sides) are orderable by patrons and belong
-    // in the Dishes pool so canonical category filters (Soups, Breads, Sides) work.
-    let result = itemTypeFilter === 'addons'
-      ? items.filter((i) => i.item_type === 'addon')
-      : itemTypeFilter === 'included'
-      ? items.filter((i) => i.item_type === 'included')
-      : items.filter((i) => i.item_type !== 'addon');
+    // The menu manager pool is dishes-only (incl. BYO dishes — those are still
+    // item_type='dish'). Addons and included items are surfaced exclusively
+    // from the Food Items page. The itemTypeFilter prop is preserved for
+    // wiring stability but the pool no longer exposes a way to set it to
+    // anything other than 'dishes'.
+    let result = items.filter(
+      (i) => i.item_type !== 'addon' && i.item_type !== 'included',
+    );
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>
@@ -444,7 +444,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
     return result;
-  }, [items, search, visibilityFilter, itemTypeFilter]);
+  }, [items, search, visibilityFilter]);
 
   // Stats banner — count menus the crawler discovered (source_url present)
   // and the per-active-menu missing-price item count. Only consumed when
@@ -1483,7 +1483,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   return (
     <MenuManagerServiceProvider value={service}>
-    <div className="flex flex-col fixed-height-page-shell" data-testid="menu-manager">
+    <div className="flex flex-col fixed-height-page-shell tight-page-top" data-testid="menu-manager">
       {/* Toast */}
       {toast && (
         <div
@@ -1521,7 +1521,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         <div
           data-testid="menu-stats-banner"
           style={{
-            margin: '14px 14px 0',
+            margin: '0 14px',
             padding: '14px 18px',
             background: 'linear-gradient(135deg, #1a1a2e 0%, #2a1f3d 100%)',
             borderRadius: 14,

@@ -3,15 +3,13 @@
  * Unit tests for ItemPool.
  *
  * Covers:
- *  - Item-type filter toggle (Dishes / Add-ons / Included)
- *  - Active state styling matches the selected filter
- *  - Clicking a tab calls onItemTypeFilterChange with the correct value
- *  - data-testid attributes are present for E2E selectors
+ *  - Item-type filter toggle is no longer rendered (menu manager pool is
+ *    dishes-only — addons and included items live on the Food Items page).
  *  - Category-row count badges (STR-401): bare-integer text, aria-label and title
  *    with singular/plural grammar; pill is hidden when count is zero.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 import ItemPool from '../ItemPool';
 import type { MenuItemDisplay, MenuSummary } from '../../../../types/restaurant';
@@ -76,51 +74,13 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof ItemPool>> 
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('ItemPool — item-type filter toggle', () => {
-  it('renders all three filter buttons with correct labels', () => {
+describe('ItemPool — item-type filter toggle removed', () => {
+  it('does not render the dishes/included/addons tabs', () => {
     render(<ItemPool {...defaultProps()} />);
 
-    expect(screen.getByTestId('item-type-filter-dishes')).toHaveTextContent('Dishes');
-    expect(screen.getByTestId('item-type-filter-addons')).toHaveTextContent('Add-ons');
-    expect(screen.getByTestId('item-type-filter-included')).toHaveTextContent('Included');
-  });
-
-  it('clicking "Add-ons" calls onItemTypeFilterChange with "addons"', () => {
-    const onChange = vi.fn();
-    render(<ItemPool {...defaultProps({ onItemTypeFilterChange: onChange })} />);
-
-    fireEvent.click(screen.getByTestId('item-type-filter-addons'));
-    expect(onChange).toHaveBeenCalledWith('addons');
-  });
-
-  it('clicking "Included" calls onItemTypeFilterChange with "included"', () => {
-    const onChange = vi.fn();
-    render(<ItemPool {...defaultProps({ onItemTypeFilterChange: onChange })} />);
-
-    fireEvent.click(screen.getByTestId('item-type-filter-included'));
-    expect(onChange).toHaveBeenCalledWith('included');
-  });
-
-  it('clicking "Dishes" calls onItemTypeFilterChange with "dishes"', () => {
-    const onChange = vi.fn();
-    render(<ItemPool {...defaultProps({ itemTypeFilter: 'addons', onItemTypeFilterChange: onChange })} />);
-
-    fireEvent.click(screen.getByTestId('item-type-filter-dishes'));
-    expect(onChange).toHaveBeenCalledWith('dishes');
-  });
-
-  it('active tab has white text color', () => {
-    const { rerender } = render(<ItemPool {...defaultProps({ itemTypeFilter: 'dishes' })} />);
-
-    expect(screen.getByTestId('item-type-filter-dishes').style.color).toBe('white');
-    expect(screen.getByTestId('item-type-filter-addons').style.color).not.toBe('white');
-    expect(screen.getByTestId('item-type-filter-included').style.color).not.toBe('white');
-
-    rerender(<ItemPool {...defaultProps({ itemTypeFilter: 'included' })} />);
-
-    expect(screen.getByTestId('item-type-filter-included').style.color).toBe('white');
-    expect(screen.getByTestId('item-type-filter-dishes').style.color).not.toBe('white');
-    expect(screen.getByTestId('item-type-filter-addons').style.color).not.toBe('white');
+    expect(screen.queryByTestId('item-type-filter-dishes')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('item-type-filter-addons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('item-type-filter-included')).not.toBeInTheDocument();
   });
 });
 

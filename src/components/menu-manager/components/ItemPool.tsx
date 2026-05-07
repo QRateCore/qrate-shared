@@ -668,42 +668,11 @@ export default function ItemPool({
           )}
         </div>
 
-        {/* Combined filter row — item type + visibility. Wraps on narrow viewports to prevent clipping. */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 6, columnGap: 6 }}>
-          {/* Dishes / Included / Add-ons toggle */}
-          <div
-            style={{
-              display: 'inline-flex',
-              borderRadius: 20,
-              border: '1px solid var(--border)',
-              overflow: 'hidden',
-              flexShrink: 0,
-            }}
-          >
-            {(['dishes', 'included', 'addons'] as const).map((tab, idx, arr) => (
-              <button
-                key={tab}
-                type="button"
-                data-testid={`item-type-filter-${tab}`}
-                onClick={() => onItemTypeFilterChange(tab)}
-                style={{
-                  padding: '4px 14px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  borderRight: idx < arr.length - 1 ? '1px solid var(--border)' : 'none',
-                  background: itemTypeFilter === tab
-                    ? 'var(--brand-s)'
-                    : 'var(--white)',
-                  color: itemTypeFilter === tab ? 'white' : 'var(--text2)',
-                  transition: 'background 0.12s, color 0.12s',
-                }}
-              >
-                {tab === 'dishes' ? 'Dishes' : tab === 'included' ? 'Included' : 'Add-ons'}
-              </button>
-            ))}
-          </div>
+        {/* Filter row — visibility toggle only. The item-type filter
+            (Dishes / Included / Add-ons) was retired: the menu manager pool
+            now shows dishes (incl. BYO) exclusively. Addons and included
+            items are managed from the Food Items page. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', rowGap: 6, columnGap: 6 }}>
           {/* Visible / Hidden toggle */}
           {showVisibilityFilter && (
             <div
