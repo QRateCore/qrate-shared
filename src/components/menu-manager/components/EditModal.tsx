@@ -3336,11 +3336,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 
               {/* Metric cards */}
               {perfData && !perfLoading && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-                  <PerfCard label="Carousel Views" value={perfData.carousel_views.toLocaleString()} />
-                  <PerfCard label="Conversions" value={perfData.conversions.toLocaleString()} />
-                  <PerfCard label="Card Flips" value={perfData.card_flips.toLocaleString()} />
-                  <PerfCard label="Conversion Rate" value={`${perfData.conversion_rate}%`} highlight={perfData.conversion_rate > 0} />
+                <div data-testid="perf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+                  <PerfCard testId="perf-card-carousel-views" label="Carousel Views" value={perfData.carousel_views.toLocaleString()} />
+                  <PerfCard testId="perf-card-conversions" label="Conversions" value={perfData.conversions.toLocaleString()} />
+                  <PerfCard testId="perf-card-card-flips" label="Card Flips" value={perfData.card_flips.toLocaleString()} />
+                  <PerfCard testId="perf-card-conversion-rate" label="Conversion Rate" value={`${perfData.conversion_rate}%`} highlight={perfData.conversion_rate > 0} />
                 </div>
               )}
 
@@ -3541,9 +3541,10 @@ function AddonCard({
   );
 }
 
-function PerfCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function PerfCard({ testId, label, value, highlight }: { testId?: string; label: string; value: string; highlight?: boolean }) {
   return (
     <div
+      data-testid={testId}
       style={{
         background: highlight ? '#fff7ed' : '#f9f9f9',
         border: `1px solid ${highlight ? '#fed7aa' : 'var(--border)'}`,
