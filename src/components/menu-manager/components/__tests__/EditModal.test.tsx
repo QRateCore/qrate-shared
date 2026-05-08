@@ -1263,8 +1263,7 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
 
     // Both draft selections flushed against the real DB id via setItemTags
     // (PR 3 of allergens/dietary consolidation: single PATCH replaces the
-    // per-tag addTag loop). Assertion accepts the merged-or-split shape —
-    // the implementation passes both axes in one call.
+    // per-tag addTag loop).
     expect(dietary.setItemTags).toHaveBeenCalledWith('rest-1', 'real-dish-42', {
       allergens: ['peanuts'],
       dietary: ['vegan'],
