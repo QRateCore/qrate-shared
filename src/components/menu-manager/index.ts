@@ -1,7 +1,7 @@
 export { default as MenuManagerClient } from './MenuManagerClient';
 export type { BulkMode, DragState } from './MenuManagerClient';
 export { default as EditModal } from './components/EditModal';
-export type { DietaryTagService, DietaryTagRecord } from './components/EditModal';
+export type { DietaryTagService } from './components/EditModal';
 export { default as BulkActionsPanel } from './components/BulkActionsPanel';
 export { default as BulkModifierPanel } from './components/BulkModifierPanel';
 export { MenuManagerServiceProvider } from './context';

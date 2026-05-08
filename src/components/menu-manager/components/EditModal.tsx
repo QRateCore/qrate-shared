@@ -166,23 +166,23 @@ const DIETARY_LABELS: Record<string, string> = {
 };
 
 // ── Dietary tag service interface (injected from consumer app) ─────────────────
-
-export interface DietaryTagRecord {
-  id: string;
-  tag_name: string;
-  status: 'pending' | 'accepted' | 'rejected';
-}
+//
+// PR 3 of the allergens/dietary consolidation (2026-05-08): the per-tag
+// junction table is gone. Allergens and dietary are stored directly on
+// menu_items.food_tags->'allergens' / food_tags->'dietary' as plain
+// string arrays. The service collapses to a single setItemTags writer —
+// EditModal reads current tags from item.food_tags and computes the new
+// array client-side on toggle, then PATCHes through this service.
 
 export interface DietaryTagService {
-  /** Fetch the accepted/pending tags for a single item. Returns null if item has no tags yet. */
-  getTagsForItem: (restaurantId: string, itemId: string) => Promise<{
-    allergenTags: DietaryTagRecord[];
-    dietaryTags: DietaryTagRecord[];
-  } | null>;
-  /** Create or re-accept a tag for an item. */
-  addTag: (restaurantId: string, tagName: string, tagType: 'allergen' | 'dietary', itemId: string) => Promise<void>;
-  /** Reject (deselect) an existing tag by ID. */
-  rejectTag: (restaurantId: string, tagId: string) => Promise<void>;
+  /** Replace the allergens or dietary array (or both) for an item.
+   *  Backend rewrites food_tags->'allergens' / 'dietary' atomically and
+   *  flips the matching *_state to 'manually_accepted'. */
+  setItemTags: (
+    restaurantId: string,
+    itemId: string,
+    update: { allergens?: string[]; dietary?: string[] },
+  ) => Promise<void>;
   /** Set the per-item review state for one tag category. Drives the N/A
    *  chip in the EditModal — clicking it toggles state between
    *  'ai_suggested' (yellow background) and 'manually_accepted' (no
@@ -302,8 +302,7 @@ function DietaryMultiSelect({
   options,
   labels,
   type,
-  tagMap,
-  loading,
+  selectedSet,
   onToggle,
   reviewed,
   onToggleNa,
@@ -313,8 +312,7 @@ function DietaryMultiSelect({
   options: readonly string[];
   labels: Record<string, string>;
   type: 'allergen' | 'dietary';
-  tagMap: Map<string, DietaryTagRecord>;
-  loading: boolean;
+  selectedSet: Set<string>;
   onToggle: (tagName: string) => void;
   /** True when the section's review state is 'manually_accepted'. Drives
    *  the yellow AI-suggested background and the N/A chip's active state. */
@@ -344,15 +342,10 @@ function DietaryMultiSelect({
     }
   };
 
-  // Count currently-selected (non-rejected) tag rows. N/A is "active"
-  // only when the section is reviewed AND no tag is selected — i.e.
-  // the owner explicitly confirmed nothing applies. Mixing N/A active
-  // with selected tag chips would read as contradictory.
-  let selectedCount = 0;
-  for (const t of tagMap.values()) {
-    if (t.status !== 'rejected') selectedCount++;
-  }
-  const naActive = reviewed && selectedCount === 0;
+  // N/A is "active" only when the section is reviewed AND no tag is
+  // selected — i.e. the owner explicitly confirmed nothing applies.
+  // Mixing N/A active with selected tag chips would read as contradictory.
+  const naActive = reviewed && selectedSet.size === 0;
 
   // Yellow tint = "AI suggested, not yet reviewed". Disappears the
   // moment the owner takes any action (toggle a chip or click N/A).
@@ -425,13 +418,10 @@ function DietaryMultiSelect({
           </button>
         )}
       </div>
-      {loading ? (
-        <div style={{ fontSize: 12, color: 'var(--text3)', padding: '6px 0' }}>Loading…</div>
-      ) : (
+      {(
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {options.map((name) => {
-            const existing = tagMap.get(name);
-            const isSelected = existing ? existing.status !== 'rejected' : false;
+            const isSelected = selectedSet.has(name);
             const isBusy = busyTag === name;
             return (
               <button
@@ -492,27 +482,10 @@ function DietaryMultiSelect({
 
 // ── Draft helpers (deferred-creation dietary state) ───────────────────────────
 
-// Build a synthetic tagMap from a Set of selected names so DietaryMultiSelect
-// renders the right "selected" pills even though no DB record exists yet.
-function draftTagMap(names: Set<string>): Map<string, DietaryTagRecord> {
-  const m = new Map<string, DietaryTagRecord>();
-  for (const name of names) {
-    m.set(name, { id: `__draft-${name}`, tag_name: name, status: 'accepted' });
-  }
-  return m;
-}
-
-function toggleDraftSet(
-  setFn: React.Dispatch<React.SetStateAction<Set<string>>>,
-  name: string,
-): void {
-  setFn((prev) => {
-    const next = new Set(prev);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    return next;
-  });
-}
+// PR 3 of consolidation: draftTagMap / toggleDraftSet helpers removed.
+// EditModal now holds plain Set<string>s for selected allergens / dietary,
+// initialized directly from item.food_tags. No synthetic record shape
+// needed — DietaryMultiSelect reads the set via .has(name).
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
@@ -582,17 +555,24 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     return result;
   });
 
-  // Dietary tag state — loaded from the dietary-tags API when dietaryTagService is provided
-  const [allergenTagMap, setAllergenTagMap] = useState<Map<string, DietaryTagRecord>>(new Map());
-  const [dietaryTagMap, setDietaryTagMap]   = useState<Map<string, DietaryTagRecord>>(new Map());
-  const [dietaryLoading, setDietaryLoading] = useState(false);
+  // Allergen + dietary state — initialized from item.food_tags (canonical
+  // source after PR 3 of consolidation). Toggling a pill computes the
+  // new full array client-side and PATCHes via dietaryTagService.setItemTags;
+  // local set updates optimistically.
+  const [allergenSet, setAllergenSet] = useState<Set<string>>(() => {
+    const arr = item.food_tags?.allergens;
+    return new Set(Array.isArray(arr) ? arr : []);
+  });
+  const [dietarySet, setDietarySet] = useState<Set<string>>(() => {
+    const arr = item.food_tags?.dietary;
+    return new Set(Array.isArray(arr) ? arr : []);
+  });
 
-  // Draft selections used in deferred-creation mode (isNewItem). The dietary-
-  // tags API is keyed by item id, but new drafts have no DB row yet — so we
-  // collect selections in local state and flush them via dietaryTagService
-  // .addTag(...) after onSaveNewItem returns the real id.
-  const [draftAllergens, setDraftAllergens] = useState<Set<string>>(new Set());
-  const [draftDietary, setDraftDietary]     = useState<Set<string>>(new Set());
+  // Resync when the item prop changes (modal reused for a different item).
+  useEffect(() => {
+    setAllergenSet(new Set(Array.isArray(item.food_tags?.allergens) ? item.food_tags!.allergens : []));
+    setDietarySet(new Set(Array.isArray(item.food_tags?.dietary) ? item.food_tags!.dietary : []));
+  }, [item.id, item.food_tags?.allergens, item.food_tags?.dietary]);
 
   // Per-item review state mirror — drives the yellow "AI suggested" tint
   // on the allergens / dietary sections. The threshold lives in
@@ -603,119 +583,72 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [allergensReviewed, setAllergensReviewed] = useState<boolean>(isAllergensReviewed(item));
   const [dietaryReviewed, setDietaryReviewed] = useState<boolean>(isDietaryReviewed(item));
 
-  // Reload dietary tags from the API (called on mount and after each toggle)
-  const refreshDietaryTags = useCallback(async () => {
-    if (!dietaryTagService || !restaurantId || !item.id || isNewItem) return;
-    const result = await dietaryTagService.getTagsForItem(restaurantId, item.id);
-    if (!result) return;
-    const aMap = new Map<string, DietaryTagRecord>();
-    for (const t of result.allergenTags) aMap.set(t.tag_name, t);
-    const dMap = new Map<string, DietaryTagRecord>();
-    for (const t of result.dietaryTags) dMap.set(t.tag_name, t);
-    setAllergenTagMap(aMap);
-    setDietaryTagMap(dMap);
-  }, [dietaryTagService, restaurantId, item.id, isNewItem]);
-
-  useEffect(() => {
-    if (!dietaryTagService || !restaurantId || !item.id || isNewItem) return;
-    setDietaryLoading(true);
-    void refreshDietaryTags().finally(() => setDietaryLoading(false));
-  }, [dietaryTagService, restaurantId, item.id, isNewItem, refreshDietaryTags]);
-
-  // Wrap service toggle calls so state refreshes after each change
   const handleDietaryToggle = useCallback(async (
     tagName: string,
     tagType: 'allergen' | 'dietary',
-    tagMap: Map<string, DietaryTagRecord>,
   ) => {
-    if (!dietaryTagService || !restaurantId || !item.id) return;
-    const existing = tagMap.get(tagName);
-    const isSelected = existing ? existing.status !== 'rejected' : false;
-    if (isSelected && existing) {
-      await dietaryTagService.rejectTag(restaurantId, existing.id);
-    } else {
-      await dietaryTagService.addTag(restaurantId, tagName, tagType, item.id);
-    }
-    // Backend flips food_tags.{allergens|dietary}_state to 'manually_accepted'
-    // as a side effect of any tag mutation. Mirror that locally and
-    // propagate to the parent so the Food Items page filter count
-    // updates without a full refetch.
+    if (!dietaryTagService || !restaurantId || !item.id || isNewItem) return;
+    const currentSet = tagType === 'allergen' ? allergenSet : dietarySet;
+    const setSet = tagType === 'allergen' ? setAllergenSet : setDietarySet;
+    const next = new Set(currentSet);
+    if (next.has(tagName)) next.delete(tagName);
+    else next.add(tagName);
+    // Optimistic local update — pill flips immediately.
+    setSet(next);
+    // Mirror backend side-effect: any array write flips *_state to
+    // 'manually_accepted'. Local + parent update so Food Items filter
+    // count updates without a refetch.
     const stateKey = tagType === 'allergen' ? 'allergens_state' : 'dietary_state';
+    const arrKey = tagType === 'allergen' ? 'allergens' : 'dietary';
+    const nextArr = Array.from(next).sort();
     if (tagType === 'allergen') setAllergensReviewed(true);
     else setDietaryReviewed(true);
     onItemUpdate?.({
       id: item.id,
-      food_tags: { ...(item.food_tags ?? {}), [stateKey]: 'manually_accepted' },
+      food_tags: { ...(item.food_tags ?? {}), [stateKey]: 'manually_accepted', [arrKey]: nextArr },
     });
-    await refreshDietaryTags();
-  }, [dietaryTagService, restaurantId, item.id, item.food_tags, onItemUpdate, refreshDietaryTags]);
-
-  // One-way "none apply" affordance for the N/A chip. Clicking N/A:
-  //   1. Rejects every currently-selected tag in the section (so the row
-  //      drops out of the bulk-panel view and the chip pills go un-filled).
-  //   2. Flips the review state to 'manually_accepted' — never the reverse.
-  //      ai_suggested → manually_accepted is one-way; the only way back to
-  //      ai_suggested is a re-enrichment pipeline run.
-  // Idempotent when already in N/A state (no tags + manually_accepted) — the
-  // markReviewed call is still made so a clobbered backend state self-heals.
-  const handleClickNa = useCallback(async (type: 'allergens' | 'dietary') => {
-    if (!item.id || isNewItem || !restaurantId) return;
-    const tagMap = type === 'allergens' ? allergenTagMap : dietaryTagMap;
-    const tagsToReject: DietaryTagRecord[] = [];
-    for (const t of tagMap.values()) {
-      if (t.status !== 'rejected') tagsToReject.push(t);
+    try {
+      await dietaryTagService.setItemTags(restaurantId, item.id, { [arrKey]: nextArr });
+    } catch (err) {
+      // Roll back on failure.
+      console.error('dietary toggle failed', err);
+      setSet(currentSet);
+      const stillReviewed = tagType === 'allergen' ? isAllergensReviewed(item) : isDietaryReviewed(item);
+      if (tagType === 'allergen') setAllergensReviewed(stillReviewed);
+      else setDietaryReviewed(stillReviewed);
     }
+  }, [dietaryTagService, restaurantId, item, isNewItem, allergenSet, dietarySet, onItemUpdate]);
 
-    // Optimistic local + parent update — yellow tint clears, pills go
-    // unfilled, Food Items filter count drops by 1. Roll back on failure.
+  // N/A chip — explicit "none apply". Sets the section's array to []
+  // and flips review state to manually_accepted (backend does both in
+  // one UPDATE on an empty-array PATCH). Idempotent when already in N/A
+  // state — the call self-heals any drift.
+  const handleClickNa = useCallback(async (type: 'allergens' | 'dietary') => {
+    if (!item.id || isNewItem || !restaurantId || !dietaryTagService) return;
+    const setSet = type === 'allergens' ? setAllergenSet : setDietarySet;
+    const prevSet = type === 'allergens' ? allergenSet : dietarySet;
+
+    // Optimistic local + parent update.
     const stateKey = type === 'allergens' ? 'allergens_state' : 'dietary_state';
     const arrKey = type === 'allergens' ? 'allergens' : 'dietary';
+    setSet(new Set());
     if (type === 'allergens') setAllergensReviewed(true);
     else setDietaryReviewed(true);
     onItemUpdate?.({
       id: item.id,
-      food_tags: {
-        ...(item.food_tags ?? {}),
-        [stateKey]: 'manually_accepted',
-        [arrKey]: [],
-      },
+      food_tags: { ...(item.food_tags ?? {}), [stateKey]: 'manually_accepted', [arrKey]: [] },
     });
 
     try {
-      if (dietaryTagService) {
-        // Reject every selected tag in parallel. Each rejection flips the
-        // backend state to manually_accepted as a side effect, so the
-        // explicit markReviewed is only needed when nothing was selected.
-        if (tagsToReject.length > 0) {
-          await Promise.all(
-            tagsToReject.map((t) => dietaryTagService.rejectTag(restaurantId, t.id)),
-          );
-        } else if (dietaryTagService.markReviewed) {
-          await dietaryTagService.markReviewed(item.id, type, 'manually_accepted');
-        }
-        await refreshDietaryTags();
-      }
+      await dietaryTagService.setItemTags(restaurantId, item.id, { [arrKey]: [] });
     } catch (err) {
-      // Roll back on failure — re-fetch authoritative state from the server.
       console.error('N/A click failed', err);
-      await refreshDietaryTags();
-      // Re-derive reviewed flag from the fresh tagMap + food_tags via the
-      // shared helpers (same threshold as the initialiser).
+      setSet(prevSet);
       const stillReviewed = type === 'allergens' ? isAllergensReviewed(item) : isDietaryReviewed(item);
       if (type === 'allergens') setAllergensReviewed(stillReviewed);
       else setDietaryReviewed(stillReviewed);
     }
-  }, [
-    dietaryTagService,
-    restaurantId,
-    item.id,
-    item.food_tags,
-    isNewItem,
-    allergenTagMap,
-    dietaryTagMap,
-    onItemUpdate,
-    refreshDietaryTags,
-  ]);
+  }, [dietaryTagService, restaurantId, item, isNewItem, allergenSet, dietarySet, onItemUpdate]);
 
   // Image state
   const [thumbnail, setThumbnail]   = useState(item.thumbnail_url ?? null);
@@ -738,6 +671,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     if (!item.id || isNewItem || !restaurantId) return;
     if (!dietaryTagService?.markReviewed) return;
     const stateKey = type === 'allergens' ? 'allergens_state' : 'dietary_state';
+    const prevReviewed = type === 'allergens' ? allergensReviewed : dietaryReviewed;
     if (type === 'allergens') setAllergensReviewed(true);
     else setDietaryReviewed(true);
     onItemUpdate?.({
@@ -749,13 +683,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     });
     try {
       await dietaryTagService.markReviewed(item.id, type, 'manually_accepted');
-      await refreshDietaryTags();
     } catch (err) {
       console.error('Accept AI failed', err);
-      await refreshDietaryTags();
-      const stillReviewed = type === 'allergens' ? isAllergensReviewed(item) : isDietaryReviewed(item);
-      if (type === 'allergens') setAllergensReviewed(stillReviewed);
-      else setDietaryReviewed(stillReviewed);
+      if (type === 'allergens') setAllergensReviewed(prevReviewed);
+      else setDietaryReviewed(prevReviewed);
     }
   }, [
     dietaryTagService,
@@ -764,7 +695,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     item.food_tags,
     isNewItem,
     onItemUpdate,
-    refreshDietaryTags,
+    allergensReviewed,
+    dietaryReviewed,
   ]);
 
   // Add-on type
@@ -1394,19 +1326,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           }
         }
 
-        // Flush deferred allergen + dietary selections via the dietary-tags
-        // API now that the item has a real DB id. Failures are logged but
-        // don't block the create — the owner can re-tag from the saved item.
+        // Flush deferred allergen + dietary selections via setItemTags now
+        // that the item has a real DB id. Failures are logged but don't
+        // block the create — the owner can re-tag from the saved item.
         if (dietaryTagService && restaurantId && created.id) {
-          const tagWrites: Promise<void>[] = [];
-          for (const name of draftAllergens) {
-            tagWrites.push(dietaryTagService.addTag(restaurantId, name, 'allergen', created.id));
-          }
-          for (const name of draftDietary) {
-            tagWrites.push(dietaryTagService.addTag(restaurantId, name, 'dietary', created.id));
-          }
-          if (tagWrites.length > 0) {
-            try { await Promise.all(tagWrites); }
+          const update: { allergens?: string[]; dietary?: string[] } = {};
+          if (allergenSet.size > 0) update.allergens = Array.from(allergenSet).sort();
+          if (dietarySet.size > 0) update.dietary = Array.from(dietarySet).sort();
+          if (Object.keys(update).length > 0) {
+            try { await dietaryTagService.setItemTags(restaurantId, created.id, update); }
             catch (err) { console.error('Failed to flush draft dietary tags', err); }
           }
         }
@@ -2616,44 +2544,50 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 </div>}
 
-                {/* Allergens — multi-select pills backed by dietary-tags API.
-                    New items: deferred-creation mode (no DB id yet), so we
-                    drive the section from local draftAllergens state and flush
-                    on save. */}
+                {/* Allergens — multi-select pills, food_tags-backed. New
+                    items: same Set drives the deferred-creation flow, the
+                    save handler flushes via setItemTags after the DB row
+                    is created. */}
                 {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Allergens"
                     options={FDA_BIG_9_ALLERGENS}
                     labels={ALLERGEN_LABELS}
                     type="allergen"
-                    tagMap={isNewItem ? draftTagMap(draftAllergens) : allergenTagMap}
-                    loading={isNewItem ? false : dietaryLoading}
+                    selectedSet={allergenSet}
                     onToggle={(name) => isNewItem
-                      ? toggleDraftSet(setDraftAllergens, name)
-                      : void handleDietaryToggle(name, 'allergen', allergenTagMap)}
+                      ? setAllergenSet((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(name)) next.delete(name); else next.add(name);
+                          return next;
+                        })
+                      : void handleDietaryToggle(name, 'allergen')}
                     reviewed={isNewItem ? true : allergensReviewed}
                     onToggleNa={() => isNewItem
-                      ? setDraftAllergens(new Set())
+                      ? setAllergenSet(new Set())
                       : void handleClickNa('allergens')}
                     onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
                   />
                 )}
 
-                {/* Dietary restrictions — multi-select pills backed by dietary-tags API */}
+                {/* Dietary restrictions — same pattern. */}
                 {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
                     options={DIETARY_RESTRICTIONS_LIST}
                     labels={DIETARY_LABELS}
                     type="dietary"
-                    tagMap={isNewItem ? draftTagMap(draftDietary) : dietaryTagMap}
-                    loading={isNewItem ? false : dietaryLoading}
+                    selectedSet={dietarySet}
                     onToggle={(name) => isNewItem
-                      ? toggleDraftSet(setDraftDietary, name)
-                      : void handleDietaryToggle(name, 'dietary', dietaryTagMap)}
+                      ? setDietarySet((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(name)) next.delete(name); else next.add(name);
+                          return next;
+                        })
+                      : void handleDietaryToggle(name, 'dietary')}
                     reviewed={isNewItem ? true : dietaryReviewed}
                     onToggleNa={() => isNewItem
-                      ? setDraftDietary(new Set())
+                      ? setDietarySet(new Set())
                       : void handleClickNa('dietary')}
                     onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
                   />
