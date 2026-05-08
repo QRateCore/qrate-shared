@@ -812,10 +812,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
-  //   Dishes  → [food_tags, addons, performance]
-  //   Add-ons → [performance, dishes]                (no food_tags tab)
-  // Land on a valid tab for the new mode. Dep list is [isAddon] only
-  // — including activeTab would loop.
+  //   Dishes  → [food_tags, addons, performance, ...]
+  //   Add-ons → [food_tags, performance, dishes]   (food_tags shows
+  //               only allergens + dietary for add-ons — see the Food
+  //               Tags section render path)
+  // Land on a valid tab for the new mode. Existing add-ons default to
+  // 'performance' (analytics-first); new add-ons default to 'dishes'
+  // (link-to-parent picker first). Users can click into Food Tags for
+  // allergen / dietary capture. Dep list is [isAddon] only — including
+  // activeTab would loop.
   useEffect(() => {
     setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
   }, [isAddon, isNewItem]);
@@ -2493,7 +2498,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {(byoMode
               ? (['food_tags', 'groupings'] as const)
               : (isAddon
-                ? (isNewItem ? (['dishes'] as const) : (['performance', 'dishes'] as const))
+                // Add-ons get a slimmed-down Food Tags tab (allergens +
+                // dietary only — heat/spice and free-text fields are
+                // suppressed inside the section). Modifiers / sides
+                // / sauces still need allergen + dietary capture so the
+                // diner-side recommender + filter UI honours per-addon
+                // restrictions.
+                ? (isNewItem
+                  ? (['food_tags', 'dishes'] as const)
+                  : (['food_tags', 'performance', 'dishes'] as const))
                 : (isNewItem
                   ? (['food_tags', 'addons', 'recommendations'] as const)
                   : (groupingsSlot
@@ -2542,13 +2555,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           {/* ── Scrollable tab content ── */}
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
 
-          {/* ── Food Tags tab (dishes only — guarded by !isAddon in case state lags) ── */}
-          {!isAddon && activeTab === 'food_tags' && (
+          {/* ── Food Tags tab ──
+              For dishes: full set of fields (heat/spice, sweetness,
+              allergens, dietary, free-text). For add-ons: just allergens
+              + dietary — modifiers inherit heat/spice from their parent
+              dish and don't need their own free-text tags. */}
+          {activeTab === 'food_tags' && (
             <section style={{ marginBottom: 4 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts) */}
-                {category !== 'Beverages' && category !== 'Desserts' && <div>
+                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
+                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
                   <label style={labelStyle}>Heat / Spice</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {activeHeatLabels.map((option) => (
@@ -2577,8 +2594,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 </div>}
 
-                {/* Sweetness — predefined pill selector (shown only for Desserts) */}
-                {category === 'Desserts' && <div>
+                {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons) */}
+                {!isAddon && category === 'Desserts' && <div>
                   <label style={labelStyle}>Sweetness</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {activeSweetnessLabels.map((option) => (
@@ -2650,8 +2667,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   />
                 )}
 
-                {/* Other tag fields */}
-                {TAG_FIELDS.map(({ key, label, placeholder }) => (
+                {/* Other tag fields — hidden for add-ons (modifiers inherit
+                    these from the parent dish). */}
+                {!isAddon && TAG_FIELDS.map(({ key, label, placeholder }) => (
                   <TagInput
                     key={key}
                     fieldKey={key}
