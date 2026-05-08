@@ -52,6 +52,13 @@ export interface FoodTags {
   textures?: string[];
   dietary?: string[];
   dietary_state?: TagReviewState;
+  /** Explicit "no allergens apply" flag — decoupled from allergens_state.
+   *  When true, the row's N/A pill renders as selected even if
+   *  allergens_state is still 'ai_suggested'. Cleared on any tag mutation
+   *  (add/accept/reject) by the backend. Added 2026-05-08. */
+  allergens_na?: boolean;
+  /** Explicit "no dietary tags apply" flag — same semantics as allergens_na. */
+  dietary_na?: boolean;
   calorie_count?: string;
   taste_profile?: string[];
   seasons?: string[];
