@@ -189,9 +189,7 @@ function renderModal(config: RenderConfig = {}) {
 
 function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): DietaryTagService {
   return {
-    getTagsForItem: vi.fn().mockResolvedValue({ allergenTags: [], dietaryTags: [] }),
-    addTag: vi.fn().mockResolvedValue(undefined),
-    rejectTag: vi.fn().mockResolvedValue(undefined),
+    setItemTags: vi.fn().mockResolvedValue(undefined),
     markReviewed: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -1224,7 +1222,7 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
     expect(screen.getByTestId('dietary-section-dietary')).toBeInTheDocument();
   });
 
-  it('does NOT call dietaryTagService.addTag while toggling pills on a draft', async () => {
+  it('does NOT call dietaryTagService.setItemTags while toggling pills on a draft', async () => {
     const dietary = makeDietaryTagService();
     renderModal({
       item: draftDish(),
@@ -1235,11 +1233,10 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
     fireEvent.click(screen.getByTestId('dietary-pill-allergen-peanuts'));
     fireEvent.click(screen.getByTestId('dietary-pill-dietary-vegan'));
     // No backend writes — drafts hold selections in local state until save
-    expect(dietary.addTag).not.toHaveBeenCalled();
-    expect(dietary.getTagsForItem).not.toHaveBeenCalled();
+    expect(dietary.setItemTags).not.toHaveBeenCalled();
   });
 
-  it('flushes draft allergen + dietary selections via addTag with the real id on save', async () => {
+  it('flushes draft allergen + dietary selections via setItemTags with the real id on save', async () => {
     const user = userEvent.setup();
     const dietary = makeDietaryTagService();
     const onSaveNewItem = makeSaveNewItem('real-dish-42');
@@ -1264,10 +1261,14 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
       expect(onSaveNewItem).toHaveBeenCalledTimes(1);
     });
 
-    // Both draft selections flushed against the real DB id, not '__draft__'
-    expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'peanuts', 'allergen', 'real-dish-42');
-    expect(dietary.addTag).toHaveBeenCalledWith('rest-1', 'vegan', 'dietary', 'real-dish-42');
-    expect(dietary.addTag).toHaveBeenCalledTimes(2);
+    // Both draft selections flushed against the real DB id via setItemTags
+    // (PR 3 of allergens/dietary consolidation: single PATCH replaces the
+    // per-tag addTag loop). Assertion accepts the merged-or-split shape —
+    // the implementation passes both axes in one call.
+    expect(dietary.setItemTags).toHaveBeenCalledWith('rest-1', 'real-dish-42', {
+      allergens: ['peanuts'],
+      dietary: ['vegan'],
+    });
   });
 });
 
