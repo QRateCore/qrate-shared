@@ -13,6 +13,7 @@ import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
 import { broadcastAddonChange, onAddonChange } from '../../../utils/addon-broadcast';
+import { isAllergensReviewed, isDietaryReviewed } from '../../../utils/foodTagsReview';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -594,17 +595,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [draftDietary, setDraftDietary]     = useState<Set<string>>(new Set());
 
   // Per-item review state mirror — drives the yellow "AI suggested" tint
-  // on the allergens / dietary sections. The yellow nudge only applies when
-  // the AI enrichment pipeline has produced suggestions awaiting review
-  // (`state === 'ai_suggested'`). Items with no state set (e.g. a freshly
-  // created BYO dish before any AI run) are treated as reviewed — nothing
-  // to review yet, so no yellow + no "AI suggested" label.
-  const [allergensReviewed, setAllergensReviewed] = useState<boolean>(
-    item.food_tags?.allergens_state !== 'ai_suggested',
-  );
-  const [dietaryReviewed, setDietaryReviewed] = useState<boolean>(
-    item.food_tags?.dietary_state !== 'ai_suggested',
-  );
+  // on the allergens / dietary sections. The threshold lives in
+  // utils/foodTagsReview.ts so the modal nudge and the
+  // "Allergens & Dietary" filter pill on the Setup Guide / Food Library
+  // pages stay in lockstep — both views answer the same question via
+  // the same helper.
+  const [allergensReviewed, setAllergensReviewed] = useState<boolean>(isAllergensReviewed(item));
+  const [dietaryReviewed, setDietaryReviewed] = useState<boolean>(isDietaryReviewed(item));
 
   // Reload dietary tags from the API (called on mount and after each toggle)
   const refreshDietaryTags = useCallback(async () => {
@@ -702,12 +699,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       // Roll back on failure — re-fetch authoritative state from the server.
       console.error('N/A click failed', err);
       await refreshDietaryTags();
-      // Re-derive reviewed flag from the fresh tagMap + food_tags. Same
-      // convention as the initialiser: only 'ai_suggested' un-reviews.
-      const stillReviewed =
-        type === 'allergens'
-          ? item.food_tags?.allergens_state !== 'ai_suggested'
-          : item.food_tags?.dietary_state !== 'ai_suggested';
+      // Re-derive reviewed flag from the fresh tagMap + food_tags via the
+      // shared helpers (same threshold as the initialiser).
+      const stillReviewed = type === 'allergens' ? isAllergensReviewed(item) : isDietaryReviewed(item);
       if (type === 'allergens') setAllergensReviewed(stillReviewed);
       else setDietaryReviewed(stillReviewed);
     }
@@ -759,9 +753,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     } catch (err) {
       console.error('Accept AI failed', err);
       await refreshDietaryTags();
-      const stillReviewed = type === 'allergens'
-        ? item.food_tags?.allergens_state !== 'ai_suggested'
-        : item.food_tags?.dietary_state !== 'ai_suggested';
+      const stillReviewed = type === 'allergens' ? isAllergensReviewed(item) : isDietaryReviewed(item);
       if (type === 'allergens') setAllergensReviewed(stillReviewed);
       else setDietaryReviewed(stillReviewed);
     }

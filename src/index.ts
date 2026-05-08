@@ -93,3 +93,12 @@ export type { RecommendationChangeMessage } from './utils/recommendation-broadca
 // Utils — Addon Broadcast (cross-tab reactivity)
 export { broadcastAddonChange, onAddonChange } from './utils/addon-broadcast';
 export type { AddonChangeMessage } from './utils/addon-broadcast';
+
+// Utils — Food Tags Review (single source of truth for the
+// "Allergens & Dietary" filter + the EditModal yellow-tint nudge)
+export {
+  isAllergensReviewed,
+  isDietaryReviewed,
+  needsAllergenOrDietaryReview,
+} from './utils/foodTagsReview';
+export type { ItemWithReviewState } from './utils/foodTagsReview';
