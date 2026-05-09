@@ -2,7 +2,7 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
@@ -61,6 +61,16 @@ interface EditModalProps {
   }) => Promise<MenuItemDisplay>;
   /** When provided, allergens and dietary restrictions use the dietary-tags API instead of free-text input. */
   dietaryTagService?: DietaryTagService;
+  /** Owner-added (custom) allergens for this restaurant, beyond the FDA-9
+   *  canonical set. Appended to the allergen pill picker so newly-defined
+   *  allergens are immediately selectable on the item. Consumer is the
+   *  source of truth — usually the same array loaded for the customization
+   *  tab on the Food Items page. */
+  customAllergens?: string[];
+  /** Owner-added (custom) dietary restrictions, beyond the canonical 5
+   *  (vegetarian / vegan / gluten-free / kosher / halal). Same wiring as
+   *  customAllergens. */
+  customDietary?: string[];
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -170,6 +180,16 @@ const DIETARY_LABELS: Record<string, string> = {
   vegetarian: 'Vegetarian', vegan: 'Vegan', 'gluten-free': 'Gluten-Free',
   kosher: 'Kosher', halal: 'Halal',
 };
+
+/** Render a slug-style canonical label as a display string when no
+ *  curated label is set in ALLERGEN_LABELS / DIETARY_LABELS. Splits on
+ *  hyphens, title-cases each word ("new-allergen" → "New Allergen"). */
+function slugToLabel(slug: string): string {
+  return slug
+    .split('-')
+    .map((part) => part.length > 0 ? part[0]!.toUpperCase() + part.slice(1) : part)
+    .join(' ');
+}
 
 // ── Dietary tag service interface (injected from consumer app) ─────────────────
 //
@@ -495,7 +515,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -560,6 +580,32 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
     return result;
   });
+
+  // Allergen + dietary pill option lists — canonical FDA-9 / canonical 5
+  // merged with the per-restaurant custom entries the consumer loaded
+  // for the customization tab. Without this merge, owner-added allergens
+  // (e.g. "MSG", "sesame-paste") never appear as pickable pills on a
+  // food item even though they exist in the customization list. Custom
+  // entries are appended after the canonical set, deduped, and given a
+  // title-cased fallback label when they aren't in the static label map.
+  const allergenOptions = useMemo<string[]>(() => {
+    const extras = (customAllergens ?? []).filter((s) => typeof s === 'string' && s.length > 0);
+    if (extras.length === 0) return [...FDA_BIG_9_ALLERGENS];
+    return Array.from(new Set([...FDA_BIG_9_ALLERGENS, ...extras]));
+  }, [customAllergens]);
+  const dietaryOptions = useMemo<string[]>(() => {
+    const extras = (customDietary ?? []).filter((s) => typeof s === 'string' && s.length > 0);
+    if (extras.length === 0) return [...DIETARY_RESTRICTIONS_LIST];
+    return Array.from(new Set([...DIETARY_RESTRICTIONS_LIST, ...extras]));
+  }, [customDietary]);
+  const allergenLabelsMerged = useMemo<Record<string, string>>(() => ({
+    ...ALLERGEN_LABELS,
+    ...Object.fromEntries((customAllergens ?? []).map((s) => [s, ALLERGEN_LABELS[s] ?? slugToLabel(s)])),
+  }), [customAllergens]);
+  const dietaryLabelsMerged = useMemo<Record<string, string>>(() => ({
+    ...DIETARY_LABELS,
+    ...Object.fromEntries((customDietary ?? []).map((s) => [s, DIETARY_LABELS[s] ?? slugToLabel(s)])),
+  }), [customDietary]);
 
   // Allergen + dietary state — initialized from item.food_tags (canonical
   // source after PR 3 of consolidation). Toggling a pill computes the
@@ -2560,8 +2606,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Allergens"
-                    options={FDA_BIG_9_ALLERGENS}
-                    labels={ALLERGEN_LABELS}
+                    options={allergenOptions}
+                    labels={allergenLabelsMerged}
                     type="allergen"
                     selectedSet={allergenSet}
                     onToggle={(name) => isNewItem
@@ -2583,8 +2629,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
-                    options={DIETARY_RESTRICTIONS_LIST}
-                    labels={DIETARY_LABELS}
+                    options={dietaryOptions}
+                    labels={dietaryLabelsMerged}
                     type="dietary"
                     selectedSet={dietarySet}
                     onToggle={(name) => isNewItem
