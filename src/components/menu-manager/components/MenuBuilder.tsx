@@ -13,6 +13,7 @@ import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } fro
 import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
+import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
@@ -512,7 +513,7 @@ function MenuItemRow({
                 {!item.active && (
                   <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
                 )}
-                {cat === 'Desserts' && item.food_tags?.sweetness_label && (
+                {cat === 'Desserts' && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
                   <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
                     ✦ {item.food_tags.sweetness_label}
                   </span>
@@ -598,7 +599,7 @@ function MenuItemRow({
               {!item.active && (
                 <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
               )}
-              {cat === 'Desserts' && item.food_tags?.sweetness_label && (
+              {cat === 'Desserts' && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
                 <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
                   ✦ {item.food_tags.sweetness_label}
                 </span>

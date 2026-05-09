@@ -6,6 +6,7 @@ import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import { useTrackAction } from '../track-action-context';
+import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -243,8 +244,8 @@ function ItemPoolCard({
           </div>
         )}
 
-        {/* Sweetness chip — Desserts only */}
-        {item.canonical_categories?.includes('Desserts') && item.food_tags?.sweetness_label && (
+        {/* Sweetness chip — Desserts only. Gated behind SWEETNESS_VISIBLE per STR-480. */}
+        {item.canonical_categories?.includes('Desserts') && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
           <div style={{ marginTop: 4 }}>
             <span
               style={{

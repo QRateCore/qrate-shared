@@ -14,6 +14,7 @@ import { useIsMobile } from '../../../hooks/useIsMobile';
 import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
 import { broadcastAddonChange, onAddonChange } from '../../../utils/addon-broadcast';
 import { isAllergensReviewed, isDietaryReviewed } from '../../../utils/foodTagsReview';
+import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2514,8 +2515,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 </div>}
 
-                {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons) */}
-                {!isAddon && category === 'Desserts' && <div>
+                {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
+                    Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
+                    Flip to true in `packages/shared/src/constants/feature-flags.ts` to restore. */}
+                {!isAddon && category === 'Desserts' && SWEETNESS_VISIBLE && <div>
                   <label style={labelStyle}>Sweetness</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {activeSweetnessLabels.map((option) => (

@@ -20,6 +20,7 @@ import {
   DEFAULT_SWEETNESS_BORDER,
   DEFAULT_SWEETNESS_COLOR,
 } from '../../../constants/food-tags';
+import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 
 // ── Dietary & Spice constants ─────────────────────────────────────────────────
 //
@@ -71,7 +72,10 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   { key: 'special',      label: 'Special',      icon: <Star size={13} /> },
   { key: 'availability', label: 'Availability', icon: <Eye size={13} /> },
   { key: 'spice',        label: 'Spice',        icon: <Flame size={13} /> },
-  { key: 'sweetness',    label: 'Sweetness',    icon: <Sparkles size={13} /> },
+  // Sweetness mode gated behind SWEETNESS_VISIBLE per STR-480.
+  ...(SWEETNESS_VISIBLE
+    ? [{ key: 'sweetness' as BulkMode, label: 'Sweetness', icon: <Sparkles size={13} /> }]
+    : []),
   { key: 'dietary',      label: 'Dietary',      icon: <Leaf size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
