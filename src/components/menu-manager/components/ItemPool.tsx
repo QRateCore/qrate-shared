@@ -294,8 +294,7 @@ function ItemPoolCard({
 function CategorySection({
   category,
   categoryItems,
-  dishCount,
-  includedCount,
+  itemCount,
   selected,
   editItemId,
   itemMenuMap,
@@ -311,8 +310,11 @@ function CategorySection({
 }: {
   category: string;
   categoryItems: MenuItemDisplay[];
-  dishCount: number;
-  includedCount: number;
+  /** Total non-addon items in this category across the whole catalogue
+   *  (dishes + included). Used by the count badge — driven from `items`,
+   *  not the post-filter list, so the number doesn't dance as the owner
+   *  searches. */
+  itemCount: number;
   selected: Set<string>;
   editItemId: string | null;
   itemMenuMap: Map<string, Array<{ menu: MenuSummary; index: number }>>;
@@ -369,12 +371,15 @@ function CategorySection({
           {category}
         </span>
 
-        {/* Counts */}
+        {/* Count — single orange badge covering every non-addon item in
+            the category. Included items used to render a separate cyan
+            badge; collapsed into one count so owners stop wondering why a
+            category shows two numbers. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {dishCount > 0 && (
+          {itemCount > 0 && (
             <span
-              aria-label={`${dishCount} ${dishCount === 1 ? 'dish' : 'dishes'}`}
-              title={`${dishCount} ${dishCount === 1 ? 'dish' : 'dishes'}`}
+              aria-label={`${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
+              title={`${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
               style={{
                 fontSize: 10,
                 fontWeight: 600,
@@ -385,24 +390,7 @@ function CategorySection({
                 whiteSpace: 'nowrap',
               }}
             >
-              {dishCount}
-            </span>
-          )}
-          {includedCount > 0 && (
-            <span
-              aria-label={`${includedCount} ${includedCount === 1 ? 'included item' : 'included items'}`}
-              title={`${includedCount} ${includedCount === 1 ? 'included item' : 'included items'}`}
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: '#0369a1',
-                background: '#e0f2fe',
-                borderRadius: 4,
-                padding: '1px 5px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {includedCount}
+              {itemCount}
             </span>
           )}
         </div>
@@ -534,23 +522,22 @@ export default function ItemPool({
     return map;
   }, [items, menus]);
 
-  // Per-category dish/included counts from ALL items (not just filtered)
+  // Per-category total — counts every non-addon item (dishes + any items
+  // flipped to item_type='included' by the sides flow). Computed against
+  // all items so the badge stays stable while the owner searches.
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, { dishes: number; included: number }> = {};
+    const counts: Record<string, number> = {};
     for (const item of items) {
       if (item.item_type === 'addon') continue;
       const cat = item.canonical_category ?? toCanonical(item.category) ?? 'Other';
-      if (!counts[cat]) counts[cat] = { dishes: 0, included: 0 };
-      if (item.item_type === 'included') {
-        counts[cat].included++;
-      } else {
-        counts[cat].dishes++;
-      }
+      counts[cat] = (counts[cat] ?? 0) + 1;
     }
     return counts;
   }, [items]);
 
-  // Group filtered items by canonical category (only for dishes/included tabs)
+  // Group filtered items by canonical category. The pool no longer
+  // separates dishes from included; both render in the same per-category
+  // bucket.
   const groupedItems = useMemo(() => {
     if (itemTypeFilter === 'addons') return null;
     const groups: Record<string, MenuItemDisplay[]> = {};
@@ -901,14 +888,13 @@ export default function ItemPool({
           <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4 }}>
             {orderedCategories.map((cat) => {
               const catItems = groupedItems![cat] ?? [];
-              const counts = categoryCounts[cat] ?? { dishes: 0, included: 0 };
+              const itemCount = categoryCounts[cat] ?? 0;
               return (
                 <CategorySection
                   key={cat}
                   category={cat}
                   categoryItems={catItems}
-                  dishCount={counts.dishes}
-                  includedCount={counts.included}
+                  itemCount={itemCount}
                   selected={selected}
                   editItemId={editItemId}
                   itemMenuMap={itemMenuMap}

@@ -427,14 +427,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   };
 
   const filtered = useMemo(() => {
-    // The menu manager pool is dishes-only (incl. BYO dishes — those are still
-    // item_type='dish'). Addons and included items are surfaced exclusively
-    // from the Food Items page. The itemTypeFilter prop is preserved for
-    // wiring stability but the pool no longer exposes a way to set it to
-    // anything other than 'dishes'.
-    let result = items.filter(
-      (i) => i.item_type !== 'addon' && i.item_type !== 'included',
-    );
+    // The menu manager pool surfaces dishes alongside any items that have
+    // been flipped to item_type='included' by the sides flow — owners need
+    // to see them in the pool to drag/edit/move them. Addons remain the
+    // only excluded type (their UI lives on the Food Items page).
+    let result = items.filter((i) => i.item_type !== 'addon');
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>

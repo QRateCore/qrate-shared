@@ -4,9 +4,11 @@
  *
  * Covers:
  *  - Item-type filter toggle is no longer rendered (menu manager pool is
- *    dishes-only — addons and included items live on the Food Items page).
- *  - Category-row count badges (STR-401): bare-integer text, aria-label and title
- *    with singular/plural grammar; pill is hidden when count is zero.
+ *    dish + included; addons live on the Food Items page).
+ *  - Category-row count badge: single bare-integer total covering every
+ *    non-addon item in the category. Singular/plural grammar; badge is
+ *    hidden when count is zero. The legacy cyan "included" badge has
+ *    been removed.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -84,107 +86,81 @@ describe('ItemPool — item-type filter toggle removed', () => {
   });
 });
 
-describe('ItemPool — category count badges (STR-401)', () => {
-  it('renders bare integer text (no "d" or "i" suffix)', () => {
+describe('ItemPool — category count badge', () => {
+  it('renders a single bare-integer total covering dishes + included', () => {
+    // Default factory data: 2 dishes + 2 addons + 2 included, all in Entrees.
+    // Badge counts every non-addon item → 4.
     render(<ItemPool {...defaultProps()} />);
 
-    const dishPill = screen.getByLabelText('2 dishes');
-    expect(dishPill).toHaveTextContent(/^2$/);
-    expect(dishPill).not.toHaveTextContent(/d/);
-
-    const includedPill = screen.getByLabelText('2 included items');
-    expect(includedPill).toHaveTextContent(/^2$/);
-    expect(includedPill).not.toHaveTextContent(/i/);
+    const pill = screen.getByLabelText('4 items');
+    expect(pill).toHaveTextContent(/^4$/);
   });
 
-  it('sets matching title attribute on each pill', () => {
+  it('sets matching title attribute on the badge', () => {
     render(<ItemPool {...defaultProps()} />);
-
-    expect(screen.getByLabelText('2 dishes')).toHaveAttribute('title', '2 dishes');
-    expect(screen.getByLabelText('2 included items')).toHaveAttribute('title', '2 included items');
+    expect(screen.getByLabelText('4 items')).toHaveAttribute('title', '4 items');
   });
 
-  it('uses singular grammar when count is exactly 1', () => {
-    const oneDish = [makeItem('d-solo', 'Lone Dish')];
-    const oneIncluded = [makeItem('i-solo', 'Solo Bread', 'included')];
+  it('uses singular grammar when the category holds exactly one item', () => {
+    const lone = [makeItem('d-solo', 'Lone Dish')];
     render(
       <ItemPool
         {...defaultProps({
-          items: [...oneDish, ...oneIncluded],
-          filtered: oneDish,
-          itemTypeFilter: 'dishes',
+          items: lone,
+          filtered: lone,
         })}
       />,
     );
 
-    const dishPill = screen.getByLabelText('1 dish');
-    expect(dishPill).toHaveTextContent(/^1$/);
-    expect(dishPill).toHaveAttribute('title', '1 dish');
-
-    const includedPill = screen.getByLabelText('1 included item');
-    expect(includedPill).toHaveTextContent(/^1$/);
-    expect(includedPill).toHaveAttribute('title', '1 included item');
+    const pill = screen.getByLabelText('1 item');
+    expect(pill).toHaveTextContent(/^1$/);
+    expect(pill).toHaveAttribute('title', '1 item');
   });
 
-  it('hides the dish pill when dishCount is zero', () => {
-    // Only included items — no dishes — dish pill MUST NOT render
-    const includedOnly = [makeItem('i1', 'Bread', 'included'), makeItem('i2', 'Water', 'included')];
+  it('does not render the legacy "included" cyan badge', () => {
+    render(<ItemPool {...defaultProps()} />);
+    expect(screen.queryByLabelText(/included items?/)).not.toBeInTheDocument();
+  });
+
+  it('renders item-card rows for items with item_type="included"', async () => {
+    // The pool must surface items flipped to item_type='included' by the
+    // sides flow. Pass them through `filtered` so the parent's dish-pool
+    // filter doesn't accidentally drop them. Categories auto-collapse on
+    // first data load — expand "Entrees" before asserting on the rows.
+    const dish = makeItem('d-keep', 'Visible Dish');
+    const inc = makeItem('i-keep', 'Garlic Bread', 'included');
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
     render(
       <ItemPool
         {...defaultProps({
-          items: includedOnly,
-          filtered: includedOnly,
-          itemTypeFilter: 'included',
+          items: [dish, inc],
+          filtered: [dish, inc],
         })}
       />,
     );
 
-    expect(screen.queryByLabelText(/dishes?$/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText('2 included items')).toBeInTheDocument();
+    // Expand Entrees so the cards render in the DOM (collapsed sections
+    // omit their children entirely — they're not just hidden).
+    await user.click(screen.getByLabelText('Expand Entrees'));
+
+    expect(screen.getByTestId('item-card-d-keep')).toBeInTheDocument();
+    expect(screen.getByTestId('item-card-i-keep')).toBeInTheDocument();
   });
 
-  it('hides the included pill when includedCount is zero', () => {
-    // Only dishes — no included — included pill MUST NOT render
-    const dishesOnly = [makeItem('d1', 'A'), makeItem('d2', 'B')];
-    render(
-      <ItemPool
-        {...defaultProps({
-          items: dishesOnly,
-          filtered: dishesOnly,
-          itemTypeFilter: 'dishes',
-        })}
-      />,
-    );
-
-    expect(screen.queryByLabelText(/included item/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText('2 dishes')).toBeInTheDocument();
-  });
-
-  it('renders bare integer for large counts (no locale formatting leak)', () => {
+  it('renders a bare integer for large counts (no locale formatting leak)', () => {
     const big = Array.from({ length: 47 }, (_, i) => makeItem(`d-${i}`, `Dish ${i}`));
     render(
       <ItemPool
         {...defaultProps({
           items: big,
           filtered: big,
-          itemTypeFilter: 'dishes',
         })}
       />,
     );
 
-    const pill = screen.getByLabelText('47 dishes');
+    const pill = screen.getByLabelText('47 items');
     expect(pill).toHaveTextContent(/^47$/);
-    expect(pill).toHaveAttribute('title', '47 dishes');
-  });
-
-  it('both pills render simultaneously with distinct accessible names', () => {
-    render(<ItemPool {...defaultProps()} />);
-
-    const dishPill = screen.getByLabelText('2 dishes');
-    const includedPill = screen.getByLabelText('2 included items');
-
-    expect(dishPill).toBeInTheDocument();
-    expect(includedPill).toBeInTheDocument();
-    expect(dishPill).not.toBe(includedPill);
+    expect(pill).toHaveAttribute('title', '47 items');
   });
 });
