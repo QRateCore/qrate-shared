@@ -394,10 +394,22 @@ export interface GroupingItem {
   ai_confidence?: number | null;
 }
 
-/** BYO PDD grouping shape (Step 5 OpenAPI). */
+/** BYO PDD grouping shape (Step 5 OpenAPI).
+ *
+ * `kind='modifier'` was added by the food-item groupings PDD (2026-05-07,
+ * step 1) for groupings promoted from a 3rd-party scrape (Zenfoody /
+ * UberEats modifier groups). Modifier groupings additionally carry:
+ *   - external_source / external_ref : provenance back to the staging
+ *     row (so the UI can render "from Zenfoody" / "from UberEats").
+ *   - overrides_attribute : when set, the patron app uses this grouping
+ *     as the picker for the named attribute (spice / sweetness / portion)
+ *     INSTEAD of the dish's item-level spice_level / sweetness_level /
+ *     portion_serves UI. The owner can re-classify via PATCH on the
+ *     existing single-row grouping endpoint.
+ */
 export interface Grouping {
   id: string;
-  kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | null;
+  kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | 'modifier' | null;
   name: string;
   position: number;
   is_default: boolean;
@@ -407,6 +419,9 @@ export interface Grouping {
   max_select: number | null;
   default_select: 'all' | 'none' | 'first';
   pricing_contribution: 'additive' | 'replace_base' | 'none';
+  external_source?: 'zenfoody' | 'ubereats' | null;
+  external_ref?: string | null;
+  overrides_attribute?: 'spice' | 'sweetness' | 'portion' | null;
   items: GroupingItem[];
 }
 
