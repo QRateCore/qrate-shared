@@ -86,6 +86,9 @@ export {
   SWEETNESS_LABEL_MAX,
 } from './constants';
 
+// Feature flags
+export { SWEETNESS_VISIBLE } from './constants/feature-flags';
+
 // Utils — Recommendation Broadcast (cross-tab reactivity)
 export { broadcastRecommendationChange, onRecommendationChange } from './utils/recommendation-broadcast';
 export type { RecommendationChangeMessage } from './utils/recommendation-broadcast';
