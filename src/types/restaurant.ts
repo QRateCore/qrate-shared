@@ -373,6 +373,49 @@ export interface MenuItemDisplay {
   groupings?: Grouping[];
 }
 
+/**
+ * Lightweight projection used by the Food Items page table + completeness
+ * banner + customization-tab counts. Returned by
+ * `GET /owner/restaurants/{id}/menu-items/summary`.
+ *
+ * Drops the heavy fields the table never renders: full food_tags JSON tail
+ * (ingredients, cooking_method, textures, taste_profile, seasons,
+ * festivity, calories), addons[], sides[], recommendations[],
+ * gallery_urls, menu_associations[] (replaced by menu_count), AI
+ * metadata. The full MenuItemDisplay is fetched on demand via
+ * `GET /owner/menu/items/{itemId}` when the EditModal opens.
+ *
+ * The fields kept are the minimum surface needed for the rendered UI:
+ * - Identity / display: id, name, description, category, item_type,
+ *   thumbnail_url, price, active, pricing_mode
+ * - Aggregates: menu_count
+ * - Tag-derived: allergens[], dietary[], heat_spice, sweetness_label
+ *   (drives Spice / Sweetness / Allergens / Dietary tab grouping + counts)
+ * - Review state: allergens_state, dietary_state (drives the
+ *   "Allergens & dietary" needs-review banner pill)
+ * - Spice/sweetness int fallbacks (paired with the labels above)
+ */
+export interface MenuItemSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  category: string;
+  item_type: 'dish' | 'addon' | 'included';
+  thumbnail_url?: string | null;
+  price?: number | null;
+  active: boolean;
+  pricing_mode?: 'base_plus_components' | 'components_only' | null;
+  menu_count: number;
+  allergens: string[];
+  dietary: string[];
+  heat_spice?: string | null;
+  sweetness_label?: string | null;
+  allergens_state?: 'ai_suggested' | 'manually_accepted' | null;
+  dietary_state?: 'ai_suggested' | 'manually_accepted' | null;
+  spice_level?: number | null;
+  sweetness_level?: number | null;
+}
+
 /** BYO PDD selection rule shape (Step 5 OpenAPI). */
 export interface SelectionRule {
   min_select: number;
