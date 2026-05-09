@@ -33,6 +33,11 @@ interface EditModalProps {
   isNewItem?: boolean;
   /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
   forceAddon?: boolean;
+  /** When true, locks the new item to dish mode and hides the Dish/Add-on toggle.
+   *  Used when the owner has already declared dish intent through a chooser
+   *  (e.g. food-items page → Add new item → Dish), so a redundant inline
+   *  toggle would only invite mistakes. */
+  forceDish?: boolean;
   /** Dish IDs to pre-select on the Dishes tab (used when creating an addon from a specific dish card). */
   preselectedDishIds?: string[];
   /**
@@ -490,7 +495,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1714,8 +1719,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </span>
           )}
 
-          {/* Dishes / Add-ons pill toggle — only shown when creating a new item (hidden when forceAddon or byoMode) */}
-          {isNewItem && !forceAddon && !byoMode && (
+          {/* Dishes / Add-ons pill toggle — only shown when creating a new item
+              (hidden when forceAddon, forceDish, or byoMode) */}
+          {isNewItem && !forceAddon && !forceDish && !byoMode && (
             <div
               role="radiogroup"
               aria-label="Item type"
