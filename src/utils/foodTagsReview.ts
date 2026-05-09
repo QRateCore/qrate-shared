@@ -12,6 +12,13 @@
 // as reviewed (nothing to nudge the owner about). Living in one place
 // keeps the filter and the modal nudge in lockstep — if the threshold
 // ever needs to change, it changes here once.
+//
+// The helper accepts BOTH shapes:
+//   - Full MenuItemDisplay — review state lives at food_tags.{allergens,dietary}_state
+//   - MenuItemSummary       — review state hoisted to top-level
+//                             allergens_state / dietary_state for the
+//                             /menu-items/summary projection
+// Top-level fields take precedence when both are present.
 
 import type { TagReviewState } from '../types/restaurant';
 
@@ -20,14 +27,24 @@ export interface ItemWithReviewState {
     allergens_state?: TagReviewState | null;
     dietary_state?: TagReviewState | null;
   } | null;
+  allergens_state?: TagReviewState | null;
+  dietary_state?: TagReviewState | null;
+}
+
+function _allergensState(item: ItemWithReviewState): TagReviewState | null | undefined {
+  return item.allergens_state ?? item.food_tags?.allergens_state;
+}
+
+function _dietaryState(item: ItemWithReviewState): TagReviewState | null | undefined {
+  return item.dietary_state ?? item.food_tags?.dietary_state;
 }
 
 export function isAllergensReviewed(item: ItemWithReviewState): boolean {
-  return item.food_tags?.allergens_state !== 'ai_suggested';
+  return _allergensState(item) !== 'ai_suggested';
 }
 
 export function isDietaryReviewed(item: ItemWithReviewState): boolean {
-  return item.food_tags?.dietary_state !== 'ai_suggested';
+  return _dietaryState(item) !== 'ai_suggested';
 }
 
 export function needsAllergenOrDietaryReview(item: ItemWithReviewState): boolean {

@@ -71,6 +71,42 @@ describe('needsAllergenOrDietaryReview — Allergens & Dietary stat-pill predica
   });
 });
 
+describe('flat MenuItemSummary shape — review state hoisted to top level', () => {
+  // The /menu-items/summary projection drops the food_tags JSON tail and
+  // hoists allergens_state / dietary_state to top-level fields. The helper
+  // must accept both shapes so the FoodLibraryView (summary) and EditModal
+  // (full MenuItemDisplay) stay in lockstep.
+
+  it('reads top-level allergens_state when food_tags is absent', () => {
+    expect(isAllergensReviewed({ allergens_state: 'ai_suggested' })).toBe(false);
+    expect(isAllergensReviewed({ allergens_state: 'manually_accepted' })).toBe(true);
+    expect(isAllergensReviewed({ allergens_state: null })).toBe(true);
+  });
+
+  it('reads top-level dietary_state when food_tags is absent', () => {
+    expect(isDietaryReviewed({ dietary_state: 'ai_suggested' })).toBe(false);
+    expect(isDietaryReviewed({ dietary_state: 'manually_accepted' })).toBe(true);
+    expect(isDietaryReviewed({ dietary_state: null })).toBe(true);
+  });
+
+  it('flags review needed when allergens_state hoisted to top is ai_suggested', () => {
+    expect(needsAllergenOrDietaryReview({
+      allergens_state: 'ai_suggested',
+      dietary_state: 'manually_accepted',
+    })).toBe(true);
+  });
+
+  it('top-level state takes precedence over food_tags nested state when both present', () => {
+    // If a future caller leaks both shapes, prefer the projected
+    // top-level value (matches the /menu-items/summary contract).
+    const item = {
+      allergens_state: 'manually_accepted' as const,
+      food_tags: { allergens_state: 'ai_suggested' as const },
+    };
+    expect(isAllergensReviewed(item)).toBe(true);
+  });
+});
+
 describe('invariant: filter membership ↔ modal yellow tint', () => {
   // The whole reason these helpers live together: the row's presence in
   // the Setup Guide / Food Library "Allergens & Dietary" filter and the
