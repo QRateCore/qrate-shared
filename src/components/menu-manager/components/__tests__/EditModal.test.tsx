@@ -1193,6 +1193,102 @@ describe('EditModal — deferred dish association for new addons', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EditModal — canonical-vs-legacy allergen rendering
+// ─────────────────────────────────────────────────────────────────────────────
+// EditModal renders chips ONLY for FDA Big 9 canonical values. allergenSet
+// is built verbatim from item.food_tags.allergens, so a legacy 'gluten'
+// value sits in the set but no Gluten chip exists to display it. The Wheat
+// chip's selected state therefore depends entirely on whether the SQL
+// backfill (database-init/handler.py 026) has remapped 'gluten' → 'wheat'
+// in JSONB. These tests pin the rendering contract on both sides of the
+// migration so a future refactor that "helpfully" remaps client-side would
+// be caught by the failing canonical test.
+describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
+  function makeItemWithAllergens(allergens: string[]): MenuItemDisplay {
+    return makeDishItem({
+      id: 'item-allergen-test',
+      food_tags: { allergens } as MenuItemDisplay['food_tags'],
+    });
+  }
+
+  function isChipSelected(testId: string): boolean {
+    // DietaryMultiSelect renders selected state via inline style:
+    //   fontWeight: 600 + background: selectedBg + color: '#fff'
+    // We check fontWeight because background uses CSS vars in production
+    // and is hard to assert across browsers; fontWeight is unambiguous.
+    const el = screen.getByTestId(testId);
+    return el.style.fontWeight === '600';
+  }
+
+  it('marks Wheat chip selected when food_tags.allergens=["wheat"] (post-canonical)', () => {
+    renderModal({
+      item: makeItemWithAllergens(['wheat']),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    expect(isChipSelected('dietary-pill-allergen-wheat')).toBe(true);
+    // Other FDA chips remain unselected.
+    expect(isChipSelected('dietary-pill-allergen-dairy')).toBe(false);
+    expect(isChipSelected('dietary-pill-allergen-peanuts')).toBe(false);
+  });
+
+  it('does NOT mark Wheat chip selected when food_tags.allergens=["gluten"] (legacy)', () => {
+    // Pre-canonicalization JSONB still has the alias 'gluten'. No Gluten
+    // chip exists in the FDA Big 9 set, so the value is dropped on render
+    // — Wheat is NOT auto-selected. This is the user-reported bug state
+    // that the SQL backfill resolves; the test is a regression guard.
+    renderModal({
+      item: makeItemWithAllergens(['gluten']),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    expect(isChipSelected('dietary-pill-allergen-wheat')).toBe(false);
+    // No chip exists for the legacy 'gluten' value.
+    expect(screen.queryByTestId('dietary-pill-allergen-gluten')).toBeNull();
+  });
+
+  it('renders no chips for any non-FDA value (made-up, nuts, milk-aliases)', () => {
+    renderModal({
+      item: makeItemWithAllergens(['gluten', 'milk', 'nuts', 'made-up']),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    // Only the 9 canonical FDA chips render — no rogue chip for any
+    // of the non-canonical values. The aliases live in allergenSet but
+    // since DietaryMultiSelect iterates only over FDA_BIG_9_ALLERGENS,
+    // they're invisible.
+    for (const legacy of ['gluten', 'milk', 'nuts', 'made-up']) {
+      expect(screen.queryByTestId(`dietary-pill-allergen-${legacy}`)).toBeNull();
+    }
+    // None of the FDA chips should be auto-selected from the aliases —
+    // EditModal does not client-side remap, by design (backend is the
+    // single source of truth for canonicalization).
+    for (const fda of ['dairy', 'eggs', 'fish', 'shellfish', 'tree-nuts',
+                       'peanuts', 'wheat', 'soy', 'sesame']) {
+      expect(isChipSelected(`dietary-pill-allergen-${fda}`)).toBe(false);
+    }
+  });
+
+  it('shows Wheat + Dairy as selected when food_tags.allergens=["wheat","dairy"]', () => {
+    renderModal({
+      item: makeItemWithAllergens(['wheat', 'dairy']),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    expect(isChipSelected('dietary-pill-allergen-wheat')).toBe(true);
+    expect(isChipSelected('dietary-pill-allergen-dairy')).toBe(true);
+    expect(isChipSelected('dietary-pill-allergen-eggs')).toBe(false);
+  });
+
+  it('renders zero selected chips when food_tags.allergens is empty', () => {
+    renderModal({
+      item: makeItemWithAllergens([]),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    for (const fda of ['dairy', 'eggs', 'fish', 'shellfish', 'tree-nuts',
+                       'peanuts', 'wheat', 'soy', 'sesame']) {
+      expect(isChipSelected(`dietary-pill-allergen-${fda}`)).toBe(false);
+    }
+  });
+});
+
 describe('EditModal — deferred dietary/allergen tags for new dish items', () => {
   const draftDish = (): MenuItemDisplay =>
     makeDishItem({ id: '__draft__', name: '', description: '', category: 'Uncategorized' });
