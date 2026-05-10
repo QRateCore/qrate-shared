@@ -107,55 +107,46 @@ interface MenuBuilderProps {
   missingPriceFilter?: boolean;
 }
 
-// ── ModifierCounter ───────────────────────────────────────────────────────────
-// Colored pill showing the number of modifiers of a given kind (sides,
-// recommendations, addons) attached to a menu item. Distinct palettes per type
-// let owners tell them apart at a glance.
-const COUNTER_PALETTE: Record<'side' | 'recommendation' | 'addon', { bg: string; fg: string; border: string }> = {
-  side:           { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
-  recommendation: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, // blue
-  addon:          { bg: '#ffedd5', fg: '#9a3412', border: '#fb923c' }, // orange
+// ── GroupingChip ──────────────────────────────────────────────────────────────
+// One colored pill per non-empty grouping on a menu item, replacing the legacy
+// sides/recs/addons counters and the single aggregate groupings chip. The
+// label and palette derive from the grouping's `kind`; custom + modifier
+// groupings use the grouping's own name. Hovering for 500ms opens a popover
+// listing the grouping's members.
+const KIND_PALETTE: Record<string, { bg: string; fg: string; border: string }> = {
+  addons:          { bg: '#ffedd5', fg: '#9a3412', border: '#fb923c' }, // orange
+  sides_and:       { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
+  sides_or:        { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
+  recommendations: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, // blue
+  modifier:        { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' }, // amber
+  custom:          { bg: '#ede9fe', fg: '#6b21a8', border: '#c4b5fd' }, // purple
 };
-
-function ModifierCounter({
-  kind,
-  count,
-  itemId,
-  label,
-}: {
-  kind: 'side' | 'recommendation' | 'addon';
-  count: number;
-  itemId: string;
-  label: string;
-}) {
-  if (count <= 0) return null;
-  const palette = COUNTER_PALETTE[kind];
-  return (
-    <span
-      className="text-[10px] font-bold px-1.5 py-px rounded shrink-0"
-      data-testid={`modifier-counter-${kind}-${itemId}`}
-      style={{ background: palette.bg, color: palette.fg, border: `1px solid ${palette.border}` }}
-    >
-      {count} {label}{count !== 1 ? 's' : ''}
-    </span>
-  );
-}
-
-// ── GroupingCounterChip ───────────────────────────────────────────────────────
-// Purple pill showing the number of groupings configured on a menu item. On
-// hover for 500ms a popover lists each grouping name and its members. Groupings
-// are the canonical container for addons / sides / recommendations / modifier
-// scrapes (BYO PDD); this chip surfaces that count distinct from the per-kind
-// counters above.
-const GROUPING_PALETTE = { bg: '#ede9fe', fg: '#6b21a8', border: '#c4b5fd' };
 const GROUPING_HOVER_DELAY_MS = 500;
 
-function GroupingCounterChip({
-  groupings,
-  itemId,
+// Visible count of grouping members. For the addons grouping, AI-suggested
+// members aren't on the live menu yet — exclude them so the chip count matches
+// what diners would actually see (matches the legacy approved-only behaviour).
+function visibleItems(grouping: Grouping): Grouping['items'] {
+  if (grouping.kind === 'addons') {
+    return grouping.items.filter((it) => it.status !== 'suggested');
+  }
+  return grouping.items;
+}
+
+function chipLabel(grouping: Grouping, count: number): string {
+  switch (grouping.kind) {
+    case 'addons':          return count === 1 ? 'addon' : 'addons';
+    case 'sides_and':       return 'included';
+    case 'sides_or':        return count === 1 ? 'choice' : 'choices';
+    case 'recommendations': return count === 1 ? 'rec' : 'recs';
+    default:                return grouping.name;
+  }
+}
+
+function GroupingChip({
+  grouping,
 }: {
-  groupings: Grouping[];
-  itemId: string;
+  grouping: Grouping;
 }) {
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,8 +155,12 @@ function GroupingCounterChip({
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
-  const count = groupings.length;
+  const items = visibleItems(grouping);
+  const count = items.length;
   if (count <= 0) return null;
+
+  const palette = KIND_PALETTE[grouping.kind ?? 'custom'] ?? KIND_PALETTE.custom;
+  const label = chipLabel(grouping, count);
 
   const handleEnter = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -188,15 +183,15 @@ function GroupingCounterChip({
     >
       <span
         className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
-        data-testid={`modifier-counter-grouping-${itemId}`}
-        style={{ background: GROUPING_PALETTE.bg, color: GROUPING_PALETTE.fg, border: `1px solid ${GROUPING_PALETTE.border}` }}
+        data-testid={`grouping-chip-${grouping.id}`}
+        style={{ background: palette.bg, color: palette.fg, border: `1px solid ${palette.border}` }}
       >
-        {count} grouping{count !== 1 ? 's' : ''}
+        {count} {label}
       </span>
       {open && (
         <div
           role="tooltip"
-          data-testid={`grouping-popover-${itemId}`}
+          data-testid={`grouping-chip-popover-${grouping.id}`}
           onClick={(e) => e.stopPropagation()}
           className="absolute left-0 top-full z-50 w-64 max-h-72 overflow-y-auto rounded shadow-lg"
           style={{
@@ -205,28 +200,15 @@ function GroupingCounterChip({
             color: 'var(--text)',
           }}
         >
-          <div className="p-2 space-y-2">
-            {groupings.map((g) => (
-              <div key={g.id}>
-                <div className="text-xs font-semibold flex items-baseline gap-1">
-                  <span className="truncate">{g.name}</span>
-                  <span className="text-[10px] text-[var(--text2)] font-normal shrink-0">
-                    ({g.items.length} {g.items.length === 1 ? 'item' : 'items'})
-                  </span>
-                </div>
-                {g.items.length === 0 ? (
-                  <div className="text-[10px] text-[var(--text2)] italic mt-0.5 ml-2">No items</div>
-                ) : (
-                  <ul className="mt-0.5 ml-2 space-y-0.5">
-                    {g.items.map((it) => (
-                      <li key={it.id} className="text-[10px] text-[var(--text2)] truncate">
-                        • {it.name ?? '(unnamed)'}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+          <div className="p-2">
+            <div className="text-xs font-semibold mb-1 truncate">{grouping.name}</div>
+            <ul className="ml-1 space-y-0.5">
+              {items.map((it) => (
+                <li key={it.id} className="text-[10px] text-[var(--text2)] truncate">
+                  • {it.name ?? '(unnamed)'}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -540,17 +522,12 @@ function MenuItemRow({
   // Approved-only count — AI-suggested addons that the owner hasn't accepted
   // yet are excluded from the row badge so the number reflects the live menu.
   const approvedAddons = countApprovedAddons(item);
-  // STR-342: when the split-Sides flag is ON, read split arrays directly so
-  // the two counters stay accurate even before the first save round-trips
-  // legacy `sides`. When flag is OFF, fall back to the combined legacy count.
-  const includedCount = item.sides_and?.length ?? 0;
-  const choiceCount = item.sides_or?.length ?? 0;
-  const sidesCount = enableAndOrSplit
-    ? includedCount + choiceCount
-    : item.sides?.length ?? 0;
-  const recsCount = item.recommendations?.length ?? 0;
+  // Unified per-grouping chip cluster — replaces the legacy sides/recs/addons
+  // counters. Each non-empty grouping renders as its own chip with a hover
+  // popover listing members. Empty groupings (count === 0) are filtered out
+  // by GroupingChip itself.
   const groupings = item.groupings ?? [];
-  const groupingsCount = groupings.length;
+  const hasAnyGroupingChip = groupings.some((g) => visibleItems(g).length > 0);
 
   const borderLeftColor = attention ? 'var(--red)' : 'transparent';
 
@@ -619,20 +596,12 @@ function MenuItemRow({
               </div>
             </div>
 
-            {/* Mobile row 2 — modifier counters (groupings, sides, recs, addons) */}
-            {(groupingsCount > 0 || sidesCount > 0 || recsCount > 0 || approvedAddons > 0) && (
-              <div className="flex items-center gap-1.5 pl-5 w-full">
-                <GroupingCounterChip groupings={groupings} itemId={item.id} />
-                {enableAndOrSplit ? (
-                  <>
-                    <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
-                    <ModifierCounter kind="side" count={choiceCount} itemId={`${item.id}-choice`} label="choice" />
-                  </>
-                ) : (
-                  <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
-                )}
-                <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
-                <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
+            {/* Mobile row 2 — one chip per non-empty grouping */}
+            {hasAnyGroupingChip && (
+              <div className="flex flex-wrap items-center gap-1.5 pl-5 w-full">
+                {groupings.map((g) => (
+                  <GroupingChip key={g.id} grouping={g} />
+                ))}
               </div>
             )}
           </>
@@ -656,19 +625,11 @@ function MenuItemRow({
               {item.name}
             </span>
 
-            {/* Modifier counters — groupings, sides, recs, addons */}
-            <div className="flex items-center gap-1 shrink-0 ml-1">
-              <GroupingCounterChip groupings={groupings} itemId={item.id} />
-              {enableAndOrSplit ? (
-                <>
-                  <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
-                  <ModifierCounter kind="side" count={choiceCount} itemId={`${item.id}-choice`} label="choice" />
-                </>
-              ) : (
-                <ModifierCounter kind="side" count={sidesCount} itemId={item.id} label="side" />
-              )}
-              <ModifierCounter kind="recommendation" count={recsCount} itemId={item.id} label="rec" />
-              <ModifierCounter kind="addon" count={approvedAddons} itemId={item.id} label="addon" />
+            {/* One chip per non-empty grouping */}
+            <div className="flex flex-wrap items-center gap-1 shrink min-w-0 ml-1">
+              {groupings.map((g) => (
+                <GroupingChip key={g.id} grouping={g} />
+              ))}
             </div>
 
             <span className="flex-1" />
