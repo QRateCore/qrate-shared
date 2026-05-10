@@ -133,6 +133,15 @@ interface Props {
     itemName: string;
     onPicked: (thumbnailUrl: string) => void;
   }) => ReactNode;
+  /**
+   * When true, the EditModal opens inside the same right-side drawer chrome
+   * the Food Item Library uses (`food-library-drawer-overlay` +
+   * `food-library-drawer` from owner-webapp globals). EditModal renders in
+   * `displayMode="inline"` and fills the drawer body. Default false preserves
+   * the historical centered-modal behavior for consumers (waiter-webapp) that
+   * do not ship the drawer CSS.
+   */
+  editItemDrawerMode?: boolean;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -141,7 +150,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, editItemDrawerMode = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1583,10 +1592,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         </div>
       )}
 
-      {/* Edit Item Modal */}
+      {/* Edit Item Modal — opens centered (legacy) or inside the right-side
+          drawer chrome that mirrors /owner/food-items when editItemDrawerMode
+          is on. The drawer path uses the same `food-library-drawer*` classes
+          (defined in owner-webapp globals.css) and EditModal `displayMode=inline`. */}
       {editItemId && (() => {
         const editItem = items.find((i) => i.id === editItemId);
-        return editItem ? (
+        if (!editItem) return null;
+        const editModal = (
           <EditModal
             item={editItem}
             restaurantId={restaurantId}
@@ -1604,8 +1617,32 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSweetnessUpdate={onSweetnessUpdate}
             onHeatSpiceUpdate={onHeatSpiceUpdate}
             imageLibrarySlot={imageLibrarySlot}
+            displayMode={editItemDrawerMode ? 'inline' : 'modal'}
           />
-        ) : null;
+        );
+        if (!editItemDrawerMode) return editModal;
+        return (
+          <>
+            <div
+              className="food-library-drawer-overlay"
+              data-testid="food-item-edit-drawer-overlay"
+              onClick={handleCloseEditModal}
+              aria-hidden
+            />
+            <div
+              className="food-library-drawer"
+              data-testid="food-item-edit-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editItem.name || 'Edit item'}
+              onKeyDown={(e) => { if (e.key === 'Escape') handleCloseEditModal(); }}
+            >
+              <div data-testid="food-item-profile" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                {editModal}
+              </div>
+            </div>
+          </>
+        );
       })()}
 
       {/* Menu Edit Panel */}
