@@ -112,22 +112,12 @@ interface EditModalProps {
    * Optional render-slot for the BYO Groupings authoring UI. When provided,
    * a "Groupings" tab is added to the tab bar (next to Recommendations) and
    * the slot's content is rendered inside that tab. The consumer is
-   * responsible for the BYO predicate (only pass a slot for BYO dishes).
-   * Reason: the grouping authoring API lives in the consumer app's service
-   * layer, not in this shared package.
+   * responsible for whether to provide content (typically: only pass a
+   * slot for saved non-addon items so the Groupings tab appears). The
+   * grouping authoring API lives in the consumer app's service layer, not
+   * in this shared package.
    */
   groupingsSlot?: ReactNode;
-  /**
-   * When true, render in Build-Your-Own mode: the right-side tab bar is
-   * restricted to ['food_tags', 'groupings'] (no Add-ons, Recommendations,
-   * or Performance), the Dishes/Add-ons type toggle is hidden, and a small
-   * "Build-your-own" badge is shown next to the name. Everything else
-   * (image box, description, mapped course, save/delete chrome) is identical
-   * to a regular dish so the two interfaces share the same skeleton.
-   * Consumers are still expected to pass `groupingsSlot` for the Groupings
-   * tab content — without it the tab is rendered empty.
-   */
-  byoMode?: boolean;
   /**
    * 'modal' (default) — fixed-position overlay with backdrop. Used by the
    * Menu page when the owner clicks the pencil-edit icon on a row.
@@ -515,7 +505,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, byoMode = false, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1739,35 +1729,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </button>
           </div>
 
-          {/* Build-your-own indicator — small chip next to the name so the
-              owner knows they're editing a BYO dish even though the rest of
-              the chrome is identical to a Dish editor. */}
-          {byoMode && (
-            <span
-              data-testid="byo-mode-badge"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '3px 10px',
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--orange-text, #c2410c)',
-                background: 'var(--orange-bg, #fff4ee)',
-                border: '1px solid #ffd5b8',
-                borderRadius: 999,
-                flexShrink: 0,
-              }}
-            >
-              Build-your-own
-            </span>
-          )}
-
-          {/* Dishes / Add-ons pill toggle — only shown when creating a new item
-              (hidden when forceAddon, forceDish, or byoMode) */}
-          {isNewItem && !forceAddon && !forceDish && !byoMode && (
+          {/* Dishes / Add-ons pill toggle — only shown when creating a new
+              item (hidden when forceAddon or forceDish). */}
+          {isNewItem && !forceAddon && !forceDish && (
             <div
               role="radiogroup"
               aria-label="Item type"
@@ -2468,23 +2432,21 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               flexShrink: 0,
             }}
           >
-            {(byoMode
-              ? (['food_tags', 'groupings'] as const)
-              : (isAddon
-                // Add-ons get a slimmed-down Food Tags tab (allergens +
-                // dietary only — heat/spice and free-text fields are
-                // suppressed inside the section). Modifiers / sides
-                // / sauces still need allergen + dietary capture so the
-                // diner-side recommender + filter UI honours per-addon
-                // restrictions.
-                ? (isNewItem
-                  ? (['food_tags', 'dishes'] as const)
-                  : (['food_tags', 'performance', 'dishes'] as const))
-                : (isNewItem
-                  ? (['food_tags', 'addons', 'recommendations'] as const)
-                  : (groupingsSlot
-                    ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
-                    : (['food_tags', 'addons', 'recommendations', 'performance'] as const))))
+            {(isAddon
+              // Add-ons get a slimmed-down Food Tags tab (allergens +
+              // dietary only — heat/spice and free-text fields are
+              // suppressed inside the section). Modifiers / sides
+              // / sauces still need allergen + dietary capture so the
+              // diner-side recommender + filter UI honours per-addon
+              // restrictions.
+              ? (isNewItem
+                ? (['food_tags', 'dishes'] as const)
+                : (['food_tags', 'performance', 'dishes'] as const))
+              : (isNewItem
+                ? (['food_tags', 'addons', 'recommendations'] as const)
+                : (groupingsSlot
+                  ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
+                  : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
