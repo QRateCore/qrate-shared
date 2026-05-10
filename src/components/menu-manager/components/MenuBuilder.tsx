@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
@@ -138,6 +138,99 @@ function ModifierCounter({
     >
       {count} {label}{count !== 1 ? 's' : ''}
     </span>
+  );
+}
+
+// ── GroupingCounterChip ───────────────────────────────────────────────────────
+// Purple pill showing the number of groupings configured on a menu item. On
+// hover for 500ms a popover lists each grouping name and its members. Groupings
+// are the canonical container for addons / sides / recommendations / modifier
+// scrapes (BYO PDD); this chip surfaces that count distinct from the per-kind
+// counters above.
+const GROUPING_PALETTE = { bg: '#ede9fe', fg: '#6b21a8', border: '#c4b5fd' };
+const GROUPING_HOVER_DELAY_MS = 500;
+
+function GroupingCounterChip({
+  groupings,
+  itemId,
+}: {
+  groupings: Grouping[];
+  itemId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const count = groupings.length;
+  if (count <= 0) return null;
+
+  const handleEnter = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setOpen(true), GROUPING_HOVER_DELAY_MS);
+  };
+
+  const handleLeave = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="relative inline-flex"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <span
+        className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
+        data-testid={`modifier-counter-grouping-${itemId}`}
+        style={{ background: GROUPING_PALETTE.bg, color: GROUPING_PALETTE.fg, border: `1px solid ${GROUPING_PALETTE.border}` }}
+      >
+        {count} grouping{count !== 1 ? 's' : ''}
+      </span>
+      {open && (
+        <div
+          role="tooltip"
+          data-testid={`grouping-popover-${itemId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full z-50 w-64 max-h-72 overflow-y-auto rounded shadow-lg"
+          style={{
+            background: 'var(--white, #fff)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+          }}
+        >
+          <div className="p-2 space-y-2">
+            {groupings.map((g) => (
+              <div key={g.id}>
+                <div className="text-xs font-semibold flex items-baseline gap-1">
+                  <span className="truncate">{g.name}</span>
+                  <span className="text-[10px] text-[var(--text2)] font-normal shrink-0">
+                    ({g.items.length} {g.items.length === 1 ? 'item' : 'items'})
+                  </span>
+                </div>
+                {g.items.length === 0 ? (
+                  <div className="text-[10px] text-[var(--text2)] italic mt-0.5 ml-2">No items</div>
+                ) : (
+                  <ul className="mt-0.5 ml-2 space-y-0.5">
+                    {g.items.map((it) => (
+                      <li key={it.id} className="text-[10px] text-[var(--text2)] truncate">
+                        • {it.name ?? '(unnamed)'}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -456,6 +549,8 @@ function MenuItemRow({
     ? includedCount + choiceCount
     : item.sides?.length ?? 0;
   const recsCount = item.recommendations?.length ?? 0;
+  const groupings = item.groupings ?? [];
+  const groupingsCount = groupings.length;
 
   const borderLeftColor = attention ? 'var(--red)' : 'transparent';
 
@@ -524,9 +619,10 @@ function MenuItemRow({
               </div>
             </div>
 
-            {/* Mobile row 2 — modifier counters (sides, recs, addons) */}
-            {(sidesCount > 0 || recsCount > 0 || approvedAddons > 0) && (
+            {/* Mobile row 2 — modifier counters (groupings, sides, recs, addons) */}
+            {(groupingsCount > 0 || sidesCount > 0 || recsCount > 0 || approvedAddons > 0) && (
               <div className="flex items-center gap-1.5 pl-5 w-full">
+                <GroupingCounterChip groupings={groupings} itemId={item.id} />
                 {enableAndOrSplit ? (
                   <>
                     <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
@@ -560,8 +656,9 @@ function MenuItemRow({
               {item.name}
             </span>
 
-            {/* Modifier counters — sides, recs, addons */}
+            {/* Modifier counters — groupings, sides, recs, addons */}
             <div className="flex items-center gap-1 shrink-0 ml-1">
+              <GroupingCounterChip groupings={groupings} itemId={item.id} />
               {enableAndOrSplit ? (
                 <>
                   <ModifierCounter kind="side" count={includedCount} itemId={`${item.id}-included`} label="included" />
