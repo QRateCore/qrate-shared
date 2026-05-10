@@ -148,6 +148,12 @@ interface RenderConfig {
   onClose?: () => void;
   onComplete?: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   heatLabels?: string[];
+  /**
+   * Optional Groupings tab content. The owner-webapp passes its
+   * GroupingsSection via this slot once a dish has a real DB id —
+   * EditModal only renders the Groupings tab when this is non-null.
+   */
+  groupingsSlot?: React.ReactNode;
 }
 
 function renderModal(config: RenderConfig = {}) {
@@ -165,6 +171,7 @@ function renderModal(config: RenderConfig = {}) {
     onClose = vi.fn(),
     onComplete = vi.fn(),
     heatLabels,
+    groupingsSlot,
   } = config;
 
   render(
@@ -183,6 +190,7 @@ function renderModal(config: RenderConfig = {}) {
         onClose={onClose}
         onComplete={onComplete}
         heatLabels={heatLabels}
+        groupingsSlot={groupingsSlot}
       />
     </MenuManagerServiceProvider>,
   );
@@ -277,6 +285,35 @@ describe('EditModal — tab defaults', () => {
     expect(screen.getByTestId('tab-recommendations')).toBeInTheDocument();
     expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
     expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
+  });
+
+  it('renders the unified tab list (incl. Groupings) when groupingsSlot is provided on a saved dish', () => {
+    // After the BYO retirement refactor (commit 65bac85 in owner-webapp +
+    // 13e5ff1 here), there is no `byoMode` prop and no
+    // ['food_tags','groupings']-only branch. Whenever the consumer supplies
+    // a non-null groupingsSlot on a saved dish, the editor must surface
+    // the full unified tab list so owners can compose components on any
+    // dish — not just legacy BYO ones.
+    renderModal({
+      item: makeDishItem({ id: 'saved-dish-1', name: 'Saved Dish' }),
+      groupingsSlot: <div data-testid="test-groupings-slot">slot</div>,
+    });
+
+    expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-recommendations')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-groupings')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
+  });
+
+  it('omits the Groupings tab when groupingsSlot is not provided', () => {
+    // Negative half of the previous test — confirms that omitting the
+    // slot does not surface a non-functional Groupings tab.
+    renderModal({
+      item: makeDishItem({ id: 'saved-dish-2', name: 'Saved Dish' }),
+    });
+
+    expect(screen.queryByTestId('tab-groupings')).not.toBeInTheDocument();
   });
 });
 
