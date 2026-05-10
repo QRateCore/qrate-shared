@@ -400,6 +400,13 @@ export interface MenuItemSummary {
   name: string;
   description?: string | null;
   category: string;
+  /**
+   * Pipeline-assigned canonical category (one of Beverages, Appetizers,
+   * Breads, Entrees, Sides, Desserts, Soups, Salads). Drives the
+   * canonical-category chip rail on the Food Items page. Null until
+   * the categorize stage runs.
+   */
+  canonical_category?: string | null;
   item_type: 'dish' | 'addon' | 'included';
   thumbnail_url?: string | null;
   price?: number | null;
