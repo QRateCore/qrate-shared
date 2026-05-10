@@ -8,6 +8,7 @@ import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
 import { DEFAULT_HEAT_LABELS, DEFAULT_SWEETNESS_LABELS } from '../../../constants/food-tags';
+import { deriveHeatFromLabel } from '../../../utils/spice-derivation';
 import Select from '../../common/Select';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
@@ -2527,6 +2528,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       </button>
                     ))}
                   </div>
+                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
                 </div>}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
@@ -3315,6 +3317,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
+
+// Owner-side preview of how the diner sees this item's heat tag — STR-478.
+// Mirrors the canonical 0..4 scale derived in qrate-core spice_derivation.py.
+// Hidden when no label is selected OR the label is no longer on the active
+// scale (stale label after a cascade-state edit).
+function HeatSpicePreview({
+  heatSpice,
+  scale,
+}: {
+  heatSpice: string | null;
+  scale: readonly string[];
+}) {
+  const heat = heatSpice == null ? null : deriveHeatFromLabel(heatSpice, scale);
+  // aria-live="polite" ensures screen readers announce the bucket change when
+  // the owner selects a different pill, without interrupting other speech.
+  return (
+    <div
+      data-testid="edit-modal-heat-preview"
+      aria-live="polite"
+      style={{
+        marginTop: 8,
+        fontSize: 11,
+        color: 'var(--text2)',
+        minHeight: 14,
+      }}
+    >
+      {heat !== null && heatSpice && (
+        <>
+          <span style={{ fontWeight: 600 }}>Patron sees:</span>{' '}
+          heat {heat} of 4 — {heatSpice}
+        </>
+      )}
+    </div>
+  );
+}
 
 function RecommendationCard({
   rec,

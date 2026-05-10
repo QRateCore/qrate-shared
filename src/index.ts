@@ -105,3 +105,11 @@ export {
   needsAllergenOrDietaryReview,
 } from './utils/foodTagsReview';
 export type { ItemWithReviewState } from './utils/foodTagsReview';
+
+// Utils — Spice Derivation (client-side port of qrate-core HEAT_FROM_SPICE_LEVEL;
+// powers EditModal "Patron sees" preview + Spice tab per-row 0..4 hint — STR-478)
+export {
+  deriveHeat,
+  deriveHeatFromLabel,
+  HEAT_FROM_SPICE_LEVEL,
+} from './utils/spice-derivation';

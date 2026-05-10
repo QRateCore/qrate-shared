@@ -147,6 +147,7 @@ interface RenderConfig {
   dietaryTagService?: DietaryTagService;
   onClose?: () => void;
   onComplete?: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
+  heatLabels?: string[];
 }
 
 function renderModal(config: RenderConfig = {}) {
@@ -163,6 +164,7 @@ function renderModal(config: RenderConfig = {}) {
     dietaryTagService,
     onClose = vi.fn(),
     onComplete = vi.fn(),
+    heatLabels,
   } = config;
 
   render(
@@ -180,6 +182,7 @@ function renderModal(config: RenderConfig = {}) {
         dietaryTagService={dietaryTagService}
         onClose={onClose}
         onComplete={onComplete}
+        heatLabels={heatLabels}
       />
     </MenuManagerServiceProvider>,
   );
@@ -502,6 +505,68 @@ describe('EditModal — heat/spice pill selection', () => {
     const mildPill = screen.getByTestId('heat-pill-mild');
     // The selected pill has aria-pressed="true"
     expect(mildPill.getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+// STR-478: owner-side "Patron sees" preview row showing the canonical 0..4
+// heat bucket the diner will see for the currently-selected label.
+describe('EditModal — STR-478 heat/spice patron preview', () => {
+  it('renders empty preview container when no heat label is selected', () => {
+    renderModal({ item: makeDishItem({ food_tags: {} }) });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+    expect(preview).toBeInTheDocument();
+    // No "Patron sees" copy when nothing is selected.
+    expect(preview).not.toHaveTextContent(/Patron sees/);
+  });
+
+  it('shows "heat 4 of 4 — Fiery" when Fiery is selected on the default 5-level scale', () => {
+    renderModal({
+      item: makeDishItem({ food_tags: { heat_spice: 'Fiery' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
+    });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+    expect(preview).toHaveTextContent('Patron sees:');
+    expect(preview).toHaveTextContent('heat 4 of 4 — Fiery');
+  });
+
+  it('updates preview when owner switches pills (default scale: Mild → 0, Hot → 3)', async () => {
+    const user = userEvent.setup();
+    renderModal({ item: makeDishItem({ food_tags: {} }) });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+
+    await user.click(screen.getByTestId('heat-pill-mild'));
+    expect(preview).toHaveTextContent('heat 0 of 4 — Mild');
+
+    await user.click(screen.getByTestId('heat-pill-hot'));
+    expect(preview).toHaveTextContent('heat 3 of 4 — Hot');
+  });
+
+  it('compresses heat bucket on a 7-level custom scale (level 5 → heat 3)', () => {
+    // 7-level row: [0, 1, 1, 2, 3, 3, 4] — index 4 (5th label) → heat 3
+    const customScale = ['Plain', 'Mild', 'Warm', 'Medium', 'Hot', 'Spicy', 'Fiery'];
+    renderModal({
+      item: makeDishItem({ food_tags: { heat_spice: 'Hot' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
+      heatLabels: customScale,
+    });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+    expect(preview).toHaveTextContent('heat 3 of 4 — Hot');
+  });
+
+  it('hides preview text when label is stale (not on the active scale)', () => {
+    // Owner removed "Inferno" from the scale via cascade-state edit, but the
+    // saved item still references it. Preview must degrade to no-hint, not crash.
+    renderModal({
+      item: makeDishItem({ food_tags: { heat_spice: 'Inferno' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
+      heatLabels: ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'],
+    });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+    expect(preview).toBeInTheDocument();
+    expect(preview).not.toHaveTextContent(/Patron sees/);
+  });
+
+  it('uses aria-live="polite" for screen-reader announcements', () => {
+    renderModal({ item: makeDishItem({ food_tags: {} }) });
+    const preview = screen.getByTestId('edit-modal-heat-preview');
+    expect(preview.getAttribute('aria-live')).toBe('polite');
   });
 });
 
