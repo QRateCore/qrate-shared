@@ -1116,7 +1116,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setItemAddons(next);
     const task = addonMutexRef.current.then(async () => {
       try {
-        if (addon.id) {
+        // PDD 2026-05-10 Phase E Step 14 — approveAddonSuggestion is
+        // optional on the service interface (deprecated). This branch
+        // is dead code after Step 13 (the Add-ons tab that triggered
+        // it is gone); the optional-chain keeps the build green until
+        // the dead-code cleanup follow-up removes this handler entirely.
+        if (addon.id && service.approveAddonSuggestion) {
           await service.approveAddonSuggestion(item.id, addon.id, priceOverride);
         } else {
           await service.updateItemModifiers(item.id, { addons: next });

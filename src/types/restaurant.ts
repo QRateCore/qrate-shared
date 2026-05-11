@@ -586,6 +586,15 @@ export interface MenuManagerService {
    * Sending both shapes in the same call → 400 at the backend (STR-342).
    * Cross-group duplicates between sides_and and sides_or → 409.
    */
+  /**
+   * @deprecated PDD 2026-05-10 collapse-addons-recs Phase E Step 14 —
+   * Add-ons + Recommendations writes have moved to the groupings API
+   * (POST /owner/menu-items/{id}/groupings:bulk and the per-grouping
+   * endpoints). The `addons` and `recommendations` fields on this
+   * payload should not be sent by new code. Sides + sides_and +
+   * sides_or remain valid until the menu-manager-view (InlineItemEditor)
+   * is migrated to groupings — tracked as Step 14b.
+   */
   updateItemModifiers(itemId: string, data: {
     sides?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
     sides_and?: Array<{ menu_item_id: string; name: string; price_override: number | null; thumbnail_url?: string | null }>;
@@ -594,7 +603,15 @@ export interface MenuManagerService {
     sides_selection_mode?: 'and' | 'or';
     addons?: AddonEntry[];
   }): Promise<void>;
-  approveAddonSuggestion(itemId: string, assocId: string, priceOverride?: number): Promise<void>;
+  /**
+   * @deprecated PDD 2026-05-10 collapse-addons-recs Phase E Step 14 —
+   * AI suggestion approval now lives on per-member grouping items via
+   * PATCH /owner/grouping-items/{groupingItemId}/approve, called by
+   * GroupingsSection's Approve button (Step 12). The legacy endpoint
+   * this method called is gone after Step 17 (route returns 410).
+   * Implementors may omit this method; callers must not invoke it.
+   */
+  approveAddonSuggestion?(itemId: string, assocId: string, priceOverride?: number): Promise<void>;
   getAddonItems(restaurantId: string): Promise<MenuItemDisplay[]>;
   bulkAssignModifiers(restaurantId: string, payload: { modifier_type: 'addon' | 'side'; modifier_item_ids: string[]; dish_ids: string[] }): Promise<{ created: number; skipped: number; total: number }>;
 
