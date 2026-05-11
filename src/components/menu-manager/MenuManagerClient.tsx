@@ -134,6 +134,19 @@ interface Props {
     onPicked: (thumbnailUrl: string) => void;
   }) => ReactNode;
   /**
+   * Optional render-prop slot for the EditModal "Groupings" tab. When
+   * provided AND the slot returns a non-null node, the tab renders.
+   * Mirrors the Food Items Library drawer (FoodItemsManagerClient) so
+   * the two entry points to the same EditModal look identical.
+   *
+   * The slot can return `undefined` to suppress the tab for a specific
+   * item (e.g. drafts that haven't been saved yet, or item_type='addon').
+   */
+  groupingsSlot?: (handlers: {
+    item: MenuItemDisplay;
+    isNewItem: boolean;
+  }) => ReactNode;
+  /**
    * When true, the EditModal opens inside the same right-side drawer chrome
    * the Food Item Library uses (`food-library-drawer-overlay` +
    * `food-library-drawer` from owner-webapp globals). EditModal renders in
@@ -150,7 +163,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, editItemDrawerMode = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1617,6 +1630,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSweetnessUpdate={onSweetnessUpdate}
             onHeatSpiceUpdate={onHeatSpiceUpdate}
             imageLibrarySlot={imageLibrarySlot}
+            groupingsSlot={
+              groupingsSlot
+                ? groupingsSlot({
+                    item: editItem,
+                    isNewItem: newlyCreatedItemIdRef.current === editItemId,
+                  })
+                : undefined
+            }
             displayMode={editItemDrawerMode ? 'inline' : 'modal'}
           />
         );
