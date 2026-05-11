@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2, Copy } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
+import { CloneMenuModal } from './CloneMenuModal';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
@@ -55,6 +56,13 @@ interface MenuBuilderProps {
   onDragLeaveBucket: (menuId: string, cat: string) => void;
   onDropBucket: (e: React.DragEvent, menuId: string, cat: string) => void;
   onCreateMenu: (name: string) => Promise<void>;
+  /**
+   * STR-521 — clone an existing menu into a new menu (categories + per-category
+   * overrides + items). Optional so consumers without the backend route deployed
+   * (e.g. waiter-webapp on older qrate-core) can omit it; when omitted the
+   * "Clone Existing" button is hidden.
+   */
+  onCloneMenu?: (sourceMenuId: string, name: string) => Promise<void>;
   onEditMenu: (menuId: string) => void;
   onRemoveItemFromMenu: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
@@ -1083,6 +1091,7 @@ export default function MenuBuilder({
   onDragLeaveBucket,
   onDropBucket,
   onCreateMenu,
+  onCloneMenu,
   onEditMenu,
   onRemoveItemFromMenu,
   onEditItem,
@@ -1136,6 +1145,7 @@ export default function MenuBuilder({
   const [addingMenu, setAddingMenu] = useState(false);
   const [newMenuName, setNewMenuName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const newMenuInputRef = useRef<HTMLInputElement>(null);
   const activeMenu = menus.find((m) => m.id === activeMenuId) ?? menus[0] ?? null;
   const activeMenuIndex = activeMenu ? menus.findIndex((m) => m.id === activeMenu.id) : 0;
@@ -1264,9 +1274,9 @@ export default function MenuBuilder({
           )}
         </div>
 
-        {/* Frozen "+ New Menu" button — always visible, never scrolls */}
+        {/* Frozen "+ New Menu" + "Clone Existing" buttons — always visible, never scroll */}
         {!addingMenu && (
-          <div className="shrink-0 px-2 py-1.5 flex items-center">
+          <div className="shrink-0 px-2 py-1.5 flex items-center gap-1.5">
             <Button
               variant="primary"
               size="sm"
@@ -1277,9 +1287,33 @@ export default function MenuBuilder({
             >
               New Menu
             </Button>
+            {onCloneMenu && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Copy size={13} />}
+                onClick={() => setCloneOpen(true)}
+                disabled={menus.length === 0}
+                data-testid="clone-menu-btn"
+                aria-label="Clone existing menu"
+              >
+                Clone Existing
+              </Button>
+            )}
           </div>
         )}
       </div>
+
+      {cloneOpen && onCloneMenu && (
+        <CloneMenuModal
+          sourceMenus={menus}
+          onClose={() => setCloneOpen(false)}
+          onConfirm={async (sourceMenuId, name) => {
+            await onCloneMenu(sourceMenuId, name);
+            setCloneOpen(false);
+          }}
+        />
+      )}
 
       {/* Active menu header */}
       {activeMenu && (

@@ -261,6 +261,7 @@ export default function MenuEditPanel({
                 <button
                   key={String(v)}
                   type="button"
+                  aria-pressed={isActive === v}
                   onClick={() => {
                     trackAction('menu.menuEdit.toggleActive', {
                       restaurantId,

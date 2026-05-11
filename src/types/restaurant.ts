@@ -250,6 +250,10 @@ export interface MenuUpdate {
   schedule?: MenuSchedule | null;
 }
 
+export interface MenuCloneRequest {
+  name: string;
+}
+
 // ─── HTTP Adapter (auth-agnostic interface for service factories) ────────────
 
 /**
@@ -543,6 +547,14 @@ export interface MenuManagerService {
   createMenu(restaurantId: string, data: MenuCreate): Promise<MenuSummary>;
   updateMenu(restaurantId: string, menuId: string, data: MenuUpdate): Promise<MenuSummary>;
   deleteMenu(restaurantId: string, menuId: string): Promise<void>;
+  /**
+   * Clone an existing menu's structure (categories + per-category overrides + items)
+   * into a new menu owned by the same restaurant. The new menu starts INACTIVE
+   * regardless of the source menu's active state — the owner toggles it live after
+   * configuration. Optional in the interface so consumers without the backend
+   * route deployed can still type-check.
+   */
+  cloneMenu?(restaurantId: string, sourceMenuId: string, data: MenuCloneRequest): Promise<MenuSummary>;
 
   // Menu item associations
   addItemToMenu(itemId: string, menuId: string, price: number | null | undefined, category?: string, settings?: { canonical_categories?: string[] }): Promise<MenuAssociation[]>;

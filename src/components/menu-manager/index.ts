@@ -4,6 +4,8 @@ export { default as EditModal } from './components/EditModal';
 export type { DietaryTagService } from './components/EditModal';
 export { default as BulkActionsPanel } from './components/BulkActionsPanel';
 export { default as BulkModifierPanel } from './components/BulkModifierPanel';
+export { CloneMenuModal } from './components/CloneMenuModal';
+export type { CloneMenuModalProps } from './components/CloneMenuModal';
 export { MenuManagerServiceProvider } from './context';
 export {
   TrackActionProvider,
