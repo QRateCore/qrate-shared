@@ -2443,25 +2443,32 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               ? (isNewItem
                 ? (['food_tags', 'dishes'] as const)
                 : (['food_tags', 'performance', 'dishes'] as const))
+              // PDD 2026-05-10 collapse-addons-recs Phase E Step 13 —
+              // Add-ons + Recommendations tabs removed from dish editing.
+              // Both concerns now live in the Groupings tab (the
+              // `addons` and `recommendations` default groupings created
+              // by the backend at item creation). The Groupings tab's
+              // pinned-default UX + AI-suggestion banner + per-member
+              // approve action (shipped in Step 12) are the load-bearing
+              // replacements for the workflows that lived in the
+              // legacy tabs. Existing dish items always get groupingsSlot
+              // (FoodItemsManagerClient threads it unconditionally), so
+              // the second variant is the practical-zero edge case.
               : (isNewItem
-                ? (['food_tags', 'addons', 'recommendations'] as const)
+                ? (['food_tags'] as const)
                 : (groupingsSlot
-                  ? (['food_tags', 'addons', 'recommendations', 'groupings', 'performance'] as const)
-                  : (['food_tags', 'addons', 'recommendations', 'performance'] as const)))
+                  ? (['food_tags', 'groupings', 'performance'] as const)
+                  : (['food_tags', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
               const label =
                 tab === 'food_tags'
                   ? 'Food Tags'
-                  : tab === 'addons'
-                    ? `Add-ons${itemAddons.length > 0 ? ` (${itemAddons.length})` : ''}`
-                    : tab === 'recommendations'
-                      ? `Recommendations${(aiSugs.length + itemRecs.length) > 0 ? ` (${aiSugs.length + itemRecs.length})` : ''}`
-                      : tab === 'groupings'
-                        ? 'Groupings'
-                        : tab === 'dishes'
-                          ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                          : 'Performance';
+                  : tab === 'groupings'
+                    ? 'Groupings'
+                    : tab === 'dishes'
+                      ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
+                      : 'Performance';
               return (
                 <button
                   key={tab}

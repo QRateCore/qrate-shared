@@ -272,48 +272,56 @@ describe('EditModal — tab defaults', () => {
     expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
   });
 
-  it('shows the recommendations tab for new dish items as a seed picker', () => {
-    // Replaces the legacy "hide tab" guard. The tab is now safe on drafts
-    // because the picker reads from local allItems and defers backend
-    // writes — the GET /owner/menu-items/__draft__/modifiers 500 is avoided
-    // by skipping the fetch entirely when isNewItem is true.
+  it('renders only the food_tags tab for new dish items (PDD Phase E Step 13)', () => {
+    // PDD 2026-05-10 collapse-addons-recs Phase E Step 13 — Add-ons +
+    // Recommendations tabs removed from dish editing. Both concerns
+    // now live in the Groupings tab, but the Groupings tab itself
+    // requires a saved item (it lazily fetches /owner/menu-items/{id}/
+    // groupings, which doesn't exist for drafts). New-item editing
+    // therefore shows only Food Tags; the user saves first, then
+    // accesses Groupings on the now-saved item.
     renderModal({
       item: makeDishItem({ id: '__draft__', name: '' }),
       isNewItem: true,
       onSaveNewItem: vi.fn(),
     });
-    expect(screen.getByTestId('tab-recommendations')).toBeInTheDocument();
     expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
+    expect(screen.queryByTestId('tab-addons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-recommendations')).not.toBeInTheDocument();
   });
 
-  it('renders the unified tab list (incl. Groupings) when groupingsSlot is provided on a saved dish', () => {
-    // After the BYO retirement refactor (commit 65bac85 in owner-webapp +
-    // 13e5ff1 here), there is no `byoMode` prop and no
-    // ['food_tags','groupings']-only branch. Whenever the consumer supplies
-    // a non-null groupingsSlot on a saved dish, the editor must surface
-    // the full unified tab list so owners can compose components on any
-    // dish — not just legacy BYO ones.
+  it('renders Food Tags · Groupings · Performance for a saved dish with groupingsSlot (PDD Phase E Step 13)', () => {
+    // PDD 2026-05-10 — the post-collapse tab list. Add-ons +
+    // Recommendations are NOT in the tab bar; their workflows
+    // (member management, AI suggestion approval) are reachable via
+    // the Groupings tab (the `addons` and `recommendations` default
+    // groupings, surfaced with pinned ordering + AI banner from
+    // Step 12).
     renderModal({
       item: makeDishItem({ id: 'saved-dish-1', name: 'Saved Dish' }),
       groupingsSlot: <div data-testid="test-groupings-slot">slot</div>,
     });
 
     expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-addons')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-recommendations')).toBeInTheDocument();
     expect(screen.getByTestId('tab-groupings')).toBeInTheDocument();
     expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
+    expect(screen.queryByTestId('tab-addons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-recommendations')).not.toBeInTheDocument();
   });
 
-  it('omits the Groupings tab when groupingsSlot is not provided', () => {
-    // Negative half of the previous test — confirms that omitting the
-    // slot does not surface a non-functional Groupings tab.
+  it('renders Food Tags · Performance when groupingsSlot is not provided', () => {
+    // Practical-zero edge case: FoodItemsManagerClient threads
+    // groupingsSlot unconditionally for dish items, so this branch
+    // shouldn't fire in production. Kept as a defensive contract.
     renderModal({
       item: makeDishItem({ id: 'saved-dish-2', name: 'Saved Dish' }),
     });
 
+    expect(screen.getByTestId('tab-food_tags')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-performance')).toBeInTheDocument();
     expect(screen.queryByTestId('tab-groupings')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-addons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-recommendations')).not.toBeInTheDocument();
   });
 });
 
@@ -713,356 +721,6 @@ describe('EditModal — image actions', () => {
   });
 });
 
-// ── Addon removal tests (STR-XXX: addon delete not persisting) ──────────────
-
-describe('EditModal — addon removal', () => {
-  const addonA = {
-    id: 'assoc-a',
-    menu_item_id: 'addon-a',
-    name: 'Extra Cheese',
-    price_override: 1.5,
-    thumbnail_url: null,
-    status: 'approved' as const,
-    suggestion_source: 'manual' as const,
-  };
-  const addonB = {
-    id: 'assoc-b',
-    menu_item_id: 'addon-b',
-    name: 'Bacon',
-    price_override: 3,
-    thumbnail_url: null,
-    status: 'approved' as const,
-    suggestion_source: 'manual' as const,
-  };
-
-  it('calls updateItemModifiers without the removed addon', async () => {
-    const user = userEvent.setup();
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([]),
-    });
-
-    renderModal({
-      item: makeDishItem({ addons: [addonA, addonB] }),
-      service,
-    });
-
-    // Switch to addons tab
-    await user.click(screen.getByTestId('tab-addons'));
-
-    // Remove addon A
-    const removeBtn = screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`);
-    await user.click(removeBtn);
-
-    await waitFor(() => {
-      expect(service.updateItemModifiers).toHaveBeenCalledWith(
-        'item-1',
-        expect.objectContaining({
-          addons: [expect.objectContaining({ menu_item_id: 'addon-b' })],
-        }),
-      );
-    });
-
-    // Addon A should be gone from the UI
-    expect(screen.queryByTestId(`remove-addon-modal-${addonA.menu_item_id}`)).not.toBeInTheDocument();
-    // Addon B should still be visible
-    expect(screen.getByTestId(`remove-addon-modal-${addonB.menu_item_id}`)).toBeInTheDocument();
-  });
-
-  it('rolls back and shows error when API fails', async () => {
-    const user = userEvent.setup();
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([]),
-      updateItemModifiers: vi.fn().mockRejectedValue(new Error('Network error')),
-    });
-
-    renderModal({
-      item: makeDishItem({ addons: [addonA] }),
-      service,
-    });
-
-    await user.click(screen.getByTestId('tab-addons'));
-
-    // Remove addon A — should fail
-    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
-
-    // Addon should reappear after API failure
-    await waitFor(() => {
-      expect(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`)).toBeInTheDocument();
-    });
-
-    // Error message should be visible (may appear in multiple DOM nodes)
-    const errorEls = screen.getAllByText(/Failed to remove/i);
-    expect(errorEls.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('persists removal through save — onComplete includes updated addons', async () => {
-    const user = userEvent.setup();
-    const saved = makeDishItem({ name: 'Grilled Chicken' });
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([]),
-      updateMenuItem: vi.fn().mockResolvedValue(saved),
-    });
-    const onComplete = vi.fn();
-
-    renderModal({
-      item: makeDishItem({ addons: [addonA, addonB] }),
-      service,
-      onComplete,
-    });
-
-    // Switch to addons tab and remove addon A
-    await user.click(screen.getByTestId('tab-addons'));
-    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
-
-    // Wait for the modifiers API call to complete
-    await waitFor(() => {
-      expect(service.updateItemModifiers).toHaveBeenCalled();
-    });
-
-    // Switch back to food_tags tab (so we can fill required fields and save)
-    await user.click(screen.getByTestId('tab-food_tags'));
-
-    // Click save
-    await user.click(screen.getByTestId('edit-save-btn'));
-
-    await waitFor(() => {
-      expect(onComplete).toHaveBeenCalledWith(
-        expect.objectContaining({
-          addons: [expect.objectContaining({ menu_item_id: 'addon-b' })],
-        }),
-      );
-    });
-
-    // Ensure addon A is NOT in the onComplete payload
-    const completedItem = onComplete.mock.calls[0][0];
-    expect(completedItem.addons).toHaveLength(1);
-    expect(completedItem.addons[0].menu_item_id).toBe('addon-b');
-  });
-
-  it('serialises concurrent mutations — second remove waits for first', async () => {
-    const user = userEvent.setup();
-    let resolveFirst!: () => void;
-    const firstCallPromise = new Promise<void>((r) => { resolveFirst = r; });
-    let callCount = 0;
-
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([]),
-      updateItemModifiers: vi.fn().mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) return firstCallPromise;
-        return Promise.resolve();
-      }),
-    });
-
-    const addonC = {
-      id: 'assoc-c',
-      menu_item_id: 'addon-c',
-      name: 'Avocado',
-      price_override: 2,
-      thumbnail_url: null,
-      status: 'approved' as const,
-      suggestion_source: 'manual' as const,
-    };
-
-    renderModal({
-      item: makeDishItem({ addons: [addonA, addonB, addonC] }),
-      service,
-    });
-
-    await user.click(screen.getByTestId('tab-addons'));
-
-    // Fire two removes rapidly
-    await user.click(screen.getByTestId(`remove-addon-modal-${addonA.menu_item_id}`));
-    // B's remove button should still be visible since A was already removed from UI
-    await user.click(screen.getByTestId(`remove-addon-modal-${addonB.menu_item_id}`));
-
-    // First call is still pending — only 1 actual API call should have started
-    expect(callCount).toBe(1);
-
-    // Resolve the first call
-    resolveFirst();
-
-    // Now the second call should fire
-    await waitFor(() => {
-      expect(callCount).toBe(2);
-    });
-
-    // The second call should have been made with only [C] — not [B, C]
-    const secondCallAddons = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls[1][1].addons;
-    expect(secondCallAddons).toHaveLength(1);
-    expect(secondCallAddons[0].menu_item_id).toBe('addon-c');
-  });
-});
-
-// ── Cross-tab reactivity — recommendation broadcast ─────────────────────────
-
-describe('EditModal — cross-tab recommendation reactivity', () => {
-  it('broadcasts recommendation change after accepting an AI suggestion', async () => {
-    const { broadcastRecommendationChange: mockBroadcast } = await import(
-      '../../../../utils/recommendation-broadcast'
-    );
-    vi.mocked(mockBroadcast);
-
-    const aiItem = makeDishItem({ id: 'paired-1', name: 'Caesar Salad' });
-    const entree = makeDishItem({
-      id: 'entree-1',
-      name: 'Grilled Chicken',
-      recommendations: [],
-    });
-
-    const service = makeService({
-      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
-      getMenuIntelligence: vi.fn().mockResolvedValue({
-        menu_intelligence: {
-          pairing_graph: [{
-            entree_item_id: 'entree-1',
-            paired_items: [{ item_id: 'paired-1', strength: 0.9 }],
-          }],
-        },
-      }),
-    });
-
-    renderModal({ item: entree, allItems: [entree, aiItem], service });
-
-    // Switch to recommendations tab
-    const recsTab = screen.getByTestId('tab-recommendations');
-    fireEvent.click(recsTab);
-
-    // Wait for recommendations to load
-    await waitFor(() => {
-      expect(service.getItemModifiers).toHaveBeenCalled();
-    });
-
-    // The AI suggestion "Caesar Salad" should appear with an accept button
-    await waitFor(() => {
-      expect(screen.getByText('Caesar Salad')).toBeInTheDocument();
-    });
-
-    // Accept the suggestion
-    const acceptBtn = screen.getByTestId('approve-rec-modal-paired-1');
-    fireEvent.click(acceptBtn);
-
-    // Verify updateItemModifiers was called with the recommendation
-    await waitFor(() => {
-      expect(service.updateItemModifiers).toHaveBeenCalledWith(
-        'entree-1',
-        expect.objectContaining({
-          recommendations: expect.arrayContaining([
-            expect.objectContaining({ menu_item_id: 'paired-1' }),
-          ]),
-        }),
-      );
-    });
-  });
-
-  it('refetches recommendations on visibilitychange when tab is active', async () => {
-    const entree = makeDishItem({ id: 'entree-1', recommendations: [] });
-    const service = makeService({
-      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
-      getMenuIntelligence: vi.fn().mockResolvedValue({ menu_intelligence: { pairing_graph: [] } }),
-    });
-
-    renderModal({ item: entree, service });
-
-    // Switch to recommendations tab to activate the listener
-    fireEvent.click(screen.getByTestId('tab-recommendations'));
-    await waitFor(() => expect(service.getItemModifiers).toHaveBeenCalledTimes(1));
-
-    // Simulate the user switching away and back to this browser tab
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    // getItemModifiers should have been called again (refetch on visibility restore)
-    await waitFor(() => {
-      expect(service.getItemModifiers).toHaveBeenCalledTimes(2);
-    });
-  });
-});
-
-// ── Cross-tab reactivity — addon broadcast ────────────────────────────────────
-
-describe('EditModal — cross-tab addon reactivity', () => {
-  it('refetches addon pool on visibilitychange when addons tab is active', async () => {
-    const dish = makeDishItem({ id: 'dish-1' });
-    const addonPool = [makeAddonItem({ id: 'pool-addon-1', name: 'Guac' })];
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue(addonPool),
-    });
-
-    renderModal({ item: dish, service });
-
-    // Switch to addons tab to activate the listener
-    fireEvent.click(screen.getByTestId('tab-addons'));
-    await waitFor(() => expect(service.getAddonItems).toHaveBeenCalledTimes(1));
-
-    // Simulate the user switching away and back to this browser tab
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    // getAddonItems should have been called again (refetch on visibility restore)
-    await waitFor(() => {
-      expect(service.getAddonItems).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it('does not refetch addon pool on visibilitychange when a different tab is active', async () => {
-    const dish = makeDishItem({ id: 'dish-1' });
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([]),
-    });
-
-    renderModal({ item: dish, service });
-
-    // Stay on food_tags tab (default) — do NOT switch to addons
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    // getAddonItems should NOT have been called
-    expect(service.getAddonItems).not.toHaveBeenCalled();
-  });
-
-  it('broadcasts addon change after adding an addon', async () => {
-    const dish = makeDishItem({ id: 'dish-1' });
-    const poolAddon = makeAddonItem({ id: 'pool-addon-1', name: 'Guac' });
-    const service = makeService({
-      getAddonItems: vi.fn().mockResolvedValue([poolAddon]),
-      updateItemModifiers: vi.fn().mockResolvedValue(undefined),
-    });
-
-    renderModal({ item: dish, service, allItems: [dish, poolAddon] });
-
-    // Switch to addons tab
-    fireEvent.click(screen.getByTestId('tab-addons'));
-    await waitFor(() => expect(service.getAddonItems).toHaveBeenCalled());
-
-    // Wait for pool to render and click the add button
-    await waitFor(() => {
-      expect(screen.getByText('Guac')).toBeInTheDocument();
-    });
-    const addBtn = screen.getByTestId('add-addon-pool-addon-1');
-    fireEvent.click(addBtn);
-
-    // Verify updateItemModifiers was called with the addon
-    await waitFor(() => {
-      expect(service.updateItemModifiers).toHaveBeenCalledWith(
-        'dish-1',
-        expect.objectContaining({
-          addons: expect.arrayContaining([
-            expect.objectContaining({ menu_item_id: 'pool-addon-1' }),
-          ]),
-        }),
-      );
-    });
-  });
-});
 
 // ── Deferred dish association tests (new addon creation) ──────────────────────
 
@@ -1469,113 +1127,3 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
   });
 });
 
-describe('EditModal — recommendations seed picker for new dish items', () => {
-  const draftDish = (): MenuItemDisplay =>
-    makeDishItem({ id: '__draft__', name: '', description: '', category: 'Uncategorized' });
-
-  const dishA = makeDishItem({ id: 'dish-a', name: 'Truffle Pasta', price: 22 });
-  const dishB = makeDishItem({ id: 'dish-b', name: 'Wagyu Burger', price: 28 });
-  const addonA = makeAddonItem({ id: 'addon-a', name: 'Extra Cheese' });
-
-  function makeSaveNewItem(realId = 'real-dish-99') {
-    return vi.fn(async (data: { name: string; description: string; category: string; food_tags: Record<string, unknown>; item_type: 'dish' | 'addon'; price?: number | null }) => {
-      const created: MenuItemDisplay = {
-        ...makeDishItem(),
-        id: realId,
-        name: data.name,
-        description: data.description,
-        category: data.category,
-        food_tags: data.food_tags,
-      };
-      return created;
-    });
-  }
-
-  it('renders the seed picker UI with available dishes (excluding self + addons)', () => {
-    renderModal({
-      item: draftDish(),
-      isNewItem: true,
-      onSaveNewItem: makeSaveNewItem(),
-      allItems: [dishA, dishB, addonA],
-    });
-    fireEvent.click(screen.getByTestId('tab-recommendations'));
-    expect(screen.getByTestId('recommendations-seed-picker')).toBeInTheDocument();
-    // Dishes available
-    expect(screen.getByTestId('recs-seed-add-dish-a')).toBeInTheDocument();
-    expect(screen.getByTestId('recs-seed-add-dish-b')).toBeInTheDocument();
-    // Add-ons excluded
-    expect(screen.queryByTestId('recs-seed-add-addon-a')).not.toBeInTheDocument();
-  });
-
-  it('does NOT call getItemModifiers/getMenuIntelligence on draft mount', () => {
-    const service = makeService({
-      getItemModifiers: vi.fn().mockResolvedValue({ recommendations: [], addons: [], sides: [] }),
-      getMenuIntelligence: vi.fn().mockResolvedValue({ menu_intelligence: { pairing_graph: [] } }),
-    });
-    renderModal({
-      item: draftDish(),
-      isNewItem: true,
-      onSaveNewItem: makeSaveNewItem(),
-      service,
-      allItems: [dishA, dishB],
-    });
-    fireEvent.click(screen.getByTestId('tab-recommendations'));
-    expect(service.getItemModifiers).not.toHaveBeenCalled();
-    expect(service.getMenuIntelligence).not.toHaveBeenCalled();
-  });
-
-  it('adds + removes seed pairings without hitting updateItemModifiers on a draft', async () => {
-    const service = makeService();
-    renderModal({
-      item: draftDish(),
-      isNewItem: true,
-      onSaveNewItem: makeSaveNewItem(),
-      service,
-      allItems: [dishA, dishB],
-    });
-    fireEvent.click(screen.getByTestId('tab-recommendations'));
-    fireEvent.click(screen.getByTestId('recs-seed-add-dish-a'));
-    fireEvent.click(screen.getByTestId('recs-seed-add-dish-b'));
-    // No backend writes during pick
-    expect(service.updateItemModifiers).not.toHaveBeenCalled();
-    // The picker collapses items it has already accepted, so dish-a is gone
-    expect(screen.queryByTestId('recs-seed-add-dish-a')).not.toBeInTheDocument();
-  });
-
-  it('flushes seed pairings via updateItemModifiers with the real id on save', async () => {
-    const user = userEvent.setup();
-    const service = makeService();
-    const onSaveNewItem = makeSaveNewItem('real-dish-77');
-    renderModal({
-      item: draftDish(),
-      isNewItem: true,
-      onSaveNewItem,
-      service,
-      allItems: [dishA, dishB],
-    });
-    fireEvent.click(screen.getByTestId('tab-recommendations'));
-    fireEvent.click(screen.getByTestId('recs-seed-add-dish-a'));
-    fireEvent.click(screen.getByTestId('recs-seed-add-dish-b'));
-
-    // Fill required dish fields, then save
-    fireEvent.click(screen.getByTestId('tab-food_tags'));
-    await user.type(screen.getByTestId('edit-name-input'), 'Pad Thai');
-    await user.type(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
-    await user.click(screen.getByTestId('edit-save-btn'));
-
-    await waitFor(() => {
-      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
-    });
-
-    // Flush against the real id, not '__draft__'
-    expect(service.updateItemModifiers).toHaveBeenCalledWith(
-      'real-dish-77',
-      expect.objectContaining({
-        recommendations: [
-          expect.objectContaining({ menu_item_id: 'dish-a', name: 'Truffle Pasta' }),
-          expect.objectContaining({ menu_item_id: 'dish-b', name: 'Wagyu Burger' }),
-        ],
-      }),
-    );
-  });
-});
