@@ -364,7 +364,31 @@ export interface MenuItemDisplay {
   sides?: SideEntry[];
   sides_and?: SideEntry[];
   sides_or?: SideEntry[];
+  /**
+   * @deprecated PDD 2026-05-10 collapse-addons-recs Phase G Step 19 —
+   * dish-to-dish recommendations live in `groupings` now (the
+   * `kind='recommendations'` default grouping; symmetric pair expansion
+   * via the food_item_grouping_recommendation_pairs view). The patron
+   * payload still includes this key for stale-client compat (Phase F
+   * Step 15 set it to []); new code MUST NOT consume it. Hard removal
+   * is gated on:
+   *   1. Phase F Step 16 prod flag flip (BYO_DUAL_WRITE_ENABLED=false)
+   *      + ≥24 h soak.
+   *   2. EditModal dead-code cleanup (the addon/rec tab state that
+   *      still references this field as a useState initial value).
+   *   3. addonHelpers.countApprovedAddons fallback removal.
+   * Tracked as Step 19b.
+   */
   recommendations?: RecommendationEntry[];
+  /**
+   * @deprecated PDD 2026-05-10 collapse-addons-recs Phase G Step 19 —
+   * add-ons live in `groupings` now (the `kind='addons'` default
+   * grouping; flat shape via `g.items[]`). Patron-webapp consumers
+   * read via `getAddonsFromGroupings(item)` since Phase C. The patron
+   * payload still includes this key with `[]` (Phase F Step 15) for
+   * stale-client compat; new code MUST NOT consume it. Hard-removal
+   * gated on the same conditions as `recommendations` above.
+   */
   addons?: AddonEntry[];
   sides_selection_mode?: 'and' | 'or';
   /**
