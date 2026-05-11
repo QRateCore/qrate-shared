@@ -2,6 +2,7 @@
 
 import type { MenuItemDisplay } from '../../types/restaurant';
 import { PhoneFrame } from './PhoneFrame';
+import { getAddonsFromGroupings } from '../../lib/groupings/useGroupingAddons';
 
 export interface CompositionPreviewPhoneProps {
   item: MenuItemDisplay;
@@ -37,7 +38,9 @@ function formatPrice(price: number | null): string {
 
 export function CompositionPreviewPhone({ item }: CompositionPreviewPhoneProps) {
   const realSides = (item.sides_or?.length || 0) + (item.sides_and?.length || 0);
-  const realAddons = item.addons?.length || 0;
+  // PDD 2026-05-10 Phase D Step 11 — addons via groupings.
+  const groupingAddons = getAddonsFromGroupings(item);
+  const realAddons = groupingAddons.length;
   const usingMock = realSides === 0 && realAddons === 0;
 
   const sides: MockSide[] = realSides > 0
@@ -49,7 +52,7 @@ export function CompositionPreviewPhone({ item }: CompositionPreviewPhoneProps) 
     : MOCK_OR_SIDES;
 
   const addons: MockAddon[] = realAddons > 0
-    ? (item.addons || []).map(a => ({
+    ? groupingAddons.map(a => ({
         id: a.menu_item_id,
         name: a.name ?? 'Add-on',
         price_override: typeof a.price_override === 'number' ? a.price_override : null,
