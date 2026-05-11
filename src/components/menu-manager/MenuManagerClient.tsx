@@ -1479,6 +1479,38 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [restaurantId, service, trackAction],
   );
 
+  const handleCloneMenu = useCallback(
+    async (sourceMenuId: string, name: string) => {
+      const start = Date.now();
+      try {
+        if (!service.cloneMenu) {
+          throw new Error('cloneMenu is not implemented by this service');
+        }
+        const cloned = await service.cloneMenu(restaurantId, sourceMenuId, { name });
+        setMenus((prev) => [...prev, cloned]);
+        setActiveMenuId(cloned.id);
+        trackAction('menu.manager.cloneMenu', {
+          restaurantId,
+          success: true,
+          durationMs: Date.now() - start,
+          metadata: { sourceMenuId, clonedMenuId: cloned.id },
+        });
+        showToast('Menu cloned (inactive — toggle live in menu settings)');
+        if (onRefresh) onRefresh();
+      } catch (err) {
+        trackAction('menu.manager.cloneMenu', {
+          restaurantId,
+          success: false,
+          durationMs: Date.now() - start,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          metadata: { sourceMenuId },
+        });
+        throw err;
+      }
+    },
+    [restaurantId, service, trackAction, showToast, onRefresh],
+  );
+
   const handleUpdateMenu = useCallback((updated: MenuSummary) => {
     setMenus((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
     setEditMenuId(null);
@@ -1770,6 +1802,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragLeaveBucket: (menuId, cat) => handleDragLeaveBucket(menuId, cat),
             onDropBucket: handleDropBucket,
             onCreateMenu: handleCreateMenu,
+            onCloneMenu: handleCloneMenu,
             onEditMenu: setEditMenuId,
             onRemoveItemFromMenu: handleRemoveItemFromMenu,
             onEditItem: setEditItemId,
@@ -1885,6 +1918,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragLeaveBucket={(menuId, cat) => handleDragLeaveBucket(menuId, cat)}
             onDropBucket={handleDropBucket}
             onCreateMenu={handleCreateMenu}
+            onCloneMenu={handleCloneMenu}
             onEditMenu={setEditMenuId}
             onRemoveItemFromMenu={handleRemoveItemFromMenu}
             onEditItem={setEditItemId}
