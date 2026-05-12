@@ -48,17 +48,25 @@ export interface ModifierEntry {
 }
 
 /**
- * Payload emitted by the editor. When `enableAndOrSplit` is ON the parent
- * should persist `sides_and` + `sides_or` and ignore `sides`/`sides_selection_mode`.
- * When OFF the parent should persist `sides` + `sides_selection_mode` and ignore
- * the split fields.
+ * Payload emitted by the editor. Sides keys (`sides`, `sides_and`,
+ * `sides_or`, `sides_selection_mode`) used to live here and were
+ * populated by the row-level sides drop zones; that UI was removed in
+ * 2026-05 (sides authoring moved to the EditModal Groupings tab). The
+ * keys remain on the type as optional so legacy consumer paths
+ * (MenuManagerClient.handleUpdateModifiers, MobileItemModifierPicker)
+ * continue to compile — they're simply never populated from the
+ * desktop editor anymore.
  */
 export interface ModifierUpdatePayload {
-  sides: ModifierEntry[];
+  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
+  sides?: ModifierEntry[];
+  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
   sides_and?: ModifierEntry[];
+  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
   sides_or?: ModifierEntry[];
+  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
+  sides_selection_mode?: 'and' | 'or';
   recommendations: ModifierEntry[];
-  sides_selection_mode: 'and' | 'or';
   addons?: ModifierEntry[];
   /** Item IDs already added to the menu by an external hook (e.g. the
    *  category-selection modal). The auto-add block in handleUpdateModifiers
@@ -123,10 +131,12 @@ export default function ItemModifierZones({
   // BYO PDD Step 7 — inline rename state (one grouping at a time).
   const [renamingGroupingId, setRenamingGroupingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<string>('');
-  const sides: ModifierEntry[] = (parent.sides ?? []) as ModifierEntry[];
-  const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
-  const sidesAnd: ModifierEntry[] = (parent.sides_and ?? []) as ModifierEntry[];
-  const sidesOr: ModifierEntry[] = (parent.sides_or ?? []) as ModifierEntry[];
+
+  // Sides authoring (kind='sides'/'sides_and'/'sides_or') was removed from
+  // the row UI in 2026-05. Existing data is untouched and surfaces in the
+  // EditModal Groupings tab — that's now the canonical authoring surface.
+  // The legacy menu_item_sides write path remains live; we simply no longer
+  // expose it from this component.
 
   const recommendations: ModifierEntry[] = ((parent.recommendations ?? []) as ModifierEntry[]).map((r) => ({
     ...r,
@@ -151,18 +161,12 @@ export default function ItemModifierZones({
   // (ensures GroupZone test IDs match the new groupings model when the
   // backend has populated them). Falls back to a synthetic kind-based ID
   // for items that haven't been hydrated yet.
-  function groupingIdForKind(kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | 'sides'): string {
+  function groupingIdForKind(kind: 'addons' | 'recommendations'): string {
     const groupings = parent.groupings ?? [];
-    // 'sides' is a legacy combined view — no canonical default kind in the
-    // unified model; key it on the parent ID for the test ID.
-    if (kind === 'sides') return `legacy-sides-${parent.id}`;
     const found = groupings.find((g) => g.kind === kind);
     return found?.id ?? `default-${kind}-${parent.id}`;
   }
 
-  const sideIds = new Set(sides.map((s) => s.menu_item_id));
-  const sidesAndIds = new Set(sidesAnd.map((s) => s.menu_item_id));
-  const sidesOrIds = new Set(sidesOr.map((s) => s.menu_item_id));
   const addonIds = new Set(addons.map((a) => a.menu_item_id));
   const recommendationIds = new Set(recommendations.map((r) => r.menu_item_id));
 
@@ -175,12 +179,11 @@ export default function ItemModifierZones({
   }
 
   function emit(overrides: Partial<ModifierUpdatePayload>) {
+    // Sides keys (sides / sides_and / sides_or / sides_selection_mode)
+    // intentionally omitted — sides authoring moved to EditModal Groupings.
+    // The backend tolerates a missing sides payload (no-op for those tables).
     const payload: ModifierUpdatePayload = {
-      sides: overrides.sides ?? sides,
-      sides_and: overrides.sides_and ?? sidesAnd,
-      sides_or: overrides.sides_or ?? sidesOr,
       recommendations: overrides.recommendations ?? recommendations,
-      sides_selection_mode: overrides.sides_selection_mode ?? sidesSelectionMode,
       addons: overrides.addons ?? addons,
       _hookHandledItemIds: overrides._hookHandledItemIds,
     };
@@ -198,75 +201,6 @@ export default function ItemModifierZones({
   }
 
   // ── Drop handlers (one per kind) ──────────────────────────────────────────
-
-  function handleDropSide(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
-    const newSides: ModifierEntry[] = [];
-    for (const id of droppedIds) {
-      if (id === parent.id || sideIds.has(id)) continue;
-      const dropped = itemsById.get(id);
-      if (!dropped || dropped.item_type === 'addon') continue;
-      newSides.push({
-        menu_item_id: dropped.id,
-        name: dropped.name,
-        price_override: null,
-        thumbnail_url: dropped.thumbnail_url ?? null,
-      });
-    }
-    if (newSides.length > 0) emit({ sides: [...sides, ...newSides] });
-  }
-
-  function handleDropSidesAnd(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
-    let hasCrossGroup = false;
-    const newEntries: ModifierEntry[] = [];
-    for (const id of droppedIds) {
-      if (id === parent.id || sidesAndIds.has(id)) continue;
-      if (sidesOrIds.has(id)) {
-        hasCrossGroup = true;
-        continue;
-      }
-      const dropped = itemsById.get(id);
-      if (!dropped || dropped.item_type === 'addon') continue;
-      newEntries.push({
-        menu_item_id: dropped.id,
-        name: dropped.name,
-        price_override: null,
-        thumbnail_url: dropped.thumbnail_url ?? null,
-      });
-    }
-    if (hasCrossGroup) onCrossGroupDuplicate?.('choice');
-    if (newEntries.length > 0) emit({ sides_and: [...sidesAnd, ...newEntries] });
-  }
-
-  function handleDropSidesOr(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
-    let hasCrossGroup = false;
-    const newEntries: ModifierEntry[] = [];
-    for (const id of droppedIds) {
-      if (id === parent.id || sidesOrIds.has(id)) continue;
-      if (sidesAndIds.has(id)) {
-        hasCrossGroup = true;
-        continue;
-      }
-      const dropped = itemsById.get(id);
-      if (!dropped || dropped.item_type === 'addon') continue;
-      newEntries.push({
-        menu_item_id: dropped.id,
-        name: dropped.name,
-        price_override: null,
-        thumbnail_url: dropped.thumbnail_url ?? null,
-      });
-    }
-    if (hasCrossGroup) onCrossGroupDuplicate?.('included');
-    if (newEntries.length > 0) emit({ sides_or: [...sidesOr, ...newEntries] });
-  }
 
   function handleDropAddon(e: React.DragEvent) {
     e.preventDefault();
@@ -319,13 +253,9 @@ export default function ItemModifierZones({
 
   // ── Remove handlers ──────────────────────────────────────────────────────
 
-  const removeSide = (id: string) => emit({ sides: sides.filter((s) => s.menu_item_id !== id) });
-  const removeSidesAnd = (id: string) => emit({ sides_and: sidesAnd.filter((s) => s.menu_item_id !== id) });
-  const removeSidesOr = (id: string) => emit({ sides_or: sidesOr.filter((s) => s.menu_item_id !== id) });
   const removeAddon = (id: string) => emit({ addons: addons.filter((a) => a.menu_item_id !== id) });
   const removeRecommendation = (id: string) =>
     emit({ recommendations: recommendations.filter((r) => r.menu_item_id !== id) });
-  const changeSelectionMode = (mode: 'and' | 'or') => emit({ sides_selection_mode: mode });
 
   // ── Card renderers (per-group specifics preserved) ───────────────────────
 
@@ -533,92 +463,20 @@ export default function ItemModifierZones({
     (g) => g.kind === null && g.is_default === false,
   );
 
-  // ── Sides column (legacy single zone OR split 2-box) ─────────────────────
+  // Sides authoring (the kind='sides'/'sides_and'/'sides_or' drop zones)
+  // was removed from this row UI in 2026-05. The default groupings the
+  // editor renders here are Add-ons and Recommendations; everything
+  // sides-related is now authored in the EditModal Groupings tab.
 
-  const sidesAndGrouping = lookupGrouping('sides_and');
-  const sidesOrGrouping = lookupGrouping('sides_or');
   const addonsGrouping = lookupGrouping('addons');
   const recsGrouping = lookupGrouping('recommendations');
-
-  const sidesColumn = enableAndOrSplit ? (
-    <div className="modifier-section" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <GroupZone
-        kind="sides_and"
-        groupingId={groupingIdForKind('sides_and')}
-        parentItemId={parent.id}
-        title={sidesAndGrouping?.name ?? 'Includes All'}
-        hint="All of these come with the dish (free of charge)"
-        count={sidesAnd.length}
-        emptyText="Drop included sides here"
-        onDrop={handleDropSidesAnd}
-        legacyTestIdPrefix="sides-and-drop-zone"
-        titleOverride={renderTitleOverride(sidesAndGrouping)}
-        headerExtras={renderHeaderExtras({ grouping: sidesAndGrouping, isDeletable: false, showRulePill: true })}
-      >
-        {sidesAnd.map((side) =>
-          renderSimpleCard(side, () => removeSidesAnd(side.menu_item_id), 'remove-sides-and'),
-        )}
-      </GroupZone>
-
-      <GroupZone
-        kind="sides_or"
-        groupingId={groupingIdForKind('sides_or')}
-        parentItemId={parent.id}
-        title={sidesOrGrouping?.name ?? 'Includes one by choice'}
-        hint="Patron picks one of these (free of charge)"
-        count={sidesOr.length}
-        emptyText="Drop choice sides here"
-        onDrop={handleDropSidesOr}
-        legacyTestIdPrefix="sides-or-drop-zone"
-        paletteClassName="modifier-section-header--sides"
-        headerStyle={{ background: COLOR_WARNING_BG, color: COLOR_WARNING_TEXT }}
-        dragOverStyle={{ borderColor: COLOR_WARNING, background: COLOR_WARNING_BG_SM }}
-        titleOverride={renderTitleOverride(sidesOrGrouping)}
-        headerExtras={renderHeaderExtras({ grouping: sidesOrGrouping, isDeletable: false, showRulePill: true })}
-      >
-        {sidesOr.map((side) =>
-          renderSimpleCard(side, () => removeSidesOr(side.menu_item_id), 'remove-sides-or'),
-        )}
-      </GroupZone>
-    </div>
-  ) : (
-    <GroupZone
-      kind="sides"
-      groupingId={groupingIdForKind('sides')}
-      parentItemId={parent.id}
-      title="Sides"
-      hint={
-        sidesSelectionMode === 'or'
-          ? "Patron can pick One side that's included (Free of Cost)"
-          : 'Patron can pick Multiple sides that are included (Free of Cost)'
-      }
-      count={sides.length}
-      emptyText="Drop items here"
-      onDrop={handleDropSide}
-      legacyTestIdPrefix="sides-drop-zone"
-      selectionMode={{
-        value: sidesSelectionMode,
-        onChange: changeSelectionMode,
-        options: [
-          { value: 'and', label: 'AND' },
-          { value: 'or', label: 'OR' },
-        ],
-        testId: `sides-selection-mode-${parent.id}`,
-      }}
-    >
-      {sides.map((side) => renderSimpleCard(side, () => removeSide(side.menu_item_id), 'remove-side'))}
-    </GroupZone>
-  );
 
   return (
     <div
       style={{ display: 'flex', gap: 10 }}
       data-testid={`modifier-zones-${parent.id}`}
-      data-split-enabled={enableAndOrSplit ? 'true' : 'false'}
       onDragOver={(e) => e.stopPropagation()}
     >
-      {sidesColumn}
-
       {showAddons && (
         <GroupZone
           kind="addons"

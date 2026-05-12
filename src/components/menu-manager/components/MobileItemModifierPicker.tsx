@@ -69,31 +69,21 @@ export default function MobileItemModifierPicker({
   enableAndOrSplit = false,
   showRecommendations = true,
 }: Props) {
-  const sides: ModifierEntry[] = (parent.sides ?? []) as ModifierEntry[];
-  const sidesAnd: ModifierEntry[] = (parent.sides_and ?? []) as ModifierEntry[];
-  const sidesOr: ModifierEntry[] = (parent.sides_or ?? []) as ModifierEntry[];
+  // Sides authoring was removed from the row UI in 2026-05; only the
+  // Recommendations section remains. The sides arrays + selection mode +
+  // related candidate filters/handlers were pruned at the same time.
   const recommendations: ModifierEntry[] = ((parent.recommendations ?? []) as ModifierEntry[]).map((r) => ({
     ...r,
     price_override: r.price_override ?? 0,
   }));
-  const sidesSelectionMode: 'and' | 'or' = parent.sides_selection_mode ?? 'and';
 
-  const [sidesPickerOpen, setSidesPickerOpen] = useState(false);
-  const [sidesAndPickerOpen, setSidesAndPickerOpen] = useState(false);
-  const [sidesOrPickerOpen, setSidesOrPickerOpen] = useState(false);
   const [recommendationsPickerOpen, setRecommendationsPickerOpen] = useState(false);
-  const [sidesSearch, setSidesSearch] = useState('');
-  const [sidesAndSearch, setSidesAndSearch] = useState('');
-  const [sidesOrSearch, setSidesOrSearch] = useState('');
   const [recommendationsSearch, setRecommendationsSearch] = useState('');
 
-  const sideIds = new Set(sides.map((s) => s.menu_item_id));
-  const sidesAndIds = new Set(sidesAnd.map((s) => s.menu_item_id));
-  const sidesOrIds = new Set(sidesOr.map((s) => s.menu_item_id));
   const recommendationIds = new Set(recommendations.map((r) => r.menu_item_id));
 
   // Candidates: every other item in the restaurant, minus the parent itself,
-  // minus items already in the relevant section. Sorted alphabetically for
+  // minus items already in Recommendations. Sorted alphabetically for
   // predictability.
   const allOtherItems = useMemo(
     () =>
@@ -102,35 +92,6 @@ export default function MobileItemModifierPicker({
         .sort((a, b) => a.name.localeCompare(b.name)),
     [itemsById, parent.id],
   );
-
-  const sideCandidates = useMemo(() => {
-    const q = sidesSearch.trim().toLowerCase();
-    return allOtherItems.filter((i) => {
-      if (sideIds.has(i.id)) return false;
-      if (!q) return true;
-      return i.name.toLowerCase().includes(q);
-    });
-  }, [allOtherItems, sideIds, sidesSearch]);
-
-  // STR-342 — Included candidates: exclude items already in EITHER group
-  // so the owner cannot accidentally duplicate across Included/Choice.
-  const sidesAndCandidates = useMemo(() => {
-    const q = sidesAndSearch.trim().toLowerCase();
-    return allOtherItems.filter((i) => {
-      if (sidesAndIds.has(i.id) || sidesOrIds.has(i.id)) return false;
-      if (!q) return true;
-      return i.name.toLowerCase().includes(q);
-    });
-  }, [allOtherItems, sidesAndIds, sidesOrIds, sidesAndSearch]);
-
-  const sidesOrCandidates = useMemo(() => {
-    const q = sidesOrSearch.trim().toLowerCase();
-    return allOtherItems.filter((i) => {
-      if (sidesAndIds.has(i.id) || sidesOrIds.has(i.id)) return false;
-      if (!q) return true;
-      return i.name.toLowerCase().includes(q);
-    });
-  }, [allOtherItems, sidesAndIds, sidesOrIds, sidesOrSearch]);
 
   const recommendationCandidates = useMemo(() => {
     const q = recommendationsSearch.trim().toLowerCase();
@@ -141,57 +102,14 @@ export default function MobileItemModifierPicker({
     });
   }, [allOtherItems, recommendationIds, recommendationsSearch]);
 
-  /**
-   * Persist update. Payload always includes legacy fields (sides,
-   * sides_selection_mode) AND split fields (sides_and, sides_or). Consumer
-   * (MenuManagerClient) selects which subset to PATCH based on the flag.
-   */
   function emit(overrides: Partial<ModifierUpdatePayload> = {}) {
+    // Sides keys are no longer populated — sides authoring lives in
+    // EditModal Groupings now.
     const payload: ModifierUpdatePayload = {
-      sides,
-      sides_and: sidesAnd,
-      sides_or: sidesOr,
       recommendations,
-      sides_selection_mode: sidesSelectionMode,
       ...overrides,
     };
     void onUpdate(parent.id, payload);
-  }
-
-  function addSide(item: MenuItemDisplay) {
-    const next: ModifierEntry = {
-      menu_item_id: item.id,
-      name: item.name,
-      price_override: null,
-      thumbnail_url: item.thumbnail_url ?? null,
-    };
-    emit({ sides: [...sides, next] });
-    setSidesSearch('');
-    setSidesPickerOpen(false);
-  }
-
-  function addSideAnd(item: MenuItemDisplay) {
-    const next: ModifierEntry = {
-      menu_item_id: item.id,
-      name: item.name,
-      price_override: null,
-      thumbnail_url: item.thumbnail_url ?? null,
-    };
-    emit({ sides_and: [...sidesAnd, next] });
-    setSidesAndSearch('');
-    setSidesAndPickerOpen(false);
-  }
-
-  function addSideOr(item: MenuItemDisplay) {
-    const next: ModifierEntry = {
-      menu_item_id: item.id,
-      name: item.name,
-      price_override: null,
-      thumbnail_url: item.thumbnail_url ?? null,
-    };
-    emit({ sides_or: [...sidesOr, next] });
-    setSidesOrSearch('');
-    setSidesOrPickerOpen(false);
   }
 
   async function addRecommendation(item: MenuItemDisplay) {
@@ -217,47 +135,8 @@ export default function MobileItemModifierPicker({
     setRecommendationsPickerOpen(false);
   }
 
-  function removeSide(id: string) {
-    emit({ sides: sides.filter((s) => s.menu_item_id !== id) });
-  }
-
-  function removeSideAnd(id: string) {
-    emit({ sides_and: sidesAnd.filter((s) => s.menu_item_id !== id) });
-  }
-
-  function removeSideOr(id: string) {
-    emit({ sides_or: sidesOr.filter((s) => s.menu_item_id !== id) });
-  }
-
   function removeRecommendation(id: string) {
     emit({ recommendations: recommendations.filter((r) => r.menu_item_id !== id) });
-  }
-
-  function updateSidePrice(id: string, raw: string) {
-    const trimmed = raw.trim();
-    const val = trimmed === '' ? null : parseFloat(trimmed);
-    const safe = trimmed !== '' && Number.isNaN(val as number) ? null : val;
-    emit({
-      sides: sides.map((s) => (s.menu_item_id === id ? { ...s, price_override: safe } : s)),
-    });
-  }
-
-  function updateSideAndPrice(id: string, raw: string) {
-    const trimmed = raw.trim();
-    const val = trimmed === '' ? null : parseFloat(trimmed);
-    const safe = trimmed !== '' && Number.isNaN(val as number) ? null : val;
-    emit({
-      sides_and: sidesAnd.map((s) => (s.menu_item_id === id ? { ...s, price_override: safe } : s)),
-    });
-  }
-
-  function updateSideOrPrice(id: string, raw: string) {
-    const trimmed = raw.trim();
-    const val = trimmed === '' ? null : parseFloat(trimmed);
-    const safe = trimmed !== '' && Number.isNaN(val as number) ? null : val;
-    emit({
-      sides_or: sidesOr.map((s) => (s.menu_item_id === id ? { ...s, price_override: safe } : s)),
-    });
   }
 
   function updateRecommendationPrice(id: string, raw: string) {
@@ -269,259 +148,15 @@ export default function MobileItemModifierPicker({
     });
   }
 
-  function changeSelectionMode(mode: 'and' | 'or') {
-    emit({ sides_selection_mode: mode });
-  }
-
   return (
     <div
       style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
       data-testid={`mobile-modifier-picker-${parent.id}`}
-      data-split-enabled={enableAndOrSplit ? 'true' : 'false'}
     >
-      {/* ── Sides section (flag OFF — legacy) ── */}
-      {!enableAndOrSplit && (
-        <div className="modifier-section">
-          <div className="modifier-section-header modifier-section-header--sides">
-            <span className="modifier-section-title">Sides</span>
-            <Select
-              size="sm"
-              value={sidesSelectionMode}
-              onChange={(e) => changeSelectionMode(e.target.value as 'and' | 'or')}
-              data-testid={`mobile-sides-mode-${parent.id}`}
-              options={[
-                { value: 'and', label: 'AND' },
-                { value: 'or', label: 'OR' },
-              ]}
-              style={{ marginLeft: 8 }}
-            />
-            {sides.length > 0 && <span className="modifier-section-count">{sides.length}</span>}
-          </div>
-          <p className="modifier-section-hint">
-            {sidesSelectionMode === 'or' ? 'Patron can pick One side that\'s included (Free of Cost)' : 'Patron can pick Multiple sides that are included (Free of Cost)'}
-          </p>
-
-          {/* Existing sides as cards */}
-          {sides.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-              {sides.map((side) => (
-                <div key={side.menu_item_id} className="modifier-card">
-                  <div className="modifier-card-thumb">
-                    {side.thumbnail_url ? (
-                      <img src={side.thumbnail_url} alt={side.name} draggable={false} loading="lazy" width={60} height={60} />
-                    ) : (
-                      <span style={{ fontSize: 18 }}>🍽</span>
-                    )}
-                  </div>
-                  <div className="modifier-card-body">
-                    <div className="modifier-card-name">{side.name}</div>
-                    <div className="modifier-card-price-row">
-                      <span className="modifier-card-price-symbol">$</span>
-                      <input
-                        className="modifier-card-price-input"
-                        type="number"
-                        defaultValue={side.price_override ?? ''}
-                        placeholder="Free"
-                        aria-label="Side price"
-                        min="0"
-                        step="0.01"
-                        onBlur={(e) => updateSidePrice(side.menu_item_id, e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="modifier-card-delete"
-                    onClick={() => removeSide(side.menu_item_id)}
-                    data-testid={`mobile-remove-side-${parent.id}-${side.menu_item_id}`}
-                    title="Remove"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add side picker */}
-          {sidesPickerOpen ? (
-            <SearchPicker
-              search={sidesSearch}
-              onSearchChange={setSidesSearch}
-              candidates={sideCandidates}
-              onPick={addSide}
-              onCancel={() => {
-                setSidesSearch('');
-                setSidesPickerOpen(false);
-              }}
-              testIdPrefix={`mobile-sides-picker-${parent.id}`}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSidesPickerOpen(true)}
-              data-testid={`mobile-add-side-${parent.id}`}
-              style={addModifierBtnStyle}
-            >
-              <Plus size={12} />
-              Add side
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Sides split section (flag ON — STR-342) ── */}
-      {enableAndOrSplit && (
-        <>
-          {/* Included (AND) — always-free with dish */}
-          <div className="modifier-section" data-testid={`mobile-sides-included-section-${parent.id}`}>
-            <div className="modifier-section-header modifier-section-header--sides">
-              <span className="modifier-section-title">Includes All</span>
-              {sidesAnd.length > 0 && <span className="modifier-section-count">{sidesAnd.length}</span>}
-            </div>
-            <p className="modifier-section-hint">Always included with this dish (Free of Cost)</p>
-
-            {sidesAnd.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                {sidesAnd.map((side) => (
-                  <div key={side.menu_item_id} className="modifier-card">
-                    <div className="modifier-card-thumb">
-                      {side.thumbnail_url ? (
-                        <img src={side.thumbnail_url} alt={side.name} draggable={false} loading="lazy" width={60} height={60} />
-                      ) : (
-                        <span style={{ fontSize: 18 }}>🍽</span>
-                      )}
-                    </div>
-                    <div className="modifier-card-body">
-                      <div className="modifier-card-name">{side.name}</div>
-                      <div className="modifier-card-price-row">
-                        <span className="modifier-card-price-symbol">$</span>
-                        <input
-                          className="modifier-card-price-input"
-                          type="number"
-                          defaultValue={side.price_override ?? ''}
-                          placeholder="Free"
-                          aria-label="Included side price"
-                          min="0"
-                          step="0.01"
-                          onBlur={(e) => updateSideAndPrice(side.menu_item_id, e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="modifier-card-delete"
-                      onClick={() => removeSideAnd(side.menu_item_id)}
-                      data-testid={`mobile-remove-sides-and-${parent.id}-${side.menu_item_id}`}
-                      title="Remove"
-                    >
-                      <X size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {sidesAndPickerOpen ? (
-              <SearchPicker
-                search={sidesAndSearch}
-                onSearchChange={setSidesAndSearch}
-                candidates={sidesAndCandidates}
-                onPick={addSideAnd}
-                onCancel={() => {
-                  setSidesAndSearch('');
-                  setSidesAndPickerOpen(false);
-                }}
-                testIdPrefix={`mobile-sides-and-picker-${parent.id}`}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSidesAndPickerOpen(true)}
-                data-testid={`mobile-add-sides-and-${parent.id}`}
-                style={addModifierBtnStyle}
-              >
-                <Plus size={12} />
-                Add included side
-              </button>
-            )}
-          </div>
-
-          {/* Choice (OR) — patron picks one */}
-          <div className="modifier-section" data-testid={`mobile-sides-choice-section-${parent.id}`}>
-            <div className="modifier-section-header modifier-section-header--sides" style={{ background: '#fef3c7', color: '#92400e' }}>
-              <span className="modifier-section-title">Includes one by choice</span>
-              {sidesOr.length > 0 && <span className="modifier-section-count">{sidesOr.length}</span>}
-            </div>
-            <p className="modifier-section-hint">Patron picks ONE of these (Free of Cost)</p>
-
-            {sidesOr.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                {sidesOr.map((side) => (
-                  <div key={side.menu_item_id} className="modifier-card">
-                    <div className="modifier-card-thumb">
-                      {side.thumbnail_url ? (
-                        <img src={side.thumbnail_url} alt={side.name} draggable={false} loading="lazy" width={60} height={60} />
-                      ) : (
-                        <span style={{ fontSize: 18 }}>🍽</span>
-                      )}
-                    </div>
-                    <div className="modifier-card-body">
-                      <div className="modifier-card-name">{side.name}</div>
-                      <div className="modifier-card-price-row">
-                        <span className="modifier-card-price-symbol">$</span>
-                        <input
-                          className="modifier-card-price-input"
-                          type="number"
-                          defaultValue={side.price_override ?? ''}
-                          placeholder="Free"
-                          aria-label="Choice side price"
-                          min="0"
-                          step="0.01"
-                          onBlur={(e) => updateSideOrPrice(side.menu_item_id, e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="modifier-card-delete"
-                      onClick={() => removeSideOr(side.menu_item_id)}
-                      data-testid={`mobile-remove-sides-or-${parent.id}-${side.menu_item_id}`}
-                      title="Remove"
-                    >
-                      <X size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {sidesOrPickerOpen ? (
-              <SearchPicker
-                search={sidesOrSearch}
-                onSearchChange={setSidesOrSearch}
-                candidates={sidesOrCandidates}
-                onPick={addSideOr}
-                onCancel={() => {
-                  setSidesOrSearch('');
-                  setSidesOrPickerOpen(false);
-                }}
-                testIdPrefix={`mobile-sides-or-picker-${parent.id}`}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSidesOrPickerOpen(true)}
-                data-testid={`mobile-add-sides-or-${parent.id}`}
-                style={addModifierBtnStyle}
-              >
-                <Plus size={12} />
-                Add choice side
-              </button>
-            )}
-          </div>
-        </>
-      )}
+      {/* Sides authoring (legacy single Sides section + split Includes/Choice)
+          was removed from the mobile picker in 2026-05. Existing data
+          surfaces in the EditModal Groupings tab — the canonical authoring
+          surface across desktop and mobile now. */}
 
       {/* ── Recommendations section ── */}
       {showRecommendations && (
