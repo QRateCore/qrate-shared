@@ -449,6 +449,24 @@ export interface MenuItemSummary {
   dietary_state?: 'ai_suggested' | 'manually_accepted' | null;
   spice_level?: number | null;
   sweetness_level?: number | null;
+  /**
+   * Lightweight projection of the dish's non-empty groupings, used by
+   * the Food Library table's Groupings column to render a count + hover
+   * popover listing each group and its members. Empty groupings are
+   * filtered server-side; for kind='addons' members with status='suggested'
+   * are excluded so the count matches MenuBuilder's in-editor chip.
+   * Always [] for addon/included items (they don't own groupings).
+   */
+  groupings_summary?: GroupingSummary[];
+}
+
+/** Lightweight Grouping projection returned by /menu-items/summary.
+ *  `kind` mirrors Grouping.kind so the Food Library Add-ons +
+ *  Recommendations columns can filter the aggregate without re-fetching. */
+export interface GroupingSummary {
+  kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | 'modifier' | null;
+  name: string;
+  items: { name: string }[];
 }
 
 /** BYO PDD selection rule shape (Step 5 OpenAPI). */
