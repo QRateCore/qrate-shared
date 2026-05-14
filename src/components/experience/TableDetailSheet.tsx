@@ -165,7 +165,8 @@ export default function TableDetailSheet({
 
   const statusGroups = [
     { statuses: ['pending'],               label: 'Order Placed',   actionLabel: 'Enter in POS', nextStatus: 'confirmed' as OrderStatus, labelCls: 'text-blue-700',    bgCls: 'bg-blue-50'   },
-    { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: 'Mark Ready',   nextStatus: 'ready'     as OrderStatus, labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
+    // STR-543: "Mark Ready" removed in favor of backend auto-advance (auto-ready Lambda).
+    { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: null,           nextStatus: null,                       labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
     { statuses: ['ready'],                 label: 'Ready to Serve', actionLabel: 'Mark Served',  nextStatus: 'delivered' as OrderStatus, labelCls: 'text-amber-700',   bgCls: 'bg-amber-50'  },
     { statuses: ['delivered'],             label: 'Served',         actionLabel: null,            nextStatus: null,                       labelCls: 'text-emerald-700', bgCls: 'bg-emerald-50'},
     { statuses: ['completed'],             label: 'Completed',      actionLabel: null,            nextStatus: null,                       labelCls: 'text-gray-500',    bgCls: 'bg-gray-50'   },
