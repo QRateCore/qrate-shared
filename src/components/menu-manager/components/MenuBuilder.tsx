@@ -74,20 +74,6 @@ interface MenuBuilderProps {
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /**
-   * STR-342 feature flag. When true, the sides drop zone splits into two
-   * stacked zones (Included + Choice) and counters show "N included / M choice".
-   * When false/undefined, legacy single-drop-zone + AND/OR dropdown renders.
-   */
-  enableAndOrSplit?: boolean;
-  /**
-   * STR-342 cross-group duplicate callback. Fires when the owner drops an item
-   * onto one split-sides zone while the item already exists in the other group.
-   * Arg = the group the item is ALREADY in (so the consumer can show a toast
-   * like "Already in [Included/Choice] — remove first"). Only invoked when
-   * `enableAndOrSplit` is true.
-   */
-  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
-  /**
    * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
    * Forwarded to ItemModifierZones; when present, [+ Add grouping], [⋮]
    * menu, rule pill, and inline rename affordances render.
@@ -235,8 +221,6 @@ function MenuItemRow({
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
-  enableAndOrSplit = false,
-  onCrossGroupDuplicate,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -254,10 +238,6 @@ function MenuItemRow({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
-  /** STR-342 — feature-flag gated split Sides UI. See MenuBuilderProps. */
-  enableAndOrSplit?: boolean;
-  /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
-  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   /** Forwarded to ItemModifierZones / MobileItemModifierPicker. Default true. */
@@ -846,7 +826,6 @@ function MenuItemRow({
                 currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                enableAndOrSplit={enableAndOrSplit}
                 showRecommendations={showRecommendations}
               />
             ) : (
@@ -856,8 +835,6 @@ function MenuItemRow({
                 currentMenuId={menuId}
                 onUpdate={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                enableAndOrSplit={enableAndOrSplit}
-                onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}
@@ -885,8 +862,6 @@ function CategoryBucket({
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
-  enableAndOrSplit = false,
-  onCrossGroupDuplicate,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -913,10 +888,6 @@ function CategoryBucket({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
-  /** STR-342 — feature-flag gated split Sides UI. See MenuBuilderProps. */
-  enableAndOrSplit?: boolean;
-  /** STR-342 — cross-group duplicate toast callback. See MenuBuilderProps. */
-  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones via MenuItemRow. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   /** Forwarded to MenuItemRow → ItemModifierZones / MobileItemModifierPicker. Default true. */
@@ -1037,8 +1008,6 @@ function CategoryBucket({
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                enableAndOrSplit={enableAndOrSplit}
-                onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}
@@ -1097,8 +1066,6 @@ export default function MenuBuilder({
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
-  enableAndOrSplit = false,
-  onCrossGroupDuplicate,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -1369,8 +1336,6 @@ export default function MenuBuilder({
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                enableAndOrSplit={enableAndOrSplit}
-                onCrossGroupDuplicate={onCrossGroupDuplicate}
                 byoHandlers={byoHandlers}
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}

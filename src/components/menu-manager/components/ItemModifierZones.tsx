@@ -1,39 +1,25 @@
 'use client';
 /**
- * Per-item modifier editor — rendered in the expanded dish row of the MenuBuilder.
+ * Per-item modifier editor — rendered in the expanded dish row of the
+ * MenuBuilder. Renders two drop zones (Add-ons + Recommendations) plus
+ * any custom groupings authored via the BYO surface.
  *
- * Two modes (preserved post-BYO PDD Step 6 refactor — visible behaviour unchanged):
+ * Sides authoring (sides_and / sides_or / legacy single Sides) was
+ * removed from this row UI in 2026-05. Existing sides data is still
+ * accessible via the EditModal Groupings tab — the canonical authoring
+ * surface in the unified groupings model.
  *
- *   Legacy (enableAndOrSplit=false) — single Sides zone with AND/OR dropdown:
- *     - Sides (left)            — free or low-cost included extras; price_override defaults to null = "Free"
- *     - Add-ons (middle)        — ingredient-level extras
- *     - Recommendations (right) — complementary paired dishes; price pre-filled from base price
+ * BYO PDD Step 6: each drop zone is rendered by the generic `<GroupZone>`
+ * component. Card rendering stays in this file — addons show price, recs
+ * have a red border for inactive targets.
  *
- *   Split (enableAndOrSplit=true, STR-342) — two stacked Sides zones, no AND/OR dropdown:
- *     - Included (grey)         — always free-with-order (side_type='and')
- *     - Choice   (amber)        — one-of selection (side_type='or')
- *     - Add-ons                 — unchanged
- *     - Recommendations         — unchanged
- *     Cross-group duplicate between Included and Choice is rejected with a toast.
- *
- * BYO PDD Step 6: each drop zone is now rendered by the generic `<GroupZone>`
- * component. Card rendering stays in this file for now — addons show price,
- * recs have a red border for inactive targets, sides are simple. Step 7 will
- * collapse remaining specifics into per-grouping render hooks once custom
- * groupings ship.
- *
- * Persistence: PUT /owner/menu-items/{itemId}/modifiers via owner-restaurant-service.
- * State is lifted to the parent so optimistic updates flow through items[].
+ * Persistence: PUT /owner/menu-items/{itemId}/modifiers via
+ * owner-restaurant-service. State is lifted to the parent so optimistic
+ * updates flow through items[].
  */
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import {
-  COLOR_WARNING,
-  COLOR_WARNING_BG,
-  COLOR_WARNING_BG_SM,
-  COLOR_WARNING_TEXT,
-  COLOR_ERROR,
-} from '../../../constants/colors';
+import { COLOR_ERROR } from '../../../constants/colors';
 import GroupZone from './GroupZone';
 import GroupActionsMenu from './GroupActionsMenu';
 import SelectionRuleEditor from './SelectionRuleEditor';
@@ -48,24 +34,11 @@ export interface ModifierEntry {
 }
 
 /**
- * Payload emitted by the editor. Sides keys (`sides`, `sides_and`,
- * `sides_or`, `sides_selection_mode`) used to live here and were
- * populated by the row-level sides drop zones; that UI was removed in
- * 2026-05 (sides authoring moved to the EditModal Groupings tab). The
- * keys remain on the type as optional so legacy consumer paths
- * (MenuManagerClient.handleUpdateModifiers, MobileItemModifierPicker)
- * continue to compile — they're simply never populated from the
- * desktop editor anymore.
+ * Payload emitted by the editor. Sides keys were dropped in 2026-05
+ * after the row-level sides drop zones were removed; sides authoring
+ * lives in the EditModal Groupings tab now.
  */
 export interface ModifierUpdatePayload {
-  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
-  sides?: ModifierEntry[];
-  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
-  sides_and?: ModifierEntry[];
-  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
-  sides_or?: ModifierEntry[];
-  /** @deprecated Sides authoring moved to EditModal Groupings (2026-05). */
-  sides_selection_mode?: 'and' | 'or';
   recommendations: ModifierEntry[];
   addons?: ModifierEntry[];
   /** Item IDs already added to the menu by an external hook (e.g. the
@@ -95,8 +68,6 @@ interface Props {
   currentMenuId: string | null;
   onUpdate: (parentId: string, next: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
-  enableAndOrSplit?: boolean;
-  onCrossGroupDuplicate?: (existingGroup: 'included' | 'choice') => void;
   /** BYO authoring callbacks — when present, BYO affordances render. */
   byoHandlers?: BYOHandlers;
   /** When false, the Add-ons drop zone is omitted. Default true. */
@@ -114,8 +85,6 @@ export default function ItemModifierZones({
   currentMenuId,
   onUpdate,
   onConfirmRecommendationDrop,
-  enableAndOrSplit = false,
-  onCrossGroupDuplicate,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,

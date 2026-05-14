@@ -7,8 +7,6 @@ import {
   buildAssignments,
   buildJunctionSettings,
   getMenuColor,
-  getSideItemIds,
-  isItemUsedAsSideElsewhere,
   CANONICAL_CATEGORIES,
   toCanonical,
   type MenuColor,
@@ -88,16 +86,6 @@ interface Props {
     isLastActiveMenuPlacement: boolean;
   }) => Promise<boolean>;
   /**
-   * Feature flag: when true, renders the Sides editor as two stacked drop zones
-   * — Included (always-free, backend side_type='and') and Choice (one-of,
-   * side_type='or'). When false (default), legacy single drop zone + AND/OR
-   * dropdown is rendered. Gates both the UI and the PATCH body shape:
-   *   ON  → `{ sides_and, sides_or, recommendations }`
-   *   OFF → `{ sides, sides_selection_mode, recommendations }` (legacy)
-   * STR-342.
-   */
-  enableAndOrSplit?: boolean;
-  /**
    * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
    * When provided, MenuBuilder forwards them to ItemModifierZones, which
    * renders [+ Add grouping], [⋮] menu, rule pill, and inline rename.
@@ -163,7 +151,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, enableAndOrSplit = false, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -970,53 +958,28 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           if (i.id !== parentId) return i;
           return {
             ...i,
-            sides: payload.sides,
             recommendations: payload.recommendations.map((r) => ({
               ...r,
               price_override: r.price_override ?? 0,
             })),
-            sides_selection_mode: payload.sides_selection_mode,
-            // STR-342: when flag is ON, payload carries sides_and / sides_or.
-            // Mirror them into local state so the UI reflects the pending save.
-            ...(enableAndOrSplit
-              ? {
-                  sides_and: payload.sides_and ?? [],
-                  sides_or: payload.sides_or ?? [],
-                }
-              : {}),
             ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
           };
         }),
       );
       // STR-409: track parent as in-flight so a refresh-edge mid-PUT does
-      // not clobber the optimistic sides/recs/addons state above. `finally`
-      // runs even when the catch block returns early.
+      // not clobber the optimistic recs/addons state above. `finally` runs
+      // even when the catch block returns early.
       pendingWriteItemIdsRef.current.add(parentId);
       try {
-        // STR-342: flag-gate the PATCH body. Backend rejects mixing legacy
-        // `sides` with split `sides_and` / `sides_or` (400) — we only ever
-        // send one shape.
-        if (enableAndOrSplit) {
-          await service.updateItemModifiers(parentId, {
-            sides_and: payload.sides_and ?? [],
-            sides_or: payload.sides_or ?? [],
-            recommendations: payload.recommendations.map((r) => ({
-              ...r,
-              price_override: r.price_override ?? 0,
-            })),
-            ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
-          });
-        } else {
-          await service.updateItemModifiers(parentId, {
-            sides: payload.sides,
-            recommendations: payload.recommendations.map((r) => ({
-              ...r,
-              price_override: r.price_override ?? 0,
-            })),
-            sides_selection_mode: payload.sides_selection_mode,
-            ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
-          });
-        }
+        // Sides authoring was removed from this code path in 2026-05 —
+        // only recommendations + addons flow through here now.
+        await service.updateItemModifiers(parentId, {
+          recommendations: payload.recommendations.map((r) => ({
+            ...r,
+            price_override: r.price_override ?? 0,
+          })),
+          ...(mergedAddons !== undefined ? { addons: mergedAddons } : {}),
+        });
       } catch {
         setItems(prevItems);
         showToast('Failed to save modifiers — please try again');
@@ -1025,53 +988,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         pendingWriteItemIdsRef.current.delete(parentId);
       }
 
-      // ── Sync item_type for items that just entered or left a sides zone ──
-      // When an item is dropped into ANY sides zone (legacy `sides`, or the
-      // split `sides_and` / `sides_or`), mark its item_type='included' so the
-      // ItemPool's "Included" filter surfaces it. When an item is removed
-      // and is no longer a side anywhere on the menu, revert to 'dish'.
-      // Best-effort, non-blocking — modifier save already succeeded.
-      const oldParent = prevItems.find((i) => i.id === parentId);
-      const oldSideIds = oldParent ? getSideItemIds(oldParent) : new Set<string>();
-      const newSideIds = new Set<string>([
-        ...(payload.sides ?? []).map((s) => s.menu_item_id),
-        ...(payload.sides_and ?? []).map((s) => s.menu_item_id),
-        ...(payload.sides_or ?? []).map((s) => s.menu_item_id),
-      ]);
-      const enteredSides = [...newSideIds].filter((id) => !oldSideIds.has(id));
-      const leftSides = [...oldSideIds].filter((id) => !newSideIds.has(id));
-
-      // Mark newly-added side items as 'included' (skip addons — they have
-      // their own item_type and never become 'included' implicitly).
-      for (const id of enteredSides) {
-        const it = items.find((i) => i.id === id);
-        if (!it || it.item_type === 'addon' || it.item_type === 'included') continue;
-        try {
-          await service.updateMenuItem(id, { item_type: 'included' });
-          setItems((prev) =>
-            prev.map((i) => (i.id === id ? { ...i, item_type: 'included' as const } : i)),
-          );
-        } catch {
-          // Non-blocking — keep the modifier save win even if item_type sync fails
-        }
-      }
-
-      // Revert items that left this parent's sides AND are no longer a side
-      // anywhere else. The cross-check excludes the current parent (whose
-      // sides have just been replaced by the new payload).
-      for (const id of leftSides) {
-        const it = items.find((i) => i.id === id);
-        if (!it || it.item_type !== 'included') continue;
-        if (isItemUsedAsSideElsewhere(items, id, parentId)) continue;
-        try {
-          await service.updateMenuItem(id, { item_type: 'dish' });
-          setItems((prev) =>
-            prev.map((i) => (i.id === id ? { ...i, item_type: 'dish' as const } : i)),
-          );
-        } catch {
-          // Non-blocking
-        }
-      }
+      // Note: the item_type='included' sync that used to live here is gone
+      // along with the sides drop zones — only recommendations + addons can
+      // mutate from this handler now, and neither flips item_type. If a
+      // future surface re-adds sides authoring it should re-introduce the
+      // sync (or migrate it onto the groupings backend write path).
 
       // ── Auto-add new recommendation items to the active menu ────────────
       if (!activeMenuId) return;
@@ -1192,7 +1113,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       // hook-added item, and any auto-add side effects.
       if (hookHandled.size > 0) onRefresh?.();
     },
-    [items, menus, activeMenuId, showToast, service, enableAndOrSplit, onRefresh],
+    [items, menus, activeMenuId, showToast, service, onRefresh],
   );
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
@@ -1928,12 +1849,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onScrollComplete={() => setScrollToItemId(null)}
             onRefresh={onRefresh ? handleRefresh : undefined}
             refreshing={refreshing}
-            enableAndOrSplit={enableAndOrSplit}
-            onCrossGroupDuplicate={(group) =>
-              showToast(
-                `Already in ${group === 'included' ? 'Includes All' : 'Includes one by choice'} — remove first`,
-              )
-            }
             byoHandlers={byoHandlers}
             showAddons={showAddons}
             showRecommendations={showRecommendations}

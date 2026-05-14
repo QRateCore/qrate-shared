@@ -46,15 +46,6 @@ interface Props {
   /** See ItemModifierZones for the contract — same gating applied to the
    *  mobile picker so the modal flow works on phones too. */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
-  /**
-   * STR-342 feature flag. When true, the Sides section renders as two stacked
-   * sub-sections ("Included" + "Choice") each with its own search picker, and
-   * the AND/OR dropdown is hidden. Picker candidates filter out items already
-   * in EITHER group, so cross-group duplicates are unreachable — no toast
-   * callback is needed. When false/undefined, legacy single-section + dropdown
-   * renders.
-   */
-  enableAndOrSplit?: boolean;
   /** When false, the Recommendations section is omitted. Default true.
    *  (Mobile picker has no Add-ons section, so there is no `showAddons` knob.) */
   showRecommendations?: boolean;
@@ -66,7 +57,6 @@ export default function MobileItemModifierPicker({
   currentMenuId,
   onUpdate,
   onConfirmRecommendationDrop,
-  enableAndOrSplit = false,
   showRecommendations = true,
 }: Props) {
   // Sides authoring was removed from the row UI in 2026-05; only the

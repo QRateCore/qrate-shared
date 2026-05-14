@@ -1,43 +1,5 @@
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
 
-/**
- * Collect every menu_item_id that appears in any sides zone of `item`,
- * across legacy single-zone (sides) and split mode (sides_and + sides_or).
- *
- * Used by MenuManagerClient.handleUpdateModifiers to:
- *   1. compute the diff of which items entered or left a parent's sides on
- *      modifier update
- *   2. cross-check whether an item that left one parent's sides is still a
- *      side anywhere ELSE on the menu — if not, its item_type can revert
- *      from 'included' back to 'dish'.
- *
- * Returns an empty Set for items with no sides arrays — never throws.
- */
-export function getSideItemIds(item: MenuItemDisplay): Set<string> {
-  const ids = new Set<string>();
-  for (const s of item.sides ?? []) ids.add(s.menu_item_id);
-  for (const s of item.sides_and ?? []) ids.add(s.menu_item_id);
-  for (const s of item.sides_or ?? []) ids.add(s.menu_item_id);
-  return ids;
-}
-
-/**
- * True if `targetItemId` appears in any sides zone of any item in `items`,
- * EXCLUDING the item identified by `excludeParentId`. The exclusion is for
- * the case where we just removed an item from one parent's sides and want
- * to know if it's still a side anywhere else.
- */
-export function isItemUsedAsSideElsewhere(
-  items: MenuItemDisplay[],
-  targetItemId: string,
-  excludeParentId: string,
-): boolean {
-  return items.some((other) => {
-    if (other.id === excludeParentId) return false;
-    return getSideItemIds(other).has(targetItemId);
-  });
-}
-
 export const CANONICAL_CATEGORIES = [
   'Beverages',
   'Appetizers',
