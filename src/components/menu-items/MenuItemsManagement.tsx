@@ -303,6 +303,11 @@ export default function MenuItemsManagement({
   const [editFoodTags, setEditFoodTags] = useState<FoodTags>({});
   const [editBoost, setEditBoost] = useState("");
   const [editChefsSpecial, setEditChefsSpecial] = useState(false);
+  // PDD 2026-05-15 — owner per-item opt-out for the patron composition
+  // page Spice Level slider. Default TRUE preserves current behaviour;
+  // owner toggles off to suppress for non-dessert items (desserts
+  // auto-hide regardless on the patron side).
+  const [editSpiceModifierEnabled, setEditSpiceModifierEnabled] = useState(true);
   const [editPortionType, setEditPortionType] = useState<'single' | 'shared'>('single');
   const [editPortionServes, setEditPortionServes] = useState<number>(2);
 
@@ -432,6 +437,7 @@ export default function MenuItemsManagement({
 
     setEditFoodTags(selected.food_tags || {});
     setEditChefsSpecial(selected.chefs_special || false);
+    setEditSpiceModifierEnabled(selected.spice_modifier_enabled ?? true);
     setEditPortionType(selected.portion_type || 'single');
     setEditPortionServes(selected.portion_serves || 2);
     setImageUrl(selected.thumbnail_url || null);
@@ -464,6 +470,7 @@ export default function MenuItemsManagement({
           category: editCategory,
           food_tags: editFoodTags,
           chefs_special: editChefsSpecial,
+          spice_modifier_enabled: editSpiceModifierEnabled,
           portion_type: editPortionType,
           portion_serves: editPortionType === 'shared' ? editPortionServes : null,
         });
@@ -501,6 +508,7 @@ export default function MenuItemsManagement({
                 food_tags: editFoodTags,
                 thumbnail_url: imageUrl,
                 chefs_special: editChefsSpecial,
+                spice_modifier_enabled: editSpiceModifierEnabled,
               }
             : i,
         ),
@@ -1847,6 +1855,35 @@ export default function MenuItemsManagement({
                         className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ${editChefsSpecial ? 'bg-orange-500' : 'bg-gray-300'}`}
                       >
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${editChefsSpecial ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Spice Modifier — owner per-item opt-out for the patron
+                    composition page Spice Level slider. Default ON; flip
+                    OFF to hide the slider for non-dessert items. Desserts
+                    always auto-hide regardless of this flag. */}
+                {canEdit && !isCreatingNew && (
+                  <div
+                    className={`rounded-xl border-2 p-3 transition-colors duration-200 ${editSpiceModifierEnabled ? 'bg-rose-50 border-rose-200' : 'border-gray-200 bg-white'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/><path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/></svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 leading-tight">Spice Modifier</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Show the spice-level picker on the patron composition page</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={editSpiceModifierEnabled}
+                        aria-label="Toggle Spice Modifier"
+                        data-testid="spice-modifier-toggle"
+                        onClick={() => { setEditSpiceModifierEnabled(!editSpiceModifierEnabled); setSaved(false); }}
+                        className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ${editSpiceModifierEnabled ? 'bg-rose-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${editSpiceModifierEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
                       </button>
                     </div>
                   </div>
