@@ -161,6 +161,11 @@ export interface MenuItem {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /**
+   * PDD 2026-05-15: owner per-item opt-out for the patron composition page
+   * Spice Level slider. Defaults to TRUE on the wire.
+   */
+  spice_modifier_enabled?: boolean;
   /** Pipeline-assigned canonical category (set by the categorize stage) */
   canonical_category?: string | null;
   /** 'single' = serves one person; 'shared' = serves multiple guests */
@@ -308,6 +313,14 @@ export interface MenuItemDisplay {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /**
+   * PDD 2026-05-15: owner per-item opt-out for the patron composition page
+   * Spice Level slider. Defaults to TRUE on the wire (backend column
+   * default + COALESCE in the public menu API). Setting FALSE suppresses
+   * the slider for non-dessert items only — desserts always hide
+   * regardless of this flag.
+   */
+  spice_modifier_enabled?: boolean;
   /**
    * Canonical heat/spice level (1..N indexing into the per-restaurant
    * spice_scale). Source of truth alongside `food_tags.heat_spice` (label).
