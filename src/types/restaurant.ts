@@ -538,21 +538,6 @@ export interface Grouping {
   external_source?: 'zenfoody' | 'ubereats' | null;
   external_ref?: string | null;
   overrides_attribute?: 'spice' | 'sweetness' | 'portion' | null;
-  /**
-   * PDD 2026-05-15 — per-menu Includes/Choose-One overrides.
-   *
-   * - `null` (default): item-level grouping, applies to every menu the
-   *   dish is on. Required for kinds other than sides_and / sides_or.
-   * - non-null: per-menu override scope. Only valid for kinds
-   *   `sides_and` and `sides_or`. Cap: at most 1 Included + 1 Choose-One
-   *   per (item, menu).
-   *
-   * Resolution rule (per-menu fetch): override row wins over the
-   * item-level default when both exist. Owner UI uses this field to
-   * render the "Customize for {menu}" toggle on the Menu Builder dish
-   * drawer — non-null = there's an active override for that menu.
-   */
-  menu_id?: string | null;
   items: GroupingItem[];
 }
 

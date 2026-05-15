@@ -133,14 +133,6 @@ interface Props {
   groupingsSlot?: (handlers: {
     item: MenuItemDisplay;
     isNewItem: boolean;
-    /**
-     * PDD 2026-05-15 — the currently-active menu in the MenuManager
-     * sidebar, or null if the slot is rendered outside a menu context
-     * (e.g. the Food Library item drawer). When non-null, the slot's
-     * `GroupingsSection` (or equivalent) can render the per-menu
-     * Includes/Choose-One override affordances.
-     */
-    currentMenu: { id: string; name: string } | null;
   }) => ReactNode;
   /**
    * When true, the EditModal opens inside the same right-side drawer chrome
@@ -1596,11 +1588,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 ? groupingsSlot({
                     item: editItem,
                     isNewItem: newlyCreatedItemIdRef.current === editItemId,
-                    currentMenu: (() => {
-                      if (!activeMenuId) return null;
-                      const m = menus.find((mm) => mm.id === activeMenuId);
-                      return m ? { id: m.id, name: m.name } : null;
-                    })(),
                   })
                 : undefined
             }
