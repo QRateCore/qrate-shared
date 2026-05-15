@@ -490,6 +490,131 @@ describe('EditModal — save behaviour', () => {
   });
 });
 
+// ===========================================================================
+// PDD 2026-05-15 — spice_modifier_enabled per-item opt-out
+// ===========================================================================
+// The toggle gates whether the patron-side composition page renders a
+// spice-level slider. Default TRUE so legacy items keep the slider.
+// Tests below pin:
+//   - the toggle is hidden for add-ons (never reach the composition page)
+//   - the toggle is hidden for Desserts (auto-hide patron-side regardless)
+//   - the toggle hydrates from item.spice_modifier_enabled
+//   - the save payload includes spice_modifier_enabled
+//   - toggling the switch flips the value sent on save
+//
+// Companion backend round-trip pin:
+//   qrate-core/backend/lambdas/api/tests/test_owner_spice_modifier.py
+describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
+  it('renders the spice-modifier toggle on a non-dessert dish', () => {
+    renderModal({ item: makeDishItem({ category: 'Entrees', canonical_category: 'Entrees' }) });
+    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+  });
+
+  it('hides the spice-modifier toggle on Desserts (patron auto-hides regardless)', () => {
+    renderModal({ item: makeDishItem({ category: 'Desserts', canonical_category: 'Desserts' }) });
+    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
+  });
+
+  it('hides the spice-modifier toggle for add-ons (never reach composition page)', () => {
+    renderModal({ item: makeAddonItem() });
+    // Add-ons land on the performance tab by default, but even after
+    // switching tabs the toggle should never render. Just assert absence
+    // in the current render.
+    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
+  });
+
+  it('initialises ON when item.spice_modifier_enabled is true', () => {
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spice_modifier_enabled: true,
+      } as any),
+    });
+    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('initialises OFF when item.spice_modifier_enabled is false', () => {
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spice_modifier_enabled: false,
+      } as any),
+    });
+    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('initialises ON when item.spice_modifier_enabled is undefined (legacy row)', () => {
+    // The `?? true` fallback in EditModal preserves the pre-PDD default
+    // behaviour for items that haven't been touched since the migration.
+    renderModal({ item: makeDishItem() });
+    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('save payload defaults spice_modifier_enabled=true for legacy items', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({ item: makeDishItem(), service });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.spice_modifier_enabled).toBe(true);
+  });
+
+  it('toggle OFF then save sends spice_modifier_enabled=false (the bug repro)', async () => {
+    // Repro of the original report: owner toggles OFF, hits save. Before
+    // the backend fix the GET stripped the field on reopen — but the SAVE
+    // payload itself has always been correct. This test pins that the
+    // save payload carries the user's choice.
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spice_modifier_enabled: true,
+      } as any),
+      service,
+    });
+
+    await user.click(screen.getByTestId('spice-modifier-toggle'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.spice_modifier_enabled).toBe(false);
+  });
+
+  it('hydrated OFF item stays OFF on save (proves no `?? true` over-write)', async () => {
+    // Regression guard for the reopen path. Once the backend GET surfaces
+    // false, EditModal must respect that value end-to-end through save.
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spice_modifier_enabled: false,
+      } as any),
+      service,
+    });
+
+    // No toggle interaction — just save.
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.spice_modifier_enabled).toBe(false);
+  });
+});
+
 describe('EditModal — active toggle + save', () => {
   it('calls toggleMenuItemActive when active state changes during save', async () => {
     const user = userEvent.setup();

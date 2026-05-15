@@ -463,6 +463,13 @@ export interface MenuItemSummary {
   spice_level?: number | null;
   sweetness_level?: number | null;
   /**
+   * PDD 2026-05-15 — owner per-item opt-out for the patron composition-page
+   * spice slider. Defaults to TRUE on the schema (NOT NULL); the backend
+   * COALESCEs nulls to TRUE so this field is always a boolean on the wire.
+   * Optional in TS because legacy summary payloads (pre-fix) may omit it.
+   */
+  spice_modifier_enabled?: boolean;
+  /**
    * Lightweight projection of the dish's non-empty groupings, used by
    * the Food Library table's Groupings column to render a count + hover
    * popover listing each group and its members. Empty groupings are
