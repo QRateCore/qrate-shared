@@ -550,6 +550,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     return null;
   });
 
+  // PDD 2026-05-15 — owner per-item opt-out for the patron composition
+  // page Spice Level slider. Defaults to TRUE so legacy items keep the
+  // slider; owner flips OFF to suppress for non-dessert items (desserts
+  // continue to auto-hide on the patron side regardless of this flag).
+  const [spiceModifierEnabled, setSpiceModifierEnabled] = useState<boolean>(
+    item.spice_modifier_enabled ?? true,
+  );
+
   // Sweetness — same fallback shape as heat/spice for drift resilience.
   const [sweetnessLabel, setSweetnessLabel] = useState<string | null>(() => {
     const sl = item.food_tags?.sweetness_label;
@@ -1428,6 +1436,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         // STR-303: add-on mode is the sole per-item price surface in this modal.
         // Dishes continue to price per-menu in MenuBuilder — do not send price for them.
         ...(isAddon ? { price } : {}),
+        // PDD 2026-05-15 — per-item opt-out for the patron composition
+        // page Spice Level slider. Only meaningful for dishes; add-ons
+        // never reach the composition page so the field is harmless there.
+        spice_modifier_enabled: spiceModifierEnabled,
       };
 
       // When converting dish → addon, remove all menu associations first.
@@ -2542,6 +2554,73 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                   <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
                 </div>}
+
+                {/* Spice Modifier — owner per-item opt-out for the patron
+                    composition page Spice Level slider (PDD 2026-05-15).
+                    Default ON; flip OFF to suppress the slider for this
+                    item. Hidden for add-ons (never reach composition page)
+                    and Desserts (patron auto-hides them regardless). */}
+                {!isAddon && category !== 'Desserts' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: '1px solid',
+                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
+                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
+                      <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                        Show the spice-level picker on the patron composition page
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={spiceModifierEnabled}
+                      aria-label="Toggle Spice Modifier"
+                      data-testid="spice-modifier-toggle"
+                      onClick={() => setSpiceModifierEnabled((v) => !v)}
+                      style={{
+                        position: 'relative',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        height: 24,
+                        width: 42,
+                        flexShrink: 0,
+                        borderRadius: 999,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
+                        transition: 'background-color 0.15s',
+                        padding: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          height: 18,
+                          width: 18,
+                          borderRadius: '50%',
+                          background: '#fff',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                          transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
+                          transition: 'transform 0.15s',
+                        }}
+                      />
+                    </button>
+                  </div>
+                )}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
                     Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
