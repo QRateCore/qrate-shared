@@ -728,6 +728,183 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
     // The PUT response's `category` field doesn't clobber canonical_category.
     expect(updated.canonical_category).toBe('Appetizers');
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Field-by-field reactivity pins. Each test changes one user-visible field,
+  // simulates the server confirming the new value, and asserts that the new
+  // value flows through onComplete. Together with the architectural "carries
+  // arbitrary new fields" test above, these guard against any regression
+  // where one field becomes non-reactive without all of them dropping out.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('rename: edited name flows through to onComplete', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem({ name: 'Truffle Pasta' });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({ item: makeDishItem({ name: 'Old Name' }), service, onComplete });
+
+    const nameInput = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.tripleClick(nameInput);
+    await user.keyboard('{Backspace}');
+    await user.type(nameInput, 'Truffle Pasta');
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(onComplete.mock.calls[0][0].name).toBe('Truffle Pasta');
+  });
+
+  it('description edit flows through to onComplete', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem({ description: 'Rich and creamy' });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({ description: 'Old description' }),
+      service,
+      onComplete,
+    });
+
+    const descInput = screen.getByTestId('edit-description-input') as HTMLTextAreaElement;
+    await user.tripleClick(descInput);
+    await user.keyboard('{Backspace}');
+    await user.type(descInput, 'Rich and creamy');
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(onComplete.mock.calls[0][0].description).toBe('Rich and creamy');
+  });
+
+  it('addon price edit flows through to onComplete', async () => {
+    // Price is the addon path's analog of spice_modifier_enabled — only
+    // sent on the PUT when item_type='addon'. Pin that the server-confirmed
+    // price returns to the parent so editing add-on prices doesn't need
+    // a page refresh either.
+    const user = userEvent.setup();
+    const saved = makeAddonItem({ name: 'Extra Sauce', price: 3.5 });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeAddonItem({ name: 'Extra Sauce', price: 2 }),
+      service,
+      onComplete,
+    });
+
+    const priceInput = screen.getByTestId('edit-price-input') as HTMLInputElement;
+    fireEvent.change(priceInput, { target: { value: '3.5' } });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(onComplete.mock.calls[0][0].price).toBe(3.5);
+  });
+
+  it('food_tags edit (heat/spice pill) flows through to onComplete', async () => {
+    // Heat/spice round-trips via the food_tags JSONB merge: the EditModal
+    // sends food_tags.heat_spice in the PUT payload, the backend re-emits
+    // the merged JSONB on the response, and the optimistic merge spreads
+    // it back through. Pin that the merged `updated` object exposes the
+    // new heat_spice value so the parent's replaceItem doesn't render
+    // the pre-save state on reopen.
+    const user = userEvent.setup();
+    // Simulate the real backend response: food_tags JSONB carries
+    // heat_spice after the PUT applied the new value.
+    const saved = makeDishItem({
+      food_tags: { heat_spice: 'Hot' } as unknown as ReturnType<typeof makeDishItem>['food_tags'],
+    });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({ food_tags: {} }),
+      service,
+      onComplete,
+    });
+
+    await user.click(screen.getByTestId('heat-pill-hot'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const updated = onComplete.mock.calls[0][0];
+    expect((updated.food_tags as { heat_spice?: string }).heat_spice).toBe('Hot');
+  });
+
+  it('food_tags edit (heat/spice via separate /spice endpoint callback)', async () => {
+    // When `onHeatSpiceUpdate` is wired (separate canonical /spice
+    // endpoint, not the PUT), the merge's mergedFoodTags override
+    // re-attaches heat_spice from local state directly — the PUT
+    // response's food_tags can be empty and the value still propagates.
+    const user = userEvent.setup();
+    const onHeatSpiceUpdate = vi.fn().mockResolvedValue(undefined);
+    // saved.food_tags is empty here — the override path must fill in heat_spice.
+    const saved = makeDishItem({ food_tags: {} });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal
+          item={makeDishItem({ food_tags: {} })}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={onComplete}
+          onHeatSpiceUpdate={onHeatSpiceUpdate}
+        />
+      </MenuManagerServiceProvider>,
+    );
+
+    await user.click(screen.getByTestId('heat-pill-hot'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // The canonical /spice callback fires…
+    expect(onHeatSpiceUpdate).toHaveBeenCalledWith('item-1', 'Hot');
+    // …and the override block puts heat_spice into the merged food_tags
+    // so the parent sees the new value without a refetch.
+    const updated = onComplete.mock.calls[0][0];
+    expect((updated.food_tags as { heat_spice?: string }).heat_spice).toBe('Hot');
+  });
+
+  it('active toggle flows through to onComplete (managed via toggleMenuItemActive)', async () => {
+    // active is one of the explicit overrides — it's NOT in the PUT
+    // response so the local isActive state is the source of truth.
+    // Pin that flipping it during save propagates correctly.
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({ item: makeDishItem({ active: true }), service, onComplete });
+
+    await user.click(screen.getByTestId('edit-active-toggle'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(onComplete.mock.calls[0][0].active).toBe(false);
+  });
+
+  it('spread order: explicit overrides win over the PUT response', async () => {
+    // Defense-in-depth — explicitly verify that the 3rd layer of the merge
+    // (the explicit overrides) takes precedence over `...saved` (layer 2).
+    // If someone accidentally re-orders the spread, this test fails.
+    const user = userEvent.setup();
+    // Server returns canonical_category='Entrees' in the PUT response
+    // (defensively — backend currently doesn't echo this field at all,
+    // but the test simulates a future schema where it might).
+    const saved = {
+      ...makeDishItem(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      canonical_category: 'Entrees',
+    } as any;
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({ canonical_category: 'Appetizers' }),
+      service,
+      onComplete,
+    });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // The local-state override (category dropdown = 'Appetizers') must
+    // win over the server's `canonical_category: 'Entrees'`.
+    expect(onComplete.mock.calls[0][0].canonical_category).toBe('Appetizers');
+  });
 });
 
 describe('EditModal — active toggle + save', () => {
