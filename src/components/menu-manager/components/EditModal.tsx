@@ -1507,20 +1507,55 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         ...(onHeatSpiceUpdate ? { heat_spice: heatSpice ?? undefined } : {}),
         ...(onSweetnessUpdate ? { sweetness_label: sweetnessLabel ?? undefined } : {}),
       } as FoodTags;
+      // RCA 2026-05-15 — propagating fields by explicit whitelist was a
+      // maintenance trap: every new field the backend adds (spice_modifier_enabled
+      // was the latest example) had to be re-listed here, or the parent
+      // FoodItemsManagerClient.replaceItem received a stale `updated` and
+      // the close-then-reopen render showed the pre-save value until a hard
+      // page refresh forced a fresh GET.
+      //
+      // New shape — three layers, narrow → broad:
+      //   1. `...item` is the baseline. Preserves fields the PUT response
+      //      doesn't echo (gallery_urls, addons[], sides_and/sides_or[],
+      //      recommendations[], groupings[], allergens_state, dietary_state,
+      //      display_allergens, display_dietary, spice_level, sweetness_level,
+      //      enrichment metadata, etc.).
+      //   2. `...saved` is the server-confirmed PUT response. ANY field the
+      //      backend echoes flows through automatically. Adding a new field
+      //      to MenuItemUpdateResponse in owner-api.yaml is now a one-line
+      //      change that's automatically reactive across the EditModal save
+      //      path — no follow-up edit here.
+      //   3. The explicit overrides below are ONLY for fields managed via
+      //      endpoints OTHER than service.updateMenuItem, OR derived in the
+      //      modal from local state the user just changed. Document each
+      //      override's source endpoint so future edits don't reintroduce
+      //      stale-state drift.
       const updated: MenuItemDisplay = {
         ...item,
-        name: saved.name ?? name.trim(),
-        description: (saved.description ?? description.trim()) || null,
-        category: (saved as { category?: string }).category ?? item.category,
+        ...saved,
+        // canonical_category: PUT response carries the raw scraped `category`
+        // column, not the canonical_category column. Local `category` state
+        // is what the user picked in the dropdown — write that through.
         canonical_category: category.trim() || item.canonical_category,
+        // food_tags: re-merges heat_spice / sweetness_label written via the
+        // separate /spice and /sweetness endpoints (not present in `saved`).
         food_tags: mergedFoodTags,
+        // active: written via service.toggleMenuItemActive — not echoed by
+        // the PUT response.
         active: isActive,
+        // thumbnail_url: written via image upload endpoints — not echoed.
         thumbnail_url: thumbnail,
+        // item_type / price: spread already carries `saved` values; this
+        // re-affirms the local UI state for the convert-dish-to-addon flow
+        // where the user toggles in-modal before save settles.
         item_type: isAddon ? 'addon' : 'dish',
         price: isAddon ? price : (saved.price ?? item.price),
+        // addons / recommendations: written via service.updateItemModifiers —
+        // local `itemAddons` / `itemRecs` reflect the in-modal state which
+        // may include unsaved selections flushed by handleAddToMultipleDishes.
         addons: itemAddons,
         recommendations: itemRecs,
-        // Clear menu associations in local state when converted to addon
+        // Clear menu associations in local state when converted to addon.
         ...(wasConvertedToAddon ? { menu_associations: [] } : {}),
       };
 

@@ -615,6 +615,121 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
   });
 });
 
+// ===========================================================================
+// onComplete contract — server response propagates to local list state
+// ===========================================================================
+// RCA 2026-05-15: the EditModal save used to manually whitelist which fields
+// from the PUT response made it into the `updated` object passed to
+// onComplete. Any field NOT in the whitelist was silently dropped — the
+// parent's replaceItem() then held a stale copy until a hard page refresh
+// re-fetched the item. The bug manifested as "I toggle Spice Modifier OFF,
+// save, close, reopen → toggle is back ON" even though the DB had been
+// written correctly.
+//
+// Fix: spread `...saved` (PUT response) on top of `...item` so every field
+// the backend echoes flows through automatically. New backend fields are
+// reactive on day one without touching EditModal.
+//
+// These tests pin that contract.
+describe('EditModal — onComplete propagates the server response (PDD 2026-05-15)', () => {
+  it('onComplete carries spice_modifier_enabled from the PUT response', async () => {
+    const user = userEvent.setup();
+    // Server confirms FALSE — exactly the bug repro from the user report.
+    const saved = makeDishItem({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      spice_modifier_enabled: false,
+    } as any);
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        spice_modifier_enabled: true,
+      } as any),
+      service,
+      onComplete,
+    });
+
+    await user.click(screen.getByTestId('spice-modifier-toggle'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalled();
+    });
+    const updated = onComplete.mock.calls[0][0];
+    // BEFORE the fix this would have been true (the pre-save spread).
+    expect(updated.spice_modifier_enabled).toBe(false);
+  });
+
+  it('onComplete carries arbitrary new fields from the PUT response (no whitelist)', async () => {
+    // Future-proofing pin: any field the backend adds to the PUT response
+    // schema should flow through to onComplete without a corresponding
+    // change in EditModal. This is the architectural guarantee.
+    const user = userEvent.setup();
+    const saved = {
+      ...makeDishItem(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      hypothetical_new_field: 'server-confirmed-value',
+    } as any;
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({ item: makeDishItem(), service, onComplete });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const updated = onComplete.mock.calls[0][0];
+    expect(updated.hypothetical_new_field).toBe('server-confirmed-value');
+  });
+
+  it('onComplete preserves heavy fields the PUT response does not echo (gallery_urls, etc.)', async () => {
+    // The PUT response is the SUBSET shape — it doesn't include
+    // gallery_urls, addons/sides/recommendations/groupings, etc. The
+    // optimistic merge must preserve those from the pre-save item or the
+    // EditModal's reopen would show empty arrays for everything.
+    const user = userEvent.setup();
+    const saved = makeDishItem({ name: 'Renamed' });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        gallery_urls: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
+      } as any),
+      service,
+      onComplete,
+    });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const updated = onComplete.mock.calls[0][0];
+    expect(updated.gallery_urls).toEqual(['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg']);
+    // And the renamed name from the server response also propagated.
+    expect(updated.name).toBe('Renamed');
+  });
+
+  it('onComplete: locally-managed fields override the server response (canonical_category)', async () => {
+    // canonical_category is tracked locally in the modal and written via the
+    // CHECK constraint on the `category` column path — the PUT response
+    // carries the raw `category` field, not canonical_category. The explicit
+    // override in the merge must keep local state authoritative.
+    const user = userEvent.setup();
+    const saved = makeDishItem({ name: 'Renamed' });
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    const onComplete = vi.fn();
+    renderModal({
+      item: makeDishItem({ canonical_category: 'Appetizers', category: 'Starters' }),
+      service,
+      onComplete,
+    });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const updated = onComplete.mock.calls[0][0];
+    // The PUT response's `category` field doesn't clobber canonical_category.
+    expect(updated.canonical_category).toBe('Appetizers');
+  });
+});
+
 describe('EditModal — active toggle + save', () => {
   it('calls toggleMenuItemActive when active state changes during save', async () => {
     const user = userEvent.setup();
