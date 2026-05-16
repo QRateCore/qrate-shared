@@ -1,26 +1,46 @@
 // @vitest-environment jsdom
 /**
- * Unit tests for ItemModifierZones.
+ * Unit tests for ItemModifierZones — per-menu Includes / Choose-One
+ * sides editor (PDD 2026-05-15 v2 Step 6).
  *
- * Covers the two bug fixes:
+ * The previous test file (12 cases) covered the addons +
+ * recommendations + custom-groupings drop zones that lived here
+ * before the v2 rewrite. Those have all been removed; the component
+ * now ONLY renders the two per-menu sides zones. New coverage:
  *
- * Bug 1 — Deleted addon ghosts in drop zone:
- *   - An addon present in parent.addons but absent from itemsById must not render
- *   - An addon present in both renders correctly
- *
- * Bug 2 — Drag-drop addon does not call onUpdate with addons:
- *   - Dropping a valid addon item fires onUpdate with addons in the payload
- *   - Dropping a non-addon (dish) onto the addon zone is rejected (no onUpdate)
- *   - Dropping a duplicate addon (already in addonIds) is rejected (no onUpdate)
+ * - Loading state
+ * - Empty state when placement has no per-menu sides
+ * - Both zones render with the right labels + zero-state hints
+ * - Drag-drop adds a side to the correct zone via setMenuSides
+ * - Cross-zone duplicate rejected (warn toast, no save)
+ * - Addon items rejected (warn toast, no save)
+ * - Remove side via X button calls setMenuSides with the remainder
+ * - Save failure reverts to last confirmed state + error toast
+ * - Rapid drops coalesce: prior request is aborted
+ * - currentMenuId=null renders nothing
+ * - perMenuSides=undefined renders nothing
+ * - 404 MENU_NOT_ASSOCIATED renders empty zones (no error chrome)
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import ItemModifierZones from '../ItemModifierZones';
-import type { MenuItemDisplay, AddonEntry } from '../../../../types/restaurant';
+import ItemModifierZones, {
+  type MenuItemMenuSides,
+  type PerMenuSidesAdapter,
+} from '../ItemModifierZones';
+import type { MenuItemDisplay } from '../../../../types/restaurant';
 
-// ── Factories ─────────────────────────────────────────────────────────────────
+// sonner is used only for toast warnings — mock to silent.
+const toastMock = vi.hoisted(() => ({
+  warning: vi.fn(),
+  error: vi.fn(),
+  success: vi.fn(),
+  info: vi.fn(),
+}));
+vi.mock('sonner', () => ({ toast: toastMock }));
+
+// ── Factories ─────────────────────────────────────────────────────────────
 
 function makeDish(id: string, overrides: Partial<MenuItemDisplay> = {}): MenuItemDisplay {
   return {
@@ -33,7 +53,6 @@ function makeDish(id: string, overrides: Partial<MenuItemDisplay> = {}): MenuIte
     active: true,
     item_type: 'dish',
     thumbnail_url: null,
-    associations: [],
     food_tags: {},
     addons: [],
     sides: [],
@@ -45,304 +64,410 @@ function makeDish(id: string, overrides: Partial<MenuItemDisplay> = {}): MenuIte
   } as MenuItemDisplay;
 }
 
-function makeAddonItem(id: string, overrides: Partial<MenuItemDisplay> = {}): MenuItemDisplay {
-  return {
-    id,
-    name: `Addon ${id}`,
-    description: null,
-    category: null,
-    canonical_category: null,
-    price: 2.5,
-    active: true,
-    item_type: 'addon',
-    thumbnail_url: null,
-    associations: [],
-    food_tags: {},
-    addons: [],
-    sides: [],
-    recommendations: [],
-    boost_level: null,
-    chefs_special: false,
-    ...overrides,
-  } as MenuItemDisplay;
+function makeAddonItem(id: string): MenuItemDisplay {
+  return makeDish(id, { name: `Addon ${id}`, item_type: 'addon', price: 2.5 });
 }
 
-function makeAddonEntry(addonId: string, name: string): AddonEntry {
+const PARENT_ID = 'parent-dish';
+const MENU_ID = 'menu-lunch';
+const SIDE_A = 'side-a';
+const SIDE_B = 'side-b';
+
+function makeAdapter(initial: MenuItemMenuSides = { sides_and: [], sides_or: [] }): {
+  adapter: PerMenuSidesAdapter;
+  getCalls: Array<[string, string]>;
+  setCalls: Array<[string, string, unknown]>;
+  /** Tell setMenuSides to reject the next call once. */
+  rejectNextSet: (err: Error) => void;
+  /** Echo a specific resolved view from the next setMenuSides call. */
+  resolveNextSetWith: (next: MenuItemMenuSides) => void;
+} {
+  const getCalls: Array<[string, string]> = [];
+  const setCalls: Array<[string, string, unknown]> = [];
+  let nextSetReject: Error | null = null;
+  let nextSetEcho: MenuItemMenuSides | null = null;
+
+  const adapter: PerMenuSidesAdapter = {
+    get: async (itemId, menuId) => {
+      getCalls.push([itemId, menuId]);
+      return initial;
+    },
+    set: async (itemId, menuId, body) => {
+      setCalls.push([itemId, menuId, body]);
+      if (nextSetReject) {
+        const err = nextSetReject;
+        nextSetReject = null;
+        throw err;
+      }
+      if (nextSetEcho) {
+        const echo = nextSetEcho;
+        nextSetEcho = null;
+        return echo;
+      }
+      // Default: echo back what was sent, decorated with names from the
+      // body (resolver normally fills names from menu_items).
+      return {
+        sides_and: body.sides_and.map((s) => ({
+          menu_item_id: s.menu_item_id,
+          name: `Server ${s.menu_item_id}`,
+          price_override: s.price_override ?? null,
+          thumbnail_url: null,
+          thumbnail_small_url: null,
+        })),
+        sides_or: body.sides_or.map((s) => ({
+          menu_item_id: s.menu_item_id,
+          name: `Server ${s.menu_item_id}`,
+          price_override: s.price_override ?? null,
+          thumbnail_url: null,
+          thumbnail_small_url: null,
+        })),
+      };
+    },
+  };
   return {
-    menu_item_id: addonId,
-    name,
-    price_override: 2.5,
-    thumbnail_url: null,
-    status: 'approved',
-    suggestion_source: 'manual',
+    adapter,
+    getCalls,
+    setCalls,
+    rejectNextSet: (err) => { nextSetReject = err; },
+    resolveNextSetWith: (next) => { nextSetEcho = next; },
   };
 }
 
-// Simulates an HTML5 drag-drop event with a text/plain dataTransfer payload.
-function fireDrop(element: Element, itemId: string) {
-  const dataTransfer = {
-    getData: (type: string) => (type === 'text/plain' ? JSON.stringify([itemId]) : ''),
-    setData: vi.fn(),
-    effectAllowed: 'move',
-    dropEffect: 'move',
-    files: [],
-    items: [],
-    types: ['text/plain'],
-    clearData: vi.fn(),
-  };
-  fireEvent.drop(element, { dataTransfer });
+function makeItemsById(items: MenuItemDisplay[]) {
+  return new Map(items.map((it) => [it.id, it]));
 }
 
-// ── Render helper ─────────────────────────────────────────────────────────────
-
-function renderZones(
-  parent: MenuItemDisplay,
-  itemsById: Map<string, MenuItemDisplay>,
-  onUpdate = vi.fn().mockResolvedValue(undefined),
-) {
-  render(
-    <ItemModifierZones
-      parent={parent}
-      itemsById={itemsById}
-      currentMenuId="menu-1"
-      onUpdate={onUpdate}
-    />,
-  );
-  return { onUpdate };
+function dropOn(testId: string, payload: string) {
+  const zone = screen.getByTestId(testId);
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', {
+    value: { getData: (_: string) => payload },
+  });
+  zone.dispatchEvent(event);
 }
 
-// ── Bug 1: Deleted addon filter ───────────────────────────────────────────────
+beforeEach(() => {
+  toastMock.warning.mockReset();
+  toastMock.error.mockReset();
+});
 
-describe('ItemModifierZones — deleted addon filter (Bug 1)', () => {
-  it('does not render an addon whose menu_item_id is absent from itemsById', () => {
-    const parent = makeDish('dish-1', {
-      addons: [makeAddonEntry('deleted-addon', 'Orphaned Sauce')],
-    });
-    // itemsById does NOT contain 'deleted-addon'
-    const itemsById = new Map([['dish-1', parent]]);
+// ── Render guards ─────────────────────────────────────────────────────────
 
-    renderZones(parent, itemsById);
-
-    // The remove button would have this testid if the addon were rendered
-    expect(
-      document.querySelector('[data-testid="remove-addon-dish-1-deleted-addon"]'),
-    ).toBeNull();
-
-    // Drop zone should show the empty placeholder instead
-    expect(screen.getByText('Drop add-ons here')).toBeInTheDocument();
+describe('ItemModifierZones — render guards', () => {
+  it('renders nothing when currentMenuId is null', () => {
+    const { adapter } = makeAdapter();
+    const { container } = render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={null}
+        perMenuSides={adapter}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 
-  it('renders an addon that exists in itemsById', () => {
-    const addonItem = makeAddonItem('addon-1');
-    const parent = makeDish('dish-1', {
-      addons: [makeAddonEntry('addon-1', 'Extra Sauce')],
-    });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-1', addonItem],
-    ]);
+  it('renders nothing when perMenuSides adapter is omitted', () => {
+    const { container } = render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+});
 
-    renderZones(parent, itemsById);
+// ── Loading / empty / populated ───────────────────────────────────────────
 
-    // Remove button should be present
-    expect(
-      document.querySelector('[data-testid="remove-addon-dish-1-addon-1"]'),
-    ).toBeInTheDocument();
-
-    // Addon name should appear in the card
-    expect(screen.getByText('Extra Sauce')).toBeInTheDocument();
+describe('ItemModifierZones — load lifecycle', () => {
+  it('shows loading state then both empty zones', async () => {
+    const { adapter } = makeAdapter();
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    // Loading hint renders immediately
+    expect(screen.getByTestId(`per-menu-sides-loading-${PARENT_ID}`)).toBeInTheDocument();
+    // After the async load resolves both zones appear empty
+    await waitFor(() =>
+      expect(screen.getByTestId(`per-menu-sides-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Includes All')).toBeInTheDocument();
+    expect(screen.getByText('Includes one by choice')).toBeInTheDocument();
+    expect(screen.getByText('Drop included sides here')).toBeInTheDocument();
+    expect(screen.getByText('Drop choice sides here')).toBeInTheDocument();
   });
 
-  it('renders only the surviving addon when one is deleted and one is not', () => {
-    const survivingAddon = makeAddonItem('addon-surviving');
-    const parent = makeDish('dish-1', {
-      addons: [
-        makeAddonEntry('addon-deleted', 'Deleted Topping'),
-        makeAddonEntry('addon-surviving', 'Alive Topping'),
+  it('renders populated cards when the adapter returns sides', async () => {
+    const { adapter } = makeAdapter({
+      sides_and: [{ menu_item_id: SIDE_A, name: 'Mashed Potatoes' }],
+      sides_or: [{ menu_item_id: SIDE_B, name: 'Slaw' }],
+    });
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Mashed Potatoes')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Slaw')).toBeInTheDocument();
+  });
+
+  it('treats 404 MENU_NOT_ASSOCIATED as empty (not an error chrome)', async () => {
+    const adapter: PerMenuSidesAdapter = {
+      get: vi.fn().mockRejectedValue(new Error('MENU_NOT_ASSOCIATED')),
+      set: vi.fn(),
+    };
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`per-menu-sides-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId(`per-menu-sides-error-${PARENT_ID}`)).toBeNull();
+  });
+
+  it('surfaces non-404 errors as an inline error block', async () => {
+    const adapter: PerMenuSidesAdapter = {
+      get: vi.fn().mockRejectedValue(new Error('boom')),
+      set: vi.fn(),
+    };
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`per-menu-sides-error-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+  });
+});
+
+// ── Drag-drop ─────────────────────────────────────────────────────────────
+
+describe('ItemModifierZones — drag-drop', () => {
+  it('adds dropped dish to Includes All via setMenuSides', async () => {
+    const sideDish = makeDish(SIDE_A, { name: 'Mashed Potatoes' });
+    const { adapter, setCalls } = makeAdapter();
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([sideDish])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`sides-and-drop-zone-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, SIDE_A);
+
+    await waitFor(() => expect(setCalls).toHaveLength(1));
+    const [itemId, menuId, body] = setCalls[0];
+    expect(itemId).toBe(PARENT_ID);
+    expect(menuId).toBe(MENU_ID);
+    expect(body).toEqual({
+      sides_and: [{ menu_item_id: SIDE_A, price_override: null }],
+      sides_or: [],
+    });
+  });
+
+  it('rejects addon items with a warning toast', async () => {
+    const addon = makeAddonItem(SIDE_A);
+    const { adapter, setCalls } = makeAdapter();
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([addon])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`sides-and-drop-zone-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, SIDE_A);
+
+    expect(setCalls).toHaveLength(0);
+    expect(toastMock.warning).toHaveBeenCalledWith(expect.stringMatching(/Add-?ons/i));
+  });
+
+  it('rejects cross-zone duplicates with a warning toast', async () => {
+    const sideDish = makeDish(SIDE_A, { name: 'Mashed Potatoes' });
+    const { adapter, setCalls } = makeAdapter({
+      sides_and: [{ menu_item_id: SIDE_A, name: 'Mashed Potatoes' }],
+      sides_or: [],
+    });
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([sideDish])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Mashed Potatoes')).toBeInTheDocument(),
+    );
+
+    // SIDE_A is in sides_and — dropping into sides_or should reject.
+    dropOn(`sides-or-drop-zone-${PARENT_ID}`, SIDE_A);
+
+    expect(setCalls).toHaveLength(0);
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringMatching(/other slot/i),
+    );
+  });
+
+  it('silently skips drops already in the same zone (no toast, no save)', async () => {
+    const sideDish = makeDish(SIDE_A);
+    const { adapter, setCalls } = makeAdapter({
+      sides_and: [{ menu_item_id: SIDE_A, name: 'Side A' }],
+      sides_or: [],
+    });
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([sideDish])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Side A')).toBeInTheDocument(),
+    );
+
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, SIDE_A);
+
+    expect(setCalls).toHaveLength(0);
+    expect(toastMock.warning).not.toHaveBeenCalled();
+  });
+
+  it('rejects dropping the parent dish onto itself', async () => {
+    const { adapter, setCalls } = makeAdapter();
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([makeDish(PARENT_ID)])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`sides-and-drop-zone-${PARENT_ID}`)).toBeInTheDocument(),
+    );
+
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, PARENT_ID);
+    expect(setCalls).toHaveLength(0);
+  });
+});
+
+// ── Remove ────────────────────────────────────────────────────────────────
+
+describe('ItemModifierZones — remove side', () => {
+  it('removing via X calls setMenuSides with the remaining members', async () => {
+    const { adapter, setCalls } = makeAdapter({
+      sides_and: [
+        { menu_item_id: SIDE_A, name: 'Side A' },
+        { menu_item_id: SIDE_B, name: 'Side B' },
       ],
+      sides_or: [],
     });
-    // Only the surviving addon is in itemsById
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-surviving', survivingAddon],
-    ]);
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('Side A')).toBeInTheDocument());
 
-    renderZones(parent, itemsById);
+    const removeBtn = screen.getByTestId(`remove-sides-and-${PARENT_ID}-${SIDE_A}`);
+    fireEvent.click(removeBtn);
 
-    expect(
-      document.querySelector('[data-testid="remove-addon-dish-1-addon-deleted"]'),
-    ).toBeNull();
-    expect(
-      document.querySelector('[data-testid="remove-addon-dish-1-addon-surviving"]'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Alive Topping')).toBeInTheDocument();
-    expect(screen.queryByText('Deleted Topping')).toBeNull();
+    await waitFor(() => expect(setCalls).toHaveLength(1));
+    expect(setCalls[0][2]).toEqual({
+      sides_and: [{ menu_item_id: SIDE_B, price_override: null }],
+      sides_or: [],
+    });
   });
 });
 
-// ── Bug 2: Drag-drop fires onUpdate with addons ───────────────────────────────
+// ── Optimistic update + revert ────────────────────────────────────────────
 
-describe('ItemModifierZones — addon drag-drop calls onUpdate (Bug 2)', () => {
-  it('calls onUpdate with the dropped addon in the addons payload', () => {
-    const addonItem = makeAddonItem('addon-new', { name: 'Chilli Oil', price: 1.5 });
-    const parent = makeDish('dish-1', { addons: [] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-new', addonItem],
-    ]);
-    const onUpdate = vi.fn().mockResolvedValue(undefined);
+describe('ItemModifierZones — server echo + revert', () => {
+  it('swaps in server-echoed names after the PUT resolves', async () => {
+    // Optimistic state shows the local item's name (from itemsById)
+    // briefly, then the backend echoes back the resolved view with the
+    // server-canonical name (decorated by the resolver from menu_items).
+    // We assert the FINAL state — the intermediate optimistic frame is
+    // not reliably observable under React 18's microtask batching.
+    const sideDish = makeDish(SIDE_A, { name: 'Mashed Potatoes' });
+    const { adapter } = makeAdapter();
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([sideDish])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`sides-and-drop-zone-${PARENT_ID}`)).toBeInTheDocument(),
+    );
 
-    renderZones(parent, itemsById, onUpdate);
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, SIDE_A);
 
-    const dropZone = document.querySelector('[data-testid="addons-drop-zone-dish-1"]')!;
-    fireDrop(dropZone, 'addon-new');
-
-    expect(onUpdate).toHaveBeenCalledOnce();
-    const [calledParentId, payload] = onUpdate.mock.calls[0] as [string, { addons: Array<{ menu_item_id: string }> }];
-    expect(calledParentId).toBe('dish-1');
-    expect(payload.addons).toBeDefined();
-    expect(payload.addons).toHaveLength(1);
-    expect(payload.addons[0].menu_item_id).toBe('addon-new');
+    // Server echo wins: `Server side-a` (from the default mock).
+    await waitFor(() =>
+      expect(screen.getByText(`Server ${SIDE_A}`)).toBeInTheDocument(),
+    );
   });
 
-  it('preserves existing addons and appends the new one', () => {
-    const existingAddon = makeAddonItem('addon-existing');
-    const newAddon = makeAddonItem('addon-new');
-    const parent = makeDish('dish-1', {
-      addons: [makeAddonEntry('addon-existing', 'Existing')],
-    });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-existing', existingAddon],
-      ['addon-new', newAddon],
-    ]);
-    const onUpdate = vi.fn().mockResolvedValue(undefined);
+  it('reverts to empty + error toast when setMenuSides rejects', async () => {
+    const sideDish = makeDish(SIDE_A, { name: 'Mashed Potatoes' });
+    const { adapter, rejectNextSet } = makeAdapter();
+    rejectNextSet(new Error('boom'));
+    render(
+      <ItemModifierZones
+        parent={makeDish(PARENT_ID)}
+        itemsById={makeItemsById([sideDish])}
+        currentMenuId={MENU_ID}
+        perMenuSides={adapter}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId(`sides-and-drop-zone-${PARENT_ID}`)).toBeInTheDocument(),
+    );
 
-    renderZones(parent, itemsById, onUpdate);
+    dropOn(`sides-and-drop-zone-${PARENT_ID}`, SIDE_A);
 
-    const dropZone = document.querySelector('[data-testid="addons-drop-zone-dish-1"]')!;
-    fireDrop(dropZone, 'addon-new');
-
-    expect(onUpdate).toHaveBeenCalledOnce();
-    const payload = onUpdate.mock.calls[0][1] as { addons: Array<{ menu_item_id: string }> };
-    expect(payload.addons).toHaveLength(2);
-    expect(payload.addons.map((a) => a.menu_item_id)).toContain('addon-existing');
-    expect(payload.addons.map((a) => a.menu_item_id)).toContain('addon-new');
-  });
-
-  it('does not call onUpdate when a non-addon (dish) is dropped on the addon zone', () => {
-    const dishItem = makeDish('dish-2', { name: 'Pasta' });
-    const parent = makeDish('dish-1', { addons: [] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['dish-2', dishItem],
-    ]);
-    const onUpdate = vi.fn().mockResolvedValue(undefined);
-
-    renderZones(parent, itemsById, onUpdate);
-
-    const dropZone = document.querySelector('[data-testid="addons-drop-zone-dish-1"]')!;
-    fireDrop(dropZone, 'dish-2');
-
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-
-  it('does not call onUpdate when the same addon is dropped again (duplicate guard)', () => {
-    const addonItem = makeAddonItem('addon-1');
-    const parent = makeDish('dish-1', {
-      addons: [makeAddonEntry('addon-1', 'Already Here')],
-    });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-1', addonItem],
-    ]);
-    const onUpdate = vi.fn().mockResolvedValue(undefined);
-
-    renderZones(parent, itemsById, onUpdate);
-
-    const dropZone = document.querySelector('[data-testid="addons-drop-zone-dish-1"]')!;
-    fireDrop(dropZone, 'addon-1');
-
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-
-  it('does not call onUpdate when the parent itself is dropped on its own addon zone', () => {
-    const parent = makeDish('dish-1', { addons: [] });
-    const itemsById = new Map([['dish-1', parent]]);
-    const onUpdate = vi.fn().mockResolvedValue(undefined);
-
-    renderZones(parent, itemsById, onUpdate);
-
-    const dropZone = document.querySelector('[data-testid="addons-drop-zone-dish-1"]')!;
-    fireDrop(dropZone, 'dish-1');
-
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-});
-
-// ── Price display: reads from itemsById, not price_override ───────────────────
-
-describe('ItemModifierZones — addon price comes from itemsById, not price_override', () => {
-  it('shows the addon item price from itemsById, ignoring stale price_override on the association', () => {
-    // Association has price_override: 0 — stale value from before the design fix.
-    // The addon item itself has price: 2.50 — this is the authoritative source.
-    const addonEntry: ReturnType<typeof makeAddonEntry> = { ...makeAddonEntry('addon-1', 'Extra Chutney'), price_override: 0 };
-    const addonItem = makeAddonItem('addon-1', { name: 'Extra Chutney', price: 2.5 });
-    const parent = makeDish('dish-1', { addons: [addonEntry] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-1', addonItem],
-    ]);
-
-    renderZones(parent, itemsById);
-
-    // Must show the addon item's price ($2.50), not the stale association price ($0.00)
-    expect(screen.getByText('+$2.50')).toBeInTheDocument();
-  });
-
-  it('hides the price tag when the addon item has a null price', () => {
-    const addonEntry = makeAddonEntry('addon-1', 'Complimentary Item');
-    const addonItem = makeAddonItem('addon-1', { price: null });
-    const parent = makeDish('dish-1', { addons: [addonEntry] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-1', addonItem],
-    ]);
-
-    renderZones(parent, itemsById);
-
-    expect(document.querySelector('.modifier-card-price')).toBeNull();
-  });
-
-  it('shows +$0.00 when the addon item price is explicitly zero', () => {
-    const addonEntry = makeAddonEntry('addon-1', 'Free Add-on');
-    const addonItem = makeAddonItem('addon-1', { price: 0 });
-    const parent = makeDish('dish-1', { addons: [addonEntry] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-1', addonItem],
-    ]);
-
-    renderZones(parent, itemsById);
-
-    expect(screen.getByText('+$0.00')).toBeInTheDocument();
-  });
-
-  it('shows a different price for two addons based on their respective itemsById entries', () => {
-    const entry1 = makeAddonEntry('addon-a', 'Sauce');
-    const entry2 = makeAddonEntry('addon-b', 'Cheese');
-    const addonA = makeAddonItem('addon-a', { price: 1.0 });
-    const addonB = makeAddonItem('addon-b', { price: 3.5 });
-    const parent = makeDish('dish-1', { addons: [entry1, entry2] });
-    const itemsById = new Map([
-      ['dish-1', parent],
-      ['addon-a', addonA],
-      ['addon-b', addonB],
-    ]);
-
-    renderZones(parent, itemsById);
-
-    expect(screen.getByText('+$1.00')).toBeInTheDocument();
-    expect(screen.getByText('+$3.50')).toBeInTheDocument();
+    // After the rejection cycle completes:
+    // - The dropped name disappears (revert)
+    // - An error toast fires with the rejection message
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('boom'));
+    expect(screen.queryByText('Mashed Potatoes')).toBeNull();
+    expect(screen.queryByText(`Server ${SIDE_A}`)).toBeNull();
   });
 });

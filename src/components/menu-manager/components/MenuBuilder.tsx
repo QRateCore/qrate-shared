@@ -69,22 +69,30 @@ interface MenuBuilderProps {
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   /**
    * Optional gate called before a dropped item is added as a recommendation.
-   * Forwarded to both desktop (ItemModifierZones) and mobile (MobileItemModifierPicker).
-   * See `ItemModifierZones.onConfirmRecommendationDrop` for the contract.
+   * Forwarded to MobileItemModifierPicker (mobile only — desktop no
+   * longer has addon/recommendation drop zones after PDD 2026-05-15 v2).
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /**
    * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
-   * Forwarded to ItemModifierZones; when present, [+ Add grouping], [⋮]
-   * menu, rule pill, and inline rename affordances render.
+   * Forwarded to MobileItemModifierPicker (mobile only — desktop no
+   * longer renders BYO affordances in the row UI after PDD 2026-05-15 v2;
+   * BYO authoring lives in the Food Item's EditModal Groupings tab).
    */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
-  /** When false, the Add-ons drop zone is omitted from the per-item editor. Default true. */
+  /** When false, the Add-ons drop zone is omitted from the mobile picker. Default true. */
   showAddons?: boolean;
-  /** When false, the Recommendations drop zone is omitted from the per-item editor. Default true. */
+  /** When false, the Recommendations drop zone is omitted from the mobile picker. Default true. */
   showRecommendations?: boolean;
-  /** When false, the [+ Add grouping] button is omitted from the per-item editor. Default true. */
+  /** When false, the [+ Add grouping] button is omitted from the mobile picker. Default true. */
   showAddGrouping?: boolean;
+  /**
+   * PDD 2026-05-15 v2 — per-menu Includes/Choose-One sides adapter.
+   * Forwarded to the desktop ItemModifierZones component to render the
+   * two per-menu drop zones in the expanded dish row. Omitted = no
+   * per-menu sides UI (e.g. unit tests, waiter-webapp).
+   */
+  perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -225,6 +233,7 @@ function MenuItemRow({
   showAddons = true,
   showRecommendations = true,
   showAddGrouping = true,
+  perMenuSides,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -238,13 +247,15 @@ function MenuItemRow({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
-  /** BYO PDD Step 7b — forwarded to ItemModifierZones. */
+  /** BYO PDD Step 7b — forwarded to MobileItemModifierPicker only. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
-  /** Forwarded to ItemModifierZones / MobileItemModifierPicker. Default true. */
+  /** Forwarded to MobileItemModifierPicker. Default true. */
   showAddons?: boolean;
   showRecommendations?: boolean;
-  /** Forwarded to ItemModifierZones — gates the [+ Add grouping] button. Default true. */
+  /** Forwarded to MobileItemModifierPicker — gates the [+ Add grouping] button. Default true. */
   showAddGrouping?: boolean;
+  /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to desktop ItemModifierZones. */
+  perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -817,7 +828,7 @@ function MenuItemRow({
             </div>
           </div>
 
-          {/* ── Sides | Addons | Recommendations panels ─────────────────── */}
+          {/* ── Per-menu sides editor (desktop only) / Add-on + Rec picker (mobile) ── */}
           <div className="w-full">
             {isMobile ? (
               <MobileItemModifierPicker
@@ -833,12 +844,7 @@ function MenuItemRow({
                 parent={item}
                 itemsById={itemsById}
                 currentMenuId={menuId}
-                onUpdate={onUpdateModifiers}
-                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                byoHandlers={byoHandlers}
-                showAddons={showAddons}
-                showRecommendations={showRecommendations}
-                showAddGrouping={showAddGrouping}
+                perMenuSides={perMenuSides}
               />
             )}
           </div>
@@ -866,6 +872,7 @@ function CategoryBucket({
   showAddons = true,
   showRecommendations = true,
   showAddGrouping = true,
+  perMenuSides,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -890,11 +897,13 @@ function CategoryBucket({
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones via MenuItemRow. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
-  /** Forwarded to MenuItemRow → ItemModifierZones / MobileItemModifierPicker. Default true. */
+  /** Forwarded to MenuItemRow → MobileItemModifierPicker. Default true. */
   showAddons?: boolean;
   showRecommendations?: boolean;
-  /** Forwarded to MenuItemRow → ItemModifierZones — gates the [+ Add grouping] button. Default true. */
+  /** Forwarded to MenuItemRow → MobileItemModifierPicker — gates the [+ Add grouping] button. Default true. */
   showAddGrouping?: boolean;
+  /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to MenuItemRow → desktop ItemModifierZones. */
+  perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -1012,6 +1021,7 @@ function CategoryBucket({
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}
                 showAddGrouping={showAddGrouping}
+                perMenuSides={perMenuSides}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => {
@@ -1070,6 +1080,7 @@ export default function MenuBuilder({
   showAddons = true,
   showRecommendations = true,
   showAddGrouping = true,
+  perMenuSides,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -1340,6 +1351,7 @@ export default function MenuBuilder({
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}
                 showAddGrouping={showAddGrouping}
+                perMenuSides={perMenuSides}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}

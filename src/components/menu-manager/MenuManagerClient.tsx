@@ -91,12 +91,20 @@ interface Props {
    * renders [+ Add grouping], [⋮] menu, rule pill, and inline rename.
    */
   byoHandlers?: import('./components/ItemModifierZones').BYOHandlers;
-  /** When false, the per-item Add-ons drop zone is hidden in the menu builder. Default true. */
+  /** When false, the per-item Add-ons drop zone is hidden in the mobile menu builder. Default true. */
   showAddons?: boolean;
-  /** When false, the per-item Recommendations drop zone is hidden in the menu builder. Default true. */
+  /** When false, the per-item Recommendations drop zone is hidden in the mobile menu builder. Default true. */
   showRecommendations?: boolean;
-  /** When false, the per-item [+ Add grouping] button is hidden in the menu builder. Default true. */
+  /** When false, the per-item [+ Add grouping] button is hidden in the mobile menu builder. Default true. */
   showAddGrouping?: boolean;
+  /**
+   * PDD 2026-05-15 v2 — per-menu Includes/Choose-One sides adapter
+   * forwarded to MenuBuilder → desktop ItemModifierZones. The two
+   * drop zones in the expanded dish row use this to GET/PUT per-menu
+   * sides via the owner API. Omitted = no per-menu sides UI
+   * (e.g. waiter-webapp consumers without the routes deployed).
+   */
+  perMenuSides?: import('./components/ItemModifierZones').PerMenuSidesAdapter;
   /** When false, the Visible / Hidden toggle is hidden in the ItemPool filter row. Default true. */
   showVisibilityFilter?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
@@ -151,7 +159,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1853,6 +1861,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showAddons={showAddons}
             showRecommendations={showRecommendations}
             showAddGrouping={showAddGrouping}
+            perMenuSides={perMenuSides}
             missingPriceFilter={missingPriceFilter}
           />
           </div>
