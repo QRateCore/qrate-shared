@@ -2559,6 +2559,60 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             <section style={{ marginBottom: 4 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
+                {/* AI enrichment in-progress banner — Groupings Dietary/
+                    Allergen Filter PDD (2026-05-18, Step 11 reframed).
+                    When a new item is saved, owner-webapp fires the
+                    /recommendation/menu-items/{id}/enrich call in the
+                    background and flags enrichment_status='enriching' on
+                    the local item. This banner stays visible until the
+                    async call completes (status flips to 'enriched' or
+                    'failed'). Owners cannot manually trigger enrichment;
+                    once tags arrive they can edit them by hand. */}
+                {item.enrichment_status === 'enriching' && (
+                  <div
+                    data-testid="edit-modal-enrichment-in-progress"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      background: '#fff7ed',
+                      border: '1px solid #fed7aa',
+                      color: '#9a3412',
+                      fontSize: 13,
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: '#f97316',
+                        animation: 'pulse 1.4s ease-in-out infinite',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>Enrichment in progress — AI is analysing this item to suggest tags. You'll be able to review and edit them in a few seconds.</span>
+                  </div>
+                )}
+                {item.enrichment_status === 'failed' && (
+                  <div
+                    data-testid="edit-modal-enrichment-failed"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      color: '#991b1b',
+                      fontSize: 13,
+                    }}
+                  >
+                    Enrichment didn't complete. You can still edit tags manually below.
+                  </div>
+                )}
+
                 {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
                 {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
                   <label style={labelStyle}>Heat / Spice</label>
