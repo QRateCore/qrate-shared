@@ -65,6 +65,15 @@ interface ItemPoolProps {
    * Default: true.
    */
   showVisibilityFilter?: boolean;
+  /**
+   * When true, render a Dish / Add-ons toggle next to the visibility
+   * filter — re-enables the item-type filter that was retired from the
+   * default pool (see filter-row comment below). Used by qrate-admin-webapp
+   * so admins can navigate to addons from the same food library that
+   * shows dishes. Owner-webapp + waiter-webapp leave this off; their
+   * addon management lives elsewhere. Default: false.
+   */
+  showItemTypeFilter?: boolean;
 }
 
 // ── ItemPoolCard ─────────────────────────────────────────────────────────────
@@ -474,6 +483,7 @@ export default function ItemPool({
   activateOnRowClick = false,
   showBulkActions = true,
   showVisibilityFilter = true,
+  showItemTypeFilter = false,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
 
@@ -656,11 +666,52 @@ export default function ItemPool({
           )}
         </div>
 
-        {/* Filter row — visibility toggle only. The item-type filter
-            (Dishes / Included / Add-ons) was retired: the menu manager pool
-            now shows dishes (incl. BYO) exclusively. Addons and included
-            items are managed from the Food Items page. */}
+        {/* Filter row — visibility toggle + optional item-type toggle.
+            The item-type filter (Dishes / Add-ons) was retired from the
+            default pool because addons/included are managed via the
+            owner-webapp Food Items page. qrate-admin-webapp re-enables
+            it via showItemTypeFilter=true so admin staff can navigate
+            to addons from the same food library. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', rowGap: 6, columnGap: 6 }}>
+          {/* Dish / Add-ons toggle — admin-only, opt-in via showItemTypeFilter */}
+          {showItemTypeFilter && (
+            <div
+              data-testid="item-type-filter"
+              style={{
+                display: 'inline-flex',
+                borderRadius: 20,
+                border: '1px solid var(--border)',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              {([
+                { key: 'dishes', label: 'Dishes' },
+                { key: 'addons', label: 'Add-ons' },
+              ] as const).map((tab, idx) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  data-testid={`item-type-filter-${tab.key}`}
+                  aria-pressed={itemTypeFilter === tab.key}
+                  aria-label={`Show only ${tab.label.toLowerCase()}`}
+                  onClick={() => onItemTypeFilterChange(tab.key)}
+                  style={{
+                    padding: '4px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderRight: idx === 0 ? '1px solid var(--border)' : 'none',
+                    background: itemTypeFilter === tab.key ? '#fff7ed' : 'transparent',
+                    color: itemTypeFilter === tab.key ? '#c2410c' : 'var(--text2)',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
           {/* Visible / Hidden toggle */}
           {showVisibilityFilter && (
             <div

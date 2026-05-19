@@ -152,6 +152,12 @@ interface Props {
    */
   editItemDrawerMode?: boolean;
   /**
+   * Admin-only: shows the Dish / Add-ons filter toggle in the items pool.
+   * Retired from the default pool — see ItemPool.tsx showItemTypeFilter.
+   * Default: false.
+   */
+  showItemTypeFilter?: boolean;
+  /**
    * Admin-only: enables the "Enrich with AI" button in EditModal's action
    * bar. Owner-webapp + waiter-webapp don't pass this — they get the
    * default (button hidden). Admin-webapp wires it to the recommender's
@@ -171,7 +177,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, onEnrichItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1721,6 +1727,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDropPool: handleDropPool,
             colorMap,
             showVisibilityFilter,
+            showItemTypeFilter,
           }}
           menuBuilderProps={{
             items,
@@ -1793,6 +1800,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDropPool={handleDropPool}
             colorMap={colorMap}
             showVisibilityFilter={showVisibilityFilter}
+            showItemTypeFilter={showItemTypeFilter}
           />
           </div>
 
