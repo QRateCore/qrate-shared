@@ -5,9 +5,19 @@ import { useTrackAction } from '../track-action-context';
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
-import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
+import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
-import { DEFAULT_HEAT_LABELS, DEFAULT_SWEETNESS_LABELS } from '../../../constants/food-tags';
+import {
+  DEFAULT_HEAT_LABELS,
+  DEFAULT_SWEETNESS_LABELS,
+  BEVERAGE_TYPES,
+  BASE_SPIRITS,
+  WINE_VARIETIES,
+  BEER_STYLES,
+  FLAVOR_NOTES,
+  SERVING_STYLES,
+  DRINK_STRENGTHS,
+} from '../../../constants/food-tags';
 import { deriveHeatFromLabel } from '../../../utils/spice-derivation';
 import Select from '../../common/Select';
 import { processImageForUpload } from '../../../utils/imageProcessing';
@@ -588,6 +598,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
     return null;
   });
+
+  // Beverage Profile draft — owner-editable form state for food_tags.beverage.
+  // Initialized from the enriched object on the item; resyncs when the item
+  // prop changes (modal reused for a different item, or PUT response merged
+  // upstream). Persisted as part of the food_tags payload on Save.
+  const [bevDraft, setBevDraft] = useState<BeverageTags>(() => (item.food_tags?.beverage ?? {}));
+  useEffect(() => {
+    setBevDraft(item.food_tags?.beverage ?? {});
+  }, [item.id, item.food_tags?.beverage]);
 
   // Other food tags (heat_spice handled separately)
   const [tags, setTags] = useState<Record<string, string[]>>(() => {
@@ -1394,6 +1413,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
     if (sweetnessLabel && !onSweetnessUpdate) {
       foodTags.sweetness_label = sweetnessLabel;
+    }
+
+    // Beverage Profile — owner-editable in the modal for Beverages-category
+    // items. PUT writes food_tags as a full-replace JSONB blob, so only
+    // type-applicable subfields are included (e.g. wine_variety is dropped
+    // when type !== 'wine') to keep the persisted object minimal and
+    // idempotent across type changes.
+    if (category === 'Beverages') {
+      const type = bevDraft.beverage_type?.trim() || undefined;
+      const norm: BeverageTags = {};
+      if (type) norm.beverage_type = type;
+      if (typeof bevDraft.alcoholic === 'boolean') norm.alcoholic = bevDraft.alcoholic;
+      if (bevDraft.base_spirit && type === 'cocktail') norm.base_spirit = bevDraft.base_spirit;
+      if (type === 'wine') {
+        if (bevDraft.wine_variety) norm.wine_variety = bevDraft.wine_variety;
+        if (bevDraft.wine_color) norm.wine_color = bevDraft.wine_color;
+        if (bevDraft.wine_body) norm.wine_body = bevDraft.wine_body;
+        if (bevDraft.wine_style) norm.wine_style = bevDraft.wine_style;
+      }
+      if (bevDraft.sweetness && (type === 'wine' || type === 'cocktail')) norm.sweetness = bevDraft.sweetness;
+      if (bevDraft.beer_style && type === 'beer') norm.beer_style = bevDraft.beer_style;
+      if (bevDraft.strength) norm.strength = bevDraft.strength;
+      if (bevDraft.served) norm.served = bevDraft.served;
+      const notes = Array.isArray(bevDraft.flavor_notes)
+        ? bevDraft.flavor_notes.filter((s) => typeof s === 'string' && s.trim())
+        : [];
+      if (notes.length) norm.flavor_notes = notes;
+      const ings = Array.isArray(bevDraft.key_ingredients)
+        ? bevDraft.key_ingredients.filter((s) => typeof s === 'string' && s.trim())
+        : [];
+      if (ings.length) norm.key_ingredients = ings;
+      if (Object.keys(norm).length > 0) {
+        foodTags.beverage = norm;
+      }
     }
 
     try {
@@ -2706,136 +2759,375 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 )}
 
-                {/* Beverage Profile — read-only display of food_tags.beverage
-                    (Layer 1 enrichment data). Shows for Beverages-category
-                    items only; mirrors the inverse of the Heat/Spice gate so
-                    the panel takes the same vertical slot as Heat/Spice does
-                    for dishes. Read-only: editing beverage fields happens on
-                    the Food Items page via MenuItemsManagement; this panel
-                    just surfaces what's already enriched so owners know
-                    whether the LLM has data to work with.
-
-                    Empty-state guidance: when food_tags.beverage is missing
-                    or all sub-fields are empty, render a nudge to run
-                    beverage enrichment from Menu Intelligence — common for
-                    menu-served beverage UUIDs that were never enriched
-                    (per Anant 2026-05-19 follow-up). */}
+                {/* Beverage Profile — owner-editable form for food_tags.beverage.
+                    Shows for Beverages-category items only; takes the same
+                    vertical slot Heat/Spice occupies for dishes. Persists as
+                    part of the food_tags payload on Save. The bevDraft state
+                    holds the in-progress form; normalizeBeverage in handleSave
+                    drops type-inapplicable fields before the PUT. */}
                 {!isAddon && category === 'Beverages' && (() => {
-                  const bev = item.food_tags?.beverage ?? {};
-                  const flavorNotes = Array.isArray(bev.flavor_notes) ? bev.flavor_notes.filter((s) => typeof s === 'string' && s.trim()) : [];
-                  const keyIngredients = Array.isArray(bev.key_ingredients) ? bev.key_ingredients.filter((s) => typeof s === 'string' && s.trim()) : [];
-                  const fields: Array<{ label: string; value: string | undefined }> = [
-                    { label: 'Type', value: bev.beverage_type ?? undefined },
-                    { label: 'Alcoholic', value: bev.alcoholic === true ? 'Yes' : bev.alcoholic === false ? 'No' : undefined },
-                    { label: 'Base spirit', value: bev.base_spirit ?? undefined },
-                    { label: 'Wine variety', value: bev.wine_variety ?? undefined },
-                    { label: 'Wine color', value: bev.wine_color ?? undefined },
-                    { label: 'Wine body', value: bev.wine_body ?? undefined },
-                    { label: 'Wine style', value: bev.wine_style ?? undefined },
-                    { label: 'Sweetness', value: bev.sweetness ?? undefined },
-                    { label: 'Strength', value: bev.strength ?? undefined },
-                    { label: 'Served', value: bev.served ?? undefined },
-                    { label: 'Beer style', value: bev.beer_style ?? undefined },
-                  ].filter((f) => typeof f.value === 'string' && f.value.trim());
+                  const updateBev = <K extends keyof BeverageTags>(field: K, value: BeverageTags[K]) => {
+                    setBevDraft((prev) => ({ ...prev, [field]: value }));
+                  };
+                  const bevType = bevDraft.beverage_type ?? '';
+                  const flavorNotes = Array.isArray(bevDraft.flavor_notes) ? bevDraft.flavor_notes : [];
+                  const keyIngredients = Array.isArray(bevDraft.key_ingredients) ? bevDraft.key_ingredients : [];
+                  const isEmpty = Object.values(bevDraft).every((v) =>
+                    v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0),
+                  );
 
-                  const isEmpty = fields.length === 0 && flavorNotes.length === 0 && keyIngredients.length === 0;
+                  const pillStyle = (active: boolean): React.CSSProperties => ({
+                    padding: '4px 12px',
+                    borderRadius: 20,
+                    border: '1px solid',
+                    borderColor: active ? '#9333ea' : 'var(--border)',
+                    background: active ? '#f3e8ff' : 'transparent',
+                    color: active ? '#6b21a8' : 'var(--text2)',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 400,
+                    transition: 'all 0.1s',
+                  });
+
+                  const fieldLabel: React.CSSProperties = {
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'var(--text2)',
+                    display: 'block',
+                    marginBottom: 4,
+                  };
+
+                  // Wine subfield options — comments in BeverageTags type
+                  // codify the accepted values; defined locally because they
+                  // don't have a shared constants entry yet.
+                  const WINE_COLORS = ['red', 'white', 'rosé', 'sparkling'];
+                  const WINE_BODIES = ['light', 'medium', 'full'];
+                  const WINE_STYLES = ['dry', 'off-dry', 'medium-sweet', 'sweet'];
+                  const SWEETNESS_LEVELS = ['dry', 'off-dry', 'medium-sweet', 'sweet', 'dessert'];
 
                   return (
                     <div data-testid="edit-modal-beverage-profile">
                       <label style={labelStyle}>Beverage Profile</label>
-                      {isEmpty ? (
-                        <div
-                          data-testid="edit-modal-beverage-profile-empty"
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: 8,
-                            background: '#f9fafb',
-                            border: '1px dashed var(--border)',
-                            color: 'var(--text2)',
-                            fontSize: 12,
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          No beverage profile generated yet. Run <strong>Beverage Enrichment</strong> from the Menu Intelligence page to populate
-                          flavour notes, base spirit, wine attributes, and ingredients — these feed the mood-bubble classifier and patron drink ranking.
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: 8,
-                            background: '#faf5ff',
-                            border: '1px solid #e9d5ff',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 8,
-                          }}
-                        >
-                          {fields.length > 0 && (
-                            <div
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'auto 1fr',
-                                rowGap: 4,
-                                columnGap: 12,
-                                fontSize: 12,
-                                color: 'var(--text)',
-                              }}
-                            >
-                              {fields.map((f) => (
-                                <Fragment key={f.label}>
-                                  <div style={{ color: 'var(--text2)', fontWeight: 500 }}>{f.label}</div>
-                                  <div data-testid={`beverage-field-${f.label.toLowerCase().replace(/\s+/g, '-')}`}>{f.value}</div>
-                                </Fragment>
-                              ))}
-                            </div>
-                          )}
-                          {flavorNotes.length > 0 && (
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginBottom: 4 }}>Flavor notes</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} data-testid="beverage-flavor-notes">
-                                {flavorNotes.map((n) => (
-                                  <span
-                                    key={n}
+                      <div
+                        style={{
+                          padding: 12,
+                          borderRadius: 8,
+                          background: '#faf5ff',
+                          border: '1px solid #e9d5ff',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12,
+                        }}
+                      >
+                        {isEmpty && (
+                          <div
+                            data-testid="edit-modal-beverage-profile-empty"
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: 6,
+                              background: 'white',
+                              border: '1px dashed #d8b4fe',
+                              color: 'var(--text2)',
+                              fontSize: 11,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            No beverage profile yet. Fill in the fields below, or run <strong>Beverage Enrichment</strong> from the Menu Intelligence page to auto-populate from the LLM.
+                          </div>
+                        )}
+
+                        {/* Drink Type + Alcoholic */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div>
+                            <label style={fieldLabel}>Drink type</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-type"
+                              value={bevType}
+                              onChange={(e) => updateBev('beverage_type', (e.target.value || undefined) as BeverageTags['beverage_type'])}
+                              placeholder="Select type"
+                              options={[
+                                { value: '', label: 'Select type' },
+                                ...BEVERAGE_TYPES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) })),
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>Alcoholic</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {[{ label: 'Yes', value: true }, { label: 'No', value: false }].map((opt) => {
+                                const active = bevDraft.alcoholic === opt.value;
+                                return (
+                                  <button
+                                    key={opt.label}
+                                    type="button"
+                                    data-testid={`beverage-input-alcoholic-${opt.label.toLowerCase()}`}
+                                    aria-pressed={active}
+                                    onClick={() => updateBev('alcoholic', active ? undefined : opt.value)}
                                     style={{
-                                      padding: '2px 10px',
-                                      borderRadius: 12,
-                                      background: '#f3e8ff',
-                                      color: '#6b21a8',
-                                      fontSize: 11,
-                                      fontWeight: 500,
+                                      flex: 1,
+                                      padding: '7px 0',
+                                      borderRadius: 'var(--r-xs)',
+                                      border: '1px solid',
+                                      borderColor: active ? '#9333ea' : 'var(--border)',
+                                      background: active ? '#9333ea' : 'white',
+                                      color: active ? 'white' : 'var(--text2)',
+                                      fontSize: 13,
+                                      fontWeight: active ? 600 : 400,
+                                      cursor: 'pointer',
+                                      transition: 'all 0.1s',
                                     }}
                                   >
-                                    {n}
-                                  </span>
-                                ))}
-                              </div>
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
                             </div>
-                          )}
-                          {keyIngredients.length > 0 && (
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginBottom: 4 }}>Key ingredients</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} data-testid="beverage-key-ingredients">
-                                {keyIngredients.map((n) => (
-                                  <span
-                                    key={n}
-                                    style={{
-                                      padding: '2px 10px',
-                                      borderRadius: 12,
-                                      background: '#fef3c7',
-                                      color: '#92400e',
-                                      fontSize: 11,
-                                      fontWeight: 500,
-                                    }}
-                                  >
-                                    {n}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          </div>
                         </div>
-                      )}
+
+                        {/* Conditional: cocktail */}
+                        {bevType === 'cocktail' && (
+                          <div>
+                            <label style={fieldLabel}>Base spirit</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-base-spirit"
+                              value={bevDraft.base_spirit ?? ''}
+                              onChange={(e) => updateBev('base_spirit', e.target.value || null)}
+                              placeholder="Select spirit"
+                              options={[
+                                { value: '', label: 'Select spirit' },
+                                ...BASE_SPIRITS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                              ]}
+                            />
+                          </div>
+                        )}
+
+                        {/* Conditional: wine */}
+                        {bevType === 'wine' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                            <div>
+                              <label style={fieldLabel}>Wine variety</label>
+                              <Select
+                                fullWidth
+                                data-testid="beverage-input-wine-variety"
+                                value={bevDraft.wine_variety ?? ''}
+                                onChange={(e) => updateBev('wine_variety', e.target.value || null)}
+                                placeholder="Select variety"
+                                options={[
+                                  { value: '', label: 'Select variety' },
+                                  ...WINE_VARIETIES.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) })),
+                                ]}
+                              />
+                            </div>
+                            <div>
+                              <label style={fieldLabel}>Wine color</label>
+                              <Select
+                                fullWidth
+                                data-testid="beverage-input-wine-color"
+                                value={bevDraft.wine_color ?? ''}
+                                onChange={(e) => updateBev('wine_color', e.target.value || null)}
+                                placeholder="Select color"
+                                options={[
+                                  { value: '', label: 'Select color' },
+                                  ...WINE_COLORS.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+                                ]}
+                              />
+                            </div>
+                            <div>
+                              <label style={fieldLabel}>Wine body</label>
+                              <Select
+                                fullWidth
+                                data-testid="beverage-input-wine-body"
+                                value={bevDraft.wine_body ?? ''}
+                                onChange={(e) => updateBev('wine_body', e.target.value || null)}
+                                placeholder="Select body"
+                                options={[
+                                  { value: '', label: 'Select body' },
+                                  ...WINE_BODIES.map((b) => ({ value: b, label: b.charAt(0).toUpperCase() + b.slice(1) })),
+                                ]}
+                              />
+                            </div>
+                            <div>
+                              <label style={fieldLabel}>Wine style</label>
+                              <Select
+                                fullWidth
+                                data-testid="beverage-input-wine-style"
+                                value={bevDraft.wine_style ?? ''}
+                                onChange={(e) => updateBev('wine_style', e.target.value || null)}
+                                placeholder="Select style"
+                                options={[
+                                  { value: '', label: 'Select style' },
+                                  ...WINE_STYLES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Conditional: beer */}
+                        {bevType === 'beer' && (
+                          <div>
+                            <label style={fieldLabel}>Beer style</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-beer-style"
+                              value={bevDraft.beer_style ?? ''}
+                              onChange={(e) => updateBev('beer_style', e.target.value || null)}
+                              placeholder="Select style"
+                              options={[
+                                { value: '', label: 'Select style' },
+                                ...BEER_STYLES.map((s) => ({ value: s, label: s })),
+                              ]}
+                            />
+                          </div>
+                        )}
+
+                        {/* Sweetness — wine + cocktail */}
+                        {(bevType === 'wine' || bevType === 'cocktail') && (
+                          <div>
+                            <label style={fieldLabel}>Sweetness</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-sweetness"
+                              value={bevDraft.sweetness ?? ''}
+                              onChange={(e) => updateBev('sweetness', e.target.value || null)}
+                              placeholder="Select sweetness"
+                              options={[
+                                { value: '', label: 'Select sweetness' },
+                                ...SWEETNESS_LEVELS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                              ]}
+                            />
+                          </div>
+                        )}
+
+                        {/* Served + Strength */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div>
+                            <label style={fieldLabel}>Served</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-served"
+                              value={bevDraft.served ?? ''}
+                              onChange={(e) => updateBev('served', e.target.value || null)}
+                              placeholder="Select"
+                              options={[
+                                { value: '', label: 'Select' },
+                                ...SERVING_STYLES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>Strength</label>
+                            <Select
+                              fullWidth
+                              data-testid="beverage-input-strength"
+                              value={bevDraft.strength ?? ''}
+                              onChange={(e) => updateBev('strength', (e.target.value || undefined) as BeverageTags['strength'])}
+                              placeholder="Select"
+                              options={[
+                                { value: '', label: 'Select' },
+                                ...DRINK_STRENGTHS.map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
+                              ]}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Flavor notes — multi-select pill grid */}
+                        <div>
+                          <label style={fieldLabel}>Flavor notes</label>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} data-testid="beverage-input-flavor-notes">
+                            {FLAVOR_NOTES.map((note) => {
+                              const active = flavorNotes.includes(note);
+                              return (
+                                <button
+                                  key={note}
+                                  type="button"
+                                  aria-pressed={active}
+                                  onClick={() => {
+                                    const next = active
+                                      ? flavorNotes.filter((n) => n !== note)
+                                      : [...flavorNotes, note];
+                                    updateBev('flavor_notes', next);
+                                  }}
+                                  style={pillStyle(active)}
+                                >
+                                  {note}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Key ingredients — chip input. Add via Enter or
+                            comma; remove via ✕ on chip. */}
+                        <div>
+                          <label style={fieldLabel}>Key ingredients</label>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }} data-testid="beverage-input-key-ingredients">
+                            {keyIngredients.map((ing) => (
+                              <span
+                                key={ing}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  padding: '3px 4px 3px 10px',
+                                  borderRadius: 12,
+                                  background: '#fef3c7',
+                                  color: '#92400e',
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {ing}
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${ing}`}
+                                  onClick={() => updateBev('key_ingredients', keyIngredients.filter((k) => k !== ing))}
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    background: 'transparent',
+                                    color: '#92400e',
+                                    cursor: 'pointer',
+                                    fontSize: 14,
+                                    lineHeight: 1,
+                                    padding: 0,
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Add an ingredient and press Enter"
+                            data-testid="beverage-input-key-ingredients-add"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ',') {
+                                e.preventDefault();
+                                const val = (e.currentTarget.value || '').trim();
+                                if (val && !keyIngredients.includes(val)) {
+                                  updateBev('key_ingredients', [...keyIngredients, val]);
+                                }
+                                e.currentTarget.value = '';
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = (e.currentTarget.value || '').trim();
+                              if (val && !keyIngredients.includes(val)) {
+                                updateBev('key_ingredients', [...keyIngredients, val]);
+                                e.currentTarget.value = '';
+                              }
+                            }}
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}
