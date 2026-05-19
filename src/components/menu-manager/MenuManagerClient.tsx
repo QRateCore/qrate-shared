@@ -463,11 +463,22 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   };
 
   const filtered = useMemo(() => {
-    // The menu manager pool surfaces dishes alongside any items that have
-    // been flipped to item_type='included' by the sides flow — owners need
-    // to see them in the pool to drag/edit/move them. Addons remain the
-    // only excluded type (their UI lives on the Food Items page).
-    let result = items.filter((i) => i.item_type !== 'addon');
+    // Default (dishes): the menu manager pool surfaces dishes alongside any
+    // items that have been flipped to item_type='included' by the sides
+    // flow — owners need to see them in the pool to drag/edit/move them.
+    // Addons are excluded (their UI lives on the Food Items page).
+    //
+    // Admin-only override (itemTypeFilter='addons'): show ONLY addon items
+    // so admin staff can navigate to addons from the same food library.
+    // Gated upstream by showItemTypeFilter — when the toggle isn't
+    // rendered, itemTypeFilter stays at its default 'dishes' and this
+    // branch never fires for owner/waiter pools.
+    let result: typeof items;
+    if (itemTypeFilter === 'addons') {
+      result = items.filter((i) => i.item_type === 'addon');
+    } else {
+      result = items.filter((i) => i.item_type !== 'addon');
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) =>
@@ -477,7 +488,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
     return result;
-  }, [items, search, visibilityFilter]);
+  }, [items, search, visibilityFilter, itemTypeFilter]);
 
   // Stats banner — count menus the crawler discovered (source_url present)
   // and the per-active-menu missing-price item count. Only consumed when
