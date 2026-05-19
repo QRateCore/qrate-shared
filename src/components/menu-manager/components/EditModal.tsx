@@ -2885,9 +2885,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   />
                 )}
 
-                {/* Other tag fields — hidden for add-ons (modifiers inherit
-                    these from the parent dish). */}
-                {!isAddon && TAG_FIELDS.map(({ key, label, placeholder }) => (
+                {/* Tag fields — same set shown for dishes and add-ons.
+                    The historical slim-down (hide these for add-ons because
+                    modifiers "inherit from the parent dish") proved wrong
+                    in practice: enrichment writes ingredients/textures/
+                    taste_profile/etc. directly to addon menu_items, and
+                    the dietary/allergen filter relies on those values being
+                    visible + editable. Admin staff also need to review the
+                    AI-suggested tags on addons. Per Avi 2026-05-19. */}
+                {TAG_FIELDS.map(({ key, label, placeholder }) => (
                   <TagInput
                     key={key}
                     fieldKey={key}

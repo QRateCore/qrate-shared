@@ -814,6 +814,29 @@ export default function ItemPool({
               Bulk Actions →
             </button>
           )}
+          {/* Admin Enrich shortcut for addon selections. Owner-webapp doesn't
+              expose the Add-ons filter (showItemTypeFilter=false) and never
+              passes onBulkEnrich, so this branch only fires under the admin
+              consumer. Calls onOpenBulk('enrich') to open BulkActionsPanel
+              with the Enrich tab pre-selected. */}
+          {showBulkActions && someSelected && itemTypeFilter === 'addons' && showItemTypeFilter && (
+            <button
+              type="button"
+              onClick={() => handleOpenBulkTracked('enrich')}
+              data-testid="bulk-enrich-addons-btn"
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#c2410c',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Enrich →
+            </button>
+          )}
           {showBulkActions && someSelected && itemTypeFilter === 'dishes' && (
             <button
               type="button"
