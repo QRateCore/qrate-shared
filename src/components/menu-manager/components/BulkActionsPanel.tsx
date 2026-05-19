@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
@@ -57,6 +57,17 @@ interface BulkActionsPanelProps {
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
   /** Optional: bulk sweetness update — owner app wires this to the sweetness API */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
+  /**
+   * Admin-only: bulk AI enrich. When provided, the panel surfaces an
+   * Enrich tab (Wand2 icon). Calls the consumer's batch-enrich endpoint
+   * with the selected item ids; chunking >100 items is the consumer's
+   * responsibility (admin-webapp's MenuItemsTab wires this to
+   * restaurantService.enrichMenuItemsBatch which chunks at 100).
+   * Owner-webapp + waiter-webapp don't pass this — tab is hidden.
+   */
+  onBulkEnrich?: (itemIds: string[]) => Promise<{
+    enriched: number; skipped: number; failed: number;
+  }>;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -78,6 +89,9 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
     ? [{ key: 'sweetness' as BulkMode, label: 'Sweetness', icon: <Sparkles size={13} /> }]
     : []),
   { key: 'dietary',      label: 'Dietary',      icon: <Leaf size={13} /> },
+  // Enrich mode is opt-in via the onBulkEnrich prop (admin-only). Listed
+  // here so the render filter has the right ordering when included.
+  { key: 'enrich',       label: 'Enrich',       icon: <Wand2 size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -106,9 +120,16 @@ export default function BulkActionsPanel({
   onBulkSpice,
   onBulkDietary,
   onBulkSweetness,
+  onBulkEnrich,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
+  // Hide the Enrich mode tab unless the admin consumer wired a callback.
+  // Same opt-in pattern as Sweetness (SWEETNESS_VISIBLE flag) — owner-webapp
+  // and waiter-webapp never see this tab.
+  const availableModes = onBulkEnrich
+    ? MODES
+    : MODES.filter((m) => m.key !== 'enrich');
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -256,6 +277,34 @@ export default function BulkActionsPanel({
     });
   }
 
+  // Bulk-enrich — admin-only. Delegates entirely to onBulkEnrich (admin-
+  // webapp wires it to restaurantService.enrichMenuItemsBatch which
+  // chunks at 100). Does NOT mutate `items` locally because the AI may
+  // change food_tags shape; onComplete refreshes from the consumer's
+  // own data after the call resolves.
+  async function runEnrich() {
+    if (!onBulkEnrich) { onComplete(items, selected); return; }
+    setExecuting(true);
+    setError(null);
+    setProgress({ done: 0, total: selectedItems.length });
+    try {
+      const result = await onBulkEnrich(selectedItems.map((i) => i.id));
+      setProgress({ done: selectedItems.length, total: selectedItems.length });
+      if (result.failed > 0) {
+        setError(`Enriched ${result.enriched} · skipped ${result.skipped} · failed ${result.failed}`);
+      }
+      // onComplete signature wants the full items array — pass through
+      // unchanged. The consumer is expected to refetch / refresh via its
+      // own onRefresh handler after the bulk call.
+      onComplete(items, selected);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk enrich failed');
+    } finally {
+      setExecuting(false);
+      setProgress(null);
+    }
+  }
+
   async function runSpice() {
     if (!pickedHeat) { setError('Select a spice level'); return; }
     if (!onBulkSpice) { onComplete(items, selected); return; }
@@ -387,6 +436,7 @@ export default function BulkActionsPanel({
         case 'spice':        await runSpice(); break;
         case 'sweetness':    await runSweetness(); break;
         case 'dietary':      await runDietary(); break;
+        case 'enrich':       await runEnrich(); break;
         case 'delete':       await runDelete(); break;
       }
       trackAction(actionName, {
@@ -527,7 +577,7 @@ export default function BulkActionsPanel({
           }}
           data-testid="bulk-mode-tabs"
         >
-          {MODES.map(({ key, label, icon }) => (
+          {availableModes.map(({ key, label, icon }) => (
             <button
               key={key}
               type="button"
@@ -616,6 +666,27 @@ export default function BulkActionsPanel({
           )}
           {mode === 'delete' && (
             <DeleteForm count={count} confirmed={deleteConfirm} />
+          )}
+          {mode === 'enrich' && (
+            <div
+              data-testid="bulk-enrich-form"
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 8,
+                padding: 12, borderRadius: 6,
+                background: '#fff7ed', border: '1px solid #fed7aa',
+                color: '#7c2d12', fontSize: 13,
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>
+                Enrich {count} item{count !== 1 ? 's' : ''} with AI
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                Runs AI tagging (dietary, allergens, proteins, textures, etc.)
+                on each selected item. Items already tagged manually are
+                preserved. Larger selections are processed in batches of 100;
+                progress shows below the action button.
+              </div>
+            </div>
           )}
         </div>
 

@@ -26,7 +26,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich';
 
 export interface DragState {
   itemIds: string[];
@@ -115,6 +115,13 @@ interface Props {
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
   /** Optional: bulk sweetness update for the Sweetness tab in BulkActionsPanel. */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
+  /**
+   * Admin-only: bulk AI enrich for the Enrich tab in BulkActionsPanel.
+   * When provided, the panel surfaces an Enrich mode. Consumer is
+   * responsible for chunking >100 items (admin-webapp's
+   * restaurantService.enrichMenuItemsBatch handles this internally).
+   */
+  onBulkEnrich?: (itemIds: string[]) => Promise<{ enriched: number; skipped: number; failed: number }>;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Optional: called when the owner changes the heat/spice label in EditModal. */
@@ -177,7 +184,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1685,6 +1692,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkSpice,
             onBulkDietary,
             onBulkSweetness,
+            onBulkEnrich,
             heatLabels,
             sweetnessLabels,
           }}
