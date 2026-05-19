@@ -33,6 +33,11 @@ export type { SwipeSliderProps } from './components/staff';
 // Components — Menu Items
 export { MenuItemsManagement } from './components/menu-items';
 
+// Restored 2026-05-18 — admin-webapp consumes this factory. The earlier
+// "unused" deletion (df73858) missed qrate-admin-webapp as a consumer.
+// See services/createMenuManagerService.ts header for the history.
+export { createMenuManagerService } from './services/createMenuManagerService';
+
 // Components — Menu Manager (full two-pane menu management UI)
 export { MenuManagerClient } from './components/menu-manager';
 export type { BulkMode, DragState } from './components/menu-manager';

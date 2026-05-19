@@ -1,6 +1,6 @@
 # @qrate/shared — Shared Package for the QRate Platform
 
-> **For AI agents:** This is the shared types, components, and utilities package consumed by `qrate-owner-webapp` and `qrate-waiter-webapp` via git submodule.
+> **For AI agents:** This is the shared types, components, and utilities package consumed by `qrate-owner-webapp`, `qrate-waiter-webapp`, AND `qrate-admin-webapp` via git submodule. Before deleting code as "unused", grep ALL THREE consumer repos — the 2026-04-25 deletion of `createMenuManagerService` (df73858) missed `qrate-admin-webapp` and silently broke its MenuItemsTab build for 168 commits before the catch-up.
 
 ## Purpose
 
@@ -23,6 +23,10 @@ qrate-owner-webapp/
 qrate-waiter-webapp/
   packages/shared/     ← git submodule → this repo
   apps/waiter/
+
+qrate-admin-webapp/
+  packages/shared/     ← git submodule → this repo
+  apps/admin/
 ```
 
 Consumer repos use npm workspaces (`"workspaces": ["apps/*", "packages/*"]`) so imports resolve as:
@@ -123,6 +127,7 @@ Every push to `main` and every PR runs `tsc --noEmit` to validate types compile.
 |------|-------------|
 | `qrate-owner-webapp` | Consumer — restaurant owner dashboard |
 | `qrate-waiter-webapp` | Consumer — staff/waiter order management app |
+| `qrate-admin-webapp` | Consumer — internal admin portal (uses MenuManagerClient + createMenuManagerService) |
 | `qrate-core` | Backend — API endpoints these types model |
 
 ---
