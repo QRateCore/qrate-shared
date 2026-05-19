@@ -2770,8 +2770,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     setBevDraft((prev) => ({ ...prev, [field]: value }));
                   };
                   const bevType = bevDraft.beverage_type ?? '';
-                  const flavorNotes = Array.isArray(bevDraft.flavor_notes) ? bevDraft.flavor_notes : [];
-                  const keyIngredients = Array.isArray(bevDraft.key_ingredients) ? bevDraft.key_ingredients : [];
+                  // Defensive filter — strip nulls/empties/non-strings that
+                  // may leak in from upstream enrichment writes so we don't
+                  // render or persist garbage chips. Filter is applied at
+                  // render so the next edit replaces with a clean array.
+                  const flavorNotes = (Array.isArray(bevDraft.flavor_notes) ? bevDraft.flavor_notes : [])
+                    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+                  const keyIngredients = (Array.isArray(bevDraft.key_ingredients) ? bevDraft.key_ingredients : [])
+                    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
                   const isEmpty = Object.values(bevDraft).every((v) =>
                     v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0),
                   );
