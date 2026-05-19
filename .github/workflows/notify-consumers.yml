@@ -19,6 +19,11 @@ jobs:
         repo:
           - QRateCore/qrate-owner-webapp
           - QRateCore/qrate-waiter-webapp
+          # Added 2026-05-18 after a 168-commit drift incident — admin-webapp
+          # is a consumer (apps/admin uses MenuManagerClient +
+          # createMenuManagerService) but was previously missing from this
+          # matrix, so it never received auto-bump PRs.
+          - QRateCore/qrate-admin-webapp
     steps:
       - name: Trigger submodule bump in ${{ matrix.repo }}
         uses: peter-evans/repository-dispatch@v3
