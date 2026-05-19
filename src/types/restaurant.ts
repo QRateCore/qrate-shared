@@ -17,7 +17,17 @@ export interface BeverageTags {
   beverage_type?: string;
   alcoholic?: boolean;
   base_spirit?: string | null;
+  /** Wine grape variety (cabernet sauvignon, pinot noir, etc.) */
   wine_variety?: string | null;
+  /** Red | white | rose | sparkling — populated by beverage_enrichment for wines. */
+  wine_color?: string | null;
+  /** Light | medium | full — populated by beverage_enrichment for wines. */
+  wine_body?: string | null;
+  /** Dry | off-dry | medium-sweet | sweet — populated for wines + dessert wines. */
+  wine_style?: string | null;
+  /** Dry | off-dry | medium-sweet | sweet | dessert — applies to wines and some
+   *  cocktails. Used by the wine_mapper rule for wn_sweet archetype. */
+  sweetness?: string | null;
   beer_style?: string | null;
   flavor_notes?: string[];
   served?: string | null;

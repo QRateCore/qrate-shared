@@ -2,7 +2,7 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
@@ -2705,6 +2705,140 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     {enrichNotice}
                   </div>
                 )}
+
+                {/* Beverage Profile — read-only display of food_tags.beverage
+                    (Layer 1 enrichment data). Shows for Beverages-category
+                    items only; mirrors the inverse of the Heat/Spice gate so
+                    the panel takes the same vertical slot as Heat/Spice does
+                    for dishes. Read-only: editing beverage fields happens on
+                    the Food Items page via MenuItemsManagement; this panel
+                    just surfaces what's already enriched so owners know
+                    whether the LLM has data to work with.
+
+                    Empty-state guidance: when food_tags.beverage is missing
+                    or all sub-fields are empty, render a nudge to run
+                    beverage enrichment from Menu Intelligence — common for
+                    menu-served beverage UUIDs that were never enriched
+                    (per Anant 2026-05-19 follow-up). */}
+                {!isAddon && category === 'Beverages' && (() => {
+                  const bev = item.food_tags?.beverage ?? {};
+                  const flavorNotes = Array.isArray(bev.flavor_notes) ? bev.flavor_notes.filter((s) => typeof s === 'string' && s.trim()) : [];
+                  const keyIngredients = Array.isArray(bev.key_ingredients) ? bev.key_ingredients.filter((s) => typeof s === 'string' && s.trim()) : [];
+                  const fields: Array<{ label: string; value: string | undefined }> = [
+                    { label: 'Type', value: bev.beverage_type ?? undefined },
+                    { label: 'Alcoholic', value: bev.alcoholic === true ? 'Yes' : bev.alcoholic === false ? 'No' : undefined },
+                    { label: 'Base spirit', value: bev.base_spirit ?? undefined },
+                    { label: 'Wine variety', value: bev.wine_variety ?? undefined },
+                    { label: 'Wine color', value: bev.wine_color ?? undefined },
+                    { label: 'Wine body', value: bev.wine_body ?? undefined },
+                    { label: 'Wine style', value: bev.wine_style ?? undefined },
+                    { label: 'Sweetness', value: bev.sweetness ?? undefined },
+                    { label: 'Strength', value: bev.strength ?? undefined },
+                    { label: 'Served', value: bev.served ?? undefined },
+                    { label: 'Beer style', value: bev.beer_style ?? undefined },
+                  ].filter((f) => typeof f.value === 'string' && f.value.trim());
+
+                  const isEmpty = fields.length === 0 && flavorNotes.length === 0 && keyIngredients.length === 0;
+
+                  return (
+                    <div data-testid="edit-modal-beverage-profile">
+                      <label style={labelStyle}>Beverage Profile</label>
+                      {isEmpty ? (
+                        <div
+                          data-testid="edit-modal-beverage-profile-empty"
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: 8,
+                            background: '#f9fafb',
+                            border: '1px dashed var(--border)',
+                            color: 'var(--text2)',
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          No beverage profile generated yet. Run <strong>Beverage Enrichment</strong> from the Menu Intelligence page to populate
+                          flavour notes, base spirit, wine attributes, and ingredients — these feed the mood-bubble classifier and patron drink ranking.
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: 8,
+                            background: '#faf5ff',
+                            border: '1px solid #e9d5ff',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 8,
+                          }}
+                        >
+                          {fields.length > 0 && (
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'auto 1fr',
+                                rowGap: 4,
+                                columnGap: 12,
+                                fontSize: 12,
+                                color: 'var(--text)',
+                              }}
+                            >
+                              {fields.map((f) => (
+                                <Fragment key={f.label}>
+                                  <div style={{ color: 'var(--text2)', fontWeight: 500 }}>{f.label}</div>
+                                  <div data-testid={`beverage-field-${f.label.toLowerCase().replace(/\s+/g, '-')}`}>{f.value}</div>
+                                </Fragment>
+                              ))}
+                            </div>
+                          )}
+                          {flavorNotes.length > 0 && (
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginBottom: 4 }}>Flavor notes</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} data-testid="beverage-flavor-notes">
+                                {flavorNotes.map((n) => (
+                                  <span
+                                    key={n}
+                                    style={{
+                                      padding: '2px 10px',
+                                      borderRadius: 12,
+                                      background: '#f3e8ff',
+                                      color: '#6b21a8',
+                                      fontSize: 11,
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {n}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {keyIngredients.length > 0 && (
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginBottom: 4 }}>Key ingredients</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} data-testid="beverage-key-ingredients">
+                                {keyIngredients.map((n) => (
+                                  <span
+                                    key={n}
+                                    style={{
+                                      padding: '2px 10px',
+                                      borderRadius: 12,
+                                      background: '#fef3c7',
+                                      color: '#92400e',
+                                      fontSize: 11,
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {n}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
                 {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
