@@ -1707,6 +1707,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           dishItems={items}
           onClose={() => setBulkModifiersOpen(false)}
           onComplete={handleBulkModifiersComplete}
+          onBulkEnrich={onBulkEnrich}
         />
       )}
 

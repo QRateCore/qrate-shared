@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   Minus,
+  Wand2,
 } from 'lucide-react';
 import type { MenuItemDisplay } from '../../../types/restaurant';
 
@@ -33,6 +34,13 @@ interface BulkModifierPanelProps {
   onClose: () => void;
   /** Called with updated dish items after successful assignment */
   onComplete: (updatedItems: MenuItemDisplay[]) => void;
+  /**
+   * Admin-only: when provided, surfaces an "Enrich" tab in the forward-mode
+   * tab bar (addon selection). Calls the consumer's batch endpoint with the
+   * selected addon ids; the consumer is responsible for chunking >100.
+   * Owner-webapp + waiter-webapp don't pass this — tab is hidden.
+   */
+  onBulkEnrich?: (itemIds: string[]) => Promise<{ enriched: number; skipped: number; failed: number }>;
 }
 
 // ── Pure helpers (exported for unit testing) ──────────────────────────────────
@@ -90,6 +98,7 @@ export default function BulkModifierPanel({
   dishItems,
   onClose,
   onComplete,
+  onBulkEnrich,
 }: BulkModifierPanelProps) {
   const service = useMenuManagerService();
   const trackAction = useTrackAction();
@@ -99,7 +108,8 @@ export default function BulkModifierPanel({
   const inputEntrees = useMemo(() => inputItems.filter((i) => !isAddonItem(i)), [inputItems]);
   const direction: 'forward' | 'reverse' = inputEntrees.length === 0 ? 'forward' : 'reverse';
 
-  const [tab, setTab] = useState<'assign' | 'remove' | 'delete'>('assign');
+  const [tab, setTab] = useState<'assign' | 'remove' | 'delete' | 'enrich'>('assign');
+  const [enrichResult, setEnrichResult] = useState<{ enriched: number; skipped: number; failed: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [dishSearch, setDishSearch] = useState('');
   const [addonSearch, setAddonSearch] = useState('');
@@ -327,6 +337,27 @@ export default function BulkModifierPanel({
     }
   }
 
+  // Bulk-enrich — admin-only. Delegates entirely to onBulkEnrich (consumer
+  // handles batch chunking >100). Onsuccess: capture the result counts +
+  // call onComplete so the parent refreshes its item list and sees the
+  // updated food_tags. The result banner sticks until the user closes or
+  // switches tabs.
+  async function handleEnrich() {
+    if (!onBulkEnrich) return;
+    setExecuting(true);
+    setError(null);
+    setEnrichResult(null);
+    try {
+      const result = await onBulkEnrich(inputAddons.map((a) => a.id));
+      setEnrichResult(result);
+      onComplete(dishItems);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk enrich failed');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   async function handleDelete() {
     const start = Date.now();
     setExecuting(true);
@@ -462,6 +493,10 @@ export default function BulkModifierPanel({
       ? ([
           { key: 'assign' as const, label: 'Assign', icon: <PlusCircle size={13} /> },
           { key: 'remove' as const, label: 'Remove', icon: <MinusCircle size={13} /> },
+          // Admin-only Enrich tab — gated on onBulkEnrich prop.
+          ...(onBulkEnrich
+            ? [{ key: 'enrich' as const, label: 'Enrich', icon: <Wand2 size={13} /> }]
+            : []),
           { key: 'delete' as const, label: 'Delete', icon: <Trash2 size={13} /> },
         ])
       : ([
@@ -651,6 +686,48 @@ export default function BulkModifierPanel({
           </div>
         </div>
 
+        {tab === 'enrich' && direction === 'forward' && (
+          <div
+            style={{
+              flex: 1, overflowY: 'auto', padding: '20px 16px',
+              display: 'flex', flexDirection: 'column', gap: 12,
+            }}
+          >
+            <div
+              data-testid="bulk-modifier-enrich-banner"
+              style={{
+                background: '#fff7ed', border: '1px solid #fed7aa',
+                borderRadius: 'var(--r-xs)', padding: '14px 16px',
+                fontSize: 12, color: '#7c2d12', lineHeight: 1.5,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                Enrich {inputAddons.length} addon{inputAddons.length !== 1 ? 's' : ''} with AI
+              </div>
+              <div>
+                Runs AI tagging (dietary, allergens, proteins, textures,
+                ingredients, etc.) on each selected addon. Items already
+                tagged manually are preserved. Larger selections are
+                processed in batches of 100.
+              </div>
+            </div>
+            {enrichResult && (
+              <div
+                data-testid="bulk-modifier-enrich-result"
+                style={{
+                  background: '#ecfdf5', border: '1px solid #a7f3d0',
+                  borderRadius: 'var(--r-xs)', padding: '10px 14px',
+                  fontSize: 12, color: '#065f46',
+                }}
+              >
+                Enriched <strong>{enrichResult.enriched}</strong> · skipped{' '}
+                <strong>{enrichResult.skipped}</strong> · failed{' '}
+                <strong>{enrichResult.failed}</strong>
+              </div>
+            )}
+          </div>
+        )}
         {tab === 'delete' && direction === 'forward' && (
           <div
             style={{
@@ -1209,6 +1286,7 @@ export default function BulkModifierPanel({
               onClick={() => {
                 if (tab === 'assign') handleAssign();
                 else if (tab === 'remove') handleRemove();
+                else if (tab === 'enrich') handleEnrich();
                 else if (!deleteConfirm) setDeleteConfirm(true);
                 else handleDelete();
               }}
@@ -1219,7 +1297,8 @@ export default function BulkModifierPanel({
                 (tab === 'assign' &&
                   (selectedDishIds.size === 0 || effectiveAddonIds.size === 0)) ||
                 (tab === 'remove' &&
-                  (selectedDishIds.size === 0 || effectiveAddonIds.size === 0))
+                  (selectedDishIds.size === 0 || effectiveAddonIds.size === 0)) ||
+                (tab === 'enrich' && inputAddons.length === 0)
               }
               style={{
                 flex: 2,
@@ -1227,7 +1306,11 @@ export default function BulkModifierPanel({
                 fontSize: 12,
                 fontWeight: 700,
                 color: 'white',
-                background: tab === 'assign' ? '#f59e0b' : '#dc2626',
+                background: tab === 'assign'
+                  ? '#f59e0b'
+                  : tab === 'enrich'
+                    ? '#f97316'
+                    : '#dc2626',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: 'pointer',
@@ -1235,6 +1318,12 @@ export default function BulkModifierPanel({
               }}
             >
               {(() => {
+                if (tab === 'enrich') {
+                  if (executing) return 'Enriching…';
+                  return `Enrich ${inputAddons.length} addon${
+                    inputAddons.length !== 1 ? 's' : ''
+                  } with AI`;
+                }
                 if (tab === 'assign') {
                   if (executing) return 'Assigning…';
                   if (selectedDishIds.size === 0) return 'Select dishes first';
