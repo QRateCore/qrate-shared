@@ -136,6 +136,26 @@ interface EditModalProps {
    *  the change without a full refetch. Receives a partial item; the
    *  parent merges it onto the existing record. */
   onItemUpdate?: (patch: { id: string; food_tags: FoodTags }) => void;
+  /**
+   * Optional admin-only callback to (re-)run AI enrichment for this item.
+   * When provided, the action bar renders an "Enrich with AI" button next
+   * to Save. Owner-webapp does NOT pass this prop — owners cannot trigger
+   * enrichment manually (auto-fires on item create via handleSaveNewItem).
+   *
+   * The consumer is responsible for calling the recommender's
+   * POST /recommendation/menu-items/{id}/enrich endpoint and returning
+   * the resulting tag payload. The EditModal patches local food_tags
+   * state from the returned food_tags on success.
+   *
+   * skipped_reason is surfaced as a soft notice (e.g. manual-protected
+   * items echo back without re-running Claude).
+   */
+  onEnrichItem?: (itemId: string) => Promise<{
+    food_tags?: FoodTags;
+    enrichment_status?: string;
+    food_tags_source?: string;
+    skipped_reason?: string;
+  }>;
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -506,7 +526,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -775,6 +795,35 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [nameError, setNameError]       = useState(false);
+
+  // Enrich state — admin-only via onEnrichItem prop. The Food Tags tab
+  // shows an in-progress banner driven by item.enrichment_status; this
+  // local state drives the action-bar button spinner + a one-shot notice
+  // for skip/error feedback.
+  const [enriching, setEnriching] = useState(false);
+  const [enrichNotice, setEnrichNotice] = useState<string | null>(null);
+
+  const handleEnrichClick = useCallback(async () => {
+    if (!onEnrichItem || !item.id || isNewItem) return;
+    setEnriching(true);
+    setEnrichNotice(null);
+    try {
+      const res = await onEnrichItem(item.id);
+      if (res.skipped_reason) {
+        setEnrichNotice(`Enrichment skipped — ${res.skipped_reason.replace(/_/g, ' ')}`);
+        return;
+      }
+      if (res.food_tags) {
+        // Bubble the AI tags into the parent's items mirror so derived UI
+        // (filters, badges, list rows) refresh without a refetch.
+        onItemUpdate?.({ id: item.id, food_tags: res.food_tags });
+      }
+    } catch (err) {
+      setEnrichNotice(err instanceof Error ? err.message : 'Enrichment failed');
+    } finally {
+      setEnriching(false);
+    }
+  }, [onEnrichItem, item.id, isNewItem, onItemUpdate]);
   const [descError, setDescError]       = useState(false);
   const [categoryError, setCategoryError] = useState(false);
 
@@ -1923,6 +1972,31 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               >
                 Delete
               </button>
+              {/* Admin-only Enrich button — appears when onEnrichItem prop
+                  is wired by the consumer (admin-webapp). Owner-webapp does
+                  NOT pass the prop, so owners see no button (their enrich
+                  flow is auto-on-save, per the PDD). Hidden for new items
+                  whose id isn't in the DB yet. */}
+              {onEnrichItem && !isNewItem && item.id && (
+                <button
+                  type="button"
+                  onClick={handleEnrichClick}
+                  disabled={saving || enriching}
+                  data-testid="edit-enrich-btn"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 600, color: '#c2410c',
+                    background: '#fff7ed', border: '1px solid #fed7aa',
+                    borderRadius: 'var(--r-xs)',
+                    padding: '6px 12px',
+                    cursor: (saving || enriching) ? 'not-allowed' : 'pointer',
+                    opacity: (saving || enriching) ? 0.7 : 1,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  {enriching ? 'Enriching…' : 'Enrich with AI'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSave}
@@ -2610,6 +2684,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     }}
                   >
                     Enrichment didn't complete. You can still edit tags manually below.
+                  </div>
+                )}
+                {/* One-shot notice for admin Enrich click outcomes (skipped /
+                    error). Cleared on next click. Distinct from the
+                    in-progress banner above which is driven by the item's
+                    enrichment_status field from the parent state. */}
+                {enrichNotice && (
+                  <div
+                    data-testid="edit-modal-enrich-notice"
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      color: '#1e40af',
+                      fontSize: 12,
+                    }}
+                  >
+                    {enrichNotice}
                   </div>
                 )}
 

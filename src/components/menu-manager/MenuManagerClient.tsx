@@ -151,6 +151,18 @@ interface Props {
    * do not ship the drawer CSS.
    */
   editItemDrawerMode?: boolean;
+  /**
+   * Admin-only: enables the "Enrich with AI" button in EditModal's action
+   * bar. Owner-webapp + waiter-webapp don't pass this — they get the
+   * default (button hidden). Admin-webapp wires it to the recommender's
+   * /enrich endpoint. See EditModal.onEnrichItem for the contract.
+   */
+  onEnrichItem?: (itemId: string) => Promise<{
+    food_tags?: MenuItemDisplay['food_tags'];
+    enrichment_status?: string;
+    food_tags_source?: string;
+    skipped_reason?: string;
+  }>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -159,7 +171,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, onEnrichItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1600,6 +1612,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 : undefined
             }
             displayMode={editItemDrawerMode ? 'inline' : 'modal'}
+            onEnrichItem={onEnrichItem}
           />
         );
         if (!editItemDrawerMode) return editModal;
