@@ -130,3 +130,15 @@ export {
   deriveHeatFromLabel,
   HEAT_FROM_SPICE_LEVEL,
 } from './utils/spice-derivation';
+
+// Utils — Currency (canonical 16-currency preset + formatMoney helper).
+// Mirrored to qrate-patron-webapp/src/lib/utils/currency.ts via a CI sync
+// guard. PDD: .agents/planning/2026-05-19-currency-configuration/
+export {
+  SUPPORTED_CURRENCIES,
+  DEFAULT_CURRENCY_CODE,
+  DEFAULT_CURRENCY_LOCALE,
+  getCurrencyConfig,
+  formatMoney,
+} from './utils/currency';
+export type { CurrencyCode, CurrencyConfig, FormatMoneyOptions } from './utils/currency';
