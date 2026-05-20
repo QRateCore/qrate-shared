@@ -184,6 +184,26 @@ interface Props {
     food_tags_source?: string;
     skipped_reason?: string;
   }>;
+  /**
+   * Optional duplicate-item action. When provided, EditModal renders a
+   * Duplicate button that opens a clone draft of the current item. The
+   * draft is rendered as a second EditModal in cloneMode — owner only
+   * has to rename the dish (must differ from source AND must not contain
+   * "Copy" case-insensitive) and click Save Copy. The new item is created
+   * server-side via POST /owner/menu/items/{sourceId}/clone (which
+   * deep-copies food_tags, dietary, spice, menu placements, sides,
+   * addons, and groupings in one transaction).
+   *
+   * Consumer wires this to the typed client method that hits the clone
+   * endpoint; resolved shape mirrors the backend response.
+   */
+  cloneMenuItem?: (sourceId: string, name: string) => Promise<{
+    id: string;
+    name: string;
+    restaurant_id: string;
+    item_type?: string;
+    source_id?: string;
+  }>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -192,7 +212,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -278,6 +298,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     selectAll: _selectAll,
   } = useRangeSelection();
   const [editItemId, setEditItemId] = useState<string | null>(null);
+  // Clone-draft source — when set, the second EditModal below renders in
+  // cloneMode pre-seeded with this item's fields. Set by EditModal's
+  // Duplicate button (closes the current edit modal first), cleared on
+  // close or after a successful Save Copy.
+  const [cloneDraftSource, setCloneDraftSource] = useState<MenuItemDisplay | null>(null);
   const [editMenuId, setEditMenuId] = useState<string | null>(null);
   const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
   const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
@@ -1645,6 +1670,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             }
             displayMode={editItemDrawerMode ? 'inline' : 'modal'}
             onEnrichItem={onEnrichItem}
+            onCloneRequest={cloneMenuItem ? (sourceItem) => {
+              // Close the regular edit modal first so the cloneMode
+              // EditModal owns the foreground. Drawer mode also reverts
+              // to the modal-overlay path since the drawer chrome would
+              // visually conflict with the second editor.
+              setEditItemId(null);
+              setCloneDraftSource(sourceItem);
+            } : undefined}
           />
         );
         if (!editItemDrawerMode) return editModal;
@@ -1671,6 +1704,48 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           </>
         );
       })()}
+
+      {/* Clone draft — second EditModal mounted in cloneMode whenever the
+          owner has clicked Duplicate on an existing item's editor. The
+          seeded item carries every cloned field; the owner only edits
+          the name and clicks Save Copy (which hits the backend clone
+          endpoint via cloneMenuItem). On success the new item is added
+          to local state and the draft is dismissed. */}
+      {cloneDraftSource && cloneMenuItem && (
+        <EditModal
+          item={{
+            ...cloneDraftSource,
+            // Pre-fill the name with a "(Copy)" suffix — the input is
+            // amber-tinted + red-bordered until the owner mutates it
+            // enough to remove "Copy" and diverge from the source.
+            name: `${cloneDraftSource.name} (Copy)`,
+          }}
+          restaurantId={restaurantId}
+          menus={menus}
+          allItems={items.filter((i) => i.item_type !== 'addon')}
+          onClose={() => setCloneDraftSource(null)}
+          onComplete={(created) => {
+            // Patch the new item into local state so it surfaces in the
+            // pool without a full refetch. Full hydration happens on
+            // next click into the editor (GET /owner/menu/items/{id}).
+            setItems((prev) => [created, ...prev]);
+            setCloneDraftSource(null);
+            // Open the cloned item in the regular editor so the owner
+            // can immediately tweak fields they may have wanted to vary.
+            setEditItemId(created.id);
+          }}
+          isNewItem={false}
+          cloneMode
+          cloneSourceName={cloneDraftSource.name}
+          sourceItemId={cloneDraftSource.id}
+          onCloneSave={cloneMenuItem}
+          dietaryTagService={dietaryTagService}
+          heatLabels={heatLabels}
+          sweetnessLabels={sweetnessLabels}
+          imageLibrarySlot={imageLibrarySlot}
+          displayMode="modal"
+        />
+      )}
 
       {/* Menu Edit Panel */}
       {editMenuId && (() => {

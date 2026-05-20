@@ -184,6 +184,48 @@ interface EditModalProps {
     food_tags_source?: string;
     skipped_reason?: string;
   }>;
+  /**
+   * Duplicate flow — opt-in. When the consumer provides `onCloneRequest`,
+   * the modal renders a Duplicate button in the header (visible only for
+   * existing items, not while editing a new draft or already cloning).
+   * The consumer is responsible for closing the current modal and
+   * reopening it with `cloneMode=true`, `cloneSourceName=item.name`,
+   * `sourceItemId=item.id`, and an `item` seeded as
+   * `{ ...source, name: source.name + ' (Copy)' }` so the owner lands on
+   * a pre-filled rename UI.
+   */
+  onCloneRequest?: (item: MenuItemDisplay) => void;
+  /**
+   * Clone-draft state. When true, the Save Changes button is replaced by
+   * a "Save Copy" button that calls `onCloneSave` with the source item
+   * id + the (validated) new name. The name input renders a red border +
+   * helper text and the Save button is disabled until the name:
+   *   - is non-empty after trim
+   *   - differs from `cloneSourceName`
+   *   - does not contain the substring "copy" (case-insensitive)
+   * These rules mirror the server-side validation in
+   * `clone_owner_menu_item` (defence in depth).
+   */
+  cloneMode?: boolean;
+  /** Source item's name — required when cloneMode=true. */
+  cloneSourceName?: string;
+  /** Source item id — required when cloneMode=true; passed back to onCloneSave. */
+  sourceItemId?: string;
+  /**
+   * Called when the owner clicks Save Copy in a clone draft. Consumer
+   * hits `POST /owner/menu/items/{sourceItemId}/clone` with `{ name }`.
+   * Resolved value is the new item shape returned by the backend (id +
+   * name + restaurant_id + item_type + source_id). EditModal calls
+   * onClose after a successful clone — the consumer can re-fetch and
+   * reopen the editor on the new id if desired.
+   */
+  onCloneSave?: (sourceItemId: string, newName: string) => Promise<{
+    id: string;
+    name: string;
+    restaurant_id: string;
+    item_type?: string;
+    source_id?: string;
+  }>;
 }
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
@@ -554,7 +596,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -832,6 +874,42 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [nameError, setNameError]       = useState(false);
+
+  // Clone-draft state — only meaningful when cloneMode === true. Tracks the
+  // in-flight POST /owner/menu/items/{id}/clone request + surfaces server
+  // errors back to the owner inline (banner above the action bar).
+  const [cloneSaving, setCloneSaving] = useState(false);
+  const [cloneError, setCloneError]   = useState<string | null>(null);
+
+  // Name validation derived state — covers BOTH the new-item rename gate
+  // and the clone-rename gate, so the name field shows a red border + a
+  // helper sentence the moment the input is invalid (no waiting for the
+  // first Save click).
+  //
+  // Rules:
+  //   - 'empty'         → trimmed name is blank (applies to new items and
+  //                       clone drafts; existing-item edits are fine since
+  //                       the prior name is still loaded into local state).
+  //   - 'contains-copy' → cloneMode && name contains 'copy' (case-insensitive).
+  //                       Defence-in-depth match to the server validator.
+  //   - 'unchanged'     → cloneMode && trimmed name matches the source name
+  //                       verbatim. Forces an actual rename.
+  const _trimmedName = name.trim();
+  const _nameContainsCopy = cloneMode && /copy/i.test(_trimmedName);
+  const _nameUnchangedFromSource =
+    cloneMode && !!cloneSourceName && _trimmedName === cloneSourceName.trim();
+  const nameValidation: 'empty' | 'contains-copy' | 'unchanged' | null =
+    _trimmedName === ''            ? 'empty' :
+    _nameContainsCopy              ? 'contains-copy' :
+    _nameUnchangedFromSource       ? 'unchanged' :
+    null;
+  const showNameInvalid =
+    (isNewItem || cloneMode) && nameValidation !== null;
+  const nameHelperText =
+    nameValidation === 'empty'         ? 'Name is required' :
+    nameValidation === 'contains-copy' ? "Name cannot contain 'Copy' — rename before saving" :
+    nameValidation === 'unchanged'     ? 'Rename the clone — the name must differ from the source' :
+    null;
 
   // Enrich state — admin-only via onEnrichItem prop. The Food Tags tab
   // shows an in-progress banner driven by item.enrichment_status; this
@@ -1373,6 +1451,44 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
   }
 
+  // ── Clone Save ──────────────────────────────────────────────────────────
+  //
+  // Only meaningful when cloneMode === true. Validates the rename gate
+  // client-side (same rules as the server), then calls the consumer's
+  // onCloneSave which hits POST /owner/menu/items/{sourceItemId}/clone.
+  // On success: relays the new item via onComplete (so the consumer can
+  // refresh its list / open the new id) and closes the modal. On failure:
+  // surfaces the error inline above the action bar.
+  async function handleCloneSave() {
+    if (!cloneMode || !onCloneSave || !sourceItemId) return;
+    // Re-check validation at click time in case state diverged from the
+    // disabled-button gate (shouldn't happen, but cheap insurance).
+    if (nameValidation !== null) return;
+
+    setCloneSaving(true);
+    setCloneError(null);
+    try {
+      const created = await onCloneSave(sourceItemId, name.trim());
+      // Hand a minimal MenuItemDisplay back to the parent so its item
+      // list can patch in the new row without a full refetch. The full
+      // hydrated shape will land on the next GET /owner/menu/items/{id}.
+      onComplete({
+        ...item,
+        id: created.id,
+        name: created.name,
+        item_type: (created.item_type as 'dish' | 'addon' | 'included' | undefined)
+          ?? item.item_type,
+      });
+      onClose();
+    } catch (err) {
+      console.error('Clone failed', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setCloneError(message || 'Clone failed — please try again.');
+    } finally {
+      setCloneSaving(false);
+    }
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────
 
   async function handleSave() {
@@ -1844,14 +1960,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
               aria-label="Item name"
               aria-required="true"
-              aria-invalid={nameError || undefined}
+              aria-invalid={(nameError || showNameInvalid) || undefined}
               data-testid="edit-name-input"
               style={{
                 fontSize: 18,
                 fontWeight: 700,
                 color: 'var(--text)',
-                background: 'transparent',
-                border: nameError ? '1px solid #b91c1c' : '1px solid transparent',
+                // Amber-yellow tint when the clone draft is in its initial
+                // (must-rename) state so the field reads as "this needs
+                // your attention" rather than a passive title. New items
+                // and clone drafts get an explicit red border whenever
+                // the rename rules aren't satisfied yet. Existing-item
+                // edits stay transparent unless a save attempt failed.
+                background: (cloneMode && _nameUnchangedFromSource) ? '#FEF3C7' : 'transparent',
+                border: (nameError || showNameInvalid) ? '2px solid #b91c1c' : '1px solid transparent',
                 borderRadius: 6,
                 padding: '4px 8px',
                 margin: '-4px 0 -4px -8px',
@@ -1862,12 +1984,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 transition: 'border-color 0.12s ease, background 0.12s ease',
               }}
               onFocus={(e) => {
-                if (!nameError) e.currentTarget.style.borderColor = 'var(--border)';
+                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'var(--border)';
                 e.currentTarget.style.background = '#fff';
               }}
               onBlur={(e) => {
-                if (!nameError) e.currentTarget.style.borderColor = 'transparent';
-                e.currentTarget.style.background = 'transparent';
+                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'transparent';
+                if (!(cloneMode && _nameUnchangedFromSource)) {
+                  e.currentTarget.style.background = 'transparent';
+                }
               }}
             />
             <button
@@ -2068,24 +2192,71 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   {enriching ? 'Enriching…' : 'Enrich with AI'}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                data-testid="edit-save-btn"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  fontSize: 12, fontWeight: 700, color: 'white',
-                  background: 'var(--brand)',
-                  border: 'none', borderRadius: 'var(--r-xs)',
-                  padding: '6px 14px',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  opacity: saving ? 0.7 : 1,
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                }}
-              >
-                {saving ? 'Saving…' : 'Save Changes'}
-              </button>
+              {/* Duplicate — opens a clone draft of this item. Opt-in via
+                  onCloneRequest from the consumer; hidden during create
+                  flows (isNewItem) and during the clone flow itself
+                  (cloneMode). The consumer is responsible for closing
+                  this modal and reopening it in cloneMode with the
+                  source item seeded as `{ ...source, name: source.name +
+                  ' (Copy)' }`. */}
+              {onCloneRequest && !isNewItem && !cloneMode && item.id && (
+                <button
+                  type="button"
+                  onClick={() => onCloneRequest(item)}
+                  disabled={saving || cloneSaving}
+                  data-testid="edit-duplicate-btn"
+                  style={{
+                    fontSize: 12, fontWeight: 600, color: '#3730A3',
+                    background: '#EEF2FF', border: '1px solid #C7D2FE',
+                    borderRadius: 'var(--r-xs)',
+                    padding: '6px 12px',
+                    cursor: (saving || cloneSaving) ? 'not-allowed' : 'pointer',
+                    opacity: (saving || cloneSaving) ? 0.7 : 1,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  Duplicate
+                </button>
+              )}
+              {cloneMode && onCloneSave ? (
+                <button
+                  type="button"
+                  onClick={handleCloneSave}
+                  disabled={cloneSaving || showNameInvalid}
+                  data-testid="edit-clone-save-btn"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 700, color: 'white',
+                    background: 'var(--brand)',
+                    border: 'none', borderRadius: 'var(--r-xs)',
+                    padding: '6px 14px',
+                    cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
+                    opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  {cloneSaving ? 'Saving…' : 'Save Copy'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  data-testid="edit-save-btn"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    fontSize: 12, fontWeight: 700, color: 'white',
+                    background: 'var(--brand)',
+                    border: 'none', borderRadius: 'var(--r-xs)',
+                    padding: '6px 14px',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.7 : 1,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+              )}
             </>
           )}
 
@@ -2108,6 +2279,30 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         {/* Body — flex column: fixed top (banners + basic info + tabs) + scrollable tab content */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px', paddingBottom: 0 }}>
 
+          {/* Clone-mode banner — appears whenever the modal is in a clone
+              draft, so the owner immediately understands they're creating
+              a new copy of an existing dish, not editing the original.
+              The Save Copy button in the header is the only commit path. */}
+          {cloneMode && (
+            <div
+              data-testid="edit-clone-banner"
+              style={{
+                background: '#EEF2FF',
+                border: '1px solid #C7D2FE',
+                color: '#3730A3',
+                borderRadius: 6,
+                padding: '8px 12px',
+                marginBottom: 16,
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              <strong>Cloning {cloneSourceName ? `“${cloneSourceName}”` : 'this item'}.</strong>{' '}
+              All other fields are copied verbatim — only the name needs to
+              change. Rename the dish above (it must differ from the source
+              and cannot contain “Copy”), then click <em>Save Copy</em>.
+            </div>
+          )}
           {/* Error banners */}
           {saveError && (
             <div
@@ -2117,6 +2312,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             >
               <AlertCircle size={12} />
               {saveError}
+            </div>
+          )}
+          {cloneError && (
+            <div
+              data-testid="edit-clone-error"
+              className="text-caption"
+              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+            >
+              <AlertCircle size={12} />
+              {cloneError}
             </div>
           )}
           {deleteError && (
@@ -2399,12 +2604,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {/* Name field moved to the modal header — see the
                 inline-editable title at the top of EditModal. The
                 error state surfaces here as a single row so layout
-                doesn't shift when the user blanks the field. */}
-            {nameError && (
+                doesn't shift when the user blanks the field.
+
+                Helper-text precedence:
+                  1. nameError (set after a failed Save click) → "Name is
+                     required" — kept for back-compat with existing-item
+                     edits that don't pass cloneMode or isNewItem.
+                  2. showNameInvalid (live derived state for new-item or
+                     clone-draft modes) → the validation-specific copy
+                     ("Name is required" / "cannot contain 'Copy'" /
+                     "must differ from the source"). */}
+            {showNameInvalid && nameHelperText ? (
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                {nameHelperText}
+              </div>
+            ) : nameError ? (
               <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
                 Name is required
               </div>
-            )}
+            ) : null}
 
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
