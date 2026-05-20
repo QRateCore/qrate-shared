@@ -130,6 +130,24 @@ interface EditModalProps {
    */
   groupingsSlot?: ReactNode;
   /**
+   * Description review-queue state — opt-in. When the item's description
+   * is an unreviewed AI suggestion (source='ai_generated' AND reviewed=
+   * false), the description field renders with an amber tint, an
+   * "AI SUGGESTED" eyebrow, and an Accept button alongside Save so the
+   * owner can confirm the suggestion verbatim without round-tripping
+   * through the Setup Guide condition-items page. Consumers that don't
+   * track review state simply omit these props.
+   */
+  descriptionSource?: string | null;
+  descriptionReviewed?: boolean;
+  /**
+   * Called when the owner clicks Accept on an AI-suggested description.
+   * Backend should flip description_source='manual' +
+   * description_reviewed=true while keeping the current text. Consumer
+   * decides whether to close the modal after the resolved promise.
+   */
+  onAcceptDescription?: (itemId: string) => Promise<void>;
+  /**
    * 'modal' (default) — fixed-position overlay with backdrop. Used by the
    * Menu page when the owner clicks the pencil-edit icon on a row.
    * 'inline' — renders the same body inside its parent (no backdrop, no
@@ -536,7 +554,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -2391,9 +2409,28 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
-              <label style={labelStyle} htmlFor="edit-description">
-                Description <span style={{ color: '#b91c1c' }}>*</span>
-              </label>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <label style={labelStyle} htmlFor="edit-description">
+                  Description <span style={{ color: '#b91c1c' }}>*</span>
+                </label>
+                {/* AI-suggested eyebrow — opt-in via descriptionSource +
+                    descriptionReviewed props. Mirrors the chip color used
+                    by the food-tag pickers ('#B45309' on amber). */}
+                {descriptionSource === 'ai_generated' && descriptionReviewed === false && (
+                  <span
+                    data-testid="edit-description-ai-eyebrow"
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      color: '#B45309',
+                    }}
+                  >
+                    🤖 AI suggested
+                  </span>
+                )}
+              </div>
               <textarea
                 id="edit-description"
                 value={description}
@@ -2404,12 +2441,60 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   ...inputStyle,
                   resize: 'vertical',
                   minHeight: 88,
-                  border: descError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                  border: descError
+                    ? '1px solid #b91c1c'
+                    : descriptionSource === 'ai_generated' && descriptionReviewed === false
+                      ? '1px solid #F59E0B'
+                      : '1px solid var(--border)',
+                  // Amber tint when this is an unreviewed AI suggestion —
+                  // matches the row-level visual cue on the Setup Guide
+                  // condition-items page so the owner sees the same state
+                  // in both surfaces.
+                  background:
+                    descriptionSource === 'ai_generated' && descriptionReviewed === false
+                      ? '#FEF3C7'
+                      : (inputStyle as { background?: string }).background ?? '#fff',
                 }}
               />
               {descError && (
                 <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Description is required</div>
               )}
+              {/* Accept button — verbatim accept of the AI suggestion
+                  without typing your own. Routes through the consumer's
+                  onAcceptDescription handler (page-level Accept flow on
+                  Setup Guide). Hidden when the props aren't passed. */}
+              {descriptionSource === 'ai_generated'
+                && descriptionReviewed === false
+                && onAcceptDescription
+                && !isNewItem && (
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      data-testid="edit-description-accept"
+                      onClick={async () => {
+                        try {
+                          await onAcceptDescription(item.id);
+                        } catch {
+                          // Consumer surfaces error via toast; swallow here
+                          // so the button doesn't get stuck disabled.
+                        }
+                      }}
+                      style={{
+                        background: '#3730A3',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      Accept AI suggestion
+                    </button>
+                  </div>
+                )}
             </div>
 
             {/* Mapped Course — edits canonical_category; raw scraped `category` is preserved. */}
