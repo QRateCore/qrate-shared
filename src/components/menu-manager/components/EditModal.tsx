@@ -2409,6 +2409,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
+              {/* AI-suggested visual cue is gated on the row being an
+                  unreviewed AI suggestion AND the owner not having started
+                  typing their own copy. The moment `description` diverges
+                  from the persisted `item.description`, the owner is
+                  clearly authoring — drop the eyebrow / tint / Accept
+                  button so they don't accidentally click Accept and lose
+                  their unsaved edits. (Accept fires
+                  description_review_action='accept' which keeps the
+                  server's text, not the local draft.) */}
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                 <label style={labelStyle} htmlFor="edit-description">
                   Description <span style={{ color: '#b91c1c' }}>*</span>
@@ -2416,7 +2425,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 {/* AI-suggested eyebrow — opt-in via descriptionSource +
                     descriptionReviewed props. Mirrors the chip color used
                     by the food-tag pickers ('#B45309' on amber). */}
-                {descriptionSource === 'ai_generated' && descriptionReviewed === false && (
+                {descriptionSource === 'ai_generated'
+                  && descriptionReviewed === false
+                  && description === (item.description ?? '') && (
                   <span
                     data-testid="edit-description-ai-eyebrow"
                     style={{
@@ -2443,15 +2454,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   minHeight: 88,
                   border: descError
                     ? '1px solid #b91c1c'
-                    : descriptionSource === 'ai_generated' && descriptionReviewed === false
+                    : descriptionSource === 'ai_generated'
+                      && descriptionReviewed === false
+                      && description === (item.description ?? '')
                       ? '1px solid #F59E0B'
                       : '1px solid var(--border)',
-                  // Amber tint when this is an unreviewed AI suggestion —
-                  // matches the row-level visual cue on the Setup Guide
-                  // condition-items page so the owner sees the same state
-                  // in both surfaces.
+                  // Amber tint when this is an unreviewed AI suggestion AND
+                  // the owner hasn't started typing their own. Matches the
+                  // row-level visual cue on the Setup Guide condition-items
+                  // page. Once the owner edits the textarea the tint clears
+                  // so the field reads as a normal owner-authored input.
                   background:
-                    descriptionSource === 'ai_generated' && descriptionReviewed === false
+                    descriptionSource === 'ai_generated'
+                      && descriptionReviewed === false
+                      && description === (item.description ?? '')
                       ? '#FEF3C7'
                       : (inputStyle as { background?: string }).background ?? '#fff',
                 }}
@@ -2462,9 +2478,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               {/* Accept button — verbatim accept of the AI suggestion
                   without typing your own. Routes through the consumer's
                   onAcceptDescription handler (page-level Accept flow on
-                  Setup Guide). Hidden when the props aren't passed. */}
+                  Setup Guide). Hidden when the props aren't passed OR the
+                  owner has started typing (avoids the silent edit-discard
+                  footgun — Accept ignores the local draft). */}
               {descriptionSource === 'ai_generated'
                 && descriptionReviewed === false
+                && description === (item.description ?? '')
                 && onAcceptDescription
                 && !isNewItem && (
                   <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
