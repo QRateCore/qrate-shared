@@ -112,6 +112,22 @@ interface Props {
    *  tests rendering MenuBuilder in isolation), the component renders
    *  nothing — same behaviour as `currentMenuId=null`. */
   perMenuSides?: PerMenuSidesAdapter;
+  /**
+   * Off-menu drop gate (PDD 2026-05-20 v2). When the owner drops a dish
+   * into an Includes or Choose-One zone and that dish is not already on
+   * the current menu, the consumer app fires this callback to prompt for
+   * a canonical category before the drop is persisted.
+   *
+   * Contract:
+   *   - Return `true`  → proceed with the drop (consumer handled the
+   *                      menu-attach internally; this component only
+   *                      writes the menu_item_menu_sides row).
+   *   - Return `false` → skip this dropped item. Other items in the
+   *                      same drop event still process.
+   *
+   * Unset → drops proceed unconditionally (legacy + tests).
+   */
+  onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
 }
 
 export default function ItemModifierZones({
@@ -119,6 +135,7 @@ export default function ItemModifierZones({
   itemsById,
   currentMenuId,
   perMenuSides,
+  onConfirmIncludeDrop,
 }: Props) {
   const [sidesAnd, setSidesAnd] = useState<MenuSideEntry[]>([]);
   const [sidesOr, setSidesOr] = useState<MenuSideEntry[]>([]);
@@ -255,7 +272,7 @@ export default function ItemModifierZones({
     };
   }
 
-  function handleDrop(zone: 'and' | 'or', e: React.DragEvent) {
+  async function handleDrop(zone: 'and' | 'or', e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setSidesAndDragOver(false);
@@ -282,6 +299,15 @@ export default function ItemModifierZones({
       if (dropped.item_type === 'addon') {
         rejectedAddon = true;
         continue;
+      }
+      // Off-menu gate (PDD 2026-05-20). When the dropped item isn't on
+      // the current menu, the consumer opens the category-selection
+      // modal and ATTACHES the item to the menu under the chosen
+      // canonical category. Skip the side-write for any drop the user
+      // cancels — other accepted drops in the same event still process.
+      if (onConfirmIncludeDrop) {
+        const proceed = await onConfirmIncludeDrop(dropped, currentMenuId);
+        if (!proceed) continue;
       }
       accepted.push(makeEntry(dropped));
     }

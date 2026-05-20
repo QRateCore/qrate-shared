@@ -93,6 +93,7 @@ interface MenuBuilderProps {
    * per-menu sides UI (e.g. unit tests, waiter-webapp).
    */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
@@ -234,6 +235,7 @@ function MenuItemRow({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  onConfirmIncludeDrop,
   onDragStart,
   onDragEnd,
   onRemove,
@@ -256,6 +258,7 @@ function MenuItemRow({
   showAddGrouping?: boolean;
   /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to desktop ItemModifierZones. */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemove: () => void;
@@ -845,6 +848,7 @@ function MenuItemRow({
                 itemsById={itemsById}
                 currentMenuId={menuId}
                 perMenuSides={perMenuSides}
+                onConfirmIncludeDrop={onConfirmIncludeDrop}
               />
             )}
           </div>
@@ -873,6 +877,7 @@ function CategoryBucket({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  onConfirmIncludeDrop,
   isDragOver,
   onDragEnter,
   onDragLeave,
@@ -904,6 +909,7 @@ function CategoryBucket({
   showAddGrouping?: boolean;
   /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to MenuItemRow → desktop ItemModifierZones. */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   isDragOver: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -1022,6 +1028,7 @@ function CategoryBucket({
                 showRecommendations={showRecommendations}
                 showAddGrouping={showAddGrouping}
                 perMenuSides={perMenuSides}
+                onConfirmIncludeDrop={onConfirmIncludeDrop}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemove={() => {
@@ -1081,6 +1088,7 @@ export default function MenuBuilder({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  onConfirmIncludeDrop,
   scrollToItemId,
   onScrollComplete,
   onRefresh,
@@ -1352,6 +1360,7 @@ export default function MenuBuilder({
                 showRecommendations={showRecommendations}
                 showAddGrouping={showAddGrouping}
                 perMenuSides={perMenuSides}
+                onConfirmIncludeDrop={onConfirmIncludeDrop}
                 isDragOver={isDragOverBucket}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}

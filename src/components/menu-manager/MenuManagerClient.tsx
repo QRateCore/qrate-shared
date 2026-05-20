@@ -105,6 +105,14 @@ interface Props {
    * (e.g. waiter-webapp consumers without the routes deployed).
    */
   perMenuSides?: import('./components/ItemModifierZones').PerMenuSidesAdapter;
+  /**
+   * Off-menu drop gate for Includes (sides_and) / Choose-One (sides_or)
+   * zones. PDD 2026-05-20 v2 — when the dropped item is not on the
+   * current menu, the consumer pops the same category-selection modal
+   * it uses for recommendation drops. Returns `true` to proceed,
+   * `false` to skip. See ItemModifierZones for the full contract.
+   */
+  onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** When false, the Visible / Hidden toggle is hidden in the ItemPool filter row. Default true. */
   showVisibilityFilter?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
@@ -184,7 +192,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1894,6 +1902,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onEditItem={setEditItemId}
             onUpdateModifiers={handleUpdateModifiers}
             onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+            onConfirmIncludeDrop={onConfirmIncludeDrop}
             scrollToItemId={scrollToItemId}
             onScrollComplete={() => setScrollToItemId(null)}
             onRefresh={onRefresh ? handleRefresh : undefined}
