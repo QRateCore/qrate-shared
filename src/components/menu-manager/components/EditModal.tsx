@@ -2192,7 +2192,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   {enriching ? 'Enriching…' : 'Enrich with AI'}
                 </button>
               )}
-              {/* Duplicate — opens a clone draft of this item. Opt-in via
+              {/* Clone — opens a clone draft of this item. Opt-in via
                   onCloneRequest from the consumer; hidden during create
                   flows (isNewItem) and during the clone flow itself
                   (cloneMode). The consumer is responsible for closing
@@ -2204,7 +2204,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   type="button"
                   onClick={() => onCloneRequest(item)}
                   disabled={saving || cloneSaving}
-                  data-testid="edit-duplicate-btn"
+                  data-testid="edit-clone-btn"
                   style={{
                     fontSize: 12, fontWeight: 600, color: '#3730A3',
                     background: '#EEF2FF', border: '1px solid #C7D2FE',
@@ -2215,7 +2215,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     whiteSpace: 'nowrap', flexShrink: 0,
                   }}
                 >
-                  Duplicate
+                  Clone
                 </button>
               )}
               {cloneMode && onCloneSave ? (

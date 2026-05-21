@@ -1545,10 +1545,10 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
 });
 
 
-// ── Clone flow (Duplicate button + cloneMode + Save Copy rename gate) ────────
+// ── Clone flow (Clone button + cloneMode + Save Copy rename gate) ────────
 
-describe('EditModal — Duplicate flow', () => {
-  it('renders Duplicate button when onCloneRequest is wired and item exists', () => {
+describe('EditModal — Clone flow', () => {
+  it('renders Clone button when onCloneRequest is wired and item exists', () => {
     const onCloneRequest = vi.fn();
     render(
       <MenuManagerServiceProvider value={makeService()}>
@@ -1563,10 +1563,10 @@ describe('EditModal — Duplicate flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
-    expect(screen.getByTestId('edit-duplicate-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-clone-btn')).toBeInTheDocument();
   });
 
-  it('hides Duplicate button when onCloneRequest is not provided', () => {
+  it('hides Clone button when onCloneRequest is not provided', () => {
     render(
       <MenuManagerServiceProvider value={makeService()}>
         <EditModal
@@ -1579,10 +1579,10 @@ describe('EditModal — Duplicate flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
-    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-clone-btn')).not.toBeInTheDocument();
   });
 
-  it('hides Duplicate button during create flow (isNewItem)', () => {
+  it('hides Clone button during create flow (isNewItem)', () => {
     render(
       <MenuManagerServiceProvider value={makeService()}>
         <EditModal
@@ -1598,10 +1598,10 @@ describe('EditModal — Duplicate flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
-    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-clone-btn')).not.toBeInTheDocument();
   });
 
-  it('hides Duplicate button when already in cloneMode', () => {
+  it('hides Clone button when already in cloneMode', () => {
     render(
       <MenuManagerServiceProvider value={makeService()}>
         <EditModal
@@ -1619,10 +1619,10 @@ describe('EditModal — Duplicate flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
-    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-clone-btn')).not.toBeInTheDocument();
   });
 
-  it('clicking Duplicate fires onCloneRequest with the current item', async () => {
+  it('clicking Clone fires onCloneRequest with the current item', async () => {
     const user = userEvent.setup();
     const onCloneRequest = vi.fn();
     const item = makeDishItem();
@@ -1639,7 +1639,7 @@ describe('EditModal — Duplicate flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
-    await user.click(screen.getByTestId('edit-duplicate-btn'));
+    await user.click(screen.getByTestId('edit-clone-btn'));
     expect(onCloneRequest).toHaveBeenCalledTimes(1);
     expect(onCloneRequest).toHaveBeenCalledWith(item);
   });

@@ -1638,11 +1638,50 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       {/* Edit Item Modal — opens centered (legacy) or inside the right-side
           drawer chrome that mirrors /owner/food-items when editItemDrawerMode
           is on. The drawer path uses the same `food-library-drawer*` classes
-          (defined in owner-webapp globals.css) and EditModal `displayMode=inline`. */}
-      {editItemId && (() => {
-        const editItem = items.find((i) => i.id === editItemId);
-        if (!editItem) return null;
-        const editModal = (
+          (defined in owner-webapp globals.css) and EditModal `displayMode=inline`.
+          When the owner clicks Clone, the same drawer hosts the cloneMode
+          EditModal — no second popup — so the visual treatment of editing
+          and cloning is identical. */}
+      {(editItemId || (cloneDraftSource && cloneMenuItem)) && (() => {
+        const editItem = editItemId ? items.find((i) => i.id === editItemId) : null;
+        if (editItemId && !editItem) return null;
+        const cloneEditor = (cloneDraftSource && cloneMenuItem) ? (
+          <EditModal
+            key={`clone-${cloneDraftSource.id}`}
+            item={{
+              ...cloneDraftSource,
+              // Pre-fill the name with a "(Copy)" suffix — the input is
+              // amber-tinted + red-bordered until the owner mutates it
+              // enough to remove "Copy" and diverge from the source.
+              name: `${cloneDraftSource.name} (Copy)`,
+            }}
+            restaurantId={restaurantId}
+            menus={menus}
+            allItems={items.filter((i) => i.item_type !== 'addon')}
+            onClose={() => setCloneDraftSource(null)}
+            onComplete={(created) => {
+              // Patch the new item into local state so it surfaces in the
+              // pool without a full refetch. Full hydration happens on
+              // next click into the editor (GET /owner/menu/items/{id}).
+              setItems((prev) => [created, ...prev]);
+              setCloneDraftSource(null);
+              // Open the cloned item in the regular editor so the owner
+              // can immediately tweak fields they may have wanted to vary.
+              setEditItemId(created.id);
+            }}
+            isNewItem={false}
+            cloneMode
+            cloneSourceName={cloneDraftSource.name}
+            sourceItemId={cloneDraftSource.id}
+            onCloneSave={cloneMenuItem}
+            dietaryTagService={dietaryTagService}
+            heatLabels={heatLabels}
+            sweetnessLabels={sweetnessLabels}
+            imageLibrarySlot={imageLibrarySlot}
+            displayMode={editItemDrawerMode ? 'inline' : 'modal'}
+          />
+        ) : null;
+        const regularEditor = editItem ? (
           <EditModal
             item={editItem}
             restaurantId={restaurantId}
@@ -1671,22 +1710,29 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             displayMode={editItemDrawerMode ? 'inline' : 'modal'}
             onEnrichItem={onEnrichItem}
             onCloneRequest={cloneMenuItem ? (sourceItem) => {
-              // Close the regular edit modal first so the cloneMode
-              // EditModal owns the foreground. Drawer mode also reverts
-              // to the modal-overlay path since the drawer chrome would
-              // visually conflict with the second editor.
+              // Hand the same drawer over to the clone draft — close the
+              // original item first so the chrome stays mounted but the
+              // body swaps to the cloneMode EditModal in the next render.
               setEditItemId(null);
               setCloneDraftSource(sourceItem);
             } : undefined}
           />
-        );
-        if (!editItemDrawerMode) return editModal;
+        ) : null;
+        const body = cloneEditor ?? regularEditor;
+        if (!editItemDrawerMode) return body;
+        // Drawer mode — reuse the chrome for both regular and clone editors.
+        const drawerLabel = cloneDraftSource
+          ? `Clone of ${cloneDraftSource.name || 'item'}`
+          : (editItem?.name || 'Edit item');
+        const closeFn = cloneDraftSource
+          ? () => setCloneDraftSource(null)
+          : handleCloseEditModal;
         return (
           <>
             <div
               className="food-library-drawer-overlay"
               data-testid="food-item-edit-drawer-overlay"
-              onClick={handleCloseEditModal}
+              onClick={closeFn}
               aria-hidden
             />
             <div
@@ -1694,58 +1740,19 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               data-testid="food-item-edit-drawer"
               role="dialog"
               aria-modal="true"
-              aria-label={editItem.name || 'Edit item'}
-              onKeyDown={(e) => { if (e.key === 'Escape') handleCloseEditModal(); }}
+              aria-label={drawerLabel}
+              onKeyDown={(e) => { if (e.key === 'Escape') closeFn(); }}
             >
-              <div data-testid="food-item-profile" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                {editModal}
+              <div
+                data-testid={cloneDraftSource ? 'food-item-clone-draft' : 'food-item-profile'}
+                style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+              >
+                {body}
               </div>
             </div>
           </>
         );
       })()}
-
-      {/* Clone draft — second EditModal mounted in cloneMode whenever the
-          owner has clicked Duplicate on an existing item's editor. The
-          seeded item carries every cloned field; the owner only edits
-          the name and clicks Save Copy (which hits the backend clone
-          endpoint via cloneMenuItem). On success the new item is added
-          to local state and the draft is dismissed. */}
-      {cloneDraftSource && cloneMenuItem && (
-        <EditModal
-          item={{
-            ...cloneDraftSource,
-            // Pre-fill the name with a "(Copy)" suffix — the input is
-            // amber-tinted + red-bordered until the owner mutates it
-            // enough to remove "Copy" and diverge from the source.
-            name: `${cloneDraftSource.name} (Copy)`,
-          }}
-          restaurantId={restaurantId}
-          menus={menus}
-          allItems={items.filter((i) => i.item_type !== 'addon')}
-          onClose={() => setCloneDraftSource(null)}
-          onComplete={(created) => {
-            // Patch the new item into local state so it surfaces in the
-            // pool without a full refetch. Full hydration happens on
-            // next click into the editor (GET /owner/menu/items/{id}).
-            setItems((prev) => [created, ...prev]);
-            setCloneDraftSource(null);
-            // Open the cloned item in the regular editor so the owner
-            // can immediately tweak fields they may have wanted to vary.
-            setEditItemId(created.id);
-          }}
-          isNewItem={false}
-          cloneMode
-          cloneSourceName={cloneDraftSource.name}
-          sourceItemId={cloneDraftSource.id}
-          onCloneSave={cloneMenuItem}
-          dietaryTagService={dietaryTagService}
-          heatLabels={heatLabels}
-          sweetnessLabels={sweetnessLabels}
-          imageLibrarySlot={imageLibrarySlot}
-          displayMode="modal"
-        />
-      )}
 
       {/* Menu Edit Panel */}
       {editMenuId && (() => {
