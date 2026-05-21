@@ -1544,3 +1544,367 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
   });
 });
 
+
+// ── Clone flow (Duplicate button + cloneMode + Save Copy rename gate) ────────
+
+describe('EditModal — Duplicate flow', () => {
+  it('renders Duplicate button when onCloneRequest is wired and item exists', () => {
+    const onCloneRequest = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem()}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          onCloneRequest={onCloneRequest}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.getByTestId('edit-duplicate-btn')).toBeInTheDocument();
+  });
+
+  it('hides Duplicate button when onCloneRequest is not provided', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem()}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+  });
+
+  it('hides Duplicate button during create flow (isNewItem)', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem({ id: '' })}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          onCloneRequest={vi.fn()}
+          isNewItem
+          onSaveNewItem={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+  });
+
+  it('hides Duplicate button when already in cloneMode', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          onCloneRequest={vi.fn()}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.queryByTestId('edit-duplicate-btn')).not.toBeInTheDocument();
+  });
+
+  it('clicking Duplicate fires onCloneRequest with the current item', async () => {
+    const user = userEvent.setup();
+    const onCloneRequest = vi.fn();
+    const item = makeDishItem();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={item}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          onCloneRequest={onCloneRequest}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    await user.click(screen.getByTestId('edit-duplicate-btn'));
+    expect(onCloneRequest).toHaveBeenCalledTimes(1);
+    expect(onCloneRequest).toHaveBeenCalledWith(item);
+  });
+});
+
+describe('EditModal — cloneMode banner + Save Copy button', () => {
+  it('renders the clone banner with the source name when cloneMode is true', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    const banner = screen.getByTestId('edit-clone-banner');
+    expect(banner).toBeInTheDocument();
+    expect(banner.textContent).toContain('Grilled Chicken');
+    expect(banner.textContent).toMatch(/rename/i);
+  });
+
+  it('replaces Save Changes with Save Copy when cloneMode is true', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.getByTestId('edit-clone-save-btn')).toBeInTheDocument();
+    expect(screen.queryByTestId('edit-save-btn')).not.toBeInTheDocument();
+  });
+
+  it('keeps Save Changes (not Save Copy) when cloneMode is false', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem()}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.getByTestId('edit-save-btn')).toBeInTheDocument();
+    expect(screen.queryByTestId('edit-clone-save-btn')).not.toBeInTheDocument();
+  });
+});
+
+describe('EditModal — cloneMode name validation gate', () => {
+  function renderClone(onCloneSave: ReturnType<typeof vi.fn>) {
+    return render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={onCloneSave}
+        />
+      </MenuManagerServiceProvider>,
+    );
+  }
+
+  it('initial seeded name ("(Copy)") blocks Save Copy with contains-copy helper', () => {
+    renderClone(vi.fn());
+    const saveBtn = screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+    const helper = screen.getByTestId('edit-name-error');
+    expect(helper.textContent).toMatch(/cannot contain ['"]Copy['"]/i);
+  });
+
+  it('clearing the name shows the empty helper and keeps Save Copy disabled', async () => {
+    const user = userEvent.setup();
+    renderClone(vi.fn());
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    const helper = screen.getByTestId('edit-name-error');
+    expect(helper.textContent).toMatch(/name is required/i);
+    expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('typing the source name verbatim shows the unchanged helper', async () => {
+    const user = userEvent.setup();
+    renderClone(vi.fn());
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'Grilled Chicken');
+    const helper = screen.getByTestId('edit-name-error');
+    expect(helper.textContent).toMatch(/must differ from the source/i);
+    expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('typing any "copy"-containing name (case-insensitive) is blocked', async () => {
+    const user = userEvent.setup();
+    renderClone(vi.fn());
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'COPY of Foo');
+    const helper = screen.getByTestId('edit-name-error');
+    expect(helper.textContent).toMatch(/cannot contain ['"]Copy['"]/i);
+    expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('typing a unique name unrelated to source enables Save Copy', async () => {
+    const user = userEvent.setup();
+    renderClone(vi.fn());
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'Spicy Grilled Chicken');
+    expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
+    expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('EditModal — cloneMode Save Copy round-trip', () => {
+  it('successful onCloneSave calls onComplete with the new id+name and closes the modal', async () => {
+    const user = userEvent.setup();
+    const onCloneSave = vi.fn().mockResolvedValue({
+      id: 'new-1',
+      name: 'Spicy Grilled Chicken',
+      restaurant_id: 'rest-1',
+      item_type: 'dish',
+      source_id: 'item-1',
+    });
+    const onComplete = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={onClose}
+          onComplete={onComplete}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={onCloneSave}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'Spicy Grilled Chicken');
+    await user.click(screen.getByTestId('edit-clone-save-btn'));
+
+    await waitFor(() => expect(onCloneSave).toHaveBeenCalledTimes(1));
+    expect(onCloneSave).toHaveBeenCalledWith('item-1', 'Spicy Grilled Chicken');
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'new-1',
+      name: 'Spicy Grilled Chicken',
+      item_type: 'dish',
+    }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('failed onCloneSave surfaces the error in the clone-error banner without closing', async () => {
+    const user = userEvent.setup();
+    const onCloneSave = vi.fn().mockRejectedValue(new Error('Server said no'));
+    const onComplete = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={{ ...makeDishItem(), name: 'Grilled Chicken (Copy)' }}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={onClose}
+          onComplete={onComplete}
+          cloneMode
+          cloneSourceName="Grilled Chicken"
+          sourceItemId="item-1"
+          onCloneSave={onCloneSave}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'Spicy Grilled Chicken');
+    await user.click(screen.getByTestId('edit-clone-save-btn'));
+
+    const banner = await screen.findByTestId('edit-clone-error');
+    expect(banner.textContent).toContain('Server said no');
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('EditModal — new-item immediate name validation (red border + helper)', () => {
+  it('shows "Name is required" helper as soon as the input is empty on a new item', async () => {
+    const user = userEvent.setup();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem({ id: '', name: '' })}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          isNewItem
+          onSaveNewItem={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    // No save click required — empty-name helper appears immediately.
+    const helper = screen.getByTestId('edit-name-error');
+    expect(helper.textContent).toMatch(/name is required/i);
+    // Typing then clearing again should keep the helper visible.
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.type(input, 'X');
+    expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
+    await user.clear(input);
+    expect(screen.getByTestId('edit-name-error').textContent).toMatch(/name is required/i);
+  });
+
+  it('does NOT show the helper on an existing-item edit until Save is clicked', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem()}
+          restaurantId="rest-1"
+          menus={[]}
+          allItems={[]}
+          onClose={onClose}
+          onComplete={vi.fn()}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    // Edit-mode pre-fills name = "Grilled Chicken" so no helper at rest.
+    expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
+    // Clear the name to simulate accidental blank — STILL no helper until
+    // the owner attempts to Save (preserving the existing UX for edits).
+    const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
+    await user.clear(input);
+    expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
+  });
+});
