@@ -26,7 +26,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping';
 
 export interface DragState {
   itemIds: string[];
@@ -130,6 +130,21 @@ interface Props {
    * restaurantService.enrichMenuItemsBatch handles this internally).
    */
   onBulkEnrich?: (itemIds: string[]) => Promise<{ enriched: number; skipped: number; failed: number }>;
+  /**
+   * PDD 2026-05-21 — apply one custom grouping spec to N selected parents.
+   * Wired by owner-webapp from the Food Item Library page; admin/waiter
+   * don't pass it so the Grouping tab stays hidden. Must throw — the
+   * shared panel discriminates on `error.name === 'BulkApplyGroupingConflictError'`
+   * to surface the conflict banner.
+   */
+  onBulkApplyGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      members: Array<{ item_id: string; position?: number }>;
+    },
+  ) => Promise<void>;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Optional: called when the owner changes the heat/spice label in EditModal. */
@@ -212,7 +227,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1783,6 +1798,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkDietary,
             onBulkSweetness,
             onBulkEnrich,
+            onBulkApplyGrouping,
             heatLabels,
             sweetnessLabels,
           }}

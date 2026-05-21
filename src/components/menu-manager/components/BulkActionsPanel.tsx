@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2 } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Search } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
@@ -68,6 +68,24 @@ interface BulkActionsPanelProps {
   onBulkEnrich?: (itemIds: string[]) => Promise<{
     enriched: number; skipped: number; failed: number;
   }>;
+  /**
+   * PDD 2026-05-21 — bulk apply grouping. When provided, the panel surfaces
+   * a Grouping tab (Layers icon) that creates one custom grouping per
+   * selected parent (same name + rule + initial members). Throws
+   * `BulkApplyGroupingConflictError` (owner-webapp side) on 409 NAME_CONFLICT
+   * — the panel catches that specifically and renders an inline conflict
+   * banner without closing. Other failures surface via the generic error
+   * region. Owner-webapp wires this from the Food Item Library page;
+   * admin/waiter don't pass it — tab is hidden.
+   */
+  onBulkApplyGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      members: Array<{ item_id: string; position?: number }>;
+    },
+  ) => Promise<void>;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -92,6 +110,10 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   // Enrich mode is opt-in via the onBulkEnrich prop (admin-only). Listed
   // here so the render filter has the right ordering when included.
   { key: 'enrich',       label: 'Enrich',       icon: <Wand2 size={13} /> },
+  // Grouping mode is opt-in via the onBulkApplyGrouping prop (Food Library
+  // bulk apply). Listed here so the render filter has the right ordering
+  // when included.
+  { key: 'grouping',     label: 'Grouping',     icon: <Layers size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -121,15 +143,15 @@ export default function BulkActionsPanel({
   onBulkDietary,
   onBulkSweetness,
   onBulkEnrich,
+  onBulkApplyGrouping,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
-  // Hide the Enrich mode tab unless the admin consumer wired a callback.
-  // Same opt-in pattern as Sweetness (SWEETNESS_VISIBLE flag) — owner-webapp
-  // and waiter-webapp never see this tab.
-  const availableModes = onBulkEnrich
-    ? MODES
-    : MODES.filter((m) => m.key !== 'enrich');
+  // Hide the Enrich and Grouping tabs unless the consumer wired a callback.
+  // Same opt-in pattern as Sweetness (SWEETNESS_VISIBLE flag).
+  const availableModes = MODES
+    .filter((m) => m.key !== 'enrich' || !!onBulkEnrich)
+    .filter((m) => m.key !== 'grouping' || !!onBulkApplyGrouping);
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -158,6 +180,20 @@ export default function BulkActionsPanel({
   const [pickedHeat, setPickedHeat] = useState<string | null>(null);
   const [pickedSweetness, setPickedSweetness] = useState<string | null>(null);
   const [pickedDietaryTags, setPickedDietaryTags] = useState<Set<string>>(new Set());
+
+  // PDD 2026-05-21 — bulk Grouping mode form state.
+  // Rule presets translate to {min_select, max_select, default_select} at
+  // submit time (mirrors AddGroupingButton's preset map for consistency).
+  type GroupingPreset = 'optional' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
+  const [groupingName, setGroupingName] = useState<string>('');
+  const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('optional');
+  const [groupingPresetN, setGroupingPresetN] = useState<number>(1);
+  const [groupingPresetMax, setGroupingPresetMax] = useState<number>(1);
+  const [groupingMemberIds, setGroupingMemberIds] = useState<string[]>([]);
+  const [groupingMemberSearch, setGroupingMemberSearch] = useState<string>('');
+  const [groupingConflicts, setGroupingConflicts] = useState<
+    Array<{ food_item_id: string; food_item_name: string }>
+  >([]);
 
   const selectedItems = items.filter((i) => selected.has(i.id));
   const count = selectedItems.length;
@@ -305,6 +341,57 @@ export default function BulkActionsPanel({
     }
   }
 
+  async function runGrouping() {
+    if (!onBulkApplyGrouping) { onComplete(items, selected); return; }
+    const trimmed = groupingName.trim();
+    if (!trimmed) { setError('Grouping name is required'); return; }
+    // Translate preset → flat rule shape. Mirrors AddGroupingButton's
+    // presetToRule for consistency across the create surfaces.
+    const ruleMap: Record<GroupingPreset, {
+      min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first';
+    }> = {
+      optional: { min_select: 0, max_select: null,                default_select: 'none' },
+      exactly:  { min_select: groupingPresetN, max_select: groupingPresetN, default_select: 'none' },
+      atLeast:  { min_select: groupingPresetN, max_select: null,            default_select: 'none' },
+      atMost:   { min_select: 0,               max_select: groupingPresetN, default_select: 'none' },
+      between:  { min_select: groupingPresetN, max_select: groupingPresetMax, default_select: 'none' },
+      all:      { min_select: 0,               max_select: null,            default_select: 'all'  },
+    };
+    setExecuting(true);
+    setError(null);
+    setGroupingConflicts([]);
+    try {
+      await onBulkApplyGrouping(
+        selectedItems.map((i) => i.id),
+        {
+          name: trimmed,
+          rule: ruleMap[groupingPreset],
+          members: groupingMemberIds.map((id, j) => ({ item_id: id, position: j })),
+        },
+      );
+      // Success — refresh + close via onComplete. The consumer's
+      // onRefresh fetches the new groupings on each parent.
+      onComplete(items, selected);
+    } catch (err) {
+      // The owner-webapp service throws BulkApplyGroupingConflictError
+      // (with .conflicts) on 409. We discriminate structurally so the
+      // shared package doesn't need to import the typed class.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = err as any;
+      if (
+        e && e.name === 'BulkApplyGroupingConflictError'
+        && Array.isArray(e.conflicts)
+      ) {
+        setGroupingConflicts(e.conflicts);
+        // Do NOT setError — banner is the dedicated conflict surface.
+      } else {
+        setError(e instanceof Error ? e.message : 'Bulk apply grouping failed');
+      }
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   async function runSpice() {
     if (!pickedHeat) { setError('Select a spice level'); return; }
     if (!onBulkSpice) { onComplete(items, selected); return; }
@@ -437,6 +524,7 @@ export default function BulkActionsPanel({
         case 'sweetness':    await runSweetness(); break;
         case 'dietary':      await runDietary(); break;
         case 'enrich':       await runEnrich(); break;
+        case 'grouping':     await runGrouping(); break;
         case 'delete':       await runDelete(); break;
       }
       trackAction(actionName, {
@@ -687,6 +775,31 @@ export default function BulkActionsPanel({
                 progress shows below the action button.
               </div>
             </div>
+          )}
+          {mode === 'grouping' && (
+            <BulkGroupingForm
+              count={count}
+              items={items}
+              selectedParents={selected}
+              name={groupingName}
+              onChangeName={setGroupingName}
+              preset={groupingPreset}
+              onChangePreset={setGroupingPreset}
+              presetN={groupingPresetN}
+              onChangePresetN={setGroupingPresetN}
+              presetMax={groupingPresetMax}
+              onChangePresetMax={setGroupingPresetMax}
+              memberIds={groupingMemberIds}
+              onAddMember={(id) =>
+                setGroupingMemberIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+              }
+              onRemoveMember={(id) =>
+                setGroupingMemberIds((prev) => prev.filter((m) => m !== id))
+              }
+              search={groupingMemberSearch}
+              onChangeSearch={setGroupingMemberSearch}
+              conflicts={groupingConflicts}
+            />
           )}
         </div>
 
@@ -1378,6 +1491,297 @@ function DeleteForm({ count, confirmed }: { count: number; confirmed: boolean })
           data-testid="delete-confirm-prompt"
         >
           ⚠️ Click "Confirm — delete {count} items" again to proceed.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── BulkGroupingForm — PDD 2026-05-21 ────────────────────────────────────────
+// Form for the Grouping bulk action: name + rule preset + member multi-select
+// + 409 conflict banner. Member picker filters the existing food-item pool by
+// name (case-insensitive); the selected parents are excluded so a parent
+// can't be its own member.
+
+type GroupingPresetKind = 'optional' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
+
+const GROUPING_PRESETS: { key: GroupingPresetKind; label: string; needsN: boolean; needsMax: boolean }[] = [
+  { key: 'optional', label: 'Optional',     needsN: false, needsMax: false },
+  { key: 'exactly',  label: 'Exactly N',    needsN: true,  needsMax: false },
+  { key: 'atLeast',  label: 'At least N',   needsN: true,  needsMax: false },
+  { key: 'atMost',   label: 'At most N',    needsN: true,  needsMax: false },
+  { key: 'between',  label: 'Between N–M',  needsN: true,  needsMax: true  },
+  { key: 'all',      label: 'All included', needsN: false, needsMax: false },
+];
+
+interface BulkGroupingFormProps {
+  count: number;
+  items: MenuItemDisplay[];
+  selectedParents: Set<string>;
+  name: string;
+  onChangeName: (v: string) => void;
+  preset: GroupingPresetKind;
+  onChangePreset: (p: GroupingPresetKind) => void;
+  presetN: number;
+  onChangePresetN: (n: number) => void;
+  presetMax: number;
+  onChangePresetMax: (n: number) => void;
+  memberIds: string[];
+  onAddMember: (id: string) => void;
+  onRemoveMember: (id: string) => void;
+  search: string;
+  onChangeSearch: (v: string) => void;
+  conflicts: Array<{ food_item_id: string; food_item_name: string }>;
+}
+
+function BulkGroupingForm({
+  count, items, selectedParents,
+  name, onChangeName,
+  preset, onChangePreset,
+  presetN, onChangePresetN,
+  presetMax, onChangePresetMax,
+  memberIds, onAddMember, onRemoveMember,
+  search, onChangeSearch,
+  conflicts,
+}: BulkGroupingFormProps) {
+  const presetConfig = GROUPING_PRESETS.find((p) => p.key === preset)!;
+  const memberLookup = new Map(items.map((i) => [i.id, i]));
+  // Pool: every food item NOT a selected parent and NOT already picked.
+  // Filtered by search (case-insensitive name substring).
+  const q = search.trim().toLowerCase();
+  const pool = items.filter((i) => {
+    if (selectedParents.has(i.id)) return false;
+    if (memberIds.includes(i.id)) return false;
+    if (q && !i.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+        Creates one custom grouping on each of {count} selected item{count !== 1 ? 's' : ''}.
+        Same name, rule, and members are applied to all. You can edit each grouping
+        independently afterward.
+      </div>
+
+      {/* Name */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+          Grouping name
+        </label>
+        <input
+          data-testid="bulk-grouping-name-input"
+          type="text"
+          value={name}
+          onChange={(e) => onChangeName(e.target.value)}
+          placeholder="e.g. Extras, Add-ons, Spice Level"
+          maxLength={64}
+          style={{
+            padding: '8px 10px',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-xs)',
+            fontSize: 13,
+          }}
+        />
+      </div>
+
+      {/* Rule preset */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+          Selection rule
+        </label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {GROUPING_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              data-testid={`bulk-grouping-rule-preset-${p.key}`}
+              onClick={() => onChangePreset(p.key)}
+              style={{
+                padding: '5px 10px',
+                fontSize: 12,
+                border: `1px solid ${preset === p.key ? 'var(--brand)' : 'var(--border)'}`,
+                background: preset === p.key ? 'var(--brand-l)' : '#fff',
+                color: preset === p.key ? 'var(--brand-s)' : 'var(--ink)',
+                borderRadius: 'var(--r-xs)',
+                cursor: 'pointer',
+                fontWeight: preset === p.key ? 600 : 400,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {presetConfig.needsN && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              {presetConfig.needsMax ? 'N:' : 'N:'}
+            </span>
+            <input
+              data-testid="bulk-grouping-rule-n-input"
+              type="number"
+              min={1}
+              value={presetN}
+              onChange={(e) => onChangePresetN(Math.max(1, parseInt(e.target.value || '1', 10)))}
+              style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+            />
+            {presetConfig.needsMax && (
+              <>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>M:</span>
+                <input
+                  data-testid="bulk-grouping-rule-max-input"
+                  type="number"
+                  min={presetN}
+                  value={presetMax}
+                  onChange={(e) => onChangePresetMax(Math.max(presetN, parseInt(e.target.value || String(presetN), 10)))}
+                  style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+                />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Members */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+          Initial members ({memberIds.length}) — optional
+        </label>
+        {/* Selected pills */}
+        {memberIds.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {memberIds.map((id) => {
+              const item = memberLookup.get(id);
+              if (!item) return null;
+              return (
+                <span
+                  key={id}
+                  data-testid={`bulk-grouping-member-pill-${id}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '3px 4px 3px 8px',
+                    background: 'var(--brand-l)',
+                    border: '1px solid var(--brand)',
+                    borderRadius: 'var(--r-xs)',
+                    fontSize: 11,
+                    color: 'var(--brand-s)',
+                  }}
+                >
+                  {item.name}
+                  <button
+                    type="button"
+                    data-testid={`bulk-grouping-member-pill-remove-${id}`}
+                    onClick={() => onRemoveMember(id)}
+                    aria-label={`Remove ${item.name}`}
+                    style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      padding: 0, color: 'inherit',
+                      display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {/* Search + pool */}
+        <div style={{ position: 'relative' }}>
+          <Search
+            size={12}
+            style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}
+          />
+          <input
+            data-testid="bulk-grouping-member-search"
+            type="text"
+            value={search}
+            onChange={(e) => onChangeSearch(e.target.value)}
+            placeholder="Search food items to add as members…"
+            style={{
+              width: '100%',
+              padding: '7px 8px 7px 26px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xs)',
+              fontSize: 12,
+            }}
+          />
+        </div>
+        {(q || pool.length <= 12) && (
+          <div
+            style={{
+              maxHeight: 180,
+              overflowY: 'auto',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xs)',
+              background: '#fff',
+            }}
+          >
+            {pool.length === 0 ? (
+              <div style={{ padding: 10, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+                {q ? 'No matching items' : 'All items already selected'}
+              </div>
+            ) : (
+              pool.slice(0, 50).map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  data-testid={`bulk-grouping-member-pool-item-${it.id}`}
+                  onClick={() => onAddMember(it.id)}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '6px 10px',
+                    border: 'none',
+                    borderBottom: '1px solid var(--border)',
+                    background: '#fff',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+                >
+                  {it.name}
+                  {it.item_type && it.item_type !== 'dish' && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>
+                      ({it.item_type})
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Conflict banner */}
+      {conflicts.length > 0 && (
+        <div
+          data-testid="bulk-grouping-error-banner"
+          role="alert"
+          style={{
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: 'var(--r-xs)',
+            padding: '10px 12px',
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+            Name conflict on {conflicts.length} item{conflicts.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+            These items already have a grouping named "{name.trim()}". Rename your grouping
+            or deselect these items, then try again.
+          </div>
+          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+            {conflicts.map((c) => (
+              <li
+                key={c.food_item_id}
+                data-testid={`bulk-grouping-conflict-row-${c.food_item_id}`}
+              >
+                {c.food_item_name}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
