@@ -86,6 +86,39 @@ export interface FormatMoneyOptions {
  * Always 2 decimal places (matches `Intl.NumberFormat` default; preserves
  * cents-equivalent precision for taxes, totals, modifier add-ons, splits).
  */
+// `Intl.NumberFormat` instances are expensive to construct (each call invokes
+// ICU initialization). Cache them per (locale, currency, notation) so high-
+// throughput renders like the 500-row FoodLibraryTable don't pay the cost
+// per row. The cache is keyed by the formatter's input options; cache hits
+// reuse a single Intl.NumberFormat instance whose .format() is cheap.
+const _NF_CACHE: Map<string, Intl.NumberFormat> = new Map();
+function _getFormatter(
+  locale: string,
+  currency: string,
+  notation: 'standard' | 'compact',
+): Intl.NumberFormat | null {
+  const key = `${locale}|${currency}|${notation}`;
+  let nf = _NF_CACHE.get(key);
+  if (nf) return nf;
+  try {
+    nf = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: notation === 'compact' ? 0 : 2,
+      maximumFractionDigits: notation === 'compact' ? 1 : 2,
+      // NEVER 'narrowSymbol' — throws RangeError on iOS Safari.
+      currencyDisplay: 'symbol',
+      ...(notation === 'compact'
+        ? { notation: 'compact' as const, compactDisplay: 'short' as const }
+        : {}),
+    });
+  } catch {
+    return null; // malformed locale on a very old engine
+  }
+  _NF_CACHE.set(key, nf);
+  return nf;
+}
+
 export function formatMoney(
   amount: number | string | null | undefined,
   currencyCode: string = DEFAULT_CURRENCY_CODE,
@@ -100,21 +133,8 @@ export function formatMoney(
   if (!Number.isFinite(n)) return `${cfg.symbolPreview}—`;
 
   const notation = options.notation ?? 'standard';
-
-  try {
-    return new Intl.NumberFormat(locale ?? cfg.defaultLocale, {
-      style: 'currency',
-      currency: cfg.code,
-      minimumFractionDigits: notation === 'compact' ? 0 : 2,
-      maximumFractionDigits: notation === 'compact' ? 1 : 2,
-      // NEVER 'narrowSymbol' — throws RangeError on iOS Safari.
-      currencyDisplay: 'symbol',
-      ...(notation === 'compact'
-        ? { notation: 'compact' as const, compactDisplay: 'short' as const }
-        : {}),
-    }).format(n);
-  } catch {
-    // Defensive fallback: malformed locale on a very old engine.
-    return `${cfg.symbolPreview}${n.toFixed(notation === 'compact' ? 0 : 2)}`;
-  }
+  const nf = _getFormatter(locale ?? cfg.defaultLocale, cfg.code, notation);
+  if (nf) return nf.format(n);
+  // Defensive fallback: malformed locale on a very old engine.
+  return `${cfg.symbolPreview}${n.toFixed(notation === 'compact' ? 0 : 2)}`;
 }
