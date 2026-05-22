@@ -16,6 +16,7 @@ import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
+import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
 import BulkModifierPanel from './components/BulkModifierPanel';
 import EditModal, { type DietaryTagService } from './components/EditModal';
 import MenuEditPanel from './components/MenuEditPanel';
@@ -190,6 +191,53 @@ interface Props {
     },
     newMemberIds: string[],
   ) => Promise<void>;
+  /**
+   * PDD 2026-05-22 — Menu Builder bulk Includes/Choose-One.
+   * Opt-in trio: when all three are wired, the MenuBuilder surfaces a
+   * checkbox column + bulk-action button on the active menu, and the
+   * drawer (BulkMenuSidesPanel) hooks into these adapters on Apply.
+   */
+  onBulkAddSidesToMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    body: { side_type: 'and' | 'or'; side_ids: string[] },
+  ) => Promise<{
+    updated: Array<{
+      menu_item_menu_id: string;
+      food_item_id: string;
+      food_item_name: string;
+      sides_added: number;
+      sides_skipped: number;
+    }>;
+  }>;
+  onBulkRemoveSidesFromMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    body: { side_type: 'and' | 'or'; side_ids: string[] },
+  ) => Promise<{
+    updated: Array<{
+      menu_item_menu_id: string;
+      food_item_id: string;
+      food_item_name: string;
+      sides_removed: number;
+      sides_skipped: number;
+    }>;
+  }>;
+  /** Discovery loader for the Remove-Includes tab — fans out per parent. */
+  loadPerMenuSides?: (
+    menuId: string,
+    itemId: string,
+  ) => Promise<{
+    sides_and: Array<{ id: string; name: string }>;
+    sides_or: Array<{ id: string; name: string }>;
+  }>;
+  /**
+   * PDD 2026-05-22 amendment 3 — invoked when a menu-tab change clears
+   * the bulk selection while the drawer was open. Consumer wires this
+   * to their toast infra (owner-webapp uses sonner). Shared stays
+   * toast-agnostic — peer deps are React + lucide-react only.
+   */
+  onBulkSelectionClearedByTabChange?: () => void;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Optional: called when the owner changes the heat/spice label in EditModal. */
@@ -272,7 +320,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -347,6 +395,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     }
     return initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null;
   });
+  // PDD 2026-05-22 — Menu Builder bulk selection state. Per-active-menu —
+  // switching menu tabs clears it (amendment 3). Only surfaces when the
+  // consumer wires the bulk-sides adapters.
+  const bulkSidesEnabled =
+    !!onBulkAddSidesToMenuItems
+    && !!onBulkRemoveSidesFromMenuItems
+    && !!loadPerMenuSides;
+  const [bulkMenuSelection, setBulkMenuSelection] = useState<Set<string>>(new Set());
+  const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
@@ -2030,7 +2087,20 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             dragOver={dragOver}
             colorMap={colorMap}
             getSettings={getSettings}
-            onTabChange={setActiveMenuId}
+            onTabChange={(menuId) => {
+              // PDD 2026-05-22 amendment 3 — switching menu tabs while
+              // the bulk drawer is open closes it + clears selection +
+              // notifies the consumer (which surfaces a toast).
+              if (bulkMenuSelection.size > 0 || bulkMenuSidesOpen) {
+                const hadSelection = bulkMenuSelection.size > 0;
+                setBulkMenuSelection(new Set());
+                setBulkMenuSidesOpen(false);
+                if (hadSelection && menuId !== activeMenuId) {
+                  onBulkSelectionClearedByTabChange?.();
+                }
+              }
+              setActiveMenuId(menuId);
+            }}
             onToggleCollapse={(key) =>
               setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
             }
@@ -2059,9 +2129,48 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showAddGrouping={showAddGrouping}
             perMenuSides={perMenuSides}
             missingPriceFilter={missingPriceFilter}
+            bulkSelectionEnabled={bulkSidesEnabled}
+            bulkSelection={bulkMenuSelection}
+            onToggleBulkSelection={(itemId) =>
+              setBulkMenuSelection((prev) => {
+                const next = new Set(prev);
+                if (next.has(itemId)) next.delete(itemId);
+                else next.add(itemId);
+                return next;
+              })
+            }
+            onOpenBulkPanel={() => setBulkMenuSidesOpen(true)}
           />
           </div>
         </div>
+      )}
+
+      {/* PDD 2026-05-22 — Menu Builder bulk Includes drawer */}
+      {bulkSidesEnabled
+        && bulkMenuSidesOpen
+        && activeMenuId
+        && bulkMenuSelection.size > 0 && (
+        <BulkMenuSidesPanel
+          menuId={activeMenuId}
+          menuName={menus.find((m) => m.id === activeMenuId)?.name}
+          selectedItems={items
+            .filter((i) => bulkMenuSelection.has(i.id))
+            .map((i) => ({ id: i.id, name: i.name }))}
+          pool={items}
+          loadPerMenuSides={(itemId) => loadPerMenuSides!(activeMenuId, itemId)}
+          onBulkAddSides={(itemIds, body) =>
+            onBulkAddSidesToMenuItems!(activeMenuId, itemIds, body)
+          }
+          onBulkRemoveSides={(itemIds, body) =>
+            onBulkRemoveSidesFromMenuItems!(activeMenuId, itemIds, body)
+          }
+          onClose={() => setBulkMenuSidesOpen(false)}
+          onComplete={() => {
+            setBulkMenuSidesOpen(false);
+            setBulkMenuSelection(new Set());
+            void onRefresh?.();
+          }}
+        />
       )}
     </div>
     </MenuManagerServiceProvider>
