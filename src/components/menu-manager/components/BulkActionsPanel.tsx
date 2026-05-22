@@ -2,8 +2,8 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Search } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
@@ -86,6 +86,39 @@ interface BulkActionsPanelProps {
       members: Array<{ item_id: string; position?: number }>;
     },
   ) => Promise<void>;
+  /**
+   * PDD 2026-05-21 sibling — bulk REMOVE one grouping spec from N parents.
+   * Throw-only contract: 409 PARTIAL_MISMATCH surfaces via an error whose
+   * `.name === 'BulkRemoveGroupingMismatchError'` with a `.mismatches`
+   * array. Other failures route to the generic error region. Owner-webapp
+   * wires this from the Food Item Library page alongside
+   * `loadGroupingsForItem` (both required to surface the tab).
+   */
+  onBulkRemoveGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      member_ids: string[];
+    },
+  ) => Promise<void>;
+  /**
+   * PDD 2026-05-21 sibling — used by the Remove grouping tab to discover
+   * shared groupings across selected parents. The panel issues one call
+   * per selected parent via `Promise.allSettled` on mount, intersects by
+   * (name, rule, sorted-member-ids) hash, filters `is_default=true`, and
+   * shows the surviving candidates as radio options. Owner-webapp wires
+   * this to `ownerGroupingsService.listGroupings`.
+   */
+  loadGroupingsForItem?: (itemId: string) => Promise<Array<{
+    id: string;
+    name: string;
+    is_default: boolean;
+    min_select: number;
+    max_select: number | null;
+    default_select: 'all' | 'none' | 'first';
+    items?: Array<{ menu_item_id: string }>;
+  }>>;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -114,6 +147,10 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   // bulk apply). Listed here so the render filter has the right ordering
   // when included.
   { key: 'grouping',     label: 'Grouping',     icon: <Layers size={13} /> },
+  // Remove grouping is opt-in via onBulkRemoveGrouping + loadGroupingsForItem
+  // (Food Library bulk remove). Listed after Grouping so the two related
+  // modes sit together in the tab bar.
+  { key: 'removeGrouping', label: 'Remove grouping', icon: <Layers2 size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -144,14 +181,18 @@ export default function BulkActionsPanel({
   onBulkSweetness,
   onBulkEnrich,
   onBulkApplyGrouping,
+  onBulkRemoveGrouping,
+  loadGroupingsForItem,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
-  // Hide the Enrich and Grouping tabs unless the consumer wired a callback.
-  // Same opt-in pattern as Sweetness (SWEETNESS_VISIBLE flag).
+  // Hide opt-in tabs unless the consumer wired the matching callbacks.
+  // 'removeGrouping' needs BOTH the action AND the discovery loader.
   const availableModes = MODES
     .filter((m) => m.key !== 'enrich' || !!onBulkEnrich)
-    .filter((m) => m.key !== 'grouping' || !!onBulkApplyGrouping);
+    .filter((m) => m.key !== 'grouping' || !!onBulkApplyGrouping)
+    .filter((m) =>
+      m.key !== 'removeGrouping' || (!!onBulkRemoveGrouping && !!loadGroupingsForItem));
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -193,6 +234,29 @@ export default function BulkActionsPanel({
   const [groupingMemberSearch, setGroupingMemberSearch] = useState<string>('');
   const [groupingConflicts, setGroupingConflicts] = useState<
     Array<{ food_item_id: string; food_item_name: string }>
+  >([]);
+
+  // PDD 2026-05-21 sibling — bulk Remove Grouping mode state.
+  // Discovery: parallel `loadGroupingsForItem` calls, intersected client-side
+  // by (name, rule, sorted-member-ids) hash; defaults filtered out.
+  type RemoveGroupingCandidate = {
+    name: string;
+    min_select: number;
+    max_select: number | null;
+    default_select: 'all' | 'none' | 'first';
+    member_ids: string[];           // already sorted at hash time
+    memberLabel: string;             // pre-computed "N members"
+  };
+  const [removeLoadStatus, setRemoveLoadStatus] = useState<
+    'idle' | 'loading' | 'ready'
+  >('idle');
+  const [removeCandidates, setRemoveCandidates] = useState<RemoveGroupingCandidate[]>([]);
+  const [removeLoadErrors, setRemoveLoadErrors] = useState<
+    Array<{ item_id: string; item_name: string }>
+  >([]);
+  const [removePickedName, setRemovePickedName] = useState<string | null>(null);
+  const [removeMismatches, setRemoveMismatches] = useState<
+    Array<{ food_item_id: string; food_item_name: string; reason: string }>
   >([]);
 
   const selectedItems = items.filter((i) => selected.has(i.id));
@@ -392,6 +456,150 @@ export default function BulkActionsPanel({
     }
   }
 
+  // ── PDD 2026-05-21 sibling — Remove Grouping discovery + submit ──────
+
+  /**
+   * Hash a grouping by (lower-trim-name, min, max, default, sorted-member-ids).
+   * Used to intersect candidates across selected parents.
+   */
+  function hashGrouping(g: {
+    name: string;
+    min_select: number;
+    max_select: number | null;
+    default_select: string;
+    items?: Array<{ menu_item_id: string }>;
+  }): string {
+    const memberIds = (g.items ?? [])
+      .map((it) => it.menu_item_id)
+      .sort()
+      .join(',');
+    return [
+      g.name.trim().toLowerCase(),
+      g.min_select,
+      g.max_select ?? 'null',
+      g.default_select,
+      memberIds,
+    ].join('|');
+  }
+
+  /**
+   * Discovery: fire one loadGroupingsForItem call per selected parent,
+   * intersect by hash, filter is_default=true out, and stash the surviving
+   * candidates. Uses Promise.allSettled so a single failed parent doesn't
+   * collapse the whole form — failed parents surface as inline error
+   * rows with a Retry button.
+   *
+   * Resets selection + mismatches each time it runs (entry into the tab
+   * or explicit "Refresh" click after a mismatch).
+   */
+  async function discoverRemoveCandidates() {
+    if (!loadGroupingsForItem) return;
+    setRemoveLoadStatus('loading');
+    setRemoveCandidates([]);
+    setRemoveLoadErrors([]);
+    setRemovePickedName(null);
+    setRemoveMismatches([]);
+    setError(null);
+
+    const results = await Promise.allSettled(
+      selectedItems.map((it) => loadGroupingsForItem(it.id)),
+    );
+
+    const fulfilledHashSets: Array<Map<string, RemoveGroupingCandidate>> = [];
+    const newLoadErrors: Array<{ item_id: string; item_name: string }> = [];
+    results.forEach((res, i) => {
+      const parent = selectedItems[i];
+      if (res.status === 'rejected') {
+        newLoadErrors.push({ item_id: parent.id, item_name: parent.name });
+        return;
+      }
+      const map = new Map<string, RemoveGroupingCandidate>();
+      for (const g of res.value) {
+        if (g.is_default) continue;
+        const sortedMembers = (g.items ?? [])
+          .map((it) => it.menu_item_id)
+          .sort();
+        const candidate: RemoveGroupingCandidate = {
+          name: g.name,
+          min_select: g.min_select,
+          max_select: g.max_select,
+          default_select: g.default_select,
+          member_ids: sortedMembers,
+          memberLabel: `${sortedMembers.length} member${sortedMembers.length === 1 ? '' : 's'}`,
+        };
+        map.set(hashGrouping(g), candidate);
+      }
+      fulfilledHashSets.push(map);
+    });
+
+    // Intersection = hashes present in EVERY successful parent's map.
+    // (Failed parents excluded from the intersection — the load-error rows
+    // warn the owner that the result may be over-permissive.)
+    let intersection: RemoveGroupingCandidate[] = [];
+    if (fulfilledHashSets.length > 0) {
+      const [first, ...rest] = fulfilledHashSets;
+      for (const [hash, candidate] of first) {
+        if (rest.every((m) => m.has(hash))) intersection.push(candidate);
+      }
+    }
+    setRemoveCandidates(intersection);
+    setRemoveLoadErrors(newLoadErrors);
+    setRemoveLoadStatus('ready');
+  }
+
+  async function retryDiscoveryForParent(itemId: string) {
+    if (!loadGroupingsForItem) return;
+    // Just re-fire the whole discovery — it's idempotent + simpler than
+    // patching one parent's slot in the intersection.
+    setRemoveLoadErrors((prev) => prev.filter((e) => e.item_id !== itemId));
+    await discoverRemoveCandidates();
+  }
+
+  async function runRemoveGrouping() {
+    if (!onBulkRemoveGrouping) { onComplete(items, selected); return; }
+    const picked = removeCandidates.find((c) => c.name === removePickedName);
+    if (!picked) { setError('Pick a grouping to remove'); return; }
+    setExecuting(true);
+    setError(null);
+    setRemoveMismatches([]);
+    try {
+      await onBulkRemoveGrouping(
+        selectedItems.map((i) => i.id),
+        {
+          name: picked.name,
+          rule: {
+            min_select: picked.min_select,
+            max_select: picked.max_select,
+            default_select: picked.default_select,
+          },
+          member_ids: picked.member_ids,
+        },
+      );
+      onComplete(items, selected);
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = err as any;
+      if (
+        e && e.name === 'BulkRemoveGroupingMismatchError'
+        && Array.isArray(e.mismatches)
+      ) {
+        setRemoveMismatches(e.mismatches);
+      } else {
+        setError(e instanceof Error ? e.message : 'Bulk remove grouping failed');
+      }
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  // Fire discovery on first entry into the 'removeGrouping' mode.
+  useEffect(() => {
+    if (mode === 'removeGrouping' && removeLoadStatus === 'idle') {
+      void discoverRemoveCandidates();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   async function runSpice() {
     if (!pickedHeat) { setError('Select a spice level'); return; }
     if (!onBulkSpice) { onComplete(items, selected); return; }
@@ -525,6 +733,7 @@ export default function BulkActionsPanel({
         case 'dietary':      await runDietary(); break;
         case 'enrich':       await runEnrich(); break;
         case 'grouping':     await runGrouping(); break;
+        case 'removeGrouping': await runRemoveGrouping(); break;
         case 'delete':       await runDelete(); break;
       }
       trackAction(actionName, {
@@ -799,6 +1008,20 @@ export default function BulkActionsPanel({
               search={groupingMemberSearch}
               onChangeSearch={setGroupingMemberSearch}
               conflicts={groupingConflicts}
+            />
+          )}
+          {mode === 'removeGrouping' && (
+            <BulkRemoveGroupingForm
+              count={count}
+              status={removeLoadStatus}
+              candidates={removeCandidates}
+              loadErrors={removeLoadErrors}
+              pickedName={removePickedName}
+              onPick={setRemovePickedName}
+              onRetryParent={retryDiscoveryForParent}
+              mismatches={removeMismatches}
+              onRefresh={() => { void discoverRemoveCandidates(); }}
+              executing={executing}
             />
           )}
         </div>
@@ -1782,6 +2005,198 @@ function BulkGroupingForm({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── BulkRemoveGroupingForm — PDD 2026-05-21 sibling ──────────────────────────
+// Form for the Remove grouping bulk action: parallel discovery + radio
+// candidate list + per-parent load-error rows + 409 mismatch banner with
+// Refresh button.
+
+interface BulkRemoveGroupingFormProps {
+  count: number;
+  status: 'idle' | 'loading' | 'ready';
+  candidates: Array<{
+    name: string;
+    min_select: number;
+    max_select: number | null;
+    default_select: 'all' | 'none' | 'first';
+    member_ids: string[];
+    memberLabel: string;
+  }>;
+  loadErrors: Array<{ item_id: string; item_name: string }>;
+  pickedName: string | null;
+  onPick: (name: string) => void;
+  onRetryParent: (itemId: string) => void;
+  mismatches: Array<{ food_item_id: string; food_item_name: string; reason: string }>;
+  onRefresh: () => void;
+  executing: boolean;
+}
+
+function BulkRemoveGroupingForm({
+  count, status, candidates, loadErrors, pickedName, onPick,
+  onRetryParent, mismatches, onRefresh, executing,
+}: BulkRemoveGroupingFormProps) {
+  const reasonLabel: Record<string, string> = {
+    NOT_FOUND: 'no longer has this grouping',
+    MEMBERS_DIFFER: 'members differ from expected',
+    IS_DEFAULT: 'matched a default grouping (not removable)',
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+        Removes one custom grouping that is shared across all {count} selected
+        item{count !== 1 ? 's' : ''}. Strict match: same name + rule + exact
+        member set. Defaults (Add-ons / Includes / Choose-One / Recommendations)
+        are excluded.
+      </div>
+
+      {status === 'loading' && (
+        <div
+          data-testid="bulk-remove-grouping-loading"
+          style={{ fontSize: 12, color: 'var(--muted)', padding: 12, textAlign: 'center' }}
+        >
+          Loading shared groupings…
+        </div>
+      )}
+
+      {loadErrors.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {loadErrors.map((err) => (
+            <div
+              key={err.item_id}
+              data-testid={`bulk-remove-grouping-load-error-${err.item_id}`}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px', fontSize: 11,
+                background: '#fef3c7', border: '1px solid #fcd34d',
+                borderRadius: 'var(--r-xs)', color: '#92400e',
+              }}
+            >
+              <span>Couldn't load groupings for "{err.item_name}"</span>
+              <button
+                type="button"
+                data-testid={`bulk-remove-grouping-load-retry-${err.item_id}`}
+                onClick={() => onRetryParent(err.item_id)}
+                style={{
+                  background: 'transparent', border: '1px solid #92400e',
+                  borderRadius: 'var(--r-xs)', padding: '2px 8px',
+                  fontSize: 11, color: '#92400e', cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status === 'ready' && candidates.length === 0 && (
+        <div
+          data-testid="bulk-remove-grouping-empty"
+          style={{
+            fontSize: 12, color: 'var(--muted)',
+            padding: 12, textAlign: 'center',
+            background: '#f9fafb', border: '1px solid var(--border)',
+            borderRadius: 'var(--r-xs)',
+          }}
+        >
+          No custom groupings shared across all selected items.
+        </div>
+      )}
+
+      {status === 'ready' && candidates.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {candidates.map((c) => {
+            const testidKey = c.name.trim().toLowerCase();
+            return (
+              <label
+                key={c.name}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px',
+                  border: `1px solid ${pickedName === c.name ? 'var(--brand)' : 'var(--border)'}`,
+                  background: pickedName === c.name ? 'var(--brand-l)' : '#fff',
+                  borderRadius: 'var(--r-xs)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="bulk-remove-grouping-pick"
+                  data-testid={`bulk-remove-grouping-radio-by-name-${testidKey}`}
+                  checked={pickedName === c.name}
+                  onChange={() => onPick(c.name)}
+                  disabled={executing}
+                />
+                <span style={{ flex: 1 }}>{c.name}</span>
+                <span
+                  data-testid={`bulk-remove-grouping-member-count-${testidKey}`}
+                  style={{ fontSize: 11, color: 'var(--muted)' }}
+                >
+                  {c.memberLabel}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {executing && (
+        <div
+          data-testid="bulk-remove-grouping-submit-progress"
+          style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}
+        >
+          Removing…
+        </div>
+      )}
+
+      {mismatches.length > 0 && (
+        <div
+          data-testid="bulk-remove-grouping-error-banner"
+          role="alert"
+          style={{
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: 'var(--r-xs)',
+            padding: '10px 12px',
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+            Strict match failed on {mismatches.length} item{mismatches.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+            Another tab or owner may have edited these groupings while you were
+            choosing. Click Refresh to re-discover the shared groupings.
+          </div>
+          <ul style={{ margin: '0 0 8px 0', padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+            {mismatches.map((m) => (
+              <li
+                key={m.food_item_id}
+                data-testid={`bulk-remove-grouping-mismatch-row-${m.food_item_id}`}
+              >
+                {m.food_item_name} — {reasonLabel[m.reason] ?? m.reason}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            data-testid="bulk-remove-grouping-refresh-btn"
+            onClick={onRefresh}
+            style={{
+              background: '#fff', border: '1px solid #b91c1c',
+              borderRadius: 'var(--r-xs)', padding: '4px 10px',
+              fontSize: 11, fontWeight: 600, color: '#b91c1c',
+              cursor: 'pointer',
+            }}
+          >
+            Refresh
+          </button>
         </div>
       )}
     </div>

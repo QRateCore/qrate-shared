@@ -26,7 +26,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping';
 
 export interface DragState {
   itemIds: string[];
@@ -145,6 +145,35 @@ interface Props {
       members: Array<{ item_id: string; position?: number }>;
     },
   ) => Promise<void>;
+  /**
+   * PDD 2026-05-21 sibling — bulk REMOVE one grouping spec from N parents.
+   * Throw-only contract: 409 PARTIAL_MISMATCH surfaces via an error whose
+   * `.name === 'BulkRemoveGroupingMismatchError'` with a `.mismatches`
+   * array. Requires `loadGroupingsForItem` to also be passed (the panel
+   * uses it for client-side discovery of shared groupings).
+   */
+  onBulkRemoveGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      member_ids: string[];
+    },
+  ) => Promise<void>;
+  /**
+   * PDD 2026-05-21 sibling — discovery loader used by the Remove grouping
+   * tab. Owner-webapp wires this to `ownerGroupingsService.listGroupings`.
+   * Required (along with `onBulkRemoveGrouping`) for the tab to surface.
+   */
+  loadGroupingsForItem?: (itemId: string) => Promise<Array<{
+    id: string;
+    name: string;
+    is_default: boolean;
+    min_select: number;
+    max_select: number | null;
+    default_select: 'all' | 'none' | 'first';
+    items?: Array<{ menu_item_id: string }>;
+  }>>;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Optional: called when the owner changes the heat/spice label in EditModal. */
@@ -227,7 +256,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1799,6 +1828,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkSweetness,
             onBulkEnrich,
             onBulkApplyGrouping,
+            onBulkRemoveGrouping,
+            loadGroupingsForItem,
             heatLabels,
             sweetnessLabels,
           }}
