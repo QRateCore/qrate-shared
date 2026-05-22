@@ -7,6 +7,14 @@ export { default as BulkModifierPanel } from './components/BulkModifierPanel';
 // PDD 2026-05-22 — shared picker (extracted from BulkActionsPanel.BulkGroupingForm)
 export { BulkMemberPicker, DEFAULT_MAX_PICKER_SELECTIONS } from './components/BulkMemberPicker';
 export type { BulkMemberPickerProps } from './components/BulkMemberPicker';
+// PDD 2026-05-22 — Menu Builder bulk Includes drawer
+export { default as BulkMenuSidesPanel } from './components/BulkMenuSidesPanel';
+export type {
+  BulkMenuSidesPanelProps,
+  BulkMenuSidesParent,
+  PerMenuSidesResult,
+  SideType,
+} from './components/BulkMenuSidesPanel';
 export { CloneMenuModal } from './components/CloneMenuModal';
 export type { CloneMenuModalProps } from './components/CloneMenuModal';
 export { MenuManagerServiceProvider } from './context';
