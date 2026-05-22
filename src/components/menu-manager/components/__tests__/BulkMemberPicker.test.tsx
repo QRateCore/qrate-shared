@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Vitest cases for the extracted `BulkMemberPicker` shared component
  * (PDD 2026-05-22 Step 7). The component replaces the inline PickerRow
