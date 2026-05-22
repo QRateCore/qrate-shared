@@ -97,6 +97,17 @@ interface MenuBuilderProps {
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
+  /**
+   * PDD 2026-05-22 — bulk Includes/Choose-One action on the active menu.
+   * When wired (via onOpenBulkPanel), a checkbox column appears at the
+   * left edge of each item row and a "Bulk action" button surfaces in
+   * the active-menu header. Selection state is owner-managed (lifted
+   * to MenuManagerClient) so switching menu tabs can clear it.
+   */
+  bulkSelectionEnabled?: boolean;
+  bulkSelection?: Set<string>;
+  onToggleBulkSelection?: (itemId: string) => void;
+  onOpenBulkPanel?: () => void;
   /** Callback to re-fetch menus + items from server (for crawl-mid-session refresh). */
   onRefresh?: () => void;
   /** True while a background refresh is in flight. */
@@ -887,6 +898,9 @@ function CategoryBucket({
   onRemoveItem,
   onEditItem,
   missingPriceFilter = false,
+  bulkSelectionEnabled = false,
+  bulkSelection,
+  onToggleBulkSelection,
 }: {
   category: string;
   itemIds: string[];
@@ -918,6 +932,10 @@ function CategoryBucket({
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
+  /** PDD 2026-05-22 — bulk Includes selection (forwarded from MenuBuilder). */
+  bulkSelectionEnabled?: boolean;
+  bulkSelection?: Set<string>;
+  onToggleBulkSelection?: (itemId: string) => void;
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
@@ -1012,42 +1030,77 @@ function CategoryBucket({
                   : 'No items in this category yet'}
             </div>
           ) : (
-            bucketItems.map((item) => (
-              <MenuItemRow
-                key={item.id}
-                item={item}
-                menuId={menuId}
-                cat={category}
-                settings={getSettings(menuId, item.id)}
-                itemsById={itemsById}
-                onUpdateSettings={onUpdateSettings}
-                onUpdateModifiers={onUpdateModifiers}
-                onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-                byoHandlers={byoHandlers}
-                showAddons={showAddons}
-                showRecommendations={showRecommendations}
-                showAddGrouping={showAddGrouping}
-                perMenuSides={perMenuSides}
-                onConfirmIncludeDrop={onConfirmIncludeDrop}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onRemove={() => {
-                  const s = getSettings(menuId, item.id);
-                  const cats = s.canonical_categories ?? [];
-                  if (cats.length > 1) {
-                    // Item spans multiple categories on this menu — remove only
-                    // this category rather than the whole menu placement.
-                    void onUpdateSettings(menuId, item.id, {
-                      canonical_categories: cats.filter((c) => c !== category),
-                    });
-                  } else {
-                    // Last (or only) category — remove from menu entirely.
-                    onRemoveItem(item.id, menuId);
-                  }
-                }}
-                onEdit={() => onEditItem(item.id)}
-              />
-            ))
+            bucketItems.map((item) => {
+              const row = (
+                <MenuItemRow
+                  key={item.id}
+                  item={item}
+                  menuId={menuId}
+                  cat={category}
+                  settings={getSettings(menuId, item.id)}
+                  itemsById={itemsById}
+                  onUpdateSettings={onUpdateSettings}
+                  onUpdateModifiers={onUpdateModifiers}
+                  onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                  byoHandlers={byoHandlers}
+                  showAddons={showAddons}
+                  showRecommendations={showRecommendations}
+                  showAddGrouping={showAddGrouping}
+                  perMenuSides={perMenuSides}
+                  onConfirmIncludeDrop={onConfirmIncludeDrop}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                  onRemove={() => {
+                    const s = getSettings(menuId, item.id);
+                    const cats = s.canonical_categories ?? [];
+                    if (cats.length > 1) {
+                      // Item spans multiple categories on this menu — remove only
+                      // this category rather than the whole menu placement.
+                      void onUpdateSettings(menuId, item.id, {
+                        canonical_categories: cats.filter((c) => c !== category),
+                      });
+                    } else {
+                      // Last (or only) category — remove from menu entirely.
+                      onRemoveItem(item.id, menuId);
+                    }
+                  }}
+                  onEdit={() => onEditItem(item.id)}
+                />
+              );
+              if (!bulkSelectionEnabled) return row;
+              // PDD 2026-05-22 Step 9 — render a leading checkbox column
+              // when bulk selection is enabled. Wraps the row sideways so
+              // MenuItemRow itself stays untouched (and drag-and-drop on
+              // the row still works because the drag handlers live on the
+              // row's outer div, NOT the checkbox).
+              const isSelected = bulkSelection?.has(item.id) ?? false;
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-stretch w-full"
+                  style={{
+                    background: isSelected ? 'rgba(255,107,43,0.05)' : undefined,
+                    borderLeft: isSelected
+                      ? '3px solid var(--brand)'
+                      : undefined,
+                  }}
+                >
+                  <div
+                    className="flex items-center justify-center px-2"
+                    style={{ width: 32, borderRight: '1px solid var(--border)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid={`menu-builder-row-select-${item.id}`}
+                      checked={isSelected}
+                      onChange={() => onToggleBulkSelection?.(item.id)}
+                      aria-label={`Select ${item.name} for bulk action`}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">{row}</div>
+                </div>
+              );
+            })
           )}
         </div>
       )}
@@ -1095,6 +1148,10 @@ export default function MenuBuilder({
   refreshing = false,
   onCollapseAll,
   missingPriceFilter = false,
+  bulkSelectionEnabled = false,
+  bulkSelection,
+  onToggleBulkSelection,
+  onOpenBulkPanel,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -1328,6 +1385,24 @@ export default function MenuBuilder({
               Inactive
             </span>
           )}
+          {/* PDD 2026-05-22 — bulk action button. Amendment 5: rendered
+              in-flow with visibility:hidden when no selection so the
+              header doesn't shift on first selection. */}
+          {bulkSelectionEnabled && (
+            <button
+              type="button"
+              data-testid="menu-builder-bulk-action"
+              onClick={onOpenBulkPanel}
+              disabled={!bulkSelection || bulkSelection.size === 0}
+              aria-label="Open bulk action panel"
+              style={{
+                visibility: bulkSelection && bulkSelection.size > 0 ? 'visible' : 'hidden',
+              }}
+              className="text-xs font-medium text-white bg-[var(--brand)] hover:opacity-90 rounded-[var(--r-xs)] px-2.5 py-1 cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Bulk action ({bulkSelection?.size ?? 0})
+            </button>
+          )}
         </div>
       )}
 
@@ -1370,6 +1445,9 @@ export default function MenuBuilder({
                 onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
                 missingPriceFilter={missingPriceFilter}
+                bulkSelectionEnabled={bulkSelectionEnabled}
+                bulkSelection={bulkSelection}
+                onToggleBulkSelection={onToggleBulkSelection}
               />
             );
           })}
