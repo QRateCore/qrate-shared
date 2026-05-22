@@ -109,6 +109,9 @@ interface BulkActionsPanelProps {
    * (name, rule, sorted-member-ids) hash, filters `is_default=true`, and
    * shows the surviving candidates as radio options. Owner-webapp wires
    * this to `ownerGroupingsService.listGroupings`.
+   *
+   * Also reused by the PDD 2026-05-22 Grouping tab's "Add to existing"
+   * mode for the same intersection logic.
    */
   loadGroupingsForItem?: (itemId: string) => Promise<Array<{
     id: string;
@@ -119,6 +122,26 @@ interface BulkActionsPanelProps {
     default_select: 'all' | 'none' | 'first';
     items?: Array<{ menu_item_id: string }>;
   }>>;
+  /**
+   * PDD 2026-05-22 — bulk ADD MEMBERS to a grouping shared across N parents.
+   * Distinct from `onBulkApplyGrouping` (create-new) and
+   * `onBulkRemoveGrouping` (remove). Same throw-only mismatch contract as
+   * remove: 409 surfaces as an error whose
+   * `.name === 'BulkAddMembersToGroupingMismatchError'` with a
+   * `.mismatches` array. Other failures route to the generic error region.
+   * Owner-webapp wires this from the Food Library page alongside
+   * `loadGroupingsForItem`. When wired, the Grouping tab gains a mode
+   * radio at the top: "Add to existing grouping" vs "Create new grouping".
+   */
+  onBulkAddMembersToGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      current_member_ids: string[];
+    },
+    newMemberIds: string[],
+  ) => Promise<void>;
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -183,6 +206,7 @@ export default function BulkActionsPanel({
   onBulkApplyGrouping,
   onBulkRemoveGrouping,
   loadGroupingsForItem,
+  onBulkAddMembersToGrouping,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
@@ -230,10 +254,25 @@ export default function BulkActionsPanel({
   const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('optional');
   const [groupingPresetN, setGroupingPresetN] = useState<number>(1);
   const [groupingPresetMax, setGroupingPresetMax] = useState<number>(1);
+  // Per amendment 4 — selectedOrder is the pinned-on-top selection sequence.
+  // Independent of search filter and pool order so React reconciliation
+  // doesn't re-mount picker rows on toggle (preserves search focus).
   const [groupingMemberIds, setGroupingMemberIds] = useState<string[]>([]);
   const [groupingMemberSearch, setGroupingMemberSearch] = useState<string>('');
   const [groupingConflicts, setGroupingConflicts] = useState<
     Array<{ food_item_id: string; food_item_name: string }>
+  >([]);
+
+  // PDD 2026-05-22 — Grouping tab mode selector (existing vs create).
+  // Default 'create' on mount = preserves the current behaviour for first-
+  // time users. Switching modes resets the OTHER mode's in-progress state
+  // so a name typed in 'create' doesn't leak into an 'existing' submit.
+  const [groupingMode, setGroupingMode] = useState<'existing' | 'create'>('create');
+  // Existing-mode picked grouping (by name — single-select radio).
+  const [addExistingPickedName, setAddExistingPickedName] = useState<string | null>(null);
+  // Existing-mode 409 PARTIAL_MISMATCH banner state (same shape as remove).
+  const [addMembersMismatches, setAddMembersMismatches] = useState<
+    Array<{ food_item_id: string; food_item_name: string; reason: string }>
   >([]);
 
   // PDD 2026-05-21 sibling — bulk Remove Grouping mode state.
@@ -402,6 +441,79 @@ export default function BulkActionsPanel({
     } finally {
       setExecuting(false);
       setProgress(null);
+    }
+  }
+
+  // PDD 2026-05-22 — switching between 'existing' and 'create' modes
+  // resets the OTHER mode's in-progress state (per amendment 6). Avoids
+  // leaking a typed-name from 'create' into an 'existing' Apply, or vice
+  // versa. Called from the mode-radio onChange handler.
+  function switchGroupingMode(next: 'existing' | 'create') {
+    setGroupingMode(next);
+    setGroupingMemberIds([]);
+    setError(null);
+    setGroupingConflicts([]);
+    setAddMembersMismatches([]);
+    if (next === 'create') {
+      // Clear existing-mode pick when flipping to create
+      setAddExistingPickedName(null);
+    } else {
+      // Clear create-mode form when flipping to existing
+      setGroupingName('');
+      setGroupingPreset('optional');
+      setGroupingPresetN(1);
+      setGroupingPresetMax(1);
+    }
+  }
+
+  // PDD 2026-05-22 — bulk-add-members runner. Used when groupingMode is
+  // 'existing'. Strict match (name + rule + sorted current_member_ids) is
+  // resolved server-side; this client re-uses the same discovery already
+  // wired for removeGrouping (removeCandidates). 409 PARTIAL_MISMATCH
+  // surfaces via addMembersMismatches banner; other failures go to the
+  // generic error region.
+  async function runAddMembersToGrouping() {
+    if (!onBulkAddMembersToGrouping) { onComplete(items, selected); return; }
+    const picked = removeCandidates.find((c) => c.name === addExistingPickedName);
+    if (!picked) { setError('Pick a grouping to add members to'); return; }
+    // groupingMemberIds is the picker's selection (Step 8 widget). Empty
+    // selection is allowed by the backend (no-op 200) but unhelpful in
+    // practice — block at the UI to avoid wasted server calls.
+    if (groupingMemberIds.length === 0) {
+      setError('Pick at least one member to add');
+      return;
+    }
+    setExecuting(true);
+    setError(null);
+    setAddMembersMismatches([]);
+    try {
+      await onBulkAddMembersToGrouping(
+        selectedItems.map((i) => i.id),
+        {
+          name: picked.name,
+          rule: {
+            min_select: picked.min_select,
+            max_select: picked.max_select,
+            default_select: picked.default_select,
+          },
+          current_member_ids: picked.member_ids,
+        },
+        groupingMemberIds,
+      );
+      onComplete(items, selected);
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = err as any;
+      if (
+        e && e.name === 'BulkAddMembersToGroupingMismatchError'
+        && Array.isArray(e.mismatches)
+      ) {
+        setAddMembersMismatches(e.mismatches);
+      } else {
+        setError(e instanceof Error ? e.message : 'Bulk add members failed');
+      }
+    } finally {
+      setExecuting(false);
     }
   }
 
@@ -592,13 +704,26 @@ export default function BulkActionsPanel({
     }
   }
 
-  // Fire discovery on first entry into the 'removeGrouping' mode.
+  // Fire discovery on first entry into the 'removeGrouping' mode, and
+  // also when entering 'grouping' mode with add-members wired + the user
+  // flips to the 'existing' sub-mode (PDD 2026-05-22 — same intersection
+  // logic reused). Idempotent: discoverRemoveCandidates resets state each
+  // time so re-firing is cheap.
   useEffect(() => {
     if (mode === 'removeGrouping' && removeLoadStatus === 'idle') {
       void discoverRemoveCandidates();
     }
+    if (
+      mode === 'grouping'
+      && groupingMode === 'existing'
+      && !!onBulkAddMembersToGrouping
+      && !!loadGroupingsForItem
+      && removeLoadStatus === 'idle'
+    ) {
+      void discoverRemoveCandidates();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, groupingMode]);
 
   async function runSpice() {
     if (!pickedHeat) { setError('Select a spice level'); return; }
@@ -732,7 +857,13 @@ export default function BulkActionsPanel({
         case 'sweetness':    await runSweetness(); break;
         case 'dietary':      await runDietary(); break;
         case 'enrich':       await runEnrich(); break;
-        case 'grouping':     await runGrouping(); break;
+        case 'grouping':
+          if (groupingMode === 'existing') {
+            await runAddMembersToGrouping();
+          } else {
+            await runGrouping();
+          }
+          break;
         case 'removeGrouping': await runRemoveGrouping(); break;
         case 'delete':       await runDelete(); break;
       }
@@ -999,15 +1130,31 @@ export default function BulkActionsPanel({
               presetMax={groupingPresetMax}
               onChangePresetMax={setGroupingPresetMax}
               memberIds={groupingMemberIds}
-              onAddMember={(id) =>
-                setGroupingMemberIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+              onToggleMember={(id) =>
+                setGroupingMemberIds((prev) =>
+                  prev.includes(id)
+                    ? prev.filter((m) => m !== id)
+                    : prev.length >= 50
+                      ? prev  // amendment 5 — 50-cap hard-stop at Select
+                      : [...prev, id],
+                )
               }
-              onRemoveMember={(id) =>
-                setGroupingMemberIds((prev) => prev.filter((m) => m !== id))
-              }
+              onClearMembers={() => setGroupingMemberIds([])}
               search={groupingMemberSearch}
               onChangeSearch={setGroupingMemberSearch}
               conflicts={groupingConflicts}
+              // PDD 2026-05-22 — Add-to-existing mode props. Only wired when
+              // the consumer passes onBulkAddMembersToGrouping; otherwise
+              // the form behaves identically to the create-only version.
+              addExistingEnabled={!!onBulkAddMembersToGrouping}
+              groupingMode={groupingMode}
+              onChangeGroupingMode={switchGroupingMode}
+              existingStatus={removeLoadStatus}
+              existingCandidates={removeCandidates}
+              existingPickedName={addExistingPickedName}
+              onPickExisting={setAddExistingPickedName}
+              onRefreshExisting={() => { void discoverRemoveCandidates(); }}
+              addMembersMismatches={addMembersMismatches}
             />
           )}
           {mode === 'removeGrouping' && (
@@ -1737,6 +1884,15 @@ const GROUPING_PRESETS: { key: GroupingPresetKind; label: string; needsN: boolea
   { key: 'all',      label: 'All included', needsN: false, needsMax: false },
 ];
 
+type ExistingCandidate = {
+  name: string;
+  min_select: number;
+  max_select: number | null;
+  default_select: 'all' | 'none' | 'first';
+  member_ids: string[];
+  memberLabel: string;
+};
+
 interface BulkGroupingFormProps {
   count: number;
   items: MenuItemDisplay[];
@@ -1750,12 +1906,24 @@ interface BulkGroupingFormProps {
   presetMax: number;
   onChangePresetMax: (n: number) => void;
   memberIds: string[];
-  onAddMember: (id: string) => void;
-  onRemoveMember: (id: string) => void;
+  onToggleMember: (id: string) => void;
+  onClearMembers: () => void;
   search: string;
   onChangeSearch: (v: string) => void;
   conflicts: Array<{ food_item_id: string; food_item_name: string }>;
+  // PDD 2026-05-22 — Add-to-existing mode (opt-in).
+  addExistingEnabled: boolean;
+  groupingMode: 'existing' | 'create';
+  onChangeGroupingMode: (m: 'existing' | 'create') => void;
+  existingStatus: 'idle' | 'loading' | 'ready';
+  existingCandidates: ExistingCandidate[];
+  existingPickedName: string | null;
+  onPickExisting: (name: string) => void;
+  onRefreshExisting: () => void;
+  addMembersMismatches: Array<{ food_item_id: string; food_item_name: string; reason: string }>;
 }
+
+const MAX_BULK_GROUPING_MEMBERS = 50;
 
 function BulkGroupingForm({
   count, items, selectedParents,
@@ -1763,153 +1931,263 @@ function BulkGroupingForm({
   preset, onChangePreset,
   presetN, onChangePresetN,
   presetMax, onChangePresetMax,
-  memberIds, onAddMember, onRemoveMember,
+  memberIds, onToggleMember, onClearMembers,
   search, onChangeSearch,
   conflicts,
+  addExistingEnabled,
+  groupingMode, onChangeGroupingMode,
+  existingStatus, existingCandidates,
+  existingPickedName, onPickExisting,
+  onRefreshExisting,
+  addMembersMismatches,
 }: BulkGroupingFormProps) {
   const presetConfig = GROUPING_PRESETS.find((p) => p.key === preset)!;
   const memberLookup = new Map(items.map((i) => [i.id, i]));
-  // Pool: every food item NOT a selected parent and NOT already picked.
-  // Filtered by search (case-insensitive name substring).
+  // Per amendment 4 — selectedRows pin to the top in selection order; the
+  // unselected pool is filtered by search and excludes already-selected
+  // items. Stable `key={itemId}` in both sections preserves focus on the
+  // search input across toggles.
   const q = search.trim().toLowerCase();
-  const pool = items.filter((i) => {
+  const selectedRows: MenuItemDisplay[] = memberIds
+    .map((id) => memberLookup.get(id))
+    .filter((it): it is MenuItemDisplay => !!it);
+  const unselectedRows = items.filter((i) => {
     if (selectedParents.has(i.id)) return false;
     if (memberIds.includes(i.id)) return false;
     if (q && !i.name.toLowerCase().includes(q)) return false;
     return true;
   });
+  const isAtCap = memberIds.length >= MAX_BULK_GROUPING_MEMBERS;
+  const intersectionEmpty = existingStatus === 'ready' && existingCandidates.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-        Creates one custom grouping on each of {count} selected item{count !== 1 ? 's' : ''}.
-        Same name, rule, and members are applied to all. You can edit each grouping
-        independently afterward.
-      </div>
-
-      {/* Name */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
-          Grouping name
-        </label>
-        <input
-          data-testid="bulk-grouping-name-input"
-          type="text"
-          value={name}
-          onChange={(e) => onChangeName(e.target.value)}
-          placeholder="e.g. Extras, Add-ons, Spice Level"
-          maxLength={64}
+      {/* Mode selector (PDD 2026-05-22) — only shown when add-to-existing
+          is wired by the consumer; admin/waiter without that prop see the
+          plain create-only form. */}
+      {addExistingEnabled && (
+        <div
+          data-testid="bulk-grouping-mode-selector"
           style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
             padding: '8px 10px',
+            background: 'var(--surface-2, #f9fafb)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--r-xs)',
-            fontSize: 13,
           }}
-        />
-      </div>
-
-      {/* Rule preset */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
-          Selection rule
-        </label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {GROUPING_PRESETS.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              data-testid={`bulk-grouping-rule-preset-${p.key}`}
-              onClick={() => onChangePreset(p.key)}
-              style={{
-                padding: '5px 10px',
-                fontSize: 12,
-                border: `1px solid ${preset === p.key ? 'var(--brand)' : 'var(--border)'}`,
-                background: preset === p.key ? 'var(--brand-l)' : '#fff',
-                color: preset === p.key ? 'var(--brand-s)' : 'var(--ink)',
-                borderRadius: 'var(--r-xs)',
-                cursor: 'pointer',
-                fontWeight: preset === p.key ? 600 : 400,
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {presetConfig.needsN && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-              {presetConfig.needsMax ? 'N:' : 'N:'}
-            </span>
+        >
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+            cursor: intersectionEmpty ? 'not-allowed' : 'pointer',
+            color: intersectionEmpty ? 'var(--muted)' : 'var(--ink)',
+          }}>
             <input
-              data-testid="bulk-grouping-rule-n-input"
-              type="number"
-              min={1}
-              value={presetN}
-              onChange={(e) => onChangePresetN(Math.max(1, parseInt(e.target.value || '1', 10)))}
-              style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+              type="radio"
+              data-testid="bulk-grouping-mode-existing"
+              name="bulk-grouping-mode"
+              checked={groupingMode === 'existing'}
+              disabled={intersectionEmpty}
+              onChange={() => onChangeGroupingMode('existing')}
+              aria-describedby={intersectionEmpty ? 'bulk-grouping-existing-empty-hint' : undefined}
             />
-            {presetConfig.needsMax && (
-              <>
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>M:</span>
-                <input
-                  data-testid="bulk-grouping-rule-max-input"
-                  type="number"
-                  min={presetN}
-                  value={presetMax}
-                  onChange={(e) => onChangePresetMax(Math.max(presetN, parseInt(e.target.value || String(presetN), 10)))}
-                  style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
-                />
-              </>
-            )}
-          </div>
+            Add to existing grouping
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              data-testid="bulk-grouping-mode-create"
+              name="bulk-grouping-mode"
+              checked={groupingMode === 'create'}
+              onChange={() => onChangeGroupingMode('create')}
+            />
+            Create new grouping
+          </label>
+          {intersectionEmpty && (
+            <div
+              id="bulk-grouping-existing-empty-hint"
+              data-testid="bulk-grouping-existing-empty"
+              aria-live="polite"
+              style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}
+            >
+              No groupings shared across these items. Create new instead.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+        {groupingMode === 'existing' ? (
+          <>Adds members to a grouping shared across {count} selected item{count !== 1 ? 's' : ''}. Members already on a particular item are silently skipped.</>
+        ) : (
+          <>Creates one custom grouping on each of {count} selected item{count !== 1 ? 's' : ''}. Same name, rule, and members are applied to all. You can edit each grouping independently afterward.</>
         )}
       </div>
 
-      {/* Members */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
-          Initial members ({memberIds.length}) — optional
-        </label>
-        {/* Selected pills */}
-        {memberIds.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {memberIds.map((id) => {
-              const item = memberLookup.get(id);
-              if (!item) return null;
-              return (
-                <span
-                  key={id}
-                  data-testid={`bulk-grouping-member-pill-${id}`}
+      {/* Existing-mode: radio list of shared groupings */}
+      {groupingMode === 'existing' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+            Pick a shared grouping
+          </label>
+          {existingStatus === 'loading' && (
+            <div
+              data-testid="bulk-grouping-existing-loading"
+              style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 0' }}
+            >
+              Finding shared groupings…
+            </div>
+          )}
+          {existingStatus === 'ready' && existingCandidates.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {existingCandidates.map((c) => (
+                <label
+                  key={c.name}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    padding: '3px 4px 3px 8px',
-                    background: 'var(--brand-l)',
-                    border: '1px solid var(--brand)',
-                    borderRadius: 'var(--r-xs)',
-                    fontSize: 11,
-                    color: 'var(--brand-s)',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 12, padding: '6px 8px',
+                    border: `1px solid ${existingPickedName === c.name ? 'var(--brand)' : 'var(--border)'}`,
+                    background: existingPickedName === c.name ? 'var(--brand-l)' : '#fff',
+                    borderRadius: 'var(--r-xs)', cursor: 'pointer',
                   }}
                 >
-                  {item.name}
-                  <button
-                    type="button"
-                    data-testid={`bulk-grouping-member-pill-remove-${id}`}
-                    onClick={() => onRemoveMember(id)}
-                    aria-label={`Remove ${item.name}`}
-                    style={{
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      padding: 0, color: 'inherit',
-                      display: 'flex', alignItems: 'center',
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              );
-            })}
+                  <input
+                    type="radio"
+                    data-testid={`bulk-grouping-existing-radio-by-name-${c.name}`}
+                    name="bulk-grouping-existing-pick"
+                    checked={existingPickedName === c.name}
+                    onChange={() => onPickExisting(c.name)}
+                  />
+                  <span style={{ fontWeight: 500 }}>{c.name}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+                    {c.memberLabel}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            data-testid="bulk-grouping-existing-refresh-btn"
+            onClick={onRefreshExisting}
+            style={{
+              alignSelf: 'flex-start',
+              fontSize: 11, padding: '4px 8px',
+              background: '#fff', border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xs)', cursor: 'pointer',
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+      )}
+
+      {/* Create-mode: Name + Rule preset */}
+      {groupingMode === 'create' && (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+              Grouping name
+            </label>
+            <input
+              data-testid="bulk-grouping-name-input"
+              type="text"
+              value={name}
+              onChange={(e) => onChangeName(e.target.value)}
+              placeholder="e.g. Extras, Add-ons, Spice Level"
+              maxLength={64}
+              style={{
+                padding: '8px 10px',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--r-xs)',
+                fontSize: 13,
+              }}
+            />
           </div>
-        )}
-        {/* Search + pool */}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+              Selection rule
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {GROUPING_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  data-testid={`bulk-grouping-rule-preset-${p.key}`}
+                  onClick={() => onChangePreset(p.key)}
+                  style={{
+                    padding: '5px 10px',
+                    fontSize: 12,
+                    border: `1px solid ${preset === p.key ? 'var(--brand)' : 'var(--border)'}`,
+                    background: preset === p.key ? 'var(--brand-l)' : '#fff',
+                    color: preset === p.key ? 'var(--brand-s)' : 'var(--ink)',
+                    borderRadius: 'var(--r-xs)',
+                    cursor: 'pointer',
+                    fontWeight: preset === p.key ? 600 : 400,
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {presetConfig.needsN && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>N:</span>
+                <input
+                  data-testid="bulk-grouping-rule-n-input"
+                  type="number"
+                  min={1}
+                  value={presetN}
+                  onChange={(e) => onChangePresetN(Math.max(1, parseInt(e.target.value || '1', 10)))}
+                  style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+                />
+                {presetConfig.needsMax && (
+                  <>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>M:</span>
+                    <input
+                      data-testid="bulk-grouping-rule-max-input"
+                      type="number"
+                      min={presetN}
+                      value={presetMax}
+                      onChange={(e) => onChangePresetMax(Math.max(presetN, parseInt(e.target.value || String(presetN), 10)))}
+                      style={{ width: 60, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Member picker — shared between modes (PDD 2026-05-22 Step 8 refactor) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+            <span data-testid="bulk-grouping-member-selected-count">
+              {memberIds.length} member{memberIds.length === 1 ? '' : 's'} selected
+            </span>
+            {groupingMode === 'create' && ' — optional'}
+          </label>
+          {memberIds.length > 0 && (
+            <button
+              type="button"
+              data-testid="bulk-grouping-member-clear-all-btn"
+              onClick={onClearMembers}
+              style={{
+                fontSize: 11, padding: '2px 6px',
+                background: '#fff', border: '1px solid var(--border)',
+                borderRadius: 'var(--r-xs)', cursor: 'pointer',
+                color: 'var(--muted)',
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {/* Search box (filters unselected pool only) */}
         <div style={{ position: 'relative' }}>
           <Search
             size={12}
@@ -1930,53 +2208,52 @@ function BulkGroupingForm({
             }}
           />
         </div>
-        {(q || pool.length <= 12) && (
-          <div
-            style={{
-              maxHeight: 180,
-              overflowY: 'auto',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-xs)',
-              background: '#fff',
-            }}
-          >
-            {pool.length === 0 ? (
-              <div style={{ padding: 10, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-                {q ? 'No matching items' : 'All items already selected'}
-              </div>
-            ) : (
-              pool.slice(0, 50).map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  data-testid={`bulk-grouping-member-pool-item-${it.id}`}
-                  onClick={() => onAddMember(it.id)}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left',
-                    padding: '6px 10px',
-                    border: 'none',
-                    borderBottom: '1px solid var(--border)',
-                    background: '#fff',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
-                >
-                  {it.name}
-                  {it.item_type && it.item_type !== 'dish' && (
-                    <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>
-                      ({it.item_type})
-                    </span>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        )}
+        {/* Selected (pinned) + Unselected sections.
+            Both keyed on item_id for stable React reconciliation. */}
+        <div
+          style={{
+            maxHeight: 240,
+            overflowY: 'auto',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-xs)',
+            background: '#fff',
+          }}
+        >
+          {selectedRows.length === 0 && unselectedRows.length === 0 && (
+            <div style={{ padding: 10, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+              {q ? 'No matching items' : 'No items available'}
+            </div>
+          )}
+          {selectedRows.map((it) => (
+            <PickerRow
+              key={it.id}
+              item={it}
+              selected
+              disabled={false}
+              onToggle={() => onToggleMember(it.id)}
+            />
+          ))}
+          {selectedRows.length > 0 && unselectedRows.length > 0 && (
+            <div
+              style={{
+                height: 1, background: 'var(--border)', margin: '2px 8px',
+              }}
+              aria-hidden="true"
+            />
+          )}
+          {unselectedRows.slice(0, 100).map((it) => (
+            <PickerRow
+              key={it.id}
+              item={it}
+              selected={false}
+              disabled={isAtCap}
+              onToggle={() => onToggleMember(it.id)}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Conflict banner */}
+      {/* Create-mode conflict banner */}
       {conflicts.length > 0 && (
         <div
           data-testid="bulk-grouping-error-banner"
@@ -2006,6 +2283,123 @@ function BulkGroupingForm({
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Existing-mode 409 PARTIAL_MISMATCH banner — same shape as remove */}
+      {addMembersMismatches.length > 0 && (
+        <div
+          data-testid="bulk-grouping-existing-error-banner"
+          role="alert"
+          style={{
+            background: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: 'var(--r-xs)',
+            padding: '10px 12px',
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+            Grouping changed on {addMembersMismatches.length} item{addMembersMismatches.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+            The expected grouping no longer matches. Refresh and try again.
+          </div>
+          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+            {addMembersMismatches.map((m) => (
+              <li
+                key={m.food_item_id}
+                data-testid={`bulk-grouping-existing-mismatch-row-${m.food_item_id}`}
+              >
+                {m.food_item_name} — {m.reason}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={onRefreshExisting}
+            style={{
+              marginTop: 8,
+              fontSize: 11, padding: '4px 8px',
+              background: '#fff', border: '1px solid #fca5a5',
+              borderRadius: 'var(--r-xs)', cursor: 'pointer',
+              color: '#991b1b',
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per amendment 4 — stable-keyed picker row. Selected vs unselected
+// rows render with the same component so React reconciles by item_id and
+// keyboard focus survives toggles. `disabled` is set on Select buttons when
+// the picker is at its 50-member cap (amendment 5).
+function PickerRow({
+  item,
+  selected,
+  disabled,
+  onToggle,
+}: {
+  item: MenuItemDisplay;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      data-testid={`bulk-grouping-member-row-${item.id}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 10px',
+        borderBottom: '1px solid var(--border)',
+        background: selected ? 'var(--brand-l)' : '#fff',
+        fontSize: 12,
+      }}
+    >
+      <span
+        data-testid={`bulk-grouping-member-row-state-${item.id}`}
+        style={{ display: 'none' }}
+      >
+        {selected ? 'selected' : 'unselected'}
+      </span>
+      <span style={{ flex: 1 }}>
+        {item.name}
+        {item.item_type && item.item_type !== 'dish' && (
+          <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>
+            ({item.item_type})
+          </span>
+        )}
+      </span>
+      <button
+        type="button"
+        data-testid={`bulk-grouping-member-row-toggle-${item.id}`}
+        {...(disabled && !selected
+          ? { 'data-testid-disabled': 'bulk-grouping-member-row-at-cap' }
+          : {})}
+        onClick={onToggle}
+        disabled={disabled && !selected}
+        aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+        title={disabled && !selected ? 'Maximum 50 members per grouping' : undefined}
+        style={{
+          padding: '3px 8px',
+          fontSize: 11,
+          border: `1px solid ${selected ? 'var(--brand)' : 'var(--border)'}`,
+          background: selected ? 'var(--brand)' : '#fff',
+          color: selected ? '#fff' : 'var(--ink)',
+          borderRadius: 'var(--r-xs)',
+          cursor: disabled && !selected ? 'not-allowed' : 'pointer',
+          opacity: disabled && !selected ? 0.5 : 1,
+        }}
+      >
+        {selected ? '✓ Selected' : 'Select'}
+      </button>
+      {disabled && !selected && (
+        <span
+          data-testid={`bulk-grouping-member-row-at-cap`}
+          style={{ display: 'none' }}
+        />
       )}
     </div>
   );
