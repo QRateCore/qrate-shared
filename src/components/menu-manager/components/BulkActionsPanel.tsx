@@ -3,7 +3,8 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useEffect, useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Search } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2 } from 'lucide-react';
+import { BulkMemberPicker } from './BulkMemberPicker';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
@@ -1923,8 +1924,6 @@ interface BulkGroupingFormProps {
   addMembersMismatches: Array<{ food_item_id: string; food_item_name: string; reason: string }>;
 }
 
-const MAX_BULK_GROUPING_MEMBERS = 50;
-
 function BulkGroupingForm({
   count, items, selectedParents,
   name, onChangeName,
@@ -1942,22 +1941,6 @@ function BulkGroupingForm({
   addMembersMismatches,
 }: BulkGroupingFormProps) {
   const presetConfig = GROUPING_PRESETS.find((p) => p.key === preset)!;
-  const memberLookup = new Map(items.map((i) => [i.id, i]));
-  // Per amendment 4 — selectedRows pin to the top in selection order; the
-  // unselected pool is filtered by search and excludes already-selected
-  // items. Stable `key={itemId}` in both sections preserves focus on the
-  // search input across toggles.
-  const q = search.trim().toLowerCase();
-  const selectedRows: MenuItemDisplay[] = memberIds
-    .map((id) => memberLookup.get(id))
-    .filter((it): it is MenuItemDisplay => !!it);
-  const unselectedRows = items.filter((i) => {
-    if (selectedParents.has(i.id)) return false;
-    if (memberIds.includes(i.id)) return false;
-    if (q && !i.name.toLowerCase().includes(q)) return false;
-    return true;
-  });
-  const isAtCap = memberIds.length >= MAX_BULK_GROUPING_MEMBERS;
   const intersectionEmpty = existingStatus === 'ready' && existingCandidates.length === 0;
 
   return (
@@ -2162,96 +2145,21 @@ function BulkGroupingForm({
         </>
       )}
 
-      {/* Member picker — shared between modes (PDD 2026-05-22 Step 8 refactor) */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
-            <span data-testid="bulk-grouping-member-selected-count">
-              {memberIds.length} member{memberIds.length === 1 ? '' : 's'} selected
-            </span>
-            {groupingMode === 'create' && ' — optional'}
-          </label>
-          {memberIds.length > 0 && (
-            <button
-              type="button"
-              data-testid="bulk-grouping-member-clear-all-btn"
-              onClick={onClearMembers}
-              style={{
-                fontSize: 11, padding: '2px 6px',
-                background: '#fff', border: '1px solid var(--border)',
-                borderRadius: 'var(--r-xs)', cursor: 'pointer',
-                color: 'var(--muted)',
-              }}
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-        {/* Search box (filters unselected pool only) */}
-        <div style={{ position: 'relative' }}>
-          <Search
-            size={12}
-            style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}
-          />
-          <input
-            data-testid="bulk-grouping-member-search"
-            type="text"
-            value={search}
-            onChange={(e) => onChangeSearch(e.target.value)}
-            placeholder="Search food items to add as members…"
-            style={{
-              width: '100%',
-              padding: '7px 8px 7px 26px',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-xs)',
-              fontSize: 12,
-            }}
-          />
-        </div>
-        {/* Selected (pinned) + Unselected sections.
-            Both keyed on item_id for stable React reconciliation. */}
-        <div
-          style={{
-            maxHeight: 240,
-            overflowY: 'auto',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-xs)',
-            background: '#fff',
-          }}
-        >
-          {selectedRows.length === 0 && unselectedRows.length === 0 && (
-            <div style={{ padding: 10, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-              {q ? 'No matching items' : 'No items available'}
-            </div>
-          )}
-          {selectedRows.map((it) => (
-            <PickerRow
-              key={it.id}
-              item={it}
-              selected
-              disabled={false}
-              onToggle={() => onToggleMember(it.id)}
-            />
-          ))}
-          {selectedRows.length > 0 && unselectedRows.length > 0 && (
-            <div
-              style={{
-                height: 1, background: 'var(--border)', margin: '2px 8px',
-              }}
-              aria-hidden="true"
-            />
-          )}
-          {unselectedRows.slice(0, 100).map((it) => (
-            <PickerRow
-              key={it.id}
-              item={it}
-              selected={false}
-              disabled={isAtCap}
-              onToggle={() => onToggleMember(it.id)}
-            />
-          ))}
-        </div>
-      </div>
+      {/* Member picker — extracted into shared `BulkMemberPicker`
+          component (PDD 2026-05-22 Step 7). testidPrefix='bulk-grouping'
+          preserves every existing E2E selector byte-for-byte. */}
+      <BulkMemberPicker
+        pool={items}
+        selectedIds={memberIds}
+        search={search}
+        onToggle={onToggleMember}
+        onClearAll={onClearMembers}
+        onChangeSearch={onChangeSearch}
+        testidPrefix="bulk-grouping"
+        excludeIds={[...selectedParents]}
+        searchPlaceholder="Search food items to add as members…"
+        selectedCountSuffix={groupingMode === 'create' ? ' — optional' : ''}
+      />
 
       {/* Create-mode conflict banner */}
       {conflicts.length > 0 && (
@@ -2332,78 +2240,7 @@ function BulkGroupingForm({
   );
 }
 
-// Per amendment 4 — stable-keyed picker row. Selected vs unselected
-// rows render with the same component so React reconciles by item_id and
-// keyboard focus survives toggles. `disabled` is set on Select buttons when
-// the picker is at its 50-member cap (amendment 5).
-function PickerRow({
-  item,
-  selected,
-  disabled,
-  onToggle,
-}: {
-  item: MenuItemDisplay;
-  selected: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div
-      data-testid={`bulk-grouping-member-row-${item.id}`}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 10px',
-        borderBottom: '1px solid var(--border)',
-        background: selected ? 'var(--brand-l)' : '#fff',
-        fontSize: 12,
-      }}
-    >
-      <span
-        data-testid={`bulk-grouping-member-row-state-${item.id}`}
-        style={{ display: 'none' }}
-      >
-        {selected ? 'selected' : 'unselected'}
-      </span>
-      <span style={{ flex: 1 }}>
-        {item.name}
-        {item.item_type && item.item_type !== 'dish' && (
-          <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>
-            ({item.item_type})
-          </span>
-        )}
-      </span>
-      <button
-        type="button"
-        data-testid={`bulk-grouping-member-row-toggle-${item.id}`}
-        {...(disabled && !selected
-          ? { 'data-testid-disabled': 'bulk-grouping-member-row-at-cap' }
-          : {})}
-        onClick={onToggle}
-        disabled={disabled && !selected}
-        aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
-        title={disabled && !selected ? 'Maximum 50 members per grouping' : undefined}
-        style={{
-          padding: '3px 8px',
-          fontSize: 11,
-          border: `1px solid ${selected ? 'var(--brand)' : 'var(--border)'}`,
-          background: selected ? 'var(--brand)' : '#fff',
-          color: selected ? '#fff' : 'var(--ink)',
-          borderRadius: 'var(--r-xs)',
-          cursor: disabled && !selected ? 'not-allowed' : 'pointer',
-          opacity: disabled && !selected ? 0.5 : 1,
-        }}
-      >
-        {selected ? '✓ Selected' : 'Select'}
-      </button>
-      {disabled && !selected && (
-        <span
-          data-testid={`bulk-grouping-member-row-at-cap`}
-          style={{ display: 'none' }}
-        />
-      )}
-    </div>
-  );
-}
+// PickerRow moved into ./BulkMemberPicker.tsx (PDD 2026-05-22 Step 7).
 
 
 // ── BulkRemoveGroupingForm — PDD 2026-05-21 sibling ──────────────────────────
