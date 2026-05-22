@@ -164,6 +164,7 @@ interface Props {
    * PDD 2026-05-21 sibling — discovery loader used by the Remove grouping
    * tab. Owner-webapp wires this to `ownerGroupingsService.listGroupings`.
    * Required (along with `onBulkRemoveGrouping`) for the tab to surface.
+   * Also reused by the PDD 2026-05-22 add-to-existing mode.
    */
   loadGroupingsForItem?: (itemId: string) => Promise<Array<{
     id: string;
@@ -174,6 +175,21 @@ interface Props {
     default_select: 'all' | 'none' | 'first';
     items?: Array<{ menu_item_id: string }>;
   }>>;
+  /**
+   * PDD 2026-05-22 — bulk-add members to a shared grouping. When wired,
+   * the BulkActionsPanel Grouping tab surfaces a mode selector at the top:
+   * "Add to existing" vs "Create new". Owner-webapp wires this to
+   * `ownerGroupingsService.bulkAddMembersToGrouping`.
+   */
+  onBulkAddMembersToGrouping?: (
+    itemIds: string[],
+    body: {
+      name: string;
+      rule: { min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first' };
+      current_member_ids: string[];
+    },
+    newMemberIds: string[],
+  ) => Promise<void>;
   /** Optional: called when the owner changes the sweetness label on a Desserts item in EditModal. */
   onSweetnessUpdate?: (itemId: string, label: string | null) => Promise<void>;
   /** Optional: called when the owner changes the heat/spice label in EditModal. */
@@ -256,7 +272,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1830,6 +1846,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkApplyGrouping,
             onBulkRemoveGrouping,
             loadGroupingsForItem,
+            onBulkAddMembersToGrouping,
             heatLabels,
             sweetnessLabels,
           }}
