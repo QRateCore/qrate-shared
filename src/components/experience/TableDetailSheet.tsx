@@ -163,11 +163,15 @@ export default function TableDetailSheet({
   const guestNames = [...new Set(allItems.map(i => i.guestName))];
   const filteredItems = guestFilter ? allItems.filter(i => i.guestName === guestFilter) : allItems;
 
+  // PDD 2026-05-22 Step 7: workflow simplifies to Order Placed →
+  // In Kitchen (Mark Served) → Served. The `ready` row is retained as
+  // "Ready (legacy)" so any pre-existing rows from before the Step 6b
+  // backfill render with the Mark Served action — they advance to
+  // `delivered` just like in-kitchen rows. Removed after Step 6c.
   const statusGroups = [
     { statuses: ['pending'],               label: 'Order Placed',   actionLabel: 'Enter in POS', nextStatus: 'confirmed' as OrderStatus, labelCls: 'text-blue-700',    bgCls: 'bg-blue-50'   },
-    // STR-543: "Mark Ready" removed in favor of backend auto-advance (auto-ready Lambda).
-    { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: null,           nextStatus: null,                       labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
-    { statuses: ['ready'],                 label: 'Ready to Serve', actionLabel: 'Mark Served',  nextStatus: 'delivered' as OrderStatus, labelCls: 'text-amber-700',   bgCls: 'bg-amber-50'  },
+    { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: 'Mark Served', nextStatus: 'delivered' as OrderStatus, labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
+    { statuses: ['ready'],                 label: 'Ready (legacy)', actionLabel: 'Mark Served',  nextStatus: 'delivered' as OrderStatus, labelCls: 'text-amber-700',   bgCls: 'bg-amber-50'  },
     { statuses: ['delivered'],             label: 'Served',         actionLabel: null,            nextStatus: null,                       labelCls: 'text-emerald-700', bgCls: 'bg-emerald-50'},
     { statuses: ['completed'],             label: 'Completed',      actionLabel: null,            nextStatus: null,                       labelCls: 'text-gray-500',    bgCls: 'bg-gray-50'   },
   ];
@@ -547,15 +551,19 @@ export default function TableDetailSheet({
                     </div>
                   </div>
 
-                  {/* Mark All Served button for ready orders */}
+                  {/* PDD Step 7: Mark All Served now operates on
+                      confirmed/preparing (and any legacy `ready` rows) — all
+                      advance to `delivered` in one tap. */}
                   {(() => {
-                    const readyOrders = orders.filter(o => o.status === 'ready');
-                    if (readyOrders.length === 0) return null;
+                    const inKitchenOrders = orders.filter(o =>
+                      o.status === 'confirmed' || o.status === 'preparing' || o.status === 'ready'
+                    );
+                    if (inKitchenOrders.length === 0) return null;
                     return (
                       <button
                         onClick={async () => {
                           if (!onStatusUpdate) return;
-                          await onStatusUpdate(readyOrders.map(o => o.id), 'delivered');
+                          await onStatusUpdate(inKitchenOrders.map(o => o.id), 'delivered');
                         }}
                         disabled={!!updatingStatus || !onStatusUpdate}
                         className="w-full py-3 rounded-lg text-sm font-semibold text-white bg-emerald-600 active:bg-emerald-700 disabled:opacity-50 transition-colors"
@@ -563,7 +571,7 @@ export default function TableDetailSheet({
                         {updatingStatus ? (
                           <Loader2 className="h-4 w-4 animate-spin mx-auto" />
                         ) : (
-                          `Mark All Served (${readyOrders.length})`
+                          `Mark All Served (${inKitchenOrders.length})`
                         )}
                       </button>
                     );
