@@ -251,6 +251,7 @@ function MenuItemRow({
   onDragEnd,
   onRemove,
   onEdit,
+  disableDrag = false,
 }: {
   item: MenuItemDisplay;
   menuId: string;
@@ -274,6 +275,10 @@ function MenuItemRow({
   onDragEnd: () => void;
   onRemove: () => void;
   onEdit: () => void;
+  /** PDD 2026-05-22 — when bulk-selection is enabled, drag-to-move-
+   *  between-buckets is suppressed so it doesn't fight the bulk
+   *  selection UX. */
+  disableDrag?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -546,15 +551,15 @@ function MenuItemRow({
 
   return (
     <div
-      draggable
-      onDragStart={(e) => { e.stopPropagation(); onDragStart(e, item.id, menuId, cat); }}
-      onDragEnd={onDragEnd}
+      draggable={!disableDrag}
+      onDragStart={disableDrag ? undefined : (e) => { e.stopPropagation(); onDragStart(e, item.id, menuId, cat); }}
+      onDragEnd={disableDrag ? undefined : onDragEnd}
       data-testid={`menu-item-row-${item.id}`}
       data-item-row-id={item.id}
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
       data-approved-addons={approvedAddons > 0 ? approvedAddons : undefined}
-      className={`w-full border-b border-[var(--border)] cursor-grab ${expanded ? 'bg-[var(--bg)]' : ''}`}
+      className={`w-full border-b border-[var(--border)] ${disableDrag ? '' : 'cursor-grab'} ${expanded ? 'bg-[var(--bg)]' : ''}`}
       style={{ borderLeft: `3px solid ${borderLeftColor}` }}
     >
       <div className="flex items-stretch w-full">
@@ -563,7 +568,7 @@ function MenuItemRow({
         onClick={() => setExpanded((v) => !v)}
         data-testid={`menu-item-expand-${item.id}`}
         data-expand-btn="true"
-        className={`flex-1 min-w-0 bg-transparent border-none cursor-grab text-left ${isMobile ? 'flex flex-col gap-1 px-2 py-2' : 'flex flex-row items-center gap-2 px-3 py-2'}`}
+        className={`flex-1 min-w-0 bg-transparent border-none ${disableDrag ? 'cursor-pointer' : 'cursor-grab'} text-left ${isMobile ? 'flex flex-col gap-1 px-2 py-2' : 'flex flex-row items-center gap-2 px-3 py-2'}`}
       >
         {isMobile ? (
           <>
@@ -956,18 +961,64 @@ function CategoryBucket({
   const bucketEmpty = allBucketItems.length === 0;
   const bucketHasAttention = bucketEmpty || attentionCount > 0;
 
+  // PDD 2026-05-22 — bucket-level select-all state.
+  // checked when ALL non-empty bucket items are selected; indeterminate
+  // when SOME (but not all) are selected.
+  const bucketSelectedCount = bulkSelectionEnabled && bulkSelection
+    ? bucketItems.filter((it) => bulkSelection.has(it.id)).length
+    : 0;
+  const allBucketSelected = bulkSelectionEnabled && bucketItems.length > 0
+    && bucketSelectedCount === bucketItems.length;
+  const someBucketSelected = bulkSelectionEnabled
+    && bucketSelectedCount > 0
+    && bucketSelectedCount < bucketItems.length;
+
   return (
     <div
       className="mb-1"
       data-testid={`category-bucket-${category}`}
       data-attention={bucketHasAttention ? 'true' : undefined}
     >
-      {/* Bucket header */}
+      {/* Bucket header — checkbox (when bulk enabled) + collapse button */}
+      <div className="flex items-stretch">
+        {bulkSelectionEnabled && bucketItems.length > 0 && (
+          <label
+            className="flex items-center justify-center px-2 cursor-pointer"
+            style={{
+              width: 32,
+              background: 'var(--bg)',
+              borderRight: '1px solid var(--border)',
+            }}
+          >
+            <input
+              type="checkbox"
+              data-testid={`menu-builder-bucket-select-${category}`}
+              checked={allBucketSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = someBucketSelected;
+              }}
+              onChange={() => {
+                // Toggle all bucket items as a unit. If anything in the
+                // bucket is unselected, select all; otherwise clear all.
+                const shouldSelect = !allBucketSelected;
+                for (const it of bucketItems) {
+                  const isSelected = bulkSelection?.has(it.id) ?? false;
+                  if (shouldSelect && !isSelected) {
+                    onToggleBulkSelection?.(it.id);
+                  } else if (!shouldSelect && isSelected) {
+                    onToggleBulkSelection?.(it.id);
+                  }
+                }
+              }}
+              aria-label={`Select all items in ${category}`}
+            />
+          </label>
+        )}
       <button
         type="button"
         onClick={onToggleCollapse}
         data-testid={`collapse-bucket-${category}`}
-        className="w-full flex items-center gap-2 py-1.5 px-3 cursor-pointer text-left transition-colors duration-150"
+        className="flex-1 flex items-center gap-2 py-1.5 px-3 cursor-pointer text-left transition-colors duration-150"
         style={{
           background: isDragOver ? `${color.tab}cc` : 'var(--bg)',
           border: bucketHasAttention ? '2px solid var(--red)' : 'none',
@@ -1001,6 +1052,7 @@ function CategoryBucket({
           {bucketItems.length}
         </span>
       </button>
+      </div>
 
       {/* Bucket items + drop zone */}
       {!collapsed && (
@@ -1050,6 +1102,7 @@ function CategoryBucket({
                   onConfirmIncludeDrop={onConfirmIncludeDrop}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
+                  disableDrag={bulkSelectionEnabled}
                   onRemove={() => {
                     const s = getSettings(menuId, item.id);
                     const cats = s.canonical_categories ?? [];
@@ -1385,9 +1438,11 @@ export default function MenuBuilder({
               Inactive
             </span>
           )}
-          {/* PDD 2026-05-22 — bulk action button. Amendment 5: rendered
-              in-flow with visibility:hidden when no selection so the
-              header doesn't shift on first selection. */}
+          {/* PDD 2026-05-22 — bulk action button. Always visible when
+              bulk mode is enabled (disabled until ≥1 row selected) so
+              owners see the affordance up-front. Uses an explicit
+              hex color to avoid silent invisibility if --brand isn't
+              defined in the consumer's CSS scope. */}
           {bulkSelectionEnabled && (
             <button
               type="button"
@@ -1396,9 +1451,12 @@ export default function MenuBuilder({
               disabled={!bulkSelection || bulkSelection.size === 0}
               aria-label="Open bulk action panel"
               style={{
-                visibility: bulkSelection && bulkSelection.size > 0 ? 'visible' : 'hidden',
+                background: bulkSelection && bulkSelection.size > 0 ? '#ff6b2b' : '#e5e7eb',
+                color: bulkSelection && bulkSelection.size > 0 ? '#ffffff' : '#6b7280',
+                border: '1px solid',
+                borderColor: bulkSelection && bulkSelection.size > 0 ? '#ff6b2b' : '#d1d5db',
               }}
-              className="text-xs font-medium text-white bg-[var(--brand)] hover:opacity-90 rounded-[var(--r-xs)] px-2.5 py-1 cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-xs font-semibold rounded px-3 py-1.5 whitespace-nowrap disabled:cursor-not-allowed"
             >
               Bulk action ({bulkSelection?.size ?? 0})
             </button>
