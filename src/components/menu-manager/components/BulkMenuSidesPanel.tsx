@@ -114,6 +114,29 @@ export default function BulkMenuSidesPanel({
   const [error, setError] = useState<string | null>(null);
   const [skipNotice, setSkipNotice] = useState<string | null>(null);
 
+  // ── Slide-in / slide-out animation state ─────────────────────────────
+  // Component mounts off-screen (translateX(100%)) then transitions to 0
+  // on the first frame after mount. On close-request, we set isOpen=false
+  // so the transition reverses, then call the parent's onClose after the
+  // animation duration so the panel actually unmounts cleanly.
+  const SLIDE_MS = 250;
+  const [isOpen, setIsOpen] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setIsOpen(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  function requestClose() {
+    setIsOpen(false);
+    setTimeout(() => onClose(), SLIDE_MS);
+  }
+  // Same pattern but invokes onComplete (used after a successful Apply
+  // so the success notice is visible during the slide-out instead of
+  // disappearing instantly with an abrupt unmount).
+  function requestComplete() {
+    setIsOpen(false);
+    setTimeout(() => onComplete?.(), SLIDE_MS);
+  }
+
   // ── Includes tab state ──────────────────────────────────────────────
   const [addZone, setAddZone] = useState<SideType>('and');
   const [addSelectedIds, setAddSelectedIds] = useState<string[]>([]);
@@ -301,7 +324,7 @@ export default function BulkMenuSidesPanel({
           ? `Added ${totalAdded} side${totalAdded === 1 ? '' : 's'} (${totalSkipped} already present)`
           : `Added ${totalAdded} side${totalAdded === 1 ? '' : 's'} across ${result.updated.length} item${result.updated.length === 1 ? '' : 's'}`,
       );
-      onComplete?.();
+      requestComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk add sides failed');
     } finally {
@@ -329,7 +352,7 @@ export default function BulkMenuSidesPanel({
           ? `Removed ${totalRemoved} side${totalRemoved === 1 ? '' : 's'} (${totalSkipped} were not present)`
           : `Removed ${totalRemoved} side${totalRemoved === 1 ? '' : 's'} across ${result.updated.length} item${result.updated.length === 1 ? '' : 's'}`,
       );
-      onComplete?.();
+      requestComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk remove sides failed');
     } finally {
@@ -356,10 +379,13 @@ export default function BulkMenuSidesPanel({
   return (
     <>
       <div
-        onClick={onClose}
+        onClick={requestClose}
         style={{
           position: 'fixed', inset: 0, zIndex: 40,
           background: 'rgba(0,0,0,0.15)',
+          opacity: isOpen ? 1 : 0,
+          transition: `opacity ${SLIDE_MS}ms ease-out`,
+          pointerEvents: isOpen ? 'auto' : 'none',
         }}
         data-testid="bulk-menu-sides-backdrop"
       />
@@ -372,6 +398,9 @@ export default function BulkMenuSidesPanel({
           borderLeft: '1px solid var(--border)',
           boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: `transform ${SLIDE_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+          willChange: 'transform',
         }}
       >
         {/* Header — mirrors BulkActionsPanel layout (title + subtitle
@@ -397,7 +426,7 @@ export default function BulkMenuSidesPanel({
           <button
             type="button"
             data-testid="bulk-menu-sides-close-btn"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close bulk panel"
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -719,7 +748,7 @@ export default function BulkMenuSidesPanel({
             <button
               type="button"
               data-testid="bulk-menu-sides-cancel-btn"
-              onClick={onClose}
+              onClick={requestClose}
               disabled={executing}
               style={{
                 flex: 1,

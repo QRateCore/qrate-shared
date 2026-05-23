@@ -199,7 +199,9 @@ export default function BulkActionsPanel({
   menus,
   initialMode,
   onClose,
-  onComplete,
+  // PDD 2026-05-22 — onComplete is wrapped below so successful Apply
+  // also slides out before the parent's state-flip unmount.
+  onComplete: onCompleteRaw,
   onBulkSpice,
   onBulkDietary,
   onBulkSweetness,
@@ -230,6 +232,32 @@ export default function BulkActionsPanel({
   const [executing, setExecuting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // PDD 2026-05-22 — slide-in / slide-out animation. Panel mounts off-
+  // screen (translateX(100%)) then transitions to 0 on the first frame
+  // after mount. On close-request, transition reverses, then we call
+  // the parent's onClose after the animation completes so the
+  // unmount-via-state-flip looks like a clean slide-out.
+  const SLIDE_MS = 250;
+  const [isOpen, setIsOpen] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setIsOpen(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  function requestClose() {
+    setIsOpen(false);
+    setTimeout(() => onClose(), SLIDE_MS);
+  }
+  // Wrap onComplete so a successful Apply also plays the slide-out
+  // animation. All 21+ runner callsites can keep calling `onComplete`
+  // unchanged — the alias-rename in the destructure routes them here.
+  function onComplete(
+    updatedItems: MenuItemDisplay[],
+    clearedIds: Set<string>,
+  ): void {
+    setIsOpen(false);
+    setTimeout(() => onCompleteRaw(updatedItems, clearedIds), SLIDE_MS);
+  }
 
   // Mode-specific form state
   const [assignMenuIds, setAssignMenuIds] = useState<Set<string>>(new Set());
@@ -900,10 +928,13 @@ export default function BulkActionsPanel({
     <>
       {/* Backdrop */}
       <div
-        onClick={onClose}
+        onClick={requestClose}
         style={{
           position: 'fixed', inset: 0, zIndex: 40,
           background: 'rgba(0,0,0,0.15)',
+          opacity: isOpen ? 1 : 0,
+          transition: `opacity ${SLIDE_MS}ms ease-out`,
+          pointerEvents: isOpen ? 'auto' : 'none',
         }}
         data-testid="bulk-panel-backdrop"
       />
@@ -925,6 +956,9 @@ export default function BulkActionsPanel({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: `transform ${SLIDE_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+          willChange: 'transform',
         }}
       >
         {/* Header */}
@@ -947,7 +981,7 @@ export default function BulkActionsPanel({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             data-testid="bulk-panel-close"
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1236,7 +1270,7 @@ export default function BulkActionsPanel({
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               data-testid="bulk-cancel"
               disabled={executing}
               style={{
