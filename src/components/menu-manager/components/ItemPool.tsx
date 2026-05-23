@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Pencil, Plus, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
 import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
@@ -837,32 +837,11 @@ export default function ItemPool({
               Bulk actions →
             </button>
           )}
-          {/* STR-415: reverse-direction entry — pre-selected entrees → BulkModifierPanel.
-              Visually differentiated from sibling "Bulk actions →" via Plus icon
-              prefix to avoid twin-button muscle-memory misclicks (Phase 6 UX-Reviewer
-              feedback 2026-04-29). */}
-          {showBulkActions && someSelected && itemTypeFilter === 'dishes' && (
-            <button
-              type="button"
-              onClick={handleOpenBulkModifiersTracked}
-              data-testid="bulk-modifier-reverse-btn"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--blue)',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              <Plus size={12} strokeWidth={2.5} />
-              Assign addons →
-            </button>
-          )}
+          {/* "Assign addons →" reverse-direction button (STR-415, 2026-04-29)
+              removed 2026-05-22 per Avi — the dish-side surface is the
+              EditModal Groupings tab now; this entry was redundant. The
+              addon-filter version of the bulk-modifier flow ("Bulk Actions →"
+              at line ~800) is untouched. */}
           {orderedCategories.length > 0 && (
             <button
               type="button"
