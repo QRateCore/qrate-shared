@@ -268,7 +268,9 @@ describe('BulkActionsPanel — close', () => {
       service,
     );
     await user.click(screen.getByTestId('bulk-panel-close'));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    // PDD 2026-05-22 — slide-out animation runs for 250ms before the
+    // parent's onClose actually fires. waitFor covers the timeout.
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('clicking the backdrop calls onClose', async () => {
@@ -280,7 +282,7 @@ describe('BulkActionsPanel — close', () => {
       service,
     );
     await user.click(screen.getByTestId('bulk-panel-backdrop'));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });
 

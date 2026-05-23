@@ -277,25 +277,28 @@ describe('BulkMenuSidesPanel — Remove Includes tab', () => {
 });
 
 describe('BulkMenuSidesPanel — close handlers', () => {
-  it('backdrop click closes the drawer', () => {
+  // PDD 2026-05-22 — close paths route through requestClose which
+  // animates slide-out for 250ms before invoking the parent's onClose.
+  // waitFor covers the timeout.
+  it('backdrop click closes the drawer', async () => {
     const onClose = vi.fn();
     render(<BulkMenuSidesPanel {...defaultProps({ onClose })} />);
     fireEvent.click(screen.getByTestId('bulk-menu-sides-backdrop'));
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('close button closes the drawer', () => {
+  it('close button closes the drawer', async () => {
     const onClose = vi.fn();
     render(<BulkMenuSidesPanel {...defaultProps({ onClose })} />);
     fireEvent.click(screen.getByTestId('bulk-menu-sides-close-btn'));
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('cancel button closes the drawer', () => {
+  it('cancel button closes the drawer', async () => {
     const onClose = vi.fn();
     render(<BulkMenuSidesPanel {...defaultProps({ onClose })} />);
     fireEvent.click(screen.getByTestId('bulk-menu-sides-cancel-btn'));
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 });
 
