@@ -86,7 +86,11 @@ This lets owner-webapp (Cognito owner auth) and waiter-webapp (Cognito staff aut
 
 ### Peer Dependencies
 
-React, React-DOM, and Lucide-React are **peer dependencies** — consumers must install them. This avoids duplicate React instances.
+React, React-DOM, Lucide-React, and **Sonner** (toast notifications;
+added 2026-05-22 to fix the long-standing typecheck red on
+ItemModifierZones.tsx) are **peer dependencies** — consumers must
+install them. This avoids duplicate React instances and prevents a
+second sonner singleton from racing with the consumer's toast surface.
 
 ## Making Changes
 
