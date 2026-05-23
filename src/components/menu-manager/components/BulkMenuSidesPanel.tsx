@@ -134,6 +134,30 @@ export default function BulkMenuSidesPanel({
     [selectedItems],
   );
 
+  // Hide Crisp chat widget while the drawer is open — the launcher's
+  // fixed bottom-right position collides with the panel's Apply
+  // button. Crisp uses max-int z-index so we can't out-rank it; the
+  // pragmatic fix is to hide its chrome via injected CSS while the
+  // drawer mount lasts. Targets every selector Crisp has shipped
+  // historically so brittle to-the-vendor-changing-DOM is minimized.
+  useEffect(() => {
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-bulk-menu-sides-crisp-hide', 'true');
+    styleEl.textContent = `
+      .crisp-client,
+      #crisp-chatbox,
+      .cc-1brb6,
+      .cc-1obhb,
+      [data-bind-id="bind-launcher"],
+      iframe[name^="crisp-chatbox"]
+        { display: none !important; visibility: hidden !important; }
+    `;
+    document.head.appendChild(styleEl);
+    return () => {
+      try { document.head.removeChild(styleEl); } catch { /* already gone */ }
+    };
+  }, []);
+
   // Allowed side pool for the Includes-tab picker. Apply the item_type
   // allowlist + exclude selected parents (self-side forbidden).
   const sidePool = useMemo(
@@ -414,10 +438,24 @@ export default function BulkMenuSidesPanel({
           ))}
         </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {/* Body — flex column with minHeight:0 so child lists can
+            flex-fill (pickers extend down to the footer). */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 16,
+          }}
+        >
           {tab === 'includes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 12,
+                flex: 1, minHeight: 0,
+              }}
+            >
               <ZoneRadio
                 value={addZone}
                 onChange={switchAddZone}
@@ -438,12 +476,18 @@ export default function BulkMenuSidesPanel({
                 testidPrefix="bulk-menu-sides"
                 excludeIds={selectedParentIds}
                 searchPlaceholder="Search sides to add…"
+                fillHeight
               />
             </div>
           )}
 
           {tab === 'removeIncludes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 12,
+                flex: 1, minHeight: 0,
+              }}
+            >
               <ZoneRadio
                 value={removeZone}
                 onChange={switchRemoveZone}
@@ -519,7 +563,8 @@ export default function BulkMenuSidesPanel({
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--r-xs)',
                     background: '#fff',
-                    maxHeight: 320,
+                    flex: 1,
+                    minHeight: 0,
                     overflowY: 'auto',
                   }}
                 >

@@ -33,6 +33,15 @@ export interface BulkMemberPickerProps {
   searchPlaceholder?: string;
   /** Optional suffix for the "N members selected" label (e.g. ' — optional'). */
   selectedCountSuffix?: string;
+  /**
+   * When true, the picker takes flex: 1 of its parent and the row
+   * container fills the remaining height (overflowing internally
+   * via scroll). When false (default), the row container is capped
+   * at maxHeight: 240 — keeps the bulk-grouping create-form's stacked
+   * layout intact. Set this when the picker is the dominant child of
+   * a flex-column drawer body (e.g. BulkMenuSidesPanel).
+   */
+  fillHeight?: boolean;
 }
 
 export function BulkMemberPicker({
@@ -47,6 +56,7 @@ export function BulkMemberPicker({
   excludeIds,
   searchPlaceholder = 'Search items to add as members…',
   selectedCountSuffix = '',
+  fillHeight = false,
 }: BulkMemberPickerProps) {
   const q = search.trim().toLowerCase();
   const excludeSet = new Set(excludeIds ?? []);
@@ -66,7 +76,14 @@ export function BulkMemberPicker({
   const memberWord = selectedIds.length === 1 ? '' : 's';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        ...(fillHeight ? { flex: 1, minHeight: 0 } : {}),
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
           <span data-testid={`${testidPrefix}-member-selected-count`}>
@@ -112,7 +129,9 @@ export function BulkMemberPicker({
       </div>
       <div
         style={{
-          maxHeight: 240,
+          ...(fillHeight
+            ? { flex: 1, minHeight: 0 }
+            : { maxHeight: 240 }),
           overflowY: 'auto',
           border: '1px solid var(--border)',
           borderRadius: 'var(--r-xs)',
