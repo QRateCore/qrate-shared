@@ -934,7 +934,6 @@ export default function BulkActionsPanel({
           background: 'rgba(0,0,0,0.15)',
           opacity: isOpen ? 1 : 0,
           transition: `opacity ${SLIDE_MS}ms ease-out`,
-          pointerEvents: isOpen ? 'auto' : 'none',
         }}
         data-testid="bulk-panel-backdrop"
       />
