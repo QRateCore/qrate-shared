@@ -1102,7 +1102,15 @@ function CategoryBucket({
                   onConfirmIncludeDrop={onConfirmIncludeDrop}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
-                  disableDrag={bulkSelectionEnabled}
+                  // Drag-and-drop between category buckets stays available
+                  // unless the owner has actively selected rows for a bulk
+                  // action. When ≥1 row is selected, drag is suppressed so
+                  // it doesn't fight the bulk-selection UX. When nothing
+                  // is selected, normal drag-to-recategorize works.
+                  disableDrag={
+                    bulkSelectionEnabled
+                    && (bulkSelection?.size ?? 0) > 0
+                  }
                   onRemove={() => {
                     const s = getSettings(menuId, item.id);
                     const cats = s.canonical_categories ?? [];
