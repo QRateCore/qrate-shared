@@ -1439,10 +1439,9 @@ export default function MenuBuilder({
             </span>
           )}
           {/* PDD 2026-05-22 — bulk action button. Always visible when
-              bulk mode is enabled (disabled until ≥1 row selected) so
-              owners see the affordance up-front. Uses an explicit
-              hex color to avoid silent invisibility if --brand isn't
-              defined in the consumer's CSS scope. */}
+              bulk mode is enabled (disabled until ≥1 row selected). Uses
+              var(--blue) to match BulkActionsPanel's primary action color
+              and the active tab underline in the drawer chrome. */}
           {bulkSelectionEnabled && (
             <button
               type="button"
@@ -1451,14 +1450,17 @@ export default function MenuBuilder({
               disabled={!bulkSelection || bulkSelection.size === 0}
               aria-label="Open bulk action panel"
               style={{
-                background: bulkSelection && bulkSelection.size > 0 ? '#ff6b2b' : '#e5e7eb',
-                color: bulkSelection && bulkSelection.size > 0 ? '#ffffff' : '#6b7280',
-                border: '1px solid',
-                borderColor: bulkSelection && bulkSelection.size > 0 ? '#ff6b2b' : '#d1d5db',
+                background: bulkSelection && bulkSelection.size > 0
+                  ? 'var(--blue)' : '#f0f0f0',
+                color: bulkSelection && bulkSelection.size > 0
+                  ? '#ffffff' : 'var(--text2)',
+                border: 'none',
+                fontWeight: 700,
+                opacity: bulkSelection && bulkSelection.size > 0 ? 1 : 0.7,
               }}
-              className="text-xs font-semibold rounded px-3 py-1.5 whitespace-nowrap disabled:cursor-not-allowed"
+              className="text-xs rounded-[var(--r-xs)] px-3 py-1.5 whitespace-nowrap disabled:cursor-not-allowed"
             >
-              Bulk action ({bulkSelection?.size ?? 0})
+              Bulk actions ({bulkSelection?.size ?? 0})
             </button>
           )}
         </div>

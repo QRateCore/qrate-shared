@@ -374,23 +374,25 @@ export default function BulkMenuSidesPanel({
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
-        {/* Header */}
+        {/* Header — mirrors BulkActionsPanel layout (title + subtitle
+            count + close icon) for visual parity. */}
         <div
           style={{
-            padding: '12px 16px',
+            padding: '16px 16px 12px',
             borderBottom: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>
-              Bulk Includes — {itemCount} item{itemCount === 1 ? '' : 's'}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+              Bulk actions
             </div>
-            {menuName && (
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                on menu: {menuName}
-              </div>
-            )}
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+              {itemCount} item{itemCount === 1 ? '' : 's'} selected
+              {menuName ? ` · ${menuName}` : ''}
+            </div>
           </div>
           <button
             type="button"
@@ -399,20 +401,60 @@ export default function BulkMenuSidesPanel({
             aria-label="Close bulk panel"
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
-              padding: 4, display: 'flex', alignItems: 'center',
+              color: 'var(--text2)', padding: 4, borderRadius: 4,
+              display: 'flex', alignItems: 'center',
             }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Tab bar */}
+        {/* Item preview chips — mirrors BulkActionsPanel. Shows up to 4
+            parent names + "+N more". */}
+        <div
+          style={{
+            padding: '10px 16px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 4,
+          }}
+        >
+          {selectedItems.slice(0, 4).map((p) => (
+            <span
+              key={p.id}
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                background: '#f0f0f0',
+                color: 'var(--text)',
+                borderRadius: 4,
+                padding: '2px 7px',
+                maxWidth: 120,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={p.name}
+            >
+              {p.name}
+            </span>
+          ))}
+          {itemCount > 4 && (
+            <span style={{ fontSize: 11, color: 'var(--text2)', padding: '2px 4px' }}>
+              +{itemCount - 4} more
+            </span>
+          )}
+        </div>
+
+        {/* Tab bar — matches BulkActionsPanel's mode-tab style:
+            var(--blue) active, var(--text2) inactive, 2px underline. */}
         <div
           data-testid="bulk-menu-sides-tab-bar"
           style={{
             display: 'flex',
             borderBottom: '1px solid var(--border)',
-            background: 'var(--surface-2, #f9fafb)',
+            flexShrink: 0,
           }}
         >
           {(['includes', 'removeIncludes'] as TabKey[]).map((k) => (
@@ -422,15 +464,18 @@ export default function BulkMenuSidesPanel({
               data-testid={`bulk-menu-sides-tab-${k}`}
               onClick={() => setTab(k)}
               style={{
-                flex: 1,
-                padding: '8px 12px',
-                fontSize: 12,
-                fontWeight: tab === k ? 700 : 500,
-                background: tab === k ? '#fff' : 'transparent',
-                color: tab === k ? 'var(--ink)' : 'var(--muted)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '9px 12px',
+                fontSize: 11,
+                fontWeight: 600,
+                color: tab === k ? 'var(--blue)' : 'var(--text2)',
+                background: 'transparent',
                 border: 'none',
-                borderBottom: tab === k ? '2px solid var(--brand)' : '2px solid transparent',
+                borderBottom: tab === k ? '2px solid var(--blue)' : '2px solid transparent',
                 cursor: 'pointer',
+                whiteSpace: 'nowrap',
               }}
             >
               {k === 'includes' ? 'Includes' : 'Remove Includes'}
@@ -578,6 +623,9 @@ export default function BulkMenuSidesPanel({
                         style={{
                           display: 'flex', flexDirection: 'column',
                           borderBottom: '1px solid var(--border)',
+                          // Selected = same brand-light tint the picker
+                          // uses for selected rows → visual parity across
+                          // both drawers' list surfaces.
                           background: checked ? 'var(--brand-l)' : '#fff',
                         }}
                       >
@@ -666,17 +714,23 @@ export default function BulkMenuSidesPanel({
               {skipNotice}
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          {/* Cancel + Apply — same 1:2 flex ratio + colors as BulkActionsPanel */}
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
               data-testid="bulk-menu-sides-cancel-btn"
               onClick={onClose}
               disabled={executing}
               style={{
-                padding: '6px 12px', fontSize: 12,
-                background: '#fff', border: '1px solid var(--border)',
-                borderRadius: 'var(--r-xs)', cursor: executing ? 'not-allowed' : 'pointer',
-                color: 'var(--ink)',
+                flex: 1,
+                padding: '8px 0',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--text2)',
+                background: '#f0f0f0',
+                border: 'none',
+                borderRadius: 'var(--r-xs)',
+                cursor: executing ? 'not-allowed' : 'pointer',
               }}
             >
               Cancel
@@ -687,19 +741,23 @@ export default function BulkMenuSidesPanel({
               onClick={onApply}
               disabled={applyDisabled}
               style={{
-                padding: '6px 12px', fontSize: 12, fontWeight: 600,
-                background: applyDisabled ? 'var(--surface-2)' : 'var(--brand)',
-                color: applyDisabled ? 'var(--muted)' : '#fff',
+                flex: 2,
+                padding: '8px 0',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'white',
+                background: applyDisabled ? 'var(--text2)' : 'var(--blue)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: applyDisabled ? 'not-allowed' : 'pointer',
+                opacity: applyDisabled ? 0.6 : 1,
               }}
             >
               {executing
                 ? 'Applying…'
                 : tab === 'includes'
-                  ? `Add ${addSelectedIds.length} side${addSelectedIds.length === 1 ? '' : 's'}`
-                  : `Remove ${removeSelectedIds.size} side${removeSelectedIds.size === 1 ? '' : 's'}`}
+                  ? `Add ${addSelectedIds.length} side${addSelectedIds.length === 1 ? '' : 's'} to ${itemCount} item${itemCount === 1 ? '' : 's'}`
+                  : `Remove ${removeSelectedIds.size} side${removeSelectedIds.size === 1 ? '' : 's'} from ${itemCount} item${itemCount === 1 ? '' : 's'}`}
             </button>
           </div>
         </div>
@@ -719,8 +777,8 @@ function ZoneRadio({ value, onChange, testidPrefix }: ZoneRadioProps) {
     <div
       style={{
         display: 'flex', flexDirection: 'column', gap: 4,
-        padding: '8px 10px',
-        background: 'var(--surface-2, #f9fafb)',
+        padding: '10px 12px',
+        background: '#f9fafb',
         border: '1px solid var(--border)',
         borderRadius: 'var(--r-xs)',
       }}
