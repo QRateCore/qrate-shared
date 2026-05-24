@@ -25,7 +25,10 @@ export interface CreateStaffRequest {
 
 // ─── Order Status ────────────────────────────────────────────────────────────
 
-export type OrderStatus = 'placed' | 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'cancelled' | 'issue';
+// PDD 2026-05-22 Step 6c: `ready` retired from the order state machine.
+// Backend CHECK constraint forbids new `ready` writes; legacy rows were
+// backfilled to `delivered` by Step 6b.
+export type OrderStatus = 'placed' | 'pending' | 'confirmed' | 'preparing' | 'delivered' | 'completed' | 'cancelled' | 'issue';
 
 // ─── Table Activity Detail Types ─────────────────────────────────────────────
 

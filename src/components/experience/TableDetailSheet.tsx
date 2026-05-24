@@ -163,15 +163,12 @@ export default function TableDetailSheet({
   const guestNames = [...new Set(allItems.map(i => i.guestName))];
   const filteredItems = guestFilter ? allItems.filter(i => i.guestName === guestFilter) : allItems;
 
-  // PDD 2026-05-22 Step 7: workflow simplifies to Order Placed →
-  // In Kitchen (Mark Served) → Served. The `ready` row is retained as
-  // "Ready (legacy)" so any pre-existing rows from before the Step 6b
-  // backfill render with the Mark Served action — they advance to
-  // `delivered` just like in-kitchen rows. Removed after Step 6c.
+  // PDD 2026-05-22 Step 6c: workflow is Order Placed → In Kitchen
+  // (Mark Served) → Served. The legacy "Ready" row is gone — Step 6b
+  // confirmed zero `ready` rows remained in the DB.
   const statusGroups = [
     { statuses: ['pending'],               label: 'Order Placed',   actionLabel: 'Enter in POS', nextStatus: 'confirmed' as OrderStatus, labelCls: 'text-blue-700',    bgCls: 'bg-blue-50'   },
     { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: 'Mark Served', nextStatus: 'delivered' as OrderStatus, labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
-    { statuses: ['ready'],                 label: 'Ready (legacy)', actionLabel: 'Mark Served',  nextStatus: 'delivered' as OrderStatus, labelCls: 'text-amber-700',   bgCls: 'bg-amber-50'  },
     { statuses: ['delivered'],             label: 'Served',         actionLabel: null,            nextStatus: null,                       labelCls: 'text-emerald-700', bgCls: 'bg-emerald-50'},
     { statuses: ['completed'],             label: 'Completed',      actionLabel: null,            nextStatus: null,                       labelCls: 'text-gray-500',    bgCls: 'bg-gray-50'   },
   ];
@@ -552,11 +549,11 @@ export default function TableDetailSheet({
                   </div>
 
                   {/* PDD Step 7: Mark All Served now operates on
-                      confirmed/preparing (and any legacy `ready` rows) — all
-                      advance to `delivered` in one tap. */}
+                      confirmed/preparing — all advance to `delivered` in
+                      one tap. */}
                   {(() => {
                     const inKitchenOrders = orders.filter(o =>
-                      o.status === 'confirmed' || o.status === 'preparing' || o.status === 'ready'
+                      o.status === 'confirmed' || o.status === 'preparing'
                     );
                     if (inKitchenOrders.length === 0) return null;
                     return (
