@@ -17,7 +17,8 @@
  * rule and a save callback; the editor handles preset selection + numeric
  * inputs internally.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SelectionRule } from '../../../types/restaurant';
 
 export type RulePresetKind = 'all' | 'exactly' | 'at_least' | 'at_most' | 'optional' | 'range';
@@ -89,11 +90,50 @@ export default function SelectionRuleEditor({
   const [m, setM] = useState<number>(() => rule.max_select ?? Math.max(rule.min_select + 1, 2));
   const [saving, setSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Popover renders via a portal at document.body so an overflow-hidden
+  // ancestor (e.g. the grouping card in GroupingsSection) can't clip it.
+  // We compute the popover's fixed top/left from the trigger's bounding
+  // rect each time it opens AND on window resize/scroll so the popover
+  // tracks the trigger if the page re-flows.
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const updateCoords = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Default placement: just under the trigger, left-aligned to it.
+    // If the popover would overflow the right viewport edge, shift it left.
+    const POPOVER_WIDTH = 260; // min-width 240 + side padding
+    const POPOVER_MARGIN = 8;
+    let left = rect.left;
+    if (left + POPOVER_WIDTH + POPOVER_MARGIN > window.innerWidth) {
+      left = Math.max(POPOVER_MARGIN, window.innerWidth - POPOVER_WIDTH - POPOVER_MARGIN);
+    }
+    setCoords({ top: rect.bottom + 4, left });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateCoords();
+    const handler = () => updateCoords();
+    window.addEventListener('resize', handler);
+    // capture=true so we still pick up scrolls inside any scrollable ancestor.
+    window.addEventListener('scroll', handler, true);
+    return () => {
+      window.removeEventListener('resize', handler);
+      window.removeEventListener('scroll', handler, true);
+    };
+  }, [open, updateCoords]);
 
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inTrigger = containerRef.current?.contains(target);
+      const inPopover = popoverRef.current?.contains(target);
+      if (!inTrigger && !inPopover) {
         setOpen(false);
       }
     }
@@ -118,6 +158,7 @@ export default function SelectionRuleEditor({
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
         data-testid={`${testIdPrefix}-trigger`}
         style={{
@@ -134,15 +175,15 @@ export default function SelectionRuleEditor({
         {describeRule(rule)} {isRequired ? '· Required' : ''} ▾
       </button>
 
-      {open && (
+      {open && coords && typeof document !== 'undefined' && createPortal(
         <div
+          ref={popoverRef}
           data-testid={`${testIdPrefix}-popover`}
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: 4,
-            zIndex: 100,
+            position: 'fixed',
+            top: coords.top,
+            left: coords.left,
+            zIndex: 1000,
             background: '#fff',
             border: '1px solid #e2e8f0',
             borderRadius: 8,
@@ -254,7 +295,8 @@ export default function SelectionRuleEditor({
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

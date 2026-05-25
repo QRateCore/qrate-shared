@@ -190,6 +190,12 @@ export interface MenuItem {
    * 'included' — orderable by diners AND eligible to be offered free-with-order by the recommendation engine.
    */
   item_type?: 'dish' | 'addon' | 'included';
+  /**
+   * PDD 2026-05-25 — owner/staff-only free-text note attached to add-ons
+   * (e.g. "comes with bread basket"). NEVER patron-facing. Capped at 500
+   * chars server-side. NULL = no note.
+   */
+  memo?: string | null;
 }
 
 export interface MenuItemCreate {
@@ -422,6 +428,11 @@ export interface MenuItemDisplay {
    */
   pricing_mode?: 'base_plus_components' | 'components_only';
   groupings?: Grouping[];
+  /**
+   * PDD 2026-05-25 — owner/staff-only memo on add-ons. Never patron-facing.
+   * Capped at 500 chars server-side. NULL = no note.
+   */
+  memo?: string | null;
 }
 
 /**
@@ -518,6 +529,12 @@ export interface GroupingItem {
   status?: 'suggested' | 'approved';
   suggestion_source?: 'manual' | 'ai';
   ai_confidence?: number | null;
+  /**
+   * PDD 2026-05-25 — owner/staff-only memo, projected from the linked
+   * menu_items.memo so the Add member popup picker can render the Memo
+   * column without an extra fetch. Add-ons only by convention.
+   */
+  memo?: string | null;
 }
 
 /** BYO PDD grouping shape (Step 5 OpenAPI).
