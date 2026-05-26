@@ -297,6 +297,33 @@ export interface SideEntry {
   thumbnail_url?: string | null;
 }
 
+/**
+ * PDD 2026-05-25 overlapping-menu-items — per-menu projection of a
+ * food item that appears on 2+ concurrently-active menus with diffs
+ * in {price, Includes, Choose-One}. Lives on the patron-facing
+ * `MenuItem.variants[]` field; drives the carousel "N VERSIONS"
+ * pill, the pre-step variant chooser sheet, and the
+ * `VERSION · {menu} · ₹X · change` chip on the composition page.
+ *
+ * Patron-only — the owner side uses a separate `OverlapPlacement`
+ * shape from the openapi-fetch generated types (smaller, no thumbnails).
+ */
+export interface FoodItemVariant {
+  menu_id: string;
+  menu_name: string;
+  /** Pre-formatted hours string ("12 PM — 4 PM", em-dash with spaces).
+   *  Null when the menu is all-day; consumers render "All day" or hide. */
+  menu_hours: string | null;
+  menu_is_all_day: boolean;
+  price: number;
+  /** Per-menu Includes sides (menu_item_menu_sides.side_type='and'). */
+  includes: SideEntry[];
+  /** Per-menu Choose-One sides (menu_item_menu_sides.side_type='or').
+   *  Field named `pick_one` (not `choose_one`) to match patron variant
+   *  card vocabulary. */
+  pick_one: SideEntry[];
+}
+
 export interface RecommendationEntry {
   menu_item_id: string;
   name: string;
@@ -433,6 +460,23 @@ export interface MenuItemDisplay {
    * Capped at 500 chars server-side. NULL = no note.
    */
   memo?: string | null;
+  /**
+   * PDD 2026-05-25 overlapping-menu-items — per-menu projections when
+   * this dish appears on 2+ concurrently-active menus with differing
+   * per-menu attributes (price, Includes, Choose-One). Absent when the
+   * item has only one active placement OR all placements are
+   * attribute-identical — consumers treat missing as "render normally,
+   * no N VERSIONS pill, no chooser". Capped at 4 entries server-side.
+   */
+  variants?: FoodItemVariant[];
+  /**
+   * PDD 2026-05-25 overlapping-menu-items — owner-authored internal
+   * note explaining why this dish appears on multiple active menus
+   * with differences. NEVER surfaced to diners. Capped at 240 chars
+   * server-side. NULL when not set. Surfaced on the owner overlap
+   * modal's rationale composer.
+   */
+  overlap_rationale?: string | null;
 }
 
 /**
