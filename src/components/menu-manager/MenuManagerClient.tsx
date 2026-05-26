@@ -55,6 +55,15 @@ interface Props {
    *  price" filter pill. Default false so other consumers (e.g.
    *  qrate-waiter-webapp) don't get the owner-only banner. */
   showMenuStatsBanner?: boolean;
+  /** Restaurant-wide count of items appearing on 2+ active menus with
+   *  per-menu attribute diffs. When > 0 (and showMenuStatsBanner is true)
+   *  renders an "Overlap · N" pill next to the missing-price pill. The
+   *  count comes from a consumer-owned hook (owner-app's useOverlapSummary)
+   *  so this shared component stays auth-/transport-agnostic. */
+  overlapTotal?: number;
+  /** Click handler for the Overlap pill. Consumer typically opens its own
+   *  OverlapModal in response. Required only when overlapTotal > 0. */
+  onOverlapPillClick?: () => void;
   /**
    * Optional gate called before a dropped item is added as a recommendation.
    * Consumer apps (e.g., owner dashboard) use this to prompt for canonical
@@ -320,7 +329,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -1747,6 +1756,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 onClick={() => setMissingPriceFilter((p) => !p)}
                 testId="menu-banner-filter-missing-price"
               />
+              {overlapTotal > 0 && onOverlapPillClick && (
+                <BannerFilterPill
+                  label="Overlap"
+                  count={overlapTotal}
+                  active={false}
+                  onClick={onOverlapPillClick}
+                  testId="menu-banner-pill-overlap"
+                />
+              )}
             </div>
           </div>
         </div>
