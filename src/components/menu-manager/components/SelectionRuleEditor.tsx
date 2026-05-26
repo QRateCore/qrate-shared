@@ -104,14 +104,36 @@ export default function SelectionRuleEditor({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     // Default placement: just under the trigger, left-aligned to it.
-    // If the popover would overflow the right viewport edge, shift it left.
+    // Overflow handling:
+    //  - Right edge: shift left so the popover stays in viewport.
+    //  - Bottom edge: flip ABOVE the trigger so the save/cancel buttons
+    //    remain reachable. Without this, the rule popover opened from a
+    //    grouping row near the drawer bottom rendered partially off-
+    //    viewport — Playwright then timed out on the Save click (E2E
+    //    `groupings-authoring.spec.ts:170` regression 2026-05-26).
     const POPOVER_WIDTH = 260; // min-width 240 + side padding
-    const POPOVER_MARGIN = 8;
+    // Measure the rendered popover height if we've already mounted once;
+    // otherwise estimate. Estimate is generous so the first paint doesn't
+    // overflow either.
+    const measuredHeight = popoverRef.current?.getBoundingClientRect().height;
+    const POPOVER_HEIGHT_ESTIMATE = measuredHeight && measuredHeight > 0
+      ? measuredHeight
+      : 280; // 6 presets + n-input + footer + padding
+    const MARGIN = 8;
     let left = rect.left;
-    if (left + POPOVER_WIDTH + POPOVER_MARGIN > window.innerWidth) {
-      left = Math.max(POPOVER_MARGIN, window.innerWidth - POPOVER_WIDTH - POPOVER_MARGIN);
+    if (left + POPOVER_WIDTH + MARGIN > window.innerWidth) {
+      left = Math.max(MARGIN, window.innerWidth - POPOVER_WIDTH - MARGIN);
     }
-    setCoords({ top: rect.bottom + 4, left });
+    // Prefer below-trigger; flip above if it would overflow the viewport.
+    let top = rect.bottom + 4;
+    if (top + POPOVER_HEIGHT_ESTIMATE + MARGIN > window.innerHeight) {
+      const flippedTop = rect.top - POPOVER_HEIGHT_ESTIMATE - 4;
+      // Only flip if the flipped position fits OR fits better than the
+      // overflow-below position. If neither fits (popover taller than the
+      // viewport), pin to MARGIN from the top — Playwright can still scroll.
+      top = flippedTop >= MARGIN ? flippedTop : MARGIN;
+    }
+    setCoords({ top, left });
   }, []);
 
   useLayoutEffect(() => {
@@ -126,6 +148,18 @@ export default function SelectionRuleEditor({
       window.removeEventListener('scroll', handler, true);
     };
   }, [open, updateCoords]);
+
+  // After the popover first mounts (coords transitions null → set), the
+  // popoverRef now points at a real node — re-measure so the flip-above
+  // decision uses the ACTUAL height instead of the 280px estimate. Also
+  // re-measure after preset selection changes the layout (e.g., adding
+  // the inline numeric input under `exactly`/`at_least`/`at_most`/`range`).
+  useLayoutEffect(() => {
+    if (open && coords) updateCoords();
+    // We deliberately depend on `preset` so the popover re-positions when
+    // its content grows / shrinks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, open]);
 
   useEffect(() => {
     if (!open) return;
