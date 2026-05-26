@@ -69,6 +69,7 @@ interface EditModalProps {
     food_tags: FoodTags;
     item_type: 'dish' | 'addon';
     price?: number | null;
+    memo?: string | null;
   }) => Promise<MenuItemDisplay>;
   /** When provided, allergens and dietary restrictions use the dietary-tags API instead of free-text input. */
   dietaryTagService?: DietaryTagService;
@@ -623,6 +624,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  // Addon-only owner/staff memo (≤500 chars). Surfaced as subtext in the
+  // Add Member picker (ItemSearchPicker) and on the Setup Guide → Add-ons
+  // page; the EditModal is the third write surface. Dishes do not use it.
+  const [memo, setMemo]             = useState<string>(item.memo ?? '');
   const [isActive, setIsActive]     = useState(item.active !== false);
 
   // Heat/spice — read the JSONB label first, then fall back to the int
@@ -1596,6 +1601,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
           food_tags: foodTags,
           item_type: isAddon ? 'addon' : 'dish',
           ...(isAddon && price !== null ? { price } : {}),
+          ...(isAddon ? { memo: memo.trim() || null } : {}),
         });
         const updated: MenuItemDisplay = {
           ...item,
@@ -1672,6 +1678,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         // STR-303: add-on mode is the sole per-item price surface in this modal.
         // Dishes continue to price per-menu in MenuBuilder — do not send price for them.
         ...(isAddon ? { price } : {}),
+        // Addon memo — owner/staff-facing note (≤500 chars), addon-only.
+        // Trim then collapse to null when empty so the backend stores NULL
+        // rather than an empty string. Match the Setup Guide → Add-ons
+        // editor's normalisation.
+        ...(isAddon ? { memo: memo.trim() || null } : {}),
         // PDD 2026-05-15 — per-item opt-out for the patron composition
         // page Spice Level slider. Only meaningful for dishes; add-ons
         // never reach the composition page so the field is harmless there.
@@ -2890,6 +2901,38 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
                 )}
               </div>
+            </div>
+
+            {/* Memo — owner/staff-facing free-text note (≤500 chars).
+                Same field that surfaces as subtext in the Add Member
+                picker and gets edited via blur-to-save on the Setup
+                Guide → Add-ons page. Here it saves with the rest of
+                the form on Save. */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-memo-input">
+                Memo
+              </label>
+              <textarea
+                id="edit-memo-input"
+                data-testid="edit-memo-input"
+                value={memo}
+                maxLength={500}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="Optional note — shown to staff when picking this add-on"
+                rows={2}
+                style={{
+                  width: '100%',
+                  fontSize: 14,
+                  padding: '8px 10px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-xs)',
+                  background: 'var(--white)',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  minHeight: 36,
+                }}
+              />
             </div>
 
           </section>
