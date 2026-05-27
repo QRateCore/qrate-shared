@@ -176,6 +176,13 @@ export interface MenuItem {
    * Spice Level slider. Defaults to TRUE on the wire.
    */
   spice_modifier_enabled?: boolean;
+  /**
+   * PDD 2026-05-26: Build-Your-Own classification. When true, the recommender
+   * bypasses Stage 0 dietary/allergen filtering on the dish's own tags so the
+   * dish surfaces to any diner; the patron flow routes it through the
+   * composition page. Defaults to FALSE on the wire.
+   */
+  is_byo?: boolean;
   /** Pipeline-assigned canonical category (set by the categorize stage) */
   canonical_category?: string | null;
   /** 'single' = serves one person; 'shared' = serves multiple guests */
@@ -365,6 +372,12 @@ export interface MenuItemDisplay {
    */
   spice_modifier_enabled?: boolean;
   /**
+   * PDD 2026-05-26: Build-Your-Own classification. When true, the recommender
+   * bypasses Stage 0 filtering on the dish's own tags; the patron-side
+   * "Add" CTA reads "Customize" and routes to the composition page.
+   */
+  is_byo?: boolean;
+  /**
    * Canonical heat/spice level (1..N indexing into the per-restaurant
    * spice_scale). Source of truth alongside `food_tags.heat_spice` (label).
    * EditModal falls back to this when the JSONB label is missing.
@@ -534,6 +547,12 @@ export interface MenuItemSummary {
    * Optional in TS because legacy summary payloads (pre-fix) may omit it.
    */
   spice_modifier_enabled?: boolean;
+  /**
+   * PDD 2026-05-26: Build-Your-Own classification flag in the Food Library
+   * summary projection. Defaults to FALSE on the wire. Drives the BYO chip
+   * in the Food Library row.
+   */
+  is_byo?: boolean;
   /**
    * Lightweight projection of the dish's non-empty groupings, used by
    * the Food Library table's Groupings column to render a count + hover

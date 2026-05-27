@@ -154,6 +154,8 @@ interface RenderConfig {
    * EditModal only renders the Groupings tab when this is non-null.
    */
   groupingsSlot?: React.ReactNode;
+  /** PDD 2026-05-26 — drives the BYO toggle's enabled/disabled state. */
+  groupingsCount?: number;
 }
 
 function renderModal(config: RenderConfig = {}) {
@@ -172,6 +174,7 @@ function renderModal(config: RenderConfig = {}) {
     onComplete = vi.fn(),
     heatLabels,
     groupingsSlot,
+    groupingsCount,
   } = config;
 
   render(
@@ -191,6 +194,7 @@ function renderModal(config: RenderConfig = {}) {
         onComplete={onComplete}
         heatLabels={heatLabels}
         groupingsSlot={groupingsSlot}
+        groupingsCount={groupingsCount}
       />
     </MenuManagerServiceProvider>,
   );
@@ -1906,5 +1910,108 @@ describe('EditModal — new-item immediate name validation (red border + helper)
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
     await user.clear(input);
     expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// PDD 2026-05-26 — is_byo (Build-Your-Own) toggle
+// ===========================================================================
+// The BYO toggle gates whether the recommender bypasses Stage 0 dietary/
+// allergen filtering on the dish's own tags. Hidden for add-ons (an add-on
+// itself cannot be BYO). Disabled when the dish has zero groupings (the
+// API enforces the same hard-block: BYO_REQUIRES_GROUPINGS). Mobile-
+// friendly: visible inline hint beneath the disabled toggle, not just a
+// tooltip (UX-Reviewer Plan v2 tactical condition).
+//
+// Companion backend pins:
+//   qrate-core/backend/lambdas/api/tests/test_owner_food_items_byo.py
+describe('EditModal — is_byo toggle (PDD 2026-05-26)', () => {
+  it('renders the BYO toggle on a non-addon dish', () => {
+    renderModal({ item: makeDishItem(), groupingsCount: 2 });
+    expect(screen.getByTestId('byo-toggle')).toBeInTheDocument();
+  });
+
+  it('hides the BYO toggle on add-ons', () => {
+    renderModal({ item: makeAddonItem(), groupingsCount: 2 });
+    expect(screen.queryByTestId('byo-toggle')).not.toBeInTheDocument();
+  });
+
+  it('initialises ON when item.is_byo is true', () => {
+    renderModal({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      item: makeDishItem({ is_byo: true } as any),
+      groupingsCount: 2,
+    });
+    expect(screen.getByTestId('byo-toggle').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('initialises OFF when item.is_byo is undefined (legacy row)', () => {
+    renderModal({ item: makeDishItem(), groupingsCount: 2 });
+    expect(screen.getByTestId('byo-toggle').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('disables the toggle when groupingsCount is 0 and shows the inline hint', () => {
+    renderModal({ item: makeDishItem(), groupingsCount: 0 });
+    const toggle = screen.getByTestId('byo-toggle');
+    expect(toggle.getAttribute('disabled')).not.toBeNull();
+    expect(toggle.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('byo-disabled-hint')).toBeInTheDocument();
+  });
+
+  it('disables the toggle when groupingsCount is undefined (safety default)', () => {
+    renderModal({ item: makeDishItem() });
+    const toggle = screen.getByTestId('byo-toggle');
+    expect(toggle.getAttribute('disabled')).not.toBeNull();
+    expect(screen.getByTestId('byo-disabled-hint')).toBeInTheDocument();
+  });
+
+  it('enables the toggle when groupingsCount > 0 (no hint)', () => {
+    renderModal({ item: makeDishItem(), groupingsCount: 3 });
+    expect(screen.getByTestId('byo-toggle').getAttribute('disabled')).toBeNull();
+    expect(screen.queryByTestId('byo-disabled-hint')).not.toBeInTheDocument();
+  });
+
+  it('save payload includes is_byo for dishes', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({ item: makeDishItem(), service, groupingsCount: 2 });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates).toHaveProperty('is_byo');
+    expect(updates.is_byo).toBe(false);
+  });
+
+  it('save payload omits is_byo for add-ons', async () => {
+    const user = userEvent.setup();
+    const saved = makeAddonItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({ item: makeAddonItem(), service, groupingsCount: 0 });
+
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates).not.toHaveProperty('is_byo');
+  });
+
+  it('toggling the switch flips is_byo on the save payload', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({ item: makeDishItem(), service, groupingsCount: 2 });
+
+    await user.click(screen.getByTestId('byo-toggle'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => {
+      expect(service.updateMenuItem).toHaveBeenCalled();
+    });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.is_byo).toBe(true);
   });
 });

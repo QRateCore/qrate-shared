@@ -143,6 +143,14 @@ interface EditModalProps {
    */
   placementsOverlapSlot?: ReactNode;
   /**
+   * PDD 2026-05-26 — count of food_item_groupings for this dish. Used to
+   * disable the BYO toggle when zero groupings exist (the API would
+   * reject is_byo=true with BYO_REQUIRES_GROUPINGS otherwise). Consumers
+   * pass the same count the Groupings tab is rendering. Omitted/undefined
+   * is treated as 0 (toggle disabled) for safety.
+   */
+  groupingsCount?: number;
+  /**
    * Description review-queue state — opt-in. When the item's description
    * is an unreviewed AI suggestion (source='ai_generated' AND reviewed=
    * false), the description field renders with an amber tint, an
@@ -609,7 +617,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -664,6 +672,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [spiceModifierEnabled, setSpiceModifierEnabled] = useState<boolean>(
     item.spice_modifier_enabled ?? true,
   );
+
+  // PDD 2026-05-26 — Build-Your-Own classification. Default FALSE everywhere
+  // on the wire so legacy items render correctly. The API hard-blocks
+  // setting this to TRUE when the dish has zero groupings; the UI mirrors
+  // that by disabling the toggle in the same state.
+  const [isByo, setIsByo] = useState<boolean>(item.is_byo ?? false);
 
   // Sweetness — same fallback shape as heat/spice for drift resilience.
   const [sweetnessLabel, setSweetnessLabel] = useState<string | null>(() => {
@@ -1718,6 +1732,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         // page Spice Level slider. Only meaningful for dishes; add-ons
         // never reach the composition page so the field is harmless there.
         spice_modifier_enabled: spiceModifierEnabled,
+        // PDD 2026-05-26 — BYO classification. Only sent for dishes;
+        // add-ons can never be BYO themselves. API enforces hard-block
+        // when is_byo=true and groupings empty (returns 400).
+        ...(isAddon ? {} : { is_byo: isByo }),
       };
 
       // When converting dish → addon, remove all menu associations first.
@@ -3603,7 +3621,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       aria-checked={spiceModifierEnabled}
                       aria-label="Toggle Spice Modifier"
                       data-testid="spice-modifier-toggle"
-                      onClick={() => setSpiceModifierEnabled((v) => !v)}
+                      onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
                       style={{
                         position: 'relative',
                         display: 'inline-flex',
@@ -3634,6 +3652,97 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     </button>
                   </div>
                 )}
+
+                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
+                    Disabled when the dish has zero groupings: the API
+                    hard-blocks is_byo=true on items without customization
+                    options, so we mirror that state in the UI. Mobile-
+                    friendly: an inline hint below the toggle (NOT just a
+                    tooltip) per Plan v2 UX-Reviewer tactical condition.
+                    Hidden for add-ons (an add-on cannot be BYO itself). */}
+                {!isAddon && (() => {
+                  const hasGroupings = (groupingsCount ?? 0) > 0;
+                  const toggleDisabled = !hasGroupings;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
+                        background: isByo ? '#e6f7f5' : 'transparent',
+                        opacity: toggleDisabled ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-teal, #00a996)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <line x1="4" y1="6" x2="20" y2="6" />
+                          <line x1="4" y1="12" x2="20" y2="12" />
+                          <line x1="4" y1="18" x2="20" y2="18" />
+                          <circle cx="9" cy="6" r="2" fill="#fff" />
+                          <circle cx="15" cy="12" r="2" fill="#fff" />
+                          <circle cx="11" cy="18" r="2" fill="#fff" />
+                        </svg>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own (BYO)</div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                            When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isByo}
+                          aria-label="Toggle Build Your Own"
+                          aria-disabled={toggleDisabled}
+                          data-testid="byo-toggle"
+                          disabled={toggleDisabled}
+                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
+                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
+                          style={{
+                            position: 'relative',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            height: 24,
+                            width: 42,
+                            flexShrink: 0,
+                            borderRadius: 999,
+                            border: 'none',
+                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
+                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
+                            transition: 'background-color 0.15s',
+                            padding: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              height: 18,
+                              width: 18,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
+                              transition: 'transform 0.15s',
+                            }}
+                          />
+                        </button>
+                      </div>
+                      {toggleDisabled && (
+                        <div
+                          data-testid="byo-disabled-hint"
+                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
+                        >
+                          Add a customization group so diners can build this dish.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
                     Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
