@@ -1842,6 +1842,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                   })
                 : undefined
             }
+            // BYO toggle gates on grouping presence — backend hard-blocks
+            // PUT is_byo=true with 400 BYO_REQUIRES_GROUPINGS when the
+            // item has zero groupings. Surface the live count so the
+            // toggle's disabled state + inline hint match server reality.
+            groupingsCount={editItem.groupings?.length ?? 0}
             displayMode={editItemDrawerMode ? 'inline' : 'modal'}
             onEnrichItem={onEnrichItem}
             onCloneRequest={cloneMenuItem ? (sourceItem) => {
