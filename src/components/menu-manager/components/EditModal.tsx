@@ -5,8 +5,8 @@ import { useTrackAction } from '../track-action-context';
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
-import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse} from '../../../types/restaurant';
-import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical } from '../lib/menuUtils';
+import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings} from '../../../types/restaurant';
+import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import {
   DEFAULT_HEAT_LABELS,
   DEFAULT_SWEETNESS_LABELS,
@@ -952,8 +952,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
-  // Tab state — Food Tags | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
+  // Tab state — Food Tags | Menus (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
+  const [activeTab, setActiveTab] = useState<'food_tags' | 'menus' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
   //   Dishes  → [food_tags, addons, performance, ...]
@@ -968,6 +968,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   useEffect(() => {
     setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
   }, [isAddon, isNewItem]);
+
+  // Menus tab state — local mirror of menu_associations so per-row inline
+  // edits (price, boost, chef's special, portion) and per-row removals can
+  // commit optimistically and roll back on network failure.
+  const [menusDraft, setMenusDraft] = useState<MenuAssociation[]>(item.menu_associations ?? []);
+  // Re-sync the draft when the parent passes a refreshed item (e.g. after
+  // a re-fetch on tab focus or a save round-trip from another tab).
+  useEffect(() => {
+    setMenusDraft(item.menu_associations ?? []);
+  }, [item.menu_associations]);
+  // menuIds currently saving — drives row-level disabled/loading state.
+  const [menusSaving, setMenusSaving] = useState<Set<string>>(new Set());
+  const setMenuSaving = useCallback((menuId: string, on: boolean) => {
+    setMenusSaving((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(menuId); else next.delete(menuId);
+      return next;
+    });
+  }, []);
 
   // Add-ons tab state (used when editing a dish item)
   const [itemAddons, setItemAddons] = useState<AddonEntry[]>(item.addons ?? []);
@@ -3001,18 +3020,21 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               : (isNewItem
                 ? (['food_tags'] as const)
                 : (groupingsSlot
-                  ? (['food_tags', 'groupings', 'performance'] as const)
-                  : (['food_tags', 'performance'] as const)))
+                  ? (['food_tags', 'menus', 'groupings', 'performance'] as const)
+                  : (['food_tags', 'menus', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
+              const menusCount = item.menu_associations?.length ?? 0;
               const label =
                 tab === 'food_tags'
                   ? 'Food Tags'
-                  : tab === 'groupings'
-                    ? 'Groupings'
-                    : tab === 'dishes'
-                      ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                      : 'Performance';
+                  : tab === 'menus'
+                    ? `Menus${menusCount > 0 ? ` (${menusCount})` : ''}`
+                    : tab === 'groupings'
+                      ? 'Groupings'
+                      : tab === 'dishes'
+                        ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
+                        : 'Performance';
               return (
                 <button
                   key={tab}
@@ -3702,6 +3724,30 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 ))}
               </div>
             </section>
+          )}
+
+          {/* ── Menus tab ─────────────────────────────────────────────────
+              Per-placement editor: every menu this dish is published in
+              renders a card with editable price / boost / chef's special
+              / portion fields plus an unpublish action. Each field saves
+              inline via service.updateMenuItemInMenu; removals call
+              service.removeItemFromMenu. Local state mirrors the
+              associations and rolls back on failure. */}
+          {activeTab === 'menus' && (
+            <MenusTabPanel
+              menus={menus}
+              menusDraft={menusDraft}
+              setMenusDraft={setMenusDraft}
+              menusSaving={menusSaving}
+              setMenuSaving={setMenuSaving}
+              itemId={item.id}
+              onUpdate={async (menuId, patch) => {
+                await service.updateMenuItemInMenu(item.id, menuId, patch);
+              }}
+              onRemove={async (menuId) => {
+                await service.removeItemFromMenu(item.id, menuId);
+              }}
+            />
           )}
 
           {/* ── Add-ons tab ───────────────────────────────────────────── */}
@@ -4665,4 +4711,335 @@ function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
     color: colors.color,
     cursor: 'pointer',
   };
+}
+
+// ── Menus tab ─────────────────────────────────────────────────────────────────
+// boost_level is persisted on the menu_item_menus junction as the string
+// "1" / "2" / "3" (BulkActionsPanel writes the same shape). Convert to the
+// human BoostLabel for display, and back to its numeric string on save.
+function boostLevelToLabel(raw: string | null | undefined): BoostLabel | null {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1 || n > BOOST_LABELS.length) return null;
+  return BOOST_LABELS[n - 1];
+}
+function labelToBoostLevel(label: BoostLabel | null): string | null {
+  if (label == null) return null;
+  const idx = BOOST_LABELS.indexOf(label);
+  return idx < 0 ? null : String(idx + 1);
+}
+
+interface MenusTabPanelProps {
+  menus?: MenuSummary[];
+  menusDraft: MenuAssociation[];
+  setMenusDraft: React.Dispatch<React.SetStateAction<MenuAssociation[]>>;
+  menusSaving: Set<string>;
+  setMenuSaving: (menuId: string, on: boolean) => void;
+  itemId: string;
+  onUpdate: (menuId: string, patch: Partial<MenuItemJunctionSettings>) => Promise<void>;
+  onRemove: (menuId: string) => Promise<void>;
+}
+
+function MenusTabPanel({
+  menus: _menus,
+  menusDraft,
+  setMenusDraft,
+  menusSaving,
+  setMenuSaving,
+  itemId,
+  onUpdate,
+  onRemove,
+}: MenusTabPanelProps) {
+  // Apply `patch` optimistically to the draft, call onUpdate, roll back on
+  // failure. `patch` keys mirror MenuItemJunctionSettings; we cast it onto
+  // MenuAssociation for the local mirror — the assoc accepts the same
+  // shapes (price/boost_level/chefs_special/portion_*).
+  const persist = useCallback(
+    async (menuId: string, patch: Partial<MenuItemJunctionSettings>) => {
+      if (menusSaving.has(menuId)) return;
+      const before = menusDraft;
+      setMenusDraft((prev) => prev.map((a) =>
+        a.menu_id === menuId ? { ...a, ...patch } as MenuAssociation : a,
+      ));
+      setMenuSaving(menuId, true);
+      try {
+        await onUpdate(menuId, patch);
+      } catch (err) {
+        console.error(`Failed to update menu placement ${menuId} for ${itemId}`, err);
+        setMenusDraft(before);
+      } finally {
+        setMenuSaving(menuId, false);
+      }
+    },
+    [menusDraft, menusSaving, setMenusDraft, setMenuSaving, onUpdate, itemId],
+  );
+
+  const unpublish = useCallback(
+    async (menuId: string) => {
+      if (menusSaving.has(menuId)) return;
+      const before = menusDraft;
+      setMenusDraft((prev) => prev.filter((a) => a.menu_id !== menuId));
+      setMenuSaving(menuId, true);
+      try {
+        await onRemove(menuId);
+      } catch (err) {
+        console.error(`Failed to unpublish ${itemId} from menu ${menuId}`, err);
+        setMenusDraft(before);
+      } finally {
+        setMenuSaving(menuId, false);
+      }
+    },
+    [menusDraft, menusSaving, setMenusDraft, setMenuSaving, onRemove, itemId],
+  );
+
+  if (menusDraft.length === 0) {
+    return (
+      <section data-testid="menus-tab-empty" style={{ marginBottom: 4 }}>
+        <div
+          style={{
+            padding: '24px 16px',
+            textAlign: 'center',
+            color: 'var(--text2)',
+            fontSize: 13,
+            border: '1px dashed var(--border)',
+            borderRadius: 8,
+            background: '#fafafa',
+          }}
+        >
+          This item is not published on any menu yet.
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text3)' }}>
+            Add it to a menu from the Menu Builder.
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section data-testid="menus-tab" style={{ marginBottom: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {menusDraft.map((assoc) => (
+          <MenuPlacementCard
+            key={assoc.menu_id}
+            assoc={assoc}
+            saving={menusSaving.has(assoc.menu_id)}
+            onChange={(patch) => void persist(assoc.menu_id, patch)}
+            onRemove={() => void unpublish(assoc.menu_id)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface MenuPlacementCardProps {
+  assoc: MenuAssociation;
+  saving: boolean;
+  onChange: (patch: Partial<MenuItemJunctionSettings>) => void;
+  onRemove: () => void;
+}
+
+function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementCardProps) {
+  // Price + portion_serves use uncontrolled-ish state — local string buffer
+  // so the owner can clear the field mid-typing without the parent dropping
+  // the value. We commit on blur (or Enter). Selects/toggles commit on
+  // every change since their value space is small.
+  const [priceText, setPriceText] = useState<string>(
+    assoc.price == null ? '' : String(assoc.price),
+  );
+  useEffect(() => {
+    setPriceText(assoc.price == null ? '' : String(assoc.price));
+  }, [assoc.price]);
+
+  const [servesText, setServesText] = useState<string>(
+    assoc.portion_serves == null ? '' : String(assoc.portion_serves),
+  );
+  useEffect(() => {
+    setServesText(assoc.portion_serves == null ? '' : String(assoc.portion_serves));
+  }, [assoc.portion_serves]);
+
+  const commitPrice = () => {
+    const trimmed = priceText.trim();
+    const nextPrice: number | null = trimmed === '' ? null : Number(trimmed);
+    if (nextPrice !== null && !Number.isFinite(nextPrice)) {
+      // Invalid input — snap back to the saved value.
+      setPriceText(assoc.price == null ? '' : String(assoc.price));
+      return;
+    }
+    if (nextPrice === assoc.price) return;
+    onChange({ price: nextPrice });
+  };
+
+  const commitServes = () => {
+    const trimmed = servesText.trim();
+    const nextServes: number | null = trimmed === '' ? null : Number(trimmed);
+    if (nextServes !== null && (!Number.isFinite(nextServes) || nextServes <= 0)) {
+      setServesText(assoc.portion_serves == null ? '' : String(assoc.portion_serves));
+      return;
+    }
+    if (nextServes === assoc.portion_serves) return;
+    onChange({ portion_serves: nextServes });
+  };
+
+  const currentBoost = boostLevelToLabel(assoc.boost_level);
+  const portionType: 'single' | 'shared' = assoc.portion_type ?? 'single';
+
+  return (
+    <div
+      data-testid={`menus-tab-row-${assoc.menu_id}`}
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: 12,
+        background: '#fff',
+        opacity: saving ? 0.7 : 1,
+        transition: 'opacity 0.15s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {assoc.menu_name}
+          </div>
+          {assoc.category_name && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+              {assoc.category_name}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={saving}
+          data-testid={`menus-tab-remove-${assoc.menu_id}`}
+          aria-label={`Remove from ${assoc.menu_name}`}
+          title="Remove from this menu"
+          style={{
+            ...imgActionStyle('red'),
+            cursor: saving ? 'wait' : 'pointer',
+          }}
+        >
+          <Trash2 size={12} aria-hidden />
+          Remove
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label style={labelStyle} htmlFor={`menus-price-${assoc.menu_id}`}>Price</label>
+          <input
+            id={`menus-price-${assoc.menu_id}`}
+            data-testid={`menus-tab-price-${assoc.menu_id}`}
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            value={priceText}
+            disabled={saving}
+            onChange={(e) => setPriceText(e.target.value)}
+            onBlur={commitPrice}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label style={labelStyle} htmlFor={`menus-boost-${assoc.menu_id}`}>Boost level</label>
+          <select
+            id={`menus-boost-${assoc.menu_id}`}
+            data-testid={`menus-tab-boost-${assoc.menu_id}`}
+            value={currentBoost ?? ''}
+            disabled={saving}
+            onChange={(e) => {
+              const nextLabel = (e.target.value || null) as BoostLabel | null;
+              onChange({ boost_level: labelToBoostLevel(nextLabel) });
+            }}
+            style={inputStyle}
+          >
+            <option value="">None</option>
+            {BOOST_LABELS.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={labelStyle} htmlFor={`menus-portion-type-${assoc.menu_id}`}>Portion</label>
+          <select
+            id={`menus-portion-type-${assoc.menu_id}`}
+            data-testid={`menus-tab-portion-type-${assoc.menu_id}`}
+            value={portionType}
+            disabled={saving}
+            onChange={(e) => {
+              const next = e.target.value as 'single' | 'shared';
+              // Switching to single clears serves; switching to shared
+              // leaves the current serves value (or null) — owner sets it
+              // explicitly in the adjacent field.
+              if (next === 'single') {
+                onChange({ portion_type: 'single', portion_serves: null });
+              } else {
+                onChange({ portion_type: 'shared' });
+              }
+            }}
+            style={inputStyle}
+          >
+            <option value="single">Serves one</option>
+            <option value="shared">Shared</option>
+          </select>
+        </div>
+        {portionType === 'shared' && (
+          <div>
+            <label style={labelStyle} htmlFor={`menus-portion-serves-${assoc.menu_id}`}>Serves how many</label>
+            <input
+              id={`menus-portion-serves-${assoc.menu_id}`}
+              data-testid={`menus-tab-portion-serves-${assoc.menu_id}`}
+              type="number"
+              inputMode="numeric"
+              min="1"
+              step="1"
+              value={servesText}
+              disabled={saving}
+              placeholder="e.g. 2"
+              onChange={(e) => setServesText(e.target.value)}
+              onBlur={commitServes}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              style={inputStyle}
+            />
+          </div>
+        )}
+      </div>
+
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginTop: 12,
+          fontSize: 13,
+          color: 'var(--text)',
+          cursor: saving ? 'wait' : 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <input
+          type="checkbox"
+          data-testid={`menus-tab-chefs-special-${assoc.menu_id}`}
+          checked={!!assoc.chefs_special}
+          disabled={saving}
+          onChange={(e) => onChange({ chefs_special: e.target.checked })}
+          style={{ cursor: saving ? 'wait' : 'pointer' }}
+        />
+        Chef&apos;s special
+      </label>
+    </div>
+  );
 }
