@@ -551,15 +551,12 @@ function MenuItemRow({
 
   return (
     <div
-      draggable={!disableDrag}
-      onDragStart={disableDrag ? undefined : (e) => { e.stopPropagation(); onDragStart(e, item.id, menuId, cat); }}
-      onDragEnd={disableDrag ? undefined : onDragEnd}
       data-testid={`menu-item-row-${item.id}`}
       data-item-row-id={item.id}
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
       data-approved-addons={approvedAddons > 0 ? approvedAddons : undefined}
-      className={`w-full border-b border-[var(--border)] ${disableDrag ? '' : 'cursor-grab'} ${expanded ? 'bg-[var(--bg)]' : ''}`}
+      className={`w-full border-b border-[var(--border)] ${expanded ? 'bg-[var(--bg)]' : ''}`}
       style={{ borderLeft: `3px solid ${borderLeftColor}` }}
     >
       <div className="flex items-stretch w-full">
@@ -568,7 +565,7 @@ function MenuItemRow({
         onClick={() => setExpanded((v) => !v)}
         data-testid={`menu-item-expand-${item.id}`}
         data-expand-btn="true"
-        className={`flex-1 min-w-0 bg-transparent border-none ${disableDrag ? 'cursor-pointer' : 'cursor-grab'} text-left ${isMobile ? 'flex flex-col gap-1 px-2 py-2' : 'flex flex-row items-center gap-2 px-3 py-2'}`}
+        className={`flex-1 min-w-0 bg-transparent border-none cursor-pointer text-left ${isMobile ? 'flex flex-col gap-1 px-2 py-2' : 'flex flex-row items-center gap-2 px-3 py-2'}`}
       >
         {isMobile ? (
           <>
@@ -1022,7 +1019,7 @@ function CategoryBucket({
         style={{
           background: isDragOver ? `${color.tab}cc` : 'var(--bg)',
           border: bucketHasAttention ? '2px solid var(--red)' : 'none',
-          borderLeft: bucketHasAttention ? '4px solid var(--red)' : `3px solid ${color.bucket}`,
+          borderLeft: bucketHasAttention ? '4px solid var(--red)' : 'none',
         }}
       >
         <span className="text-[var(--text2)] shrink-0">
