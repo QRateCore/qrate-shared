@@ -2180,7 +2180,12 @@ function BulkGroupingForm({
 
       {/* Member picker — extracted into shared `BulkMemberPicker`
           component (PDD 2026-05-22 Step 7). testidPrefix='bulk-grouping'
-          preserves every existing E2E selector byte-for-byte. */}
+          preserves every existing E2E selector byte-for-byte.
+          enableTypeTabs + enableCategoryFilter scope the pool to the
+          active dishes/add-ons tab and the chosen canonical-category
+          chip — matches the parity behaviour of the Add-to-Grouping
+          modal (ItemSearchPicker) and Bulk Action drawer
+          (TagBulkApplyDrawer) for the same picker UX. */}
       <BulkMemberPicker
         pool={items}
         selectedIds={memberIds}
@@ -2192,6 +2197,8 @@ function BulkGroupingForm({
         excludeIds={[...selectedParents]}
         searchPlaceholder="Search food items to add as members…"
         selectedCountSuffix={groupingMode === 'create' ? ' — optional' : ''}
+        enableTypeTabs
+        enableCategoryFilter
       />
 
       {/* Create-mode conflict banner */}

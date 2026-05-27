@@ -1,4 +1,5 @@
 'use client';
+import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { MenuItemDisplay } from '../../../types/restaurant';
 
@@ -42,6 +43,48 @@ export interface BulkMemberPickerProps {
    * a flex-column drawer body (e.g. BulkMenuSidesPanel).
    */
   fillHeight?: boolean;
+  /**
+   * When true, render Dishes / Add-ons sub-tabs above the search input
+   * and scope the pool (selected pins + unselected) to the active tab.
+   * Per-tab selected-count badges render on each tab. Default false to
+   * preserve current behaviour for sides-only consumers.
+   */
+  enableTypeTabs?: boolean;
+  /**
+   * When true, derive a canonical-category chip rail from the active
+   * pool (post-tab, pre-search) and let the user filter the unselected
+   * list by clicking a chip; clicking the active chip toggles it back
+   * to "all". Default false.
+   */
+  enableCategoryFilter?: boolean;
+}
+
+type TypeTab = 'dishes' | 'addons';
+
+/** Canonical category — falls back to 'Uncategorized'. Mirrors the
+ *  owner-webapp FoodLibraryView helper so the chip set in the bulk
+ *  picker is interpreted identically to the Food Library chip rail. */
+function canonicalOf(item: MenuItemDisplay): string {
+  if (item.canonical_category && item.canonical_category.trim().length > 0) {
+    return item.canonical_category.trim();
+  }
+  if (item.canonical_categories && item.canonical_categories.length > 0) {
+    return item.canonical_categories[0].trim() || 'Uncategorized';
+  }
+  return 'Uncategorized';
+}
+
+function deriveCategoryEntries(
+  items: MenuItemDisplay[],
+): { id: string; name: string; count: number }[] {
+  const map = new Map<string, number>();
+  for (const it of items) {
+    const c = canonicalOf(it);
+    map.set(c, (map.get(c) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([name, count]) => ({ id: name, name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function BulkMemberPicker({
@@ -57,23 +100,87 @@ export function BulkMemberPicker({
   searchPlaceholder = 'Search items to add as members…',
   selectedCountSuffix = '',
   fillHeight = false,
+  enableTypeTabs = false,
+  enableCategoryFilter = false,
 }: BulkMemberPickerProps) {
+  const [activeTab, setActiveTab] = useState<TypeTab>('dishes');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+
+  // Tab pools — only computed when type-tab gating is enabled.
+  const dishesPool = useMemo(
+    () => (enableTypeTabs ? pool.filter((it) => (it.item_type ?? 'dish') !== 'addon') : pool),
+    [enableTypeTabs, pool],
+  );
+  const addonsPool = useMemo(
+    () => (enableTypeTabs ? pool.filter((it) => it.item_type === 'addon') : []),
+    [enableTypeTabs, pool],
+  );
+  const activePool = enableTypeTabs ? (activeTab === 'dishes' ? dishesPool : addonsPool) : pool;
+
+  // Canonical-category chip entries — derived from the active pool only,
+  // so the chip set re-flows when the user switches tabs.
+  const categoryEntries = useMemo(
+    () => (enableCategoryFilter ? deriveCategoryEntries(activePool) : []),
+    [enableCategoryFilter, activePool],
+  );
+
   const q = search.trim().toLowerCase();
   const excludeSet = new Set(excludeIds ?? []);
   const itemById = new Map(pool.map((i) => [i.id, i] as const));
-  // selectedRows pin to the top in selection order regardless of search.
+
+  // selectedRows pin to the top in selection order. When type-tab gating
+  // is on, only items matching the active tab's type pin — items selected
+  // on the other tab live in the per-tab badge count instead.
   const selectedRows: MenuItemDisplay[] = selectedIds
     .map((id) => itemById.get(id))
-    .filter((it): it is MenuItemDisplay => !!it);
-  // unselectedRows: not selected, not excluded, matches search (when set).
-  const unselectedRows = pool.filter((i) => {
+    .filter((it): it is MenuItemDisplay => !!it)
+    .filter((it) => {
+      if (!enableTypeTabs) return true;
+      const isAddon = it.item_type === 'addon';
+      return activeTab === 'dishes' ? !isAddon : isAddon;
+    });
+
+  // unselectedRows: in the active pool, not selected, not excluded, matches
+  // search (when set), matches the active canonical-category chip (when set).
+  const unselectedRows = activePool.filter((i) => {
     if (excludeSet.has(i.id)) return false;
     if (selectedIds.includes(i.id)) return false;
     if (q && !i.name.toLowerCase().includes(q)) return false;
+    if (
+      enableCategoryFilter
+      && activeCategory !== 'all'
+      && canonicalOf(i) !== activeCategory
+    ) {
+      return false;
+    }
     return true;
   });
+
+  // Per-tab selected-count badges — only computed when type tabs render.
+  // Total across both tabs is reflected by the existing `selectedIds.length`
+  // in the count label below, so the header still shows global progress.
+  const dishesSelectedCount = enableTypeTabs
+    ? selectedIds.filter((id) => {
+        const it = itemById.get(id);
+        return !!it && it.item_type !== 'addon';
+      }).length
+    : 0;
+  const addonsSelectedCount = enableTypeTabs
+    ? selectedIds.filter((id) => {
+        const it = itemById.get(id);
+        return !!it && it.item_type === 'addon';
+      }).length
+    : 0;
+
   const isAtCap = selectedIds.length >= maxSelections;
   const memberWord = selectedIds.length === 1 ? '' : 's';
+
+  // Switching tabs clears the chip filter — chip valid on one tab may
+  // not exist on the other. Inlined to avoid setState-in-effect cascade.
+  const handleTabChange = (next: TypeTab) => {
+    setActiveTab(next);
+    setActiveCategory('all');
+  };
 
   return (
     <div
@@ -84,6 +191,77 @@ export function BulkMemberPicker({
         ...(fillHeight ? { flex: 1, minHeight: 0 } : {}),
       }}
     >
+      {enableTypeTabs && (
+        <div
+          role="tablist"
+          aria-label="Item type"
+          data-testid={`${testidPrefix}-member-type-tabs`}
+          style={{
+            display: 'flex',
+            gap: 4,
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          {(
+            [
+              { id: 'dishes' as const, label: 'Dishes', count: dishesSelectedCount },
+              { id: 'addons' as const, label: 'Add-ons', count: addonsSelectedCount },
+            ]
+          ).map((t) => {
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                data-testid={`${testidPrefix}-member-type-tab-${t.id}`}
+                onClick={() => handleTabChange(t.id)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  marginBottom: -1,
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: `2px solid ${isActive ? 'var(--brand)' : 'transparent'}`,
+                  color: isActive ? 'var(--brand)' : 'var(--muted)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 600,
+                  letterSpacing: '-0.005em',
+                  whiteSpace: 'nowrap',
+                  transition: 'color .15s, border-color .15s',
+                }}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span
+                    data-testid={`${testidPrefix}-member-type-tab-count-${t.id}`}
+                    style={{
+                      display: 'inline-flex',
+                      minWidth: 16,
+                      height: 16,
+                      padding: '0 5px',
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: isActive ? 'var(--brand)' : '#e5e7eb',
+                      color: isActive ? '#fff' : '#374151',
+                      fontSize: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
           <span data-testid={`${testidPrefix}-member-selected-count`}>
@@ -127,6 +305,64 @@ export function BulkMemberPicker({
           }}
         />
       </div>
+      {enableCategoryFilter && categoryEntries.length > 0 && (
+        <div
+          role="tablist"
+          aria-label="Courses"
+          data-testid={`${testidPrefix}-member-categories`}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 4,
+          }}
+        >
+          {categoryEntries.map((c) => {
+            const isActive = activeCategory === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                data-testid={`${testidPrefix}-member-cat-${c.id.toLowerCase().replace(/\s+/g, '-')}`}
+                onClick={() =>
+                  setActiveCategory((cur) => (cur === c.id ? 'all' : c.id))
+                }
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '3px 8px',
+                  background: isActive ? '#fff4ee' : '#fff',
+                  color: isActive ? '#c2710a' : '#374151',
+                  border: `1px solid ${isActive ? '#fed7aa' : 'var(--border)'}`,
+                  borderRadius: 999,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 11,
+                  fontWeight: isActive ? 700 : 600,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                <span>{c.name}</span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '0 5px',
+                    borderRadius: 999,
+                    background: isActive ? '#c2710a' : '#f3f4f6',
+                    color: isActive ? '#fff' : '#6b7280',
+                  }}
+                >
+                  {c.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div
         style={{
           ...(fillHeight
