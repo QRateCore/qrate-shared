@@ -131,6 +131,18 @@ interface EditModalProps {
    */
   groupingsSlot?: ReactNode;
   /**
+   * Optional render-slot for the Placements tab's overlap surface. When
+   * supplied, the node is rendered above the per-menu placement cards
+   * inside the Placements tab content area. Consumers (owner-webapp)
+   * use this to surface the cross-menu overlap comparison panel +
+   * rationale composer next to the placements that produced them.
+   * Other consumers (waiter, admin) leave it unset and get just the
+   * placement cards. Kept as an opaque ReactNode so the overlap-specific
+   * types (OverlapItem, OverlapPlacement) stay in the owner-webapp app
+   * and don't leak into the shared package.
+   */
+  placementsOverlapSlot?: ReactNode;
+  /**
    * Description review-queue state — opt-in. When the item's description
    * is an unreviewed AI suggestion (source='ai_generated' AND reviewed=
    * false), the description field renders with an amber tint, an
@@ -597,7 +609,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -952,8 +964,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
-  // Tab state — Food Tags | Menus (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'menus' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
+  // Tab state — Food Tags | Placements (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
+  const [activeTab, setActiveTab] = useState<'food_tags' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
   //   Dishes  → [food_tags, addons, performance, ...]
@@ -969,19 +981,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
   }, [isAddon, isNewItem]);
 
-  // Menus tab state — local mirror of menu_associations so per-row inline
-  // edits (price, boost, chef's special, portion) and per-row removals can
-  // commit optimistically and roll back on network failure.
-  const [menusDraft, setMenusDraft] = useState<MenuAssociation[]>(item.menu_associations ?? []);
+  // Placements tab state — local mirror of menu_associations so per-row
+  // inline edits (price, boost, chef's special, portion) and per-row
+  // removals can commit optimistically and roll back on network failure.
+  const [placementsDraft, setPlacementsDraft] = useState<MenuAssociation[]>(item.menu_associations ?? []);
   // Re-sync the draft when the parent passes a refreshed item (e.g. after
   // a re-fetch on tab focus or a save round-trip from another tab).
   useEffect(() => {
-    setMenusDraft(item.menu_associations ?? []);
+    setPlacementsDraft(item.menu_associations ?? []);
   }, [item.menu_associations]);
   // menuIds currently saving — drives row-level disabled/loading state.
-  const [menusSaving, setMenusSaving] = useState<Set<string>>(new Set());
-  const setMenuSaving = useCallback((menuId: string, on: boolean) => {
-    setMenusSaving((prev) => {
+  const [placementsSaving, setPlacementsSaving] = useState<Set<string>>(new Set());
+  const setPlacementSaving = useCallback((menuId: string, on: boolean) => {
+    setPlacementsSaving((prev) => {
       const next = new Set(prev);
       if (on) next.add(menuId); else next.delete(menuId);
       return next;
@@ -3020,16 +3032,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
               : (isNewItem
                 ? (['food_tags'] as const)
                 : (groupingsSlot
-                  ? (['food_tags', 'menus', 'groupings', 'performance'] as const)
-                  : (['food_tags', 'menus', 'performance'] as const)))
+                  ? (['food_tags', 'placements', 'groupings', 'performance'] as const)
+                  : (['food_tags', 'placements', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
-              const menusCount = item.menu_associations?.length ?? 0;
+              const placementsCount = item.menu_associations?.length ?? 0;
               const label =
                 tab === 'food_tags'
                   ? 'Food Tags'
-                  : tab === 'menus'
-                    ? `Menus${menusCount > 0 ? ` (${menusCount})` : ''}`
+                  : tab === 'placements'
+                    ? `Placements${placementsCount > 0 ? ` (${placementsCount})` : ''}`
                     : tab === 'groupings'
                       ? 'Groupings'
                       : tab === 'dishes'
@@ -3726,21 +3738,29 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
             </section>
           )}
 
-          {/* ── Menus tab ─────────────────────────────────────────────────
+          {/* ── Placements tab ────────────────────────────────────────────
               Per-placement editor: every menu this dish is published in
               renders a card with editable price / boost / chef's special
               / portion fields plus an unpublish action. Each field saves
               inline via service.updateMenuItemInMenu; removals call
               service.removeItemFromMenu. Local state mirrors the
-              associations and rolls back on failure. */}
-          {activeTab === 'menus' && (
-            <MenusTabPanel
+              associations and rolls back on failure.
+
+              `placementsOverlapSlot` is rendered above the placement
+              cards when wired by the parent — owner-webapp surfaces the
+              overlap comparison panel + rationale composer here so the
+              cross-menu diff information lives next to the placements
+              that produced it. Other consumers (waiter, admin) don't
+              pass the slot and get the bare cards. */}
+          {activeTab === 'placements' && (
+            <PlacementsTabPanel
               menus={menus}
-              menusDraft={menusDraft}
-              setMenusDraft={setMenusDraft}
-              menusSaving={menusSaving}
-              setMenuSaving={setMenuSaving}
+              placementsDraft={placementsDraft}
+              setPlacementsDraft={setPlacementsDraft}
+              placementsSaving={placementsSaving}
+              setPlacementSaving={setPlacementSaving}
               itemId={item.id}
+              overlapSlot={placementsOverlapSlot}
               onUpdate={async (menuId, patch) => {
                 await service.updateMenuItemInMenu(item.id, menuId, patch);
               }}
@@ -4713,7 +4733,7 @@ function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
   };
 }
 
-// ── Menus tab ─────────────────────────────────────────────────────────────────
+// ── Placements tab ────────────────────────────────────────────────────────────
 // boost_level is persisted on the menu_item_menus junction as the string
 // "1" / "2" / "3" (BulkActionsPanel writes the same shape). Convert to the
 // human BoostLabel for display, and back to its numeric string on save.
@@ -4729,72 +4749,79 @@ function labelToBoostLevel(label: BoostLabel | null): string | null {
   return idx < 0 ? null : String(idx + 1);
 }
 
-interface MenusTabPanelProps {
+interface PlacementsTabPanelProps {
   menus?: MenuSummary[];
-  menusDraft: MenuAssociation[];
-  setMenusDraft: React.Dispatch<React.SetStateAction<MenuAssociation[]>>;
-  menusSaving: Set<string>;
-  setMenuSaving: (menuId: string, on: boolean) => void;
+  placementsDraft: MenuAssociation[];
+  setPlacementsDraft: React.Dispatch<React.SetStateAction<MenuAssociation[]>>;
+  placementsSaving: Set<string>;
+  setPlacementSaving: (menuId: string, on: boolean) => void;
   itemId: string;
+  /** Optional overlap surface rendered above the placement cards.
+   *  Owner-webapp wires this with the cross-menu comparison panel +
+   *  rationale composer; other consumers leave it undefined and get
+   *  just the cards. */
+  overlapSlot?: ReactNode;
   onUpdate: (menuId: string, patch: Partial<MenuItemJunctionSettings>) => Promise<void>;
   onRemove: (menuId: string) => Promise<void>;
 }
 
-function MenusTabPanel({
+function PlacementsTabPanel({
   menus: _menus,
-  menusDraft,
-  setMenusDraft,
-  menusSaving,
-  setMenuSaving,
+  placementsDraft,
+  setPlacementsDraft,
+  placementsSaving,
+  setPlacementSaving,
   itemId,
+  overlapSlot,
   onUpdate,
   onRemove,
-}: MenusTabPanelProps) {
+}: PlacementsTabPanelProps) {
   // Apply `patch` optimistically to the draft, call onUpdate, roll back on
   // failure. `patch` keys mirror MenuItemJunctionSettings; we cast it onto
   // MenuAssociation for the local mirror — the assoc accepts the same
   // shapes (price/boost_level/chefs_special/portion_*).
   const persist = useCallback(
     async (menuId: string, patch: Partial<MenuItemJunctionSettings>) => {
-      if (menusSaving.has(menuId)) return;
-      const before = menusDraft;
-      setMenusDraft((prev) => prev.map((a) =>
+      if (placementsSaving.has(menuId)) return;
+      const before = placementsDraft;
+      setPlacementsDraft((prev) => prev.map((a) =>
         a.menu_id === menuId ? { ...a, ...patch } as MenuAssociation : a,
       ));
-      setMenuSaving(menuId, true);
+      setPlacementSaving(menuId, true);
       try {
         await onUpdate(menuId, patch);
       } catch (err) {
         console.error(`Failed to update menu placement ${menuId} for ${itemId}`, err);
-        setMenusDraft(before);
+        setPlacementsDraft(before);
       } finally {
-        setMenuSaving(menuId, false);
+        setPlacementSaving(menuId, false);
       }
     },
-    [menusDraft, menusSaving, setMenusDraft, setMenuSaving, onUpdate, itemId],
+    [placementsDraft, placementsSaving, setPlacementsDraft, setPlacementSaving, onUpdate, itemId],
   );
 
   const unpublish = useCallback(
     async (menuId: string) => {
-      if (menusSaving.has(menuId)) return;
-      const before = menusDraft;
-      setMenusDraft((prev) => prev.filter((a) => a.menu_id !== menuId));
-      setMenuSaving(menuId, true);
+      if (placementsSaving.has(menuId)) return;
+      const before = placementsDraft;
+      setPlacementsDraft((prev) => prev.filter((a) => a.menu_id !== menuId));
+      setPlacementSaving(menuId, true);
       try {
         await onRemove(menuId);
       } catch (err) {
         console.error(`Failed to unpublish ${itemId} from menu ${menuId}`, err);
-        setMenusDraft(before);
+        setPlacementsDraft(before);
       } finally {
-        setMenuSaving(menuId, false);
+        setPlacementSaving(menuId, false);
       }
     },
-    [menusDraft, menusSaving, setMenusDraft, setMenuSaving, onRemove, itemId],
+    [placementsDraft, placementsSaving, setPlacementsDraft, setPlacementSaving, onRemove, itemId],
   );
 
-  if (menusDraft.length === 0) {
+  if (placementsDraft.length === 0) {
     return (
-      <section data-testid="menus-tab-empty" style={{ marginBottom: 4 }}>
+      <section data-testid="placements-tab-empty" style={{ marginBottom: 4 }}>
+        {overlapSlot}
         <div
           style={{
             padding: '24px 16px',
@@ -4816,13 +4843,14 @@ function MenusTabPanel({
   }
 
   return (
-    <section data-testid="menus-tab" style={{ marginBottom: 4 }}>
+    <section data-testid="placements-tab" style={{ marginBottom: 4 }}>
+      {overlapSlot}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {menusDraft.map((assoc) => (
+        {placementsDraft.map((assoc) => (
           <MenuPlacementCard
             key={assoc.menu_id}
             assoc={assoc}
-            saving={menusSaving.has(assoc.menu_id)}
+            saving={placementsSaving.has(assoc.menu_id)}
             onChange={(patch) => void persist(assoc.menu_id, patch)}
             onRemove={() => void unpublish(assoc.menu_id)}
           />
@@ -4886,7 +4914,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
 
   return (
     <div
-      data-testid={`menus-tab-row-${assoc.menu_id}`}
+      data-testid={`placements-tab-row-${assoc.menu_id}`}
       style={{
         border: '1px solid var(--border)',
         borderRadius: 10,
@@ -4911,7 +4939,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
           type="button"
           onClick={onRemove}
           disabled={saving}
-          data-testid={`menus-tab-remove-${assoc.menu_id}`}
+          data-testid={`placements-tab-remove-${assoc.menu_id}`}
           aria-label={`Remove from ${assoc.menu_name}`}
           title="Remove from this menu"
           style={{
@@ -4929,7 +4957,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
           <label style={labelStyle} htmlFor={`menus-price-${assoc.menu_id}`}>Price</label>
           <input
             id={`menus-price-${assoc.menu_id}`}
-            data-testid={`menus-tab-price-${assoc.menu_id}`}
+            data-testid={`placements-tab-price-${assoc.menu_id}`}
             type="number"
             inputMode="decimal"
             step="0.01"
@@ -4951,7 +4979,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
           <label style={labelStyle} htmlFor={`menus-boost-${assoc.menu_id}`}>Boost level</label>
           <select
             id={`menus-boost-${assoc.menu_id}`}
-            data-testid={`menus-tab-boost-${assoc.menu_id}`}
+            data-testid={`placements-tab-boost-${assoc.menu_id}`}
             value={currentBoost ?? ''}
             disabled={saving}
             onChange={(e) => {
@@ -4971,7 +4999,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
           <label style={labelStyle} htmlFor={`menus-portion-type-${assoc.menu_id}`}>Portion</label>
           <select
             id={`menus-portion-type-${assoc.menu_id}`}
-            data-testid={`menus-tab-portion-type-${assoc.menu_id}`}
+            data-testid={`placements-tab-portion-type-${assoc.menu_id}`}
             value={portionType}
             disabled={saving}
             onChange={(e) => {
@@ -4996,7 +5024,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
             <label style={labelStyle} htmlFor={`menus-portion-serves-${assoc.menu_id}`}>Serves how many</label>
             <input
               id={`menus-portion-serves-${assoc.menu_id}`}
-              data-testid={`menus-tab-portion-serves-${assoc.menu_id}`}
+              data-testid={`placements-tab-portion-serves-${assoc.menu_id}`}
               type="number"
               inputMode="numeric"
               min="1"
@@ -5032,7 +5060,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
       >
         <input
           type="checkbox"
-          data-testid={`menus-tab-chefs-special-${assoc.menu_id}`}
+          data-testid={`placements-tab-chefs-special-${assoc.menu_id}`}
           checked={!!assoc.chefs_special}
           disabled={saving}
           onChange={(e) => onChange({ chefs_special: e.target.checked })}
