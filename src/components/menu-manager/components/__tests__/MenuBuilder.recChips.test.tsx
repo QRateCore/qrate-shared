@@ -415,6 +415,229 @@ describe('RecGroupingChips', () => {
   });
 });
 
+describe('Reactivity — chip re-classifies when itemsById changes', () => {
+  // These tests pin the unit-level reactivity contract: when the parent's
+  // `itemsById` (which holds each rec target's menu_associations) updates
+  // mid-mount — e.g., MenuManagerClient's setItems after handleRefresh
+  // resyncs from the React Query cache — the chip MUST re-render with
+  // the freshly-classified split. The full network path is covered by
+  // rec-chips-bring-into-menu.spec.ts; this file proves the React layer
+  // in isolation so a regression in classifyRecMembers' memoisation
+  // (e.g., reading from a stale closure, missing menusById dep) is
+  // caught at the unit tier instead of waiting for E2E.
+
+  const owningItem = makeItem({ id: 'owner-1', name: 'Biryani — Lamb' });
+  const menus = [makeMenu()];
+
+  // Re-classify the same grouping members against an updated
+  // itemsById: the rec target gains a live menu_association, which
+  // should flip it from Inactive → Active without remounting the chip.
+  it('flips inactive → active when the rec target gains a live menu_association', () => {
+    const recId = 'reactivity-rec-1';
+    const member = makeRecMember({
+      id: 'gi-r-1',
+      menu_item_id: recId,
+      name: 'Truffle Sauce',
+    });
+    const grouping = makeGrouping([member]);
+
+    // Initial — rec target is orphan.
+    const orphanItemsById = new Map<string, MenuItemDisplay>([
+      [recId, makeItem({ id: recId, name: 'Truffle Sauce', menu_associations: [] })],
+    ]);
+    const { rerender } = render(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={orphanItemsById}
+        menus={menus}
+      />,
+    );
+    expect(screen.getByTestId(/^rec-inactive-chip-/).textContent).toContain(
+      '1 inactive',
+    );
+    expect(screen.getByTestId('rec-active-chip-empty').textContent).toContain(
+      '0 active',
+    );
+
+    // Mutate: same member id, but now the rec target has a live placement.
+    // This mirrors what MenuManagerClient's items state looks like after
+    // handleRefresh has run and the cache has the new menu_associations.
+    const liveItemsById = new Map<string, MenuItemDisplay>([
+      [
+        recId,
+        makeItem({
+          id: recId,
+          name: 'Truffle Sauce',
+          menu_associations: [
+            {
+              menu_id: 'menu-dinner',
+              menu_name: 'Dinner',
+              price: null,
+              category_name: null,
+              canonical_categories: [],
+              boost_level: null,
+              chefs_special: false,
+              portion_type: 'single',
+              portion_serves: null,
+            },
+          ],
+        }),
+      ],
+    ]);
+    rerender(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={liveItemsById}
+        menus={menus}
+      />,
+    );
+
+    // Active chip now reflects the live placement; inactive drops to 0.
+    // Querying by the gi-{id} testid (not -empty) confirms it switched
+    // from the empty-fallback render path into the populated branch.
+    expect(screen.getByTestId(`rec-active-chip-${member.id}`).textContent)
+      .toContain('1 active');
+    expect(screen.getByTestId(/^rec-inactive-chip-/).textContent).toContain(
+      '0 inactive',
+    );
+  });
+
+  // The reverse direction matters too — removing a member from a menu
+  // (or pausing the only menu it's on) should flip the chip back to
+  // Inactive. The MenuBuilder doesn't drive this today, but the pure
+  // chip contract holds regardless of which surface produces the
+  // update.
+  it('flips active → inactive when the rec target loses all live menu_associations', () => {
+    const recId = 'reactivity-rec-2';
+    const member = makeRecMember({
+      id: 'gi-r-2',
+      menu_item_id: recId,
+      name: 'House Wine',
+    });
+    const grouping = makeGrouping([member]);
+
+    const liveItemsById = new Map<string, MenuItemDisplay>([
+      [
+        recId,
+        makeItem({
+          id: recId,
+          name: 'House Wine',
+          menu_associations: [
+            {
+              menu_id: 'menu-dinner',
+              menu_name: 'Dinner',
+              price: null,
+              category_name: null,
+              canonical_categories: [],
+              boost_level: null,
+              chefs_special: false,
+              portion_type: 'single',
+              portion_serves: null,
+            },
+          ],
+        }),
+      ],
+    ]);
+    const { rerender } = render(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={liveItemsById}
+        menus={menus}
+      />,
+    );
+    expect(screen.getByTestId(`rec-active-chip-${member.id}`).textContent)
+      .toContain('1 active');
+
+    // Re-render with the member's menu_associations cleared.
+    const orphanItemsById = new Map<string, MenuItemDisplay>([
+      [recId, makeItem({ id: recId, name: 'House Wine', menu_associations: [] })],
+    ]);
+    rerender(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={orphanItemsById}
+        menus={menus}
+      />,
+    );
+    expect(screen.getByTestId(/^rec-inactive-chip-/).textContent).toContain(
+      '1 inactive',
+    );
+    expect(screen.getByTestId('rec-active-chip-empty').textContent).toContain(
+      '0 active',
+    );
+  });
+
+  // Menu schedule changes also drive re-classification — pausing the
+  // menu the member is on (menus[].active flip) MUST move the chip back
+  // to Inactive even though menu_associations didn't change. Same path
+  // the chip flips through when the owner toggles a menu off.
+  it('flips active → inactive when the only menu the target is on is paused', () => {
+    const recId = 'reactivity-rec-3';
+    const member = makeRecMember({
+      id: 'gi-r-3',
+      menu_item_id: recId,
+      name: 'Mint Chutney',
+    });
+    const grouping = makeGrouping([member]);
+    const itemsById = new Map<string, MenuItemDisplay>([
+      [
+        recId,
+        makeItem({
+          id: recId,
+          name: 'Mint Chutney',
+          menu_associations: [
+            {
+              menu_id: 'menu-dinner',
+              menu_name: 'Dinner',
+              price: null,
+              category_name: null,
+              canonical_categories: [],
+              boost_level: null,
+              chefs_special: false,
+              portion_type: 'single',
+              portion_serves: null,
+            },
+          ],
+        }),
+      ],
+    ]);
+
+    const { rerender } = render(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={itemsById}
+        menus={[makeMenu()]}
+      />,
+    );
+    expect(screen.getByTestId(`rec-active-chip-${member.id}`).textContent)
+      .toContain('1 active');
+
+    // Pause the menu — isMenuLiveNow returns false → chip flips.
+    rerender(
+      <RecGroupingChips
+        grouping={grouping}
+        owningItem={owningItem}
+        menuId="menu-dinner"
+        itemsById={itemsById}
+        menus={[makeMenu({ active: false })]}
+      />,
+    );
+    expect(screen.getByTestId(/^rec-inactive-chip-/).textContent).toContain(
+      '1 inactive',
+    );
+  });
+});
+
 describe('RecActiveChip hover popover', () => {
   beforeEach(() => {
     vi.useFakeTimers();
