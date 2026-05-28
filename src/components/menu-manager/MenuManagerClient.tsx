@@ -14,6 +14,8 @@ import {
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
+import MenuTabBar from './components/MenuTabBar';
+import { CloneMenuModal } from './components/CloneMenuModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
@@ -76,6 +78,20 @@ interface Props {
    * See ItemModifierZones for the full contract.
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /**
+   * Click handler for the per-row "Bring into Menu" button on the
+   * Inactive Recs popover (PDD 2026-05-27). When wired (owner-webapp
+   * only), the MenuBuilder's recommendations grouping renders as two
+   * chips — Active and Inactive — and clicking a member's button opens
+   * the canonical-category picker. The handler typically forwards to
+   * the same useCategoryPromptForRecommendationDrop hook the drag flow
+   * uses, with the rec target as the dropped item and `ownerMenuId` as
+   * the destination menu (the row's menu — passed through unchanged).
+   *
+   * When omitted (waiter / admin), the split chips still render (they
+   * just classify by schedule), but the action button is suppressed.
+   */
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
   /**
    * Optional gate called before an item is removed from a menu. Consumer apps
    * use this to warn the owner when the removal would deactivate existing
@@ -329,7 +345,7 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -430,6 +446,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // close or after a successful Save Copy.
   const [cloneDraftSource, setCloneDraftSource] = useState<MenuItemDisplay | null>(null);
   const [editMenuId, setEditMenuId] = useState<string | null>(null);
+  // CloneMenuModal lives at this level (was inside MenuBuilder) so the open
+  // trigger from MenuTabBar (which spans both panels) can drive it directly.
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
   const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
   const [dragging, setDragging] = useState<DragState | null>(null);
@@ -464,7 +483,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     const startWidth = poolWidth;
     setDividerActive(true);
     const onMouseMove = (mv: MouseEvent) => {
-      const next = Math.min(Math.max(startWidth + mv.clientX - startX, 200), 520);
+      // ItemPool moved to the RIGHT panel — dragging the divider rightwards
+      // should shrink the pool (and grow the menu builder on the left),
+      // which means we subtract the cursor delta from the stored width.
+      const next = Math.min(Math.max(startWidth - (mv.clientX - startX), 200), 520);
       setPoolWidth(next);
     };
     const onMouseUp = () => {
@@ -2010,51 +2032,104 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onRemoveItemFromMenu: handleRemoveItemFromMenu,
             onEditItem: setEditItemId,
             onUpdateModifiers: handleUpdateModifiers,
+            onBringIntoMenu,
             scrollToItemId,
             onScrollComplete: () => setScrollToItemId(null),
           }}
         />
       ) : (
-        /* Two-panel layout — desktop with resizable divider */
+        /* Two-panel layout — desktop. The menu tab bar spans both panels at
+           the top; below, MenuBuilder lives on the LEFT (flex-fills) and
+           ItemPool (the library) lives on the RIGHT (fixed/resizable width). */
         <div
           style={{
             display: 'flex',
+            flexDirection: 'column',
             flex: 1,
             minHeight: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Left panel — ItemPool (resizable) */}
-          <div style={{ width: poolWidth, flexShrink: 0, minHeight: 0 }}>
-          <ItemPool
+          <MenuTabBar
+            menus={menus}
+            activeMenuId={activeMenuId}
+            onTabChange={(menuId) => {
+              if (bulkMenuSelection.size > 0 || bulkMenuSidesOpen) {
+                const hadSelection = bulkMenuSelection.size > 0;
+                setBulkMenuSelection(new Set());
+                setBulkMenuSidesOpen(false);
+                if (hadSelection && menuId !== activeMenuId) {
+                  onBulkSelectionClearedByTabChange?.();
+                }
+              }
+              setActiveMenuId(menuId);
+            }}
+            onEditMenu={setEditMenuId}
+            onCreateMenu={handleCreateMenu}
+            onCloneMenu={service.cloneMenu ? () => setCloneOpen(true) : undefined}
+          />
+
+          <div
+            style={{
+              display: 'flex',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
+          {/* Left panel — MenuBuilder (flex fills remaining space) */}
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+          <MenuBuilder
             items={items}
             menus={menus}
-            filtered={filtered}
-            selected={selected}
-            search={search}
-            dragOver={dragOver === 'pool' ? 'pool' : null}
+            assignments={assignments}
+            junctionSettings={junctionSettings}
+            activeMenuId={activeMenuId}
+            collapsed={collapsed}
             dragging={dragging}
-            editItemId={editItemId}
-            onSearchChange={setSearch}
-            visibilityFilter={visibilityFilter}
-            onVisibilityFilterChange={handleVisibilityFilterChange}
-            itemTypeFilter={itemTypeFilter}
-            onItemTypeFilterChange={handleItemTypeFilterChange}
-            onSelectClick={handleSelectClick}
-            onSelectAll={handleSelectAll}
-            onClearSelect={handleClearSelect}
-            onSelectCategoryItems={handleSelectCategoryItems}
-            onEditItem={setEditItemId}
-            onOpenBulk={(mode) => setBulkMode(mode)}
-            onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragEnterPool={handleDragEnterPool}
-            onDragLeavePool={handleDragLeavePool}
-            onDropPool={handleDropPool}
+            dragOver={dragOver}
             colorMap={colorMap}
-            showVisibilityFilter={showVisibilityFilter}
-            showItemTypeFilter={showItemTypeFilter}
+            getSettings={getSettings}
+            onToggleCollapse={(key) =>
+              setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
+            }
+            onCollapseAll={handleCollapseAll}
+            onUpdateSettings={handleUpdateSettings}
+            onDragStart={handleMenuItemDragStart}
+            onDragEnd={handleDragEnd}
+            onDragEnterBucket={handleDragEnterBucket}
+            onDragLeaveBucket={(menuId, cat) => handleDragLeaveBucket(menuId, cat)}
+            onDropBucket={handleDropBucket}
+            onCreateMenu={handleCreateMenu}
+            onCloneMenu={handleCloneMenu}
+            onEditMenu={setEditMenuId}
+            onRemoveItemFromMenu={handleRemoveItemFromMenu}
+            onEditItem={setEditItemId}
+            onUpdateModifiers={handleUpdateModifiers}
+            onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+            onBringIntoMenu={onBringIntoMenu}
+            onConfirmIncludeDrop={onConfirmIncludeDrop}
+            scrollToItemId={scrollToItemId}
+            onScrollComplete={() => setScrollToItemId(null)}
+            onRefresh={onRefresh ? handleRefresh : undefined}
+            refreshing={refreshing}
+            byoHandlers={byoHandlers}
+            showAddons={showAddons}
+            showRecommendations={showRecommendations}
+            showAddGrouping={showAddGrouping}
+            perMenuSides={perMenuSides}
+            missingPriceFilter={missingPriceFilter}
+            bulkSelectionEnabled={bulkSidesEnabled}
+            bulkSelection={bulkMenuSelection}
+            onToggleBulkSelection={(itemId) =>
+              setBulkMenuSelection((prev) => {
+                const next = new Set(prev);
+                if (next.has(itemId)) next.delete(itemId);
+                else next.add(itemId);
+                return next;
+              })
+            }
+            onOpenBulkPanel={() => setBulkMenuSidesOpen(true)}
           />
           </div>
 
@@ -2097,74 +2172,51 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             </div>
           </div>
 
-          {/* Right panel — MenuBuilder (flex fills remaining space) */}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-          <MenuBuilder
+          {/* Right panel — ItemPool / Food Item Library (fixed width, resizable) */}
+          <div style={{ width: poolWidth, flexShrink: 0, minHeight: 0 }}>
+          <ItemPool
             items={items}
             menus={menus}
-            assignments={assignments}
-            junctionSettings={junctionSettings}
-            activeMenuId={activeMenuId}
-            collapsed={collapsed}
+            filtered={filtered}
+            selected={selected}
+            search={search}
+            dragOver={dragOver === 'pool' ? 'pool' : null}
             dragging={dragging}
-            dragOver={dragOver}
-            colorMap={colorMap}
-            getSettings={getSettings}
-            onTabChange={(menuId) => {
-              // PDD 2026-05-22 amendment 3 — switching menu tabs while
-              // the bulk drawer is open closes it + clears selection +
-              // notifies the consumer (which surfaces a toast).
-              if (bulkMenuSelection.size > 0 || bulkMenuSidesOpen) {
-                const hadSelection = bulkMenuSelection.size > 0;
-                setBulkMenuSelection(new Set());
-                setBulkMenuSidesOpen(false);
-                if (hadSelection && menuId !== activeMenuId) {
-                  onBulkSelectionClearedByTabChange?.();
-                }
-              }
-              setActiveMenuId(menuId);
-            }}
-            onToggleCollapse={(key) =>
-              setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
-            }
-            onCollapseAll={handleCollapseAll}
-            onUpdateSettings={handleUpdateSettings}
-            onDragStart={handleMenuItemDragStart}
-            onDragEnd={handleDragEnd}
-            onDragEnterBucket={handleDragEnterBucket}
-            onDragLeaveBucket={(menuId, cat) => handleDragLeaveBucket(menuId, cat)}
-            onDropBucket={handleDropBucket}
-            onCreateMenu={handleCreateMenu}
-            onCloneMenu={handleCloneMenu}
-            onEditMenu={setEditMenuId}
-            onRemoveItemFromMenu={handleRemoveItemFromMenu}
+            editItemId={editItemId}
+            onSearchChange={setSearch}
+            visibilityFilter={visibilityFilter}
+            onVisibilityFilterChange={handleVisibilityFilterChange}
+            itemTypeFilter={itemTypeFilter}
+            onItemTypeFilterChange={handleItemTypeFilterChange}
+            onSelectClick={handleSelectClick}
+            onSelectAll={handleSelectAll}
+            onClearSelect={handleClearSelect}
+            onSelectCategoryItems={handleSelectCategoryItems}
             onEditItem={setEditItemId}
-            onUpdateModifiers={handleUpdateModifiers}
-            onConfirmRecommendationDrop={onConfirmRecommendationDrop}
-            onConfirmIncludeDrop={onConfirmIncludeDrop}
-            scrollToItemId={scrollToItemId}
-            onScrollComplete={() => setScrollToItemId(null)}
-            onRefresh={onRefresh ? handleRefresh : undefined}
-            refreshing={refreshing}
-            byoHandlers={byoHandlers}
-            showAddons={showAddons}
-            showRecommendations={showRecommendations}
-            showAddGrouping={showAddGrouping}
-            perMenuSides={perMenuSides}
-            missingPriceFilter={missingPriceFilter}
-            bulkSelectionEnabled={bulkSidesEnabled}
-            bulkSelection={bulkMenuSelection}
-            onToggleBulkSelection={(itemId) =>
-              setBulkMenuSelection((prev) => {
-                const next = new Set(prev);
-                if (next.has(itemId)) next.delete(itemId);
-                else next.add(itemId);
-                return next;
-              })
-            }
-            onOpenBulkPanel={() => setBulkMenuSidesOpen(true)}
+            onOpenBulk={(mode) => setBulkMode(mode)}
+            onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragEnterPool={handleDragEnterPool}
+            onDragLeavePool={handleDragLeavePool}
+            onDropPool={handleDropPool}
+            colorMap={colorMap}
+            showVisibilityFilter={showVisibilityFilter}
+            showItemTypeFilter={showItemTypeFilter}
           />
           </div>
+          </div>
+
+          {service.cloneMenu && cloneOpen && (
+            <CloneMenuModal
+              sourceMenus={menus}
+              onClose={() => setCloneOpen(false)}
+              onConfirm={async (sourceMenuId, name) => {
+                await handleCloneMenu(sourceMenuId, name);
+                setCloneOpen(false);
+              }}
+            />
+          )}
         </div>
       )}
 

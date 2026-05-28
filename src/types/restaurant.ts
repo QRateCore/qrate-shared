@@ -565,12 +565,21 @@ export interface MenuItemSummary {
 }
 
 /** Lightweight Grouping projection returned by /menu-items/summary.
- *  `kind` mirrors Grouping.kind so the Food Library Add-ons +
- *  Recommendations columns can filter the aggregate without re-fetching. */
+ *  `kind` mirrors Grouping.kind so the Food Library Add-ons + Active Recs +
+ *  Inactive Recs columns can filter the aggregate without re-fetching.
+ *
+ *  Each member carries the referenced menu_items.id plus the list of menu
+ *  UUIDs on which it has an active placement on an active menu
+ *  (menu_item_menus.active AND menus.active). The Food Library Active /
+ *  Inactive split is: active iff at least one of these menus is ALSO
+ *  currently in its schedule window in the owner's browser timezone — the
+ *  time-of-day check happens client-side so the owner sees their own local
+ *  evaluation, not the server's UTC one. An empty menu_ids list means the
+ *  rec target is orphaned and counts as Inactive. */
 export interface GroupingSummary {
   kind: 'addons' | 'sides_and' | 'sides_or' | 'recommendations' | 'modifier' | null;
   name: string;
-  items: { name: string }[];
+  items: { id: string; name: string; menu_ids: string[] }[];
 }
 
 /** BYO PDD selection rule shape (Step 5 OpenAPI). */

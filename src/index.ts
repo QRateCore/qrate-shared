@@ -131,6 +131,13 @@ export {
   HEAT_FROM_SPICE_LEVEL,
 } from './utils/spice-derivation';
 
+// Utils — Menu schedule evaluation. Drives the Active vs Inactive Recs
+// split on MenuBuilder rows + the Food Library Active/Inactive chips.
+// Runs in the owner's browser tz on purpose — `restaurants.timezone`
+// doesn't exist as a column, so a server-side UTC eval would be wrong
+// for non-UTC restaurants.
+export { isMenuLiveNow, classifyRecMember } from './utils/menuSchedule';
+
 // Utils — Currency (canonical 16-currency preset + formatMoney helper).
 // Mirrored to qrate-patron-webapp/src/lib/utils/currency.ts via a CI sync
 // guard. PDD: .agents/planning/2026-05-19-currency-configuration/

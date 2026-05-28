@@ -1,13 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Star, Plus, Pencil, Check, X, Trash2, Copy } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
-import { CloneMenuModal } from './CloneMenuModal';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
-import Button from '../../common/Button';
 import Select from '../../common/Select';
 import type { DragState } from '../MenuManagerClient';
 import ItemModifierZones, { type ModifierEntry, type ModifierUpdatePayload } from './ItemModifierZones';
@@ -15,6 +13,7 @@ import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
+import { isMenuLiveNow } from '../../../utils/menuSchedule';
 
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
@@ -47,7 +46,10 @@ interface MenuBuilderProps {
   dragOver: { menuId: string; cat: string } | 'pool' | null;
   colorMap: (index: number) => MenuColor;
   getSettings: (menuId: string, itemId: string) => MenuItemJunctionSettings;
-  onTabChange: (menuId: string) => void;
+  /** No longer used — the tab strip moved to MenuTabBar at the
+   *  MenuManagerClient level. Kept optional so existing callers
+   *  (admin / waiter) compile without churn until they migrate. */
+  onTabChange?: (menuId: string) => void;
   onToggleCollapse: (key: string) => void;
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
@@ -73,6 +75,13 @@ interface MenuBuilderProps {
    * longer has addon/recommendation drop zones after PDD 2026-05-15 v2).
    */
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /**
+   * Click handler for the per-row "Bring into Menu" button on the
+   * Inactive Recs chip popover. Wired in owner-webapp to the same hook
+   * that runs the Includes / Choose-One drag drops. Omit (waiter /
+   * admin) to suppress the button entirely.
+   */
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
   /**
    * BYO PDD Step 7b — bundle of optional callbacks for BYO authoring.
    * Forwarded to MobileItemModifierPicker (mobile only — desktop no
@@ -230,6 +239,315 @@ function GroupingChip({
   );
 }
 
+// ── RecGroupingChips ──────────────────────────────────────────────────────────
+//
+// Specialised render for kind='recommendations' groupings. Splits members
+// into Active (rec target has an active placement on a menu that is itself
+// active AND currently in its schedule window in the OWNER'S browser tz)
+// vs Inactive (orphan OR only on paused / out-of-schedule menus).
+//
+// Active chip: hover popover with member names, read-only — same UX as
+// the legacy GroupingChip.
+//
+// Inactive chip: CLICK-pinned popover (hover-only doesn't survive
+// interactive children — moving the cursor from chip to button would
+// trigger mouseleave). Each row shows the member name + a "Bring into
+// Menu" button. Click fires onBringIntoMenu(memberId, menuId) — the
+// consumer wires this to the same hook that handles Includes / Choose-One
+// drops, so the canonical-category picker opens identically.
+//
+// Empty side renders a faded zero pill — owners can scan a row and see
+// "0 active / 3 inactive" at a glance.
+
+const REC_ACTIVE_PALETTE = { bg: '#dcfce7', fg: '#166534', border: '#86efac' };
+const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' };
+
+function classifyRecMembers(
+  members: readonly Grouping['items'][number][],
+  itemsById: Map<string, MenuItemDisplay>,
+  menusById: ReadonlyMap<string, MenuSummary>,
+  now: Date,
+): { active: typeof members; inactive: typeof members } {
+  const active: typeof members[number][] = [];
+  const inactive: typeof members[number][] = [];
+  for (const m of members) {
+    const target = m.menu_item_id ? itemsById.get(m.menu_item_id) : undefined;
+    const assocs = target?.menu_associations ?? [];
+    let isLive = false;
+    for (const a of assocs) {
+      if (!a.menu_id) continue;
+      const menu = menusById.get(a.menu_id);
+      if (menu && isMenuLiveNow(menu, now)) {
+        isLive = true;
+        break;
+      }
+    }
+    (isLive ? active : inactive).push(m);
+  }
+  return { active, inactive };
+}
+
+function RecGroupingChips({
+  grouping,
+  owningItem,
+  menuId,
+  itemsById,
+  menus,
+  onBringIntoMenu,
+}: {
+  grouping: Grouping;
+  owningItem: MenuItemDisplay;
+  menuId: string;
+  itemsById: Map<string, MenuItemDisplay>;
+  menus: readonly MenuSummary[];
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
+}) {
+  // Captured per-render. The chip flips on next render when crossing a
+  // schedule boundary; running a 1Hz interval would cause visual jitter
+  // that owners would find more confusing than the rare boundary-cross.
+  const now = useMemo(() => new Date(), []);
+  const menusById = useMemo(
+    () => new Map(menus.map((m) => [m.id, m])),
+    [menus],
+  );
+  const { active, inactive } = useMemo(
+    () => classifyRecMembers(grouping.items, itemsById, menusById, now),
+    [grouping.items, itemsById, menusById, now],
+  );
+  if (active.length + inactive.length === 0) return null;
+  return (
+    <>
+      <RecActiveChip members={active} groupingName={grouping.name} />
+      <RecInactiveChip
+        members={inactive}
+        groupingName={grouping.name}
+        owningItem={owningItem}
+        menuId={menuId}
+        onBringIntoMenu={onBringIntoMenu}
+      />
+    </>
+  );
+}
+
+function RecActiveChip({
+  members,
+  groupingName,
+}: {
+  members: readonly Grouping['items'][number][];
+  groupingName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+  const isEmpty = members.length === 0;
+  const handleEnter = () => {
+    if (isEmpty) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setOpen(true), GROUPING_HOVER_DELAY_MS);
+  };
+  const handleLeave = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setOpen(false);
+  };
+  return (
+    <div
+      className="relative inline-flex"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <span
+        className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
+        data-testid={`rec-active-chip-${members[0]?.id ?? 'empty'}`}
+        title={isEmpty ? 'No active recommendations' : undefined}
+        style={{
+          background: REC_ACTIVE_PALETTE.bg,
+          color: REC_ACTIVE_PALETTE.fg,
+          border: `1px solid ${REC_ACTIVE_PALETTE.border}`,
+          opacity: isEmpty ? 0.55 : 1,
+        }}
+      >
+        {members.length} active {members.length === 1 ? 'rec' : 'recs'}
+      </span>
+      {open && !isEmpty && (
+        <div
+          role="tooltip"
+          data-testid="rec-active-chip-popover"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full z-50 w-64 max-h-72 overflow-y-auto rounded shadow-lg"
+          style={{
+            background: 'var(--white, #fff)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+          }}
+        >
+          <div className="p-2">
+            <div className="text-xs font-semibold mb-1 truncate">
+              Active · {groupingName}
+            </div>
+            <ul className="ml-1 space-y-0.5">
+              {members.map((m) => (
+                <li key={m.id} className="text-[10px] text-[var(--text2)] truncate">
+                  • {m.name ?? '(unnamed)'}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecInactiveChip({
+  members,
+  groupingName,
+  owningItem,
+  menuId,
+  onBringIntoMenu,
+}: {
+  members: readonly Grouping['items'][number][];
+  groupingName: string;
+  owningItem: MenuItemDisplay;
+  menuId: string;
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const isEmpty = members.length === 0;
+
+  // Outside-click + Esc to dismiss. mousedown (not click) so a button
+  // click inside the popover doesn't first close it and lose the
+  // pointer target — the click event still fires because the button is
+  // inside popoverRef.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (popoverRef.current?.contains(t)) return;
+      if (triggerRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={triggerRef} className="relative inline-flex">
+      <span
+        className="text-[10px] font-bold px-1.5 py-px rounded shrink-0"
+        role={isEmpty ? undefined : 'button'}
+        tabIndex={isEmpty ? -1 : 0}
+        aria-expanded={open}
+        data-testid={`rec-inactive-chip-${owningItem.id}`}
+        title={
+          isEmpty
+            ? 'No inactive recommendations'
+            : 'Click to see off-menu recommendations'
+        }
+        onClick={(e) => {
+          if (isEmpty) return;
+          e.stopPropagation();
+          // Don't trigger the row expand button when the chip is clicked.
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+        onKeyDown={(e) => {
+          if (isEmpty) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }
+        }}
+        style={{
+          background: REC_INACTIVE_PALETTE.bg,
+          color: REC_INACTIVE_PALETTE.fg,
+          border: `1px solid ${REC_INACTIVE_PALETTE.border}`,
+          cursor: isEmpty ? 'default' : 'pointer',
+          opacity: isEmpty ? 0.55 : 1,
+        }}
+      >
+        {members.length} inactive {members.length === 1 ? 'rec' : 'recs'}
+      </span>
+      {open && !isEmpty && (
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label={`Inactive recommendations for ${owningItem.name ?? 'item'}`}
+          data-testid="rec-inactive-chip-popover"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full z-50 w-80 max-h-80 overflow-y-auto rounded shadow-lg"
+          style={{
+            background: 'var(--white, #fff)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+          }}
+        >
+          <div className="p-2">
+            <div className="text-xs font-semibold mb-2 truncate">
+              Inactive · {groupingName}
+            </div>
+            <ul className="space-y-1">
+              {members.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between gap-2 text-[11px]"
+                >
+                  <span
+                    className="truncate flex-1 min-w-0 text-[var(--text)]"
+                    title={m.name ?? ''}
+                  >
+                    {m.name ?? '(unnamed)'}
+                  </span>
+                  {onBringIntoMenu && m.menu_item_id ? (
+                    <button
+                      type="button"
+                      data-testid={`menu-builder-bring-into-menu-${m.menu_item_id}`}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const memberItemId = m.menu_item_id;
+                        if (!memberItemId) return;
+                        onBringIntoMenu(memberItemId, menuId);
+                        setOpen(false);
+                      }}
+                      style={{
+                        background: 'var(--orange-bg, #ffedd5)',
+                        color: 'var(--orange-text, #9a3412)',
+                        border: '1px solid var(--orange-text, #fb923c)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Bring into Menu
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MenuItemRow ───────────────────────────────────────────────────────────────
 
 function MenuItemRow({
@@ -238,9 +556,11 @@ function MenuItemRow({
   cat,
   settings,
   itemsById,
+  menus,
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  onBringIntoMenu,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -258,9 +578,21 @@ function MenuItemRow({
   cat: string;
   settings: MenuItemJunctionSettings;
   itemsById: Map<string, MenuItemDisplay>;
+  /** All menus on the restaurant — drives the Active vs Inactive Recs
+   *  classification on the rec chips (browser-tz schedule eval). When
+   *  omitted, the rec chips fall back to the legacy single-chip render. */
+  menus?: readonly MenuSummary[];
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /** Click handler for the per-row "Bring into Menu" button in the
+   *  Inactive Recs popover. Receives the rec target (the off-menu rec)
+   *  + the menu the row is currently being edited under. The consumer
+   *  wires this to the same useCategoryPromptForRecommendationDrop
+   *  hook the drag flow uses — so the canonical-category modal opens
+   *  exactly as it does for an Includes/Choose-One drop. When omitted,
+   *  the button doesn't render (waiter / admin apps). */
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
   /** BYO PDD Step 7b — forwarded to MobileItemModifierPicker only. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   /** Forwarded to MobileItemModifierPicker. Default true. */
@@ -614,9 +946,21 @@ function MenuItemRow({
             {/* Mobile row 2 — one chip per non-empty grouping */}
             {hasAnyGroupingChip && (
               <div className="flex flex-wrap items-center gap-1.5 pl-5 w-full">
-                {groupings.map((g) => (
-                  <GroupingChip key={g.id} grouping={g} />
-                ))}
+                {groupings.map((g) =>
+                  g.kind === 'recommendations' && menus ? (
+                    <RecGroupingChips
+                      key={g.id}
+                      grouping={g}
+                      owningItem={item}
+                      menuId={menuId}
+                      itemsById={itemsById}
+                      menus={menus}
+                      onBringIntoMenu={onBringIntoMenu}
+                    />
+                  ) : (
+                    <GroupingChip key={g.id} grouping={g} />
+                  ),
+                )}
               </div>
             )}
           </>
@@ -640,11 +984,25 @@ function MenuItemRow({
               {item.name}
             </span>
 
-            {/* One chip per non-empty grouping */}
+            {/* One chip per non-empty grouping. Recommendations grouping
+                renders as two chips (Active / Inactive) when the parent
+                provided `menus` so we can evaluate schedule windows. */}
             <div className="flex flex-wrap items-center gap-1 shrink min-w-0 ml-1">
-              {groupings.map((g) => (
-                <GroupingChip key={g.id} grouping={g} />
-              ))}
+              {groupings.map((g) =>
+                g.kind === 'recommendations' && menus ? (
+                  <RecGroupingChips
+                    key={g.id}
+                    grouping={g}
+                    owningItem={item}
+                    menuId={menuId}
+                    itemsById={itemsById}
+                    menus={menus}
+                    onBringIntoMenu={onBringIntoMenu}
+                  />
+                ) : (
+                  <GroupingChip key={g.id} grouping={g} />
+                ),
+              )}
             </div>
 
             <span className="flex-1" />
@@ -877,6 +1235,7 @@ function CategoryBucket({
   category,
   itemIds,
   itemsById,
+  menus,
   menuId,
   collapsed,
   getSettings,
@@ -885,6 +1244,7 @@ function CategoryBucket({
   onUpdateSettings,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  onBringIntoMenu,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -903,10 +1263,12 @@ function CategoryBucket({
   bulkSelectionEnabled = false,
   bulkSelection,
   onToggleBulkSelection,
+  suppressEmptyAttention = false,
 }: {
   category: string;
   itemIds: string[];
   itemsById: Map<string, MenuItemDisplay>;
+  menus?: readonly MenuSummary[];
   menuId: string;
   collapsed: boolean;
   missingPriceFilter?: boolean;
@@ -916,6 +1278,7 @@ function CategoryBucket({
   onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   onConfirmRecommendationDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
   /** BYO PDD Step 7b — forwarded to ItemModifierZones via MenuItemRow. */
   byoHandlers?: import('./ItemModifierZones').BYOHandlers;
   /** Forwarded to MenuItemRow → MobileItemModifierPicker. Default true. */
@@ -938,12 +1301,23 @@ function CategoryBucket({
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
   onToggleBulkSelection?: (itemId: string) => void;
+  /**
+   * When true, an empty bucket is rendered neutrally instead of with the
+   * red "needs attention" border + EMPTY pill. Set by the parent when the
+   * entire menu has zero assigned items — that's either a still-hydrating
+   * load or a brand-new menu, in either case calling out every bucket as
+   * "empty" is noise. Once at least one item lands on the menu, the parent
+   * flips this off and each remaining empty bucket regains the red
+   * "you skipped this one" signal.
+   */
+  suppressEmptyAttention?: boolean;
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
   // STR-251 round 3 — rollup attention indicator. Empty buckets are themselves
-  // "needs attention". Non-empty buckets show the count of items whose
-  // displayed price is missing.
+  // "needs attention" — except during initial load / brand-new menu state,
+  // gated by suppressEmptyAttention. Non-empty buckets always show the
+  // missing-price count regardless.
   const attentionCount = allBucketItems.reduce(
     (n, it) => n + (itemHasAttention(it, getSettings(menuId, it.id)) ? 1 : 0),
     0,
@@ -956,7 +1330,8 @@ function CategoryBucket({
     ? allBucketItems.filter((it) => itemHasAttention(it, getSettings(menuId, it.id)))
     : allBucketItems;
   const bucketEmpty = allBucketItems.length === 0;
-  const bucketHasAttention = bucketEmpty || attentionCount > 0;
+  const emptyIsAttention = bucketEmpty && !suppressEmptyAttention;
+  const bucketHasAttention = emptyIsAttention || attentionCount > 0;
 
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
@@ -1028,7 +1403,7 @@ function CategoryBucket({
         <span className="text-xs font-bold text-[var(--text)] flex-1">
           {category}
         </span>
-        {bucketEmpty ? (
+        {emptyIsAttention ? (
           <span
             data-testid={`bucket-attention-empty-${category}`}
             className="text-xs font-bold text-white bg-[var(--red)] rounded-full px-2 py-px uppercase tracking-wide"
@@ -1088,9 +1463,11 @@ function CategoryBucket({
                   cat={category}
                   settings={getSettings(menuId, item.id)}
                   itemsById={itemsById}
+                  menus={menus}
                   onUpdateSettings={onUpdateSettings}
                   onUpdateModifiers={onUpdateModifiers}
                   onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                  onBringIntoMenu={onBringIntoMenu}
                   byoHandlers={byoHandlers}
                   showAddons={showAddons}
                   showRecommendations={showRecommendations}
@@ -1194,6 +1571,7 @@ export default function MenuBuilder({
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
+  onBringIntoMenu,
   byoHandlers,
   showAddons = true,
   showRecommendations = true,
@@ -1243,11 +1621,7 @@ export default function MenuBuilder({
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToItemId, activeMenuId]);
-  const [addingMenu, setAddingMenu] = useState(false);
-  const [newMenuName, setNewMenuName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [cloneOpen, setCloneOpen] = useState(false);
-  const newMenuInputRef = useRef<HTMLInputElement>(null);
+
   const activeMenu = menus.find((m) => m.id === activeMenuId) ?? menus[0] ?? null;
   const activeMenuIndex = activeMenu ? menus.findIndex((m) => m.id === activeMenu.id) : 0;
   const activeColor = colorMap(activeMenuIndex);
@@ -1284,138 +1658,6 @@ export default function MenuBuilder({
       className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] overflow-hidden"
       data-testid="menu-builder-panel"
     >
-      {/* Tab bar + frozen New Menu button */}
-      <div className="flex items-end border-b border-[var(--border)] shrink-0">
-        <div
-          className="flex items-end px-3 overflow-x-auto flex-1 min-w-0"
-          data-testid="menu-tab-bar"
-        >
-          {menus.map((menu) => {
-            const isActive = menu.id === activeMenu?.id;
-            return (
-              <div key={menu.id} className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => onTabChange(menu.id)}
-                  data-testid={`menu-tab-${menu.id}`}
-                  className={`flex items-center gap-1.5 px-3.5 py-3 text-sm border-none cursor-pointer whitespace-nowrap transition-all duration-150 ${
-                    isActive
-                      ? 'font-semibold text-[var(--brand-s)] bg-[rgba(255,107,43,0.05)] border-b-2 border-b-[var(--brand-s)]'
-                      : 'font-medium text-[var(--text2)] bg-transparent border-b-2 border-b-transparent'
-                  }`}
-                >
-                  {menu.name}
-                  {isActive && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onEditMenu(menu.id); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditMenu(menu.id); } }}
-                      data-testid={`edit-menu-tab-${menu.id}`}
-                      aria-label={`Edit ${menu.name}`}
-                      className="inline-flex items-center p-0.5 rounded-[var(--r-xs)] text-[var(--brand-s)] cursor-pointer opacity-70 hover:opacity-100"
-                    >
-                      <Pencil size={11} />
-                    </span>
-                  )}
-                </button>
-              </div>
-            );
-          })}
-
-          {/* Inline new-menu form (inside scroll area) */}
-          {addingMenu && (
-            <div className="flex items-center gap-1 px-2 py-1.5 shrink-0">
-              <input
-                ref={newMenuInputRef}
-                type="text"
-                value={newMenuName}
-                onChange={(e) => setNewMenuName(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key === 'Enter') {
-                    if (!newMenuName.trim()) return;
-                    setCreating(true);
-                    await onCreateMenu(newMenuName.trim());
-                    setNewMenuName('');
-                    setAddingMenu(false);
-                    setCreating(false);
-                  }
-                  if (e.key === 'Escape') { setAddingMenu(false); setNewMenuName(''); }
-                }}
-                placeholder="Menu name…"
-                autoFocus
-                data-testid="new-menu-name-input"
-                className="text-xs border border-[var(--blue)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none w-[130px]"
-              />
-              <button
-                type="button"
-                disabled={creating || !newMenuName.trim()}
-                onClick={async () => {
-                  if (!newMenuName.trim()) return;
-                  setCreating(true);
-                  await onCreateMenu(newMenuName.trim());
-                  setNewMenuName('');
-                  setAddingMenu(false);
-                  setCreating(false);
-                }}
-                data-testid="confirm-new-menu-btn"
-                className="bg-transparent border-none cursor-pointer text-[var(--blue)] flex items-center p-0.5"
-              >
-                <Check size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAddingMenu(false); setNewMenuName(''); }}
-                data-testid="cancel-new-menu-btn"
-                className="bg-transparent border-none cursor-pointer text-[var(--text2)] flex items-center p-0.5"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Frozen "+ New Menu" + "Clone Existing" buttons — always visible, never scroll */}
-        {!addingMenu && (
-          <div className="shrink-0 px-2 py-1.5 flex items-center gap-1.5">
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Plus size={13} />}
-              onClick={() => { setAddingMenu(true); setTimeout(() => newMenuInputRef.current?.focus(), 0); }}
-              data-testid="add-menu-btn"
-              aria-label="Add menu"
-            >
-              New Menu
-            </Button>
-            {onCloneMenu && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Copy size={13} />}
-                onClick={() => setCloneOpen(true)}
-                disabled={menus.length === 0}
-                data-testid="clone-menu-btn"
-                aria-label="Clone existing menu"
-              >
-                Clone Existing
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {cloneOpen && onCloneMenu && (
-        <CloneMenuModal
-          sourceMenus={menus}
-          onClose={() => setCloneOpen(false)}
-          onConfirm={async (sourceMenuId, name) => {
-            await onCloneMenu(sourceMenuId, name);
-            setCloneOpen(false);
-          }}
-        />
-      )}
-
       {/* Active menu header */}
       {activeMenu && (
         <div className="px-3.5 pt-2.5 pb-2 border-b border-[var(--border)] flex items-center gap-2 shrink-0">
@@ -1487,6 +1729,7 @@ export default function MenuBuilder({
                 category={cat}
                 itemIds={activeAssignments[cat] ?? []}
                 itemsById={itemsById}
+                menus={menus}
                 menuId={activeMenu!.id}
                 collapsed={collapsed[collapseKey] ?? true}
                 getSettings={getSettings}
@@ -1495,6 +1738,7 @@ export default function MenuBuilder({
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
+                onBringIntoMenu={onBringIntoMenu}
                 byoHandlers={byoHandlers}
                 showAddons={showAddons}
                 showRecommendations={showRecommendations}
@@ -1513,6 +1757,12 @@ export default function MenuBuilder({
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}
                 onToggleBulkSelection={onToggleBulkSelection}
+                // Suppress per-bucket "EMPTY" red treatment while the menu
+                // has zero items overall. Covers both the brief loading
+                // window (items query lands after menus query) and a
+                // genuinely fresh empty menu — neither case warrants
+                // calling out every category as a problem.
+                suppressEmptyAttention={totalItems === 0}
               />
             );
           })}
