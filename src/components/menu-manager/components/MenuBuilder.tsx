@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
@@ -262,6 +263,15 @@ function GroupingChip({
 const REC_ACTIVE_PALETTE = { bg: '#dcfce7', fg: '#166534', border: '#86efac' };
 const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' };
 
+export function _classifyRecMembersForTest(
+  members: readonly Grouping['items'][number][],
+  itemsById: Map<string, MenuItemDisplay>,
+  menusById: ReadonlyMap<string, MenuSummary>,
+  now: Date,
+) {
+  return classifyRecMembers(members, itemsById, menusById, now);
+}
+
 function classifyRecMembers(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
@@ -287,7 +297,7 @@ function classifyRecMembers(
   return { active, inactive };
 }
 
-function RecGroupingChips({
+export function RecGroupingChips({
   grouping,
   owningItem,
   menuId,
@@ -403,6 +413,12 @@ function RecActiveChip({
   );
 }
 
+// Grace period between mouseleave-on-chip and popover close — gives the
+// cursor enough time to travel from the chip to the popover (which is
+// portal'd outside the chip's DOM tree, so there's no shared container
+// keeping it open via normal hover bubbling).
+const REC_POPOVER_LEAVE_GRACE_MS = 200;
+
 function RecInactiveChip({
   members,
   groupingName,
@@ -417,133 +433,172 @@ function RecInactiveChip({
   onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  // SSR guard — createPortal needs `document`, which doesn't exist in
+  // the Next.js server render pass. Defer the portal until the client
+  // mount finishes; the first paint is a chip without a popover, which
+  // is the correct initial state anyway.
+  const [mounted, setMounted] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isEmpty = members.length === 0;
 
-  // Outside-click + Esc to dismiss. mousedown (not click) so a button
-  // click inside the popover doesn't first close it and lose the
-  // pointer target — the click event still fires because the button is
-  // inside popoverRef.
   useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (popoverRef.current?.contains(t)) return;
-      if (triggerRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
+    setMounted(true);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
+      if (openTimerRef.current) clearTimeout(openTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
-  }, [open]);
+  }, []);
+
+  const cancelTimers = () => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  // Hover-open mirrors the legacy GroupingChip 500ms delay. mouseleave
+  // schedules close after a grace period so the cursor can reach the
+  // portal'd popover; entering the popover cancels the pending close.
+  const handleTriggerEnter = () => {
+    if (isEmpty) return;
+    cancelTimers();
+    openTimerRef.current = setTimeout(() => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setAnchor({ top: rect.bottom + 6, left: rect.left });
+      setOpen(true);
+      openTimerRef.current = null;
+    }, GROUPING_HOVER_DELAY_MS);
+  };
+
+  const handleTriggerLeave = () => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, REC_POPOVER_LEAVE_GRACE_MS);
+  };
+
+  const handlePopoverEnter = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const handlePopoverLeave = () => {
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, REC_POPOVER_LEAVE_GRACE_MS);
+  };
+
+  const popoverNode = open && !isEmpty && anchor ? (
+    <div
+      role="dialog"
+      aria-label={`Inactive recommendations for ${owningItem.name ?? 'item'}`}
+      data-testid="rec-inactive-chip-popover"
+      onMouseEnter={handlePopoverEnter}
+      onMouseLeave={handlePopoverLeave}
+      // Stop clicks inside the popover from bubbling back to the row's
+      // expand button (which is the chip's ancestor before the portal).
+      onClick={(e) => e.stopPropagation()}
+      // position: fixed against the trigger's viewport coords. z-[60]
+      // beats the legacy GroupingChip popover (z-50) so the inactive
+      // popover wins if a row has both active and inactive open at once.
+      style={{
+        position: 'fixed',
+        top: anchor.top,
+        left: anchor.left,
+        zIndex: 60,
+        minWidth: 260,
+        maxWidth: 360,
+        maxHeight: 320,
+        overflowY: 'auto',
+        background: 'var(--white, #fff)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+        color: 'var(--text)',
+      }}
+    >
+      <div className="p-2">
+        <div className="text-xs font-semibold mb-2 truncate">
+          Inactive · {groupingName}
+        </div>
+        <ul className="space-y-1">
+          {members.map((m) => (
+            <li
+              key={m.id}
+              className="flex items-center justify-between gap-2 text-[11px]"
+            >
+              <span
+                className="truncate flex-1 min-w-0 text-[var(--text)]"
+                title={m.name ?? ''}
+              >
+                {m.name ?? '(unnamed)'}
+              </span>
+              {onBringIntoMenu && m.menu_item_id ? (
+                <button
+                  type="button"
+                  data-testid={`menu-builder-bring-into-menu-${m.menu_item_id}`}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const memberItemId = m.menu_item_id;
+                    if (!memberItemId) return;
+                    onBringIntoMenu(memberItemId, menuId);
+                    setOpen(false);
+                  }}
+                  style={{
+                    background: 'var(--orange-bg, #ffedd5)',
+                    color: 'var(--orange-text, #9a3412)',
+                    border: '1px solid var(--orange-text, #fb923c)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Bring into Menu
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  ) : null;
 
   return (
-    <div ref={triggerRef} className="relative inline-flex">
+    <div
+      ref={triggerRef}
+      className="relative inline-flex"
+      onMouseEnter={handleTriggerEnter}
+      onMouseLeave={handleTriggerLeave}
+    >
       <span
-        className="text-[10px] font-bold px-1.5 py-px rounded shrink-0"
-        role={isEmpty ? undefined : 'button'}
-        tabIndex={isEmpty ? -1 : 0}
-        aria-expanded={open}
+        className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
         data-testid={`rec-inactive-chip-${owningItem.id}`}
-        title={
-          isEmpty
-            ? 'No inactive recommendations'
-            : 'Click to see off-menu recommendations'
-        }
-        onClick={(e) => {
-          if (isEmpty) return;
-          e.stopPropagation();
-          // Don't trigger the row expand button when the chip is clicked.
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
-        onKeyDown={(e) => {
-          if (isEmpty) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen((v) => !v);
-          }
-        }}
+        title={isEmpty ? 'No inactive recommendations' : undefined}
         style={{
           background: REC_INACTIVE_PALETTE.bg,
           color: REC_INACTIVE_PALETTE.fg,
           border: `1px solid ${REC_INACTIVE_PALETTE.border}`,
-          cursor: isEmpty ? 'default' : 'pointer',
           opacity: isEmpty ? 0.55 : 1,
         }}
       >
         {members.length} inactive {members.length === 1 ? 'rec' : 'recs'}
       </span>
-      {open && !isEmpty && (
-        <div
-          ref={popoverRef}
-          role="dialog"
-          aria-label={`Inactive recommendations for ${owningItem.name ?? 'item'}`}
-          data-testid="rec-inactive-chip-popover"
-          onClick={(e) => e.stopPropagation()}
-          className="absolute left-0 top-full z-50 w-80 max-h-80 overflow-y-auto rounded shadow-lg"
-          style={{
-            background: 'var(--white, #fff)',
-            border: '1px solid var(--border)',
-            color: 'var(--text)',
-          }}
-        >
-          <div className="p-2">
-            <div className="text-xs font-semibold mb-2 truncate">
-              Inactive · {groupingName}
-            </div>
-            <ul className="space-y-1">
-              {members.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex items-center justify-between gap-2 text-[11px]"
-                >
-                  <span
-                    className="truncate flex-1 min-w-0 text-[var(--text)]"
-                    title={m.name ?? ''}
-                  >
-                    {m.name ?? '(unnamed)'}
-                  </span>
-                  {onBringIntoMenu && m.menu_item_id ? (
-                    <button
-                      type="button"
-                      data-testid={`menu-builder-bring-into-menu-${m.menu_item_id}`}
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const memberItemId = m.menu_item_id;
-                        if (!memberItemId) return;
-                        onBringIntoMenu(memberItemId, menuId);
-                        setOpen(false);
-                      }}
-                      style={{
-                        background: 'var(--orange-bg, #ffedd5)',
-                        color: 'var(--orange-text, #9a3412)',
-                        border: '1px solid var(--orange-text, #fb923c)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Bring into Menu
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
+      {mounted && popoverNode
+        ? createPortal(popoverNode, document.body)
+        : null}
     </div>
   );
 }
