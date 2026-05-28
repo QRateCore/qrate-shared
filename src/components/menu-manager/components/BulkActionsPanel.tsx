@@ -930,7 +930,14 @@ export default function BulkActionsPanel({
       <div
         onClick={requestClose}
         style={{
-          position: 'fixed', inset: 0, zIndex: 40,
+          position: 'fixed', inset: 0,
+          // Drawer-overlay tier so the panel sits above the owner-webapp
+          // persistent TopBar (z:60) — otherwise the topbar paints over
+          // the panel's top edge and the close button at the top-right
+          // becomes unclickable. Tokens: `--z-drawer-overlay: 200`,
+          // `--z-drawer: 201`. Hardcoded fallbacks for waiter-webapp /
+          // admin-webapp where the tokens may not be defined.
+          zIndex: 'var(--z-drawer-overlay, 200)' as unknown as number,
           background: 'rgba(0,0,0,0.15)',
           opacity: isOpen ? 1 : 0,
           transition: `opacity ${SLIDE_MS}ms ease-out`,
@@ -948,7 +955,7 @@ export default function BulkActionsPanel({
           bottom: 0,
           width: '50vw',
           minWidth: 360,
-          zIndex: 50,
+          zIndex: 'var(--z-drawer, 201)' as unknown as number,
           background: 'var(--white)',
           borderLeft: '1px solid var(--border)',
           boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
