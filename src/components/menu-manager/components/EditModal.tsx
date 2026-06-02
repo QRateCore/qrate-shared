@@ -3776,33 +3776,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                   </div>
                 </div>}
 
-                {/* Allergens — multi-select pills, food_tags-backed. New
-                    items: same Set drives the deferred-creation flow, the
-                    save handler flushes via setItemTags after the DB row
-                    is created. */}
-                {dietaryTagService && restaurantId && (
-                  <DietaryMultiSelect
-                    label="Allergens"
-                    options={allergenOptions}
-                    labels={allergenLabelsMerged}
-                    type="allergen"
-                    selectedSet={allergenSet}
-                    onToggle={(name) => isNewItem
-                      ? setAllergenSet((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(name)) next.delete(name); else next.add(name);
-                          return next;
-                        })
-                      : void handleDietaryToggle(name, 'allergen')}
-                    reviewed={isNewItem ? true : allergensReviewed}
-                    onToggleNa={() => isNewItem
-                      ? setAllergenSet(new Set())
-                      : void handleClickNa('allergens')}
-                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
-                  />
-                )}
-
-                {/* Dietary restrictions — same pattern. */}
+                {/* Dietary restrictions — multi-select pills, food_tags-backed.
+                    Rendered ABOVE Allergens per STR-589 (cross-app parity with
+                    the patron DietaryStep): dietary identity first, allergens
+                    second. New items: same Set drives the deferred-creation
+                    flow, the save handler flushes via setItemTags after the
+                    DB row is created. */}
                 {dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
@@ -3822,6 +3801,29 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       ? setDietarySet(new Set())
                       : void handleClickNa('dietary')}
                     onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
+                  />
+                )}
+
+                {/* Allergens — same pattern. */}
+                {dietaryTagService && restaurantId && (
+                  <DietaryMultiSelect
+                    label="Allergens"
+                    options={allergenOptions}
+                    labels={allergenLabelsMerged}
+                    type="allergen"
+                    selectedSet={allergenSet}
+                    onToggle={(name) => isNewItem
+                      ? setAllergenSet((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(name)) next.delete(name); else next.add(name);
+                          return next;
+                        })
+                      : void handleDietaryToggle(name, 'allergen')}
+                    reviewed={isNewItem ? true : allergensReviewed}
+                    onToggleNa={() => isNewItem
+                      ? setAllergenSet(new Set())
+                      : void handleClickNa('allergens')}
+                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
                   />
                 )}
 
