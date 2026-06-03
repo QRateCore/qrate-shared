@@ -1110,11 +1110,8 @@ export default function BulkActionsPanel({
           ))}
         </div>
 
-        {/* Mode-specific form — flex column with minHeight:0 so a mode's
-            form can flex-fill (e.g. the Grouping member picker extends down
-            to the footer instead of being capped). Still scrolls when a
-            form's stacked content exceeds the available height. */}
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '16px' }}>
+        {/* Mode-specific form */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
           {mode === 'assign' && (
             <AssignForm
               menus={menus}
@@ -2024,7 +2021,7 @@ function BulkGroupingForm({
   const intersectionEmpty = existingStatus === 'ready' && existingCandidates.length === 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Mode selector (PDD 2026-05-22) — only shown when add-to-existing
           is wired by the consumer; admin/waiter without that prop see the
           plain create-only form. */}
@@ -2246,7 +2243,6 @@ function BulkGroupingForm({
         selectedCountSuffix={groupingMode === 'create' ? ' — optional' : ''}
         enableTypeTabs
         enableCategoryFilter
-        fillHeight
       />
 
       {/* Create-mode conflict banner */}
