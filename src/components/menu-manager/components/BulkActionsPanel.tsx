@@ -492,6 +492,9 @@ export default function BulkActionsPanel({
       setGroupingPreset('optional');
       setGroupingPresetN(1);
       setGroupingPresetMax(1);
+      // Re-arm discovery so entering Add-to-existing re-fetches with
+      // includeDefaults=true (state is shared with the Remove path).
+      setRemoveLoadStatus('idle');
     }
   }
 
@@ -633,7 +636,12 @@ export default function BulkActionsPanel({
    * Resets selection + mismatches each time it runs (entry into the tab
    * or explicit "Refresh" click after a mismatch).
    */
-  async function discoverRemoveCandidates() {
+  // includeDefaults=false (the Remove-grouping path) hides default groupings
+  // (Add-ons / Recommendations) — they can't be removed. The Add-to-existing
+  // path passes true so members can be bulk-added to the default groups. The
+  // two paths share `removeCandidates` state, so callers re-arm discovery
+  // (setRemoveLoadStatus('idle')) on context switches to apply the right flag.
+  async function discoverRemoveCandidates(includeDefaults = false) {
     if (!loadGroupingsForItem) return;
     setRemoveLoadStatus('loading');
     setRemoveCandidates([]);
@@ -656,7 +664,7 @@ export default function BulkActionsPanel({
       }
       const map = new Map<string, RemoveGroupingCandidate>();
       for (const g of res.value) {
-        if (g.is_default) continue;
+        if (!includeDefaults && g.is_default) continue;
         const sortedMembers = (g.items ?? [])
           .map((it) => it.menu_item_id)
           .sort();
@@ -740,7 +748,8 @@ export default function BulkActionsPanel({
   // time so re-firing is cheap.
   useEffect(() => {
     if (mode === 'removeGrouping' && removeLoadStatus === 'idle') {
-      void discoverRemoveCandidates();
+      // Remove path — defaults stay hidden (can't remove a default grouping).
+      void discoverRemoveCandidates(false);
     }
     if (
       mode === 'grouping'
@@ -749,7 +758,8 @@ export default function BulkActionsPanel({
       && !!loadGroupingsForItem
       && removeLoadStatus === 'idle'
     ) {
-      void discoverRemoveCandidates();
+      // Add-to-existing path — include defaults (Add-ons / Recommendations).
+      void discoverRemoveCandidates(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, groupingMode]);
@@ -1050,7 +1060,17 @@ export default function BulkActionsPanel({
             <button
               key={key}
               type="button"
-              onClick={() => { setMode(key); setError(null); setDeleteConfirm(false); }}
+              onClick={() => {
+                // Re-arm grouping discovery on an actual tab change so the
+                // Add-existing vs Remove path each re-fetches with the correct
+                // includeDefaults flag (they share removeCandidates state).
+                // Guarded on key !== mode so re-clicking the active tab doesn't
+                // strand the status at 'idle' (the effect won't re-fire).
+                if (key !== mode) setRemoveLoadStatus('idle');
+                setMode(key);
+                setError(null);
+                setDeleteConfirm(false);
+              }}
               data-testid={`bulk-tab-${key}`}
               style={{
                 display: 'flex',
@@ -1073,8 +1093,11 @@ export default function BulkActionsPanel({
           ))}
         </div>
 
-        {/* Mode-specific form */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        {/* Mode-specific form — flex column with minHeight:0 so a mode's
+            form can flex-fill (e.g. the Grouping member picker extends down
+            to the footer instead of being capped). Still scrolls when a
+            form's stacked content exceeds the available height. */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '16px' }}>
           {mode === 'assign' && (
             <AssignForm
               menus={menus}
@@ -1194,7 +1217,7 @@ export default function BulkActionsPanel({
               existingCandidates={removeCandidates}
               existingPickedName={addExistingPickedName}
               onPickExisting={setAddExistingPickedName}
-              onRefreshExisting={() => { void discoverRemoveCandidates(); }}
+              onRefreshExisting={() => { void discoverRemoveCandidates(true); }}
               addMembersMismatches={addMembersMismatches}
             />
           )}
@@ -1984,7 +2007,7 @@ function BulkGroupingForm({
   const intersectionEmpty = existingStatus === 'ready' && existingCandidates.length === 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
       {/* Mode selector (PDD 2026-05-22) — only shown when add-to-existing
           is wired by the consumer; admin/waiter without that prop see the
           plain create-only form. */}
@@ -2206,6 +2229,7 @@ function BulkGroupingForm({
         selectedCountSuffix={groupingMode === 'create' ? ' — optional' : ''}
         enableTypeTabs
         enableCategoryFilter
+        fillHeight
       />
 
       {/* Create-mode conflict banner */}
