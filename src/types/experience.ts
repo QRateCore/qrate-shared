@@ -61,7 +61,15 @@ export interface TablePlacedOrder {
   created_at: string;
   item_count: number;
   total_amount: number;
-  items?: Array<{ name: string; quantity: number; price: number; patron_display_name?: string | null; item_status?: string }>;
+  /** Order tax. Exposed so the Bill tab can render a consistent subtotal/tax/total from a single feed. */
+  tax?: number;
+  /**
+   * total_amount minus item-level cancelled lines (price × quantity). Equals
+   * total_amount when nothing is cancelled. The Bill tab sums this instead of
+   * total_amount so cancelled items are excluded from the bill.
+   */
+  active_total?: number;
+  items?: Array<{ id?: string; name: string; quantity: number; price: number; patron_display_name?: string | null; item_status?: string }>;
 }
 
 export interface TableActivityEntry {

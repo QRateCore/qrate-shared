@@ -54,10 +54,31 @@ export default function TableDetailSheet({
   // ─── Bill totals ──────────────────────────────────────────────────────────
 
   const bill = useMemo(() => {
-    const subtotal = orders.reduce((sum, o) => sum + (Number(o.total_amount) - Number(o.tax)), 0);
-    const tax = orders.reduce((sum, o) => sum + Number(o.tax), 0);
-    return { subtotal, tax, total: subtotal + tax };
-  }, [orders]);
+    // Sum from the table's placed orders (the same feed as the itemized bill
+    // below) using active_total — total_amount net of item-level cancellations —
+    // so cancelled items are excluded from the bill. Falls back to the old
+    // orders-based sum when the backend hasn't shipped active_total yet (graceful
+    // during the qrate-core → owner deploy gap). NUMERIC fields may arrive as
+    // strings, so every value is wrapped in Number().
+    const placed = table.placed_orders || [];
+    if (placed.length === 0) {
+      const subtotal = orders.reduce((sum, o) => sum + (Number(o.total_amount) - Number(o.tax)), 0);
+      const tax = orders.reduce((sum, o) => sum + Number(o.tax), 0);
+      return { subtotal, tax, total: subtotal + tax };
+    }
+    let subtotal = 0, tax = 0, total = 0;
+    for (const po of placed) {
+      const liveOrder = orders.find(o => o.id === po.order_id);
+      const liveStatus = liveOrder?.status || po.status;
+      if (liveStatus === 'cancelled') continue; // fully-cancelled orders are excluded entirely
+      const orderTotal = Number(po.active_total ?? po.total_amount);
+      const orderTax = Number(po.tax ?? liveOrder?.tax ?? 0);
+      total += orderTotal;
+      tax += orderTax;
+      subtotal += orderTotal - orderTax;
+    }
+    return { subtotal, tax, total };
+  }, [table.placed_orders, orders]);
 
   // ─── Waiter calls for this table ─────────────────────────────────────────
 
@@ -496,7 +517,7 @@ export default function TableDetailSheet({
                 <>
                   {/* Itemized by guest */}
                   {(() => {
-                    type BillItem = { orderId: string; name: string; quantity: number; price: number; status: string };
+                    type BillItem = { orderId: string; itemId: string | null; name: string; quantity: number; price: number; status: string; itemStatus: string };
                     const byGuest: Record<string, BillItem[]> = {};
 
                     for (const po of (table.placed_orders || [])) {
@@ -506,10 +527,18 @@ export default function TableDetailSheet({
 
                       const orderGuestName = po.diner_name || 'Guest';
                       if (po.items && po.items.length > 0) {
-                        for (const item of po.items as { name: string; quantity: number; price: number; patron_display_name?: string | null }[]) {
+                        for (const item of po.items) {
                           const guestName = item.patron_display_name || orderGuestName;
                           if (!byGuest[guestName]) byGuest[guestName] = [];
-                          byGuest[guestName].push({ orderId: po.order_id, name: item.name, quantity: item.quantity, price: item.price, status });
+                          byGuest[guestName].push({
+                            orderId: po.order_id,
+                            itemId: item.id ?? null,
+                            name: item.name,
+                            quantity: item.quantity,
+                            price: item.price,
+                            status,
+                            itemStatus: item.item_status || 'active',
+                          });
                         }
                       }
                     }
@@ -517,32 +546,54 @@ export default function TableDetailSheet({
                     return Object.entries(byGuest).map(([name, items]) => (
                       <div key={name}>
                         <h5 className="section-header mb-1.5">{name}</h5>
-                        {items.map((item, i) => (
-                          <div key={`${item.orderId}-${i}`} className="flex items-center justify-between py-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm text-gray-800">{item.quantity}x {item.name}</span>
-                              <StatusPill status={item.status} />
+                        {items.map((item, i) => {
+                          // Item-level cancellation: a cancelled line is shown struck-through
+                          // with a Cancelled pill and is NOT counted in the bill total (the
+                          // total is summed from active_total, which nets these out).
+                          const isCancelled = item.itemStatus === 'cancelled';
+                          return (
+                            <div
+                              key={`${item.orderId}-${i}`}
+                              data-testid={item.itemId ? `bill-item-${item.itemId}` : undefined}
+                              data-cancelled={isCancelled ? 'true' : 'false'}
+                              className="flex items-center justify-between py-1.5"
+                              style={isCancelled ? { opacity: 0.55 } : undefined}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="text-sm text-gray-800"
+                                  style={isCancelled ? { textDecoration: 'line-through' } : undefined}
+                                >
+                                  {item.quantity}x {item.name}
+                                </span>
+                                <StatusPill status={isCancelled ? 'cancelled' : item.status} />
+                              </div>
+                              <span
+                                className="text-sm font-medium"
+                                style={{ fontVariantNumeric: 'tabular-nums', textDecoration: isCancelled ? 'line-through' : undefined }}
+                              >
+                                ${(item.quantity * item.price).toFixed(2)}
+                              </span>
                             </div>
-                            <span className="text-sm font-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>${(item.quantity * item.price).toFixed(2)}</span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ));
                   })()}
 
                   {/* Totals */}
-                  <div className="border-t border-gray-200 pt-3 space-y-1">
+                  <div data-testid="bill-totals" className="border-t border-gray-200 pt-3 space-y-1">
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Subtotal</span>
-                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.subtotal.toFixed(2)}</span>
+                      <span data-testid="bill-subtotal" style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.subtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Tax</span>
-                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.tax.toFixed(2)}</span>
+                      <span data-testid="bill-tax" style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.tax.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-base font-bold text-gray-900">
                       <span>Total</span>
-                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.total.toFixed(2)}</span>
+                      <span data-testid="bill-total" style={{ fontVariantNumeric: 'tabular-nums' }}>${bill.total.toFixed(2)}</span>
                     </div>
                   </div>
 
