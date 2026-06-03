@@ -606,17 +606,27 @@ export default function BulkActionsPanel({
    * Hash a grouping by (lower-trim-name, min, max, default, sorted-member-ids).
    * Used to intersect candidates across selected parents.
    */
-  function hashGrouping(g: {
-    name: string;
-    min_select: number;
-    max_select: number | null;
-    default_select: string;
-    items?: Array<{ menu_item_id: string }>;
-  }): string {
-    const memberIds = (g.items ?? [])
-      .map((it) => it.menu_item_id)
-      .sort()
-      .join(',');
+  function hashGrouping(
+    g: {
+      name: string;
+      min_select: number;
+      max_select: number | null;
+      default_select: string;
+      items?: Array<{ menu_item_id: string }>;
+    },
+    ignoreMembers = false,
+  ): string {
+    // Default groupings (Add-ons / Recommendations) exist on every dish with
+    // per-dish members, so we intersect them by name+rule only — otherwise a
+    // grouping like Recommendations (whose members differ per dish) would
+    // never intersect and the owner couldn't pick it. Custom groupings keep
+    // members in the hash (they must be genuinely shared to be a candidate).
+    const memberIds = ignoreMembers
+      ? ''
+      : (g.items ?? [])
+          .map((it) => it.menu_item_id)
+          .sort()
+          .join(',');
     return [
       g.name.trim().toLowerCase(),
       g.min_select,
@@ -665,6 +675,11 @@ export default function BulkActionsPanel({
       const map = new Map<string, RemoveGroupingCandidate>();
       for (const g of res.value) {
         if (!includeDefaults && g.is_default) continue;
+        // Default groupings on the Add path: match by name+rule only and add
+        // to each dish's own copy — backend ignores current_member_ids for
+        // defaults, so send [] and label them generically (per-dish member
+        // counts vary and aren't meaningful for a shared label).
+        const isDefaultAdd = includeDefaults && !!g.is_default;
         const sortedMembers = (g.items ?? [])
           .map((it) => it.menu_item_id)
           .sort();
@@ -673,10 +688,12 @@ export default function BulkActionsPanel({
           min_select: g.min_select,
           max_select: g.max_select,
           default_select: g.default_select,
-          member_ids: sortedMembers,
-          memberLabel: `${sortedMembers.length} member${sortedMembers.length === 1 ? '' : 's'}`,
+          member_ids: isDefaultAdd ? [] : sortedMembers,
+          memberLabel: isDefaultAdd
+            ? 'default group'
+            : `${sortedMembers.length} member${sortedMembers.length === 1 ? '' : 's'}`,
         };
-        map.set(hashGrouping(g), candidate);
+        map.set(hashGrouping(g, isDefaultAdd), candidate);
       }
       fulfilledHashSets.push(map);
     });
