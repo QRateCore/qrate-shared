@@ -1223,6 +1223,14 @@ export default function BulkActionsPanel({
                 )
               }
               onClearMembers={() => setGroupingMemberIds([])}
+              onSelectAllMembers={(ids) =>
+                // ids are already filtered to unselected + capped to the
+                // remaining 50-capacity by BulkMemberPicker; merge + re-cap
+                // defensively in case of a double-fire.
+                setGroupingMemberIds((prev) =>
+                  [...prev, ...ids.filter((id) => !prev.includes(id))].slice(0, 50),
+                )
+              }
               search={groupingMemberSearch}
               onChangeSearch={setGroupingMemberSearch}
               conflicts={groupingConflicts}
@@ -1991,6 +1999,7 @@ interface BulkGroupingFormProps {
   memberIds: string[];
   onToggleMember: (id: string) => void;
   onClearMembers: () => void;
+  onSelectAllMembers: (idsToAdd: string[]) => void;
   search: string;
   onChangeSearch: (v: string) => void;
   conflicts: Array<{ food_item_id: string; food_item_name: string }>;
@@ -2012,7 +2021,7 @@ function BulkGroupingForm({
   preset, onChangePreset,
   presetN, onChangePresetN,
   presetMax, onChangePresetMax,
-  memberIds, onToggleMember, onClearMembers,
+  memberIds, onToggleMember, onClearMembers, onSelectAllMembers,
   search, onChangeSearch,
   conflicts,
   addExistingEnabled,
@@ -2242,6 +2251,7 @@ function BulkGroupingForm({
         onToggle={onToggleMember}
         onClearAll={onClearMembers}
         onChangeSearch={onChangeSearch}
+        onSelectAll={onSelectAllMembers}
         testidPrefix="bulk-grouping"
         excludeIds={[...selectedParents]}
         searchPlaceholder="Search food items to add as members…"

@@ -362,3 +362,143 @@ describe('BulkMemberPicker — canonical category chip rail', () => {
     expect(onToggle).toHaveBeenCalledWith('a1');
   });
 });
+
+describe('BulkMemberPicker — select all', () => {
+  const pool = [
+    mkItemCat('a1', 'Garlic Bread', 'Appetizers'),
+    mkItemCat('a2', 'Bruschetta', 'Appetizers'),
+    mkItemCat('s1', 'Fries', 'Sides'),
+    mkItemCat('e1', 'Ribeye', 'Entrees'),
+  ];
+
+  it('does NOT render the Select-all button unless onSelectAll is provided', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-grouping"
+      />,
+    );
+    expect(screen.queryByTestId('bulk-grouping-member-select-all-btn')).toBeNull();
+  });
+
+  it('selects every currently-unfiltered unselected row, with a count label', () => {
+    const onSelectAll = vi.fn();
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={onSelectAll}
+        testidPrefix="bulk-grouping"
+      />,
+    );
+    const btn = screen.getByTestId('bulk-grouping-member-select-all-btn');
+    expect(btn).toHaveTextContent('Select all (4)');
+    fireEvent.click(btn);
+    expect(onSelectAll).toHaveBeenCalledWith(['a1', 'a2', 's1', 'e1']);
+  });
+
+  it('only selects rows matching the active category chip', () => {
+    const onSelectAll = vi.fn();
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={onSelectAll}
+        testidPrefix="bulk-grouping"
+        enableCategoryFilter
+      />,
+    );
+    // Filter to Appetizers, then Select all → only the two appetizers.
+    fireEvent.click(screen.getByTestId('bulk-grouping-member-cat-appetizers'));
+    const btn = screen.getByTestId('bulk-grouping-member-select-all-btn');
+    expect(btn).toHaveTextContent('Select all (2)');
+    fireEvent.click(btn);
+    expect(onSelectAll).toHaveBeenCalledWith(['a1', 'a2']);
+  });
+
+  it('only selects rows matching the search filter', () => {
+    const onSelectAll = vi.fn();
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search="bruschetta"
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={onSelectAll}
+        testidPrefix="bulk-grouping"
+      />,
+    );
+    fireEvent.click(screen.getByTestId('bulk-grouping-member-select-all-btn'));
+    expect(onSelectAll).toHaveBeenCalledWith(['a2']);
+  });
+
+  it('caps the selection to the remaining capacity (maxSelections)', () => {
+    const onSelectAll = vi.fn();
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={['a1']}        // 1 already selected
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={onSelectAll}
+        testidPrefix="bulk-grouping"
+        maxSelections={3}           // capacity remaining = 2
+      />,
+    );
+    const btn = screen.getByTestId('bulk-grouping-member-select-all-btn');
+    // Only 2 of the 3 unselected rows fit under the cap.
+    expect(btn).toHaveTextContent('Select all (2)');
+    fireEvent.click(btn);
+    expect(onSelectAll).toHaveBeenCalledWith(['a2', 's1']);
+  });
+
+  it('hides the Select-all button when at capacity (nothing left to add)', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={['a1', 'a2']}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={() => {}}
+        testidPrefix="bulk-grouping"
+        maxSelections={2}           // full
+      />,
+    );
+    expect(screen.queryByTestId('bulk-grouping-member-select-all-btn')).toBeNull();
+  });
+
+  it('hides the Select-all button when the filter yields no unselected rows', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search="nonexistent-zzz"
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        onSelectAll={() => {}}
+        testidPrefix="bulk-grouping"
+      />,
+    );
+    expect(screen.queryByTestId('bulk-grouping-member-select-all-btn')).toBeNull();
+  });
+});

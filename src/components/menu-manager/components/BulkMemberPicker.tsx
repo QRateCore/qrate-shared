@@ -23,6 +23,16 @@ export interface BulkMemberPickerProps {
   onToggle: (id: string) => void;
   onClearAll: () => void;
   onChangeSearch: (v: string) => void;
+  /**
+   * When provided, renders a "Select all" button that selects every
+   * currently-filtered unselected row — respecting the active type tab,
+   * the active canonical-category chip, and the search box. The callback
+   * receives the ids to ADD, already capped to the remaining capacity
+   * (maxSelections - selectedIds.length), so the parent can append them
+   * without re-checking the cap. Omit to hide the button (preserves
+   * behaviour for consumers that don't want bulk-select).
+   */
+  onSelectAll?: (idsToAdd: string[]) => void;
   /** Default 50. When selectedIds.length >= max, unselected Select
    *  buttons disable with a tooltip. */
   maxSelections?: number;
@@ -94,6 +104,7 @@ export function BulkMemberPicker({
   onToggle,
   onClearAll,
   onChangeSearch,
+  onSelectAll,
   maxSelections = DEFAULT_MAX_PICKER_SELECTIONS,
   testidPrefix,
   excludeIds,
@@ -174,6 +185,13 @@ export function BulkMemberPicker({
 
   const isAtCap = selectedIds.length >= maxSelections;
   const memberWord = selectedIds.length === 1 ? '' : 's';
+
+  // "Select all" candidates — every currently-filtered unselected row
+  // (unselectedRows already reflects type tab + category chip + search,
+  // and is NOT limited by the 100-row render cap), trimmed to remaining
+  // capacity so the parent can append without re-checking the cap.
+  const remainingCapacity = Math.max(0, maxSelections - selectedIds.length);
+  const selectAllIds = unselectedRows.slice(0, remainingCapacity).map((r) => r.id);
 
   // Switching tabs clears the chip filter — chip valid on one tab may
   // not exist on the other. Inlined to avoid setState-in-effect cascade.
@@ -269,21 +287,39 @@ export function BulkMemberPicker({
           </span>
           {selectedCountSuffix}
         </label>
-        {selectedIds.length > 0 && (
-          <button
-            type="button"
-            data-testid={`${testidPrefix}-member-clear-all-btn`}
-            onClick={onClearAll}
-            style={{
-              fontSize: 11, padding: '2px 6px',
-              background: '#fff', border: '1px solid var(--border)',
-              borderRadius: 'var(--r-xs)', cursor: 'pointer',
-              color: 'var(--muted)',
-            }}
-          >
-            Clear all
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {onSelectAll && selectAllIds.length > 0 && (
+            <button
+              type="button"
+              data-testid={`${testidPrefix}-member-select-all-btn`}
+              onClick={() => onSelectAll(selectAllIds)}
+              title={`Select all ${selectAllIds.length} matching item${selectAllIds.length === 1 ? '' : 's'}`}
+              style={{
+                fontSize: 11, padding: '2px 6px',
+                background: '#fff', border: '1px solid var(--brand)',
+                borderRadius: 'var(--r-xs)', cursor: 'pointer',
+                color: 'var(--brand)', fontWeight: 600,
+              }}
+            >
+              Select all ({selectAllIds.length})
+            </button>
+          )}
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              data-testid={`${testidPrefix}-member-clear-all-btn`}
+              onClick={onClearAll}
+              style={{
+                fontSize: 11, padding: '2px 6px',
+                background: '#fff', border: '1px solid var(--border)',
+                borderRadius: 'var(--r-xs)', cursor: 'pointer',
+                color: 'var(--muted)',
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ position: 'relative' }}>
         <Search

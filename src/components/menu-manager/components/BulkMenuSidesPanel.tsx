@@ -546,6 +546,12 @@ export default function BulkMenuSidesPanel({
                 onToggle={toggleAddMember}
                 onClearAll={() => setAddSelectedIds([])}
                 onChangeSearch={setAddSearch}
+                onSelectAll={(ids) =>
+                  setAddSelectedIds((prev) => [
+                    ...prev,
+                    ...ids.filter((id) => !prev.includes(id)),
+                  ])
+                }
                 testidPrefix="bulk-menu-sides"
                 excludeIds={selectedParentIds}
                 searchPlaceholder="Search sides to add…"
