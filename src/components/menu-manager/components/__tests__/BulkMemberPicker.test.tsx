@@ -33,6 +33,16 @@ function mkItem(id: string, name: string, item_type: 'dish' | 'addon' | 'include
   } as unknown as MenuItemDisplay;
 }
 
+/** Like mkItem but stamps a canonical_category so the chip rail derives. */
+function mkItemCat(
+  id: string,
+  name: string,
+  canonical_category: string,
+  item_type: 'dish' | 'addon' | 'included' = 'dish',
+): MenuItemDisplay {
+  return { ...mkItem(id, name, item_type), canonical_category } as unknown as MenuItemDisplay;
+}
+
 describe('BulkMemberPicker — testid contract', () => {
   it('renders bulk-grouping-* testids exactly when testidPrefix="bulk-grouping"', () => {
     const items = [mkItem('aaa', 'Garlic Bread'), mkItem('bbb', 'House Salad')];
@@ -233,5 +243,122 @@ describe('BulkMemberPicker — selection behavior', () => {
     );
     expect(screen.getByTestId('bulk-grouping-member-row-aaa')).toBeTruthy();
     expect(screen.queryByTestId('bulk-grouping-member-row-bbb')).toBeNull();
+  });
+});
+
+describe('BulkMemberPicker — canonical category chip rail', () => {
+  const pool = [
+    mkItemCat('a1', 'Garlic Bread', 'Appetizers'),
+    mkItemCat('a2', 'Bruschetta', 'Appetizers'),
+    mkItemCat('s1', 'Fries', 'Sides'),
+    mkItemCat('e1', 'Ribeye', 'Entrees'),
+  ];
+
+  it('does NOT render the chip rail unless enableCategoryFilter is set', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-menu-sides"
+      />,
+    );
+    expect(screen.queryByTestId('bulk-menu-sides-member-categories')).toBeNull();
+  });
+
+  it('renders one chip per canonical category, sorted, with counts', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-menu-sides"
+        enableCategoryFilter
+      />,
+    );
+    expect(screen.getByTestId('bulk-menu-sides-member-categories')).toBeTruthy();
+    // slug = lowercased, spaces → hyphens
+    expect(screen.getByTestId('bulk-menu-sides-member-cat-appetizers')).toHaveTextContent('Appetizers');
+    expect(screen.getByTestId('bulk-menu-sides-member-cat-appetizers')).toHaveTextContent('2');
+    expect(screen.getByTestId('bulk-menu-sides-member-cat-sides')).toHaveTextContent('Sides');
+    expect(screen.getByTestId('bulk-menu-sides-member-cat-entrees')).toHaveTextContent('Entrees');
+  });
+
+  it('clicking a chip filters the unselected rows to that category; clicking it again resets', () => {
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-menu-sides"
+        enableCategoryFilter
+      />,
+    );
+    // All four rows visible initially.
+    expect(screen.getByTestId('bulk-menu-sides-member-row-a1')).toBeTruthy();
+    expect(screen.getByTestId('bulk-menu-sides-member-row-s1')).toBeTruthy();
+
+    // Filter to Appetizers — only a1/a2 remain.
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-member-cat-appetizers'));
+    expect(screen.getByTestId('bulk-menu-sides-member-row-a1')).toBeTruthy();
+    expect(screen.getByTestId('bulk-menu-sides-member-row-a2')).toBeTruthy();
+    expect(screen.queryByTestId('bulk-menu-sides-member-row-s1')).toBeNull();
+    expect(screen.queryByTestId('bulk-menu-sides-member-row-e1')).toBeNull();
+
+    // Click the active chip again → back to "all".
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-member-cat-appetizers'));
+    expect(screen.getByTestId('bulk-menu-sides-member-row-s1')).toBeTruthy();
+    expect(screen.getByTestId('bulk-menu-sides-member-row-e1')).toBeTruthy();
+  });
+
+  it('REGRESSION GUARD: chip rail keeps flexShrink:0 so it cannot overflow over member rows under fillHeight (7ff3123)', () => {
+    // The 7ff3123 revert was forced because, under fillHeight (minHeight:0
+    // flex column), the chip rail was squeezed below its content height and
+    // its wrapped chips overflowed over the top member rows, intercepting
+    // their toggle clicks. flexShrink:0 on the rail container prevents this.
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={() => {}}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-grouping"
+        enableCategoryFilter
+        fillHeight
+      />,
+    );
+    const rail = screen.getByTestId('bulk-grouping-member-categories');
+    expect(rail.style.flexShrink).toBe('0');
+  });
+
+  it('member-row toggle still fires when the chip rail is present under fillHeight', () => {
+    // Behavioural complement to the style guard: the click path is intact.
+    const onToggle = vi.fn();
+    render(
+      <BulkMemberPicker
+        pool={pool}
+        selectedIds={[]}
+        search=""
+        onToggle={onToggle}
+        onClearAll={() => {}}
+        onChangeSearch={() => {}}
+        testidPrefix="bulk-grouping"
+        enableCategoryFilter
+        fillHeight
+      />,
+    );
+    fireEvent.click(screen.getByTestId('bulk-grouping-member-row-toggle-a1'));
+    expect(onToggle).toHaveBeenCalledWith('a1');
   });
 });

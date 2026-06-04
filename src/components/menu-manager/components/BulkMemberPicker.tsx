@@ -314,6 +314,12 @@ export function BulkMemberPicker({
             display: 'flex',
             flexWrap: 'wrap',
             gap: 4,
+            // flexShrink:0 keeps the chip rail at its full wrapped height
+            // inside a fillHeight (minHeight:0) flex column. Without it the
+            // rail is squeezed below content height and its wrapped chips
+            // overflow over the top member rows, intercepting their toggle
+            // clicks (the regression that forced the 7ff3123 revert).
+            flexShrink: 0,
           }}
         >
           {categoryEntries.map((c) => {
