@@ -1110,13 +1110,26 @@ export default function BulkActionsPanel({
           ))}
         </div>
 
-        {/* Mode-specific form. NOTE: fillHeight on the Grouping picker was
-            reverted (again) on 2026-06-04 — under this container's overflowY:
-            auto + flex path the canonical-category chip rail intercepts member-
-            row toggle clicks (bulk-add-existing-grouping.spec.ts:273). The
-            scroll-to-footer improvement needs a browser-verified layout fix,
-            not a flex toggle. See the 7ff3123 revert. */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        {/* Mode-specific form. Grouping mode uses a fillHeight picker that
+            scrolls its OWN row list, so its container must NOT also scroll —
+            an outer overflowY:auto wrapping the nested flex:1/minHeight:0
+            picker is what made the canonical-category chip rail overlap +
+            intercept member-row clicks (the 7ff3123 / 172492f reverts). Match
+            the proven BulkMenuSidesPanel structure: flex column, minHeight:0,
+            no overflow on the container. All other modes keep their scroll. */}
+        <div
+          style={
+            mode === 'grouping'
+              // Flex column so the fillHeight member picker can grow to the
+              // footer; overflowY:auto so that when the stacked content
+              // (mode toggle, candidate list, picker floor) exceeds the
+              // panel the whole form scrolls rather than overlapping the
+              // footer. The picker's minHeight floor keeps its rows from
+              // collapsing under the chip rail (the 7ff3123 interception).
+              ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '16px' }
+              : { flex: 1, overflowY: 'auto', padding: '16px' }
+          }
+        >
           {mode === 'assign' && (
             <AssignForm
               menus={menus}
@@ -2035,7 +2048,7 @@ function BulkGroupingForm({
   const intersectionEmpty = existingStatus === 'ready' && existingCandidates.length === 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
       {/* Mode selector (PDD 2026-05-22) — only shown when add-to-existing
           is wired by the consumer; admin/waiter without that prop see the
           plain create-only form. */}
@@ -2114,7 +2127,12 @@ function BulkGroupingForm({
             </div>
           )}
           {existingStatus === 'ready' && existingCandidates.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            // Cap + scroll the candidate list so it can't consume the
+            // vertical space the fillHeight member picker needs below it.
+            // Without this, add-to-existing mode (many shared groupings)
+            // squeezes the picker rows to ~0 height and the chip rail ends
+            // up overlapping them (the 7ff3123 / 172492f interception).
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
               {existingCandidates.map((c) => (
                 <label
                   key={c.name}
@@ -2258,6 +2276,7 @@ function BulkGroupingForm({
         selectedCountSuffix={groupingMode === 'create' ? ' — optional' : ''}
         enableTypeTabs
         enableCategoryFilter
+        fillHeight
       />
 
       {/* Create-mode conflict banner */}

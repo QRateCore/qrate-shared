@@ -407,8 +407,14 @@ export function BulkMemberPicker({
       )}
       <div
         style={{
+          // fillHeight: grow to fill, but never below a usable floor — if the
+          // row box is allowed to collapse to ~0 (e.g. add-to-existing
+          // grouping mode, where the candidate list competes for space) the
+          // rows paint under the chip rail and it intercepts their clicks
+          // (the 7ff3123 / 172492f interception). The floor keeps rows below
+          // the rail. Internal scroll handles overflow beyond the floor.
           ...(fillHeight
-            ? { flex: 1, minHeight: 0 }
+            ? { flex: 1, minHeight: 140 }
             : { maxHeight: 240 }),
           overflowY: 'auto',
           border: '1px solid var(--border)',
