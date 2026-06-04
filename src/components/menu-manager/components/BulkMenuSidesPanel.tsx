@@ -550,6 +550,7 @@ export default function BulkMenuSidesPanel({
                 excludeIds={selectedParentIds}
                 searchPlaceholder="Search sides to add…"
                 fillHeight
+                enableCategoryFilter
               />
             </div>
           )}
