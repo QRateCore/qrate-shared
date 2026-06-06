@@ -372,6 +372,14 @@ export interface MenuItemDisplay {
    */
   spice_modifier_enabled?: boolean;
   /**
+   * STR-673 (PDD 2026-06-06): when true (and spice_modifier_enabled is also
+   * true), the patron composition-page spice picker is REQUIRED — the diner
+   * must actively pick a level before Add-to-order enables. Nested under the
+   * Spice Modifier toggle; force-reverted to false server-side whenever the
+   * modifier is disabled. Defaults to FALSE (optional picker — prior behaviour).
+   */
+  spice_selection_required?: boolean;
+  /**
    * PDD 2026-05-26: Build-Your-Own classification. When true, the recommender
    * bypasses Stage 0 filtering on the dish's own tags; the patron-side
    * "Add" CTA reads "Customize" and routes to the composition page.
@@ -547,6 +555,11 @@ export interface MenuItemSummary {
    * Optional in TS because legacy summary payloads (pre-fix) may omit it.
    */
   spice_modifier_enabled?: boolean;
+  /**
+   * STR-673: per-item mandatory-spice flag in the Food Library summary
+   * projection. Defaults to FALSE on the wire. Gated by spice_modifier_enabled.
+   */
+  spice_selection_required?: boolean;
   /**
    * PDD 2026-05-26: Build-Your-Own classification flag in the Food Library
    * summary projection. Defaults to FALSE on the wire. Drives the BYO chip

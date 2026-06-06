@@ -673,6 +673,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     item.spice_modifier_enabled ?? true,
   );
 
+  // STR-673 — nested "Require spice selection" toggle. Only meaningful while
+  // the Spice Modifier picker is shown, so it is disabled (and force-reset to
+  // FALSE) whenever the modifier is OFF. Reset is gated in the modifier
+  // toggle's onClick below — NOT a useEffect — to stay clear of the
+  // react-compiler set-state-in-effect rule. Default FALSE (optional picker).
+  const [spiceSelectionRequired, setSpiceSelectionRequired] = useState<boolean>(
+    (item.spice_modifier_enabled ?? true) ? (item.spice_selection_required ?? false) : false,
+  );
+
   // PDD 2026-05-26 — Build-Your-Own classification. Default FALSE everywhere
   // on the wire so legacy items render correctly. The API hard-blocks
   // setting this to TRUE when the dish has zero groupings; the UI mirrors
@@ -1732,6 +1741,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         // page Spice Level slider. Only meaningful for dishes; add-ons
         // never reach the composition page so the field is harmless there.
         spice_modifier_enabled: spiceModifierEnabled,
+        // STR-673 — mandatory spice selection. Only meaningful for dishes with
+        // the picker shown; send FALSE whenever the modifier is off so the
+        // backend's own auto-revert never has to correct us. Add-ons never
+        // reach the composition page, so omit there.
+        ...(isAddon ? {} : { spice_selection_required: spiceModifierEnabled && spiceSelectionRequired }),
         // PDD 2026-05-26 — BYO classification. Only sent for dishes;
         // add-ons can never be BYO themselves. API enforces hard-block
         // when is_byo=true and groupings empty (returns 400).
@@ -3621,7 +3635,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                       aria-checked={spiceModifierEnabled}
                       aria-label="Toggle Spice Modifier"
                       data-testid="spice-modifier-toggle"
-                      onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
+                      onClick={() => setSpiceModifierEnabled((v: boolean) => {
+                        const next = !v;
+                        // STR-673: turning the picker OFF clears the nested
+                        // "required" flag (it cannot apply with no picker).
+                        if (!next) setSpiceSelectionRequired(false);
+                        return next;
+                      })}
                       style={{
                         position: 'relative',
                         display: 'inline-flex',
@@ -3652,6 +3672,91 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                     </button>
                   </div>
                 )}
+
+                {/* STR-673 — nested "Require spice selection". Shown wherever
+                    the Spice Modifier block shows (non-addon, non-dessert),
+                    but the toggle itself is disabled until Spice Modifier is
+                    ON, since a required selection is meaningless with no
+                    picker. Mirrors the BYO disabled-toggle + inline-hint
+                    pattern below. */}
+                {!isAddon && category !== 'Desserts' && (() => {
+                  const requireDisabled = !spiceModifierEnabled;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: spiceSelectionRequired ? '#fecdd3' : 'var(--border)',
+                        background: spiceSelectionRequired ? '#fff1f2' : 'transparent',
+                        opacity: requireDisabled ? 0.6 : 1,
+                        marginTop: 8,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" />
+                        </svg>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require spice selection</div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                            Diners must pick a spice level before they can add this item to their order.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={spiceSelectionRequired}
+                          aria-label="Toggle Require Spice Selection"
+                          aria-disabled={requireDisabled}
+                          data-testid="spice-required-toggle"
+                          disabled={requireDisabled}
+                          title={requireDisabled ? 'Turn on Spice Modifier first to require a selection.' : undefined}
+                          onClick={() => { if (!requireDisabled) setSpiceSelectionRequired((v: boolean) => !v); }}
+                          style={{
+                            position: 'relative',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            height: 24,
+                            width: 42,
+                            flexShrink: 0,
+                            borderRadius: 999,
+                            border: 'none',
+                            cursor: requireDisabled ? 'not-allowed' : 'pointer',
+                            background: spiceSelectionRequired ? '#e11d48' : '#d1d5db',
+                            transition: 'background-color 0.15s',
+                            padding: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              height: 18,
+                              width: 18,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                              transform: spiceSelectionRequired ? 'translateX(21px)' : 'translateX(3px)',
+                              transition: 'transform 0.15s',
+                            }}
+                          />
+                        </button>
+                      </div>
+                      {requireDisabled && (
+                        <div
+                          data-testid="spice-required-disabled-hint"
+                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
+                        >
+                          Turn on Spice Modifier to require a selection.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
                     Disabled when the dish has zero groupings: the API
