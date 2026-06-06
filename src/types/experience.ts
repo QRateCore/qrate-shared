@@ -75,6 +75,27 @@ export interface TablePlacedOrder {
   items?: Array<{ id?: string; name: string; quantity: number; price: number; patron_display_name?: string | null; item_status?: string }>;
 }
 
+/**
+ * Per-table Check Please coverage block (§7 settled signal, §5 bill lines).
+ * Computed server-side by `get_table_activity` in `owner_waiter.py` from the
+ * DynamoDB session-patron rows + the `bill_math.settlement_lines` helper.
+ *
+ * - `covered` / `total` — count of connected patrons in the Cover state and
+ *   the total number of connected patrons on the table.
+ * - `settled` — true when `total > 0` and `covered === total`. The waiter
+ *   should render "Ready to close" instead of "Settling — c/t covered".
+ * - `lines` — price-free §5 settlement strings rendered on the Bill tab
+ *   (e.g. "{Name} is paying for the whole table.").
+ *
+ * Spec: docs/2026-06-05_SPEC-check-please-settlement.md.
+ */
+export interface TableCoverageSummary {
+  covered: number;
+  total: number;
+  settled: boolean;
+  lines: string[];
+}
+
 export interface TableActivityEntry {
   table_number: number;
   guests: TableGuest[];
@@ -82,6 +103,12 @@ export interface TableActivityEntry {
   placed_orders: TablePlacedOrder[];
   needs_attention: boolean;
   has_active_session?: boolean;
+  /**
+   * Check Please coverage summary — present only when the backend has
+   * computed it (post-d57894f7). Optional so consumers built before the
+   * Check Please rollout don't break.
+   */
+  coverage?: TableCoverageSummary;
 }
 
 export interface TableActivity {
