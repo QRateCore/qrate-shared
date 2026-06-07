@@ -620,59 +620,30 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
 });
 
 // ===========================================================================
-// STR-673 — nested "Require spice selection" toggle (mandatory spice)
+// STR-680 — unified single Spice Modifier toggle (supersedes STR-673)
 // ===========================================================================
-// Sits under the Spice Modifier toggle. Only meaningful while the picker is
-// shown, so it is disabled (and force-reset to FALSE) whenever Spice Modifier
-// is OFF. Companion backend pin:
-//   qrate-core/.../tests/test_owner_spice_modifier.py (TestUpdateOwnerMenuItemSpiceRequired)
-describe('EditModal — spice_selection_required nested toggle (STR-673)', () => {
-  it('renders the required toggle on a non-dessert dish', () => {
+// The separate "Require spice selection" toggle was folded into Spice Modifier:
+// enabling the modifier now makes the patron spice pick MANDATORY. The second
+// toggle (spice-required-toggle) is gone. On save, the legacy wire field
+// spice_selection_required is mirrored directly off the single flag so a stored
+// value can never contradict the toggle. Patron enforcement derives from
+// spice_modifier_enabled alone (compositionUtils.itemRequiresSpice).
+describe('EditModal — unified Spice Modifier toggle (STR-680)', () => {
+  it('renders the single Spice Modifier toggle on a non-dessert dish', () => {
     renderModal({ item: makeDishItem({ category: 'Entrees', canonical_category: 'Entrees' }) });
-    expect(screen.getByTestId('spice-required-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
   });
 
-  it('is disabled with a hint when Spice Modifier is OFF', () => {
-    renderModal({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      item: makeDishItem({ spice_modifier_enabled: false } as any),
-    });
-    expect(screen.getByTestId('spice-required-toggle')).toBeDisabled();
-    expect(screen.getByTestId('spice-required-disabled-hint')).toBeInTheDocument();
-  });
-
-  it('is enabled when Spice Modifier is ON', () => {
+  it('no longer renders the separate "Require spice selection" toggle', () => {
     renderModal({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       item: makeDishItem({ spice_modifier_enabled: true } as any),
     });
-    expect(screen.getByTestId('spice-required-toggle')).not.toBeDisabled();
+    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('spice-required-disabled-hint')).not.toBeInTheDocument();
   });
 
-  it('initialises ON when item.spice_selection_required is true and modifier on', () => {
-    renderModal({
-      item: makeDishItem({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        spice_modifier_enabled: true, spice_selection_required: true,
-      } as any),
-    });
-    expect(screen.getByTestId('spice-required-toggle').getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('initialises OFF (forced) when required is true but modifier is off', () => {
-    renderModal({
-      item: makeDishItem({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        spice_modifier_enabled: false, spice_selection_required: true,
-      } as any),
-    });
-    // Picker hidden → requirement is meaningless → toggle reads OFF + disabled.
-    expect(screen.getByTestId('spice-required-toggle').getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByTestId('spice-required-toggle')).toBeDisabled();
-  });
-
-  it('toggle ON then save sends spice_selection_required=true', async () => {
+  it('save mirrors spice_selection_required=true when Spice Modifier is ON', async () => {
     const user = userEvent.setup();
     const saved = makeDishItem();
     const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
@@ -682,46 +653,42 @@ describe('EditModal — spice_selection_required nested toggle (STR-673)', () =>
       service,
     });
 
-    await user.click(screen.getByTestId('spice-required-toggle'));
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => { expect(service.updateMenuItem).toHaveBeenCalled(); });
     const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.spice_modifier_enabled).toBe(true);
     expect(updates.spice_selection_required).toBe(true);
   });
 
-  it('turning Spice Modifier OFF resets required and save sends false', async () => {
+  it('toggling Spice Modifier OFF makes save mirror spice_selection_required=false', async () => {
     const user = userEvent.setup();
     const saved = makeDishItem();
     const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
     renderModal({
-      item: makeDishItem({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        spice_modifier_enabled: true, spice_selection_required: true,
-      } as any),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      item: makeDishItem({ spice_modifier_enabled: true } as any),
       service,
     });
 
-    // Required starts ON; turning the modifier OFF must clear it (UI + payload).
-    expect(screen.getByTestId('spice-required-toggle').getAttribute('aria-checked')).toBe('true');
     await user.click(screen.getByTestId('spice-modifier-toggle'));
-    expect(screen.getByTestId('spice-required-toggle').getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByTestId('spice-required-toggle')).toBeDisabled();
-
     await user.click(screen.getByTestId('edit-save-btn'));
+
     await waitFor(() => { expect(service.updateMenuItem).toHaveBeenCalled(); });
     const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(updates.spice_modifier_enabled).toBe(false);
     expect(updates.spice_selection_required).toBe(false);
   });
 
-  it('hides the required toggle for add-ons', () => {
+  it('omits both spice fields for add-ons (never reach the composition page)', () => {
     renderModal({ item: makeAddonItem() });
+    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
   });
 
-  it('hides the required toggle for Desserts', () => {
+  it('hides the Spice Modifier toggle for Desserts', () => {
     renderModal({ item: makeDishItem({ category: 'Desserts', canonical_category: 'Desserts' }) });
+    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
   });
 });
