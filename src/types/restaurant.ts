@@ -103,6 +103,12 @@ export interface MenuAssociation {
   price: number | null;
   category_name?: string;
   canonical_categories?: string[];
+  /**
+   * Owner-curated raw sub-category labels (free text) for this (item, menu)
+   * placement. Menu-wide labels nested under the canonical buckets on the
+   * owner Menu page; an item may carry several. Owner-side only (v1).
+   */
+  raw_categories?: string[];
   boost_level?: string | null;
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
@@ -136,11 +142,23 @@ export interface MenuAssociation {
   category_portions?: Record<string, { portion_type: 'single' | 'shared'; portion_serves: number | null }>;
 }
 
+/** One distinct raw sub-category label on a menu, with its item count. */
+export interface RawCategorySummary {
+  label: string;
+  item_count: number;
+}
+
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
 export interface MenuItemJunctionSettings {
   price?: number | null;
   category_name?: string | null;
   canonical_categories?: string[];
+  /**
+   * Raw sub-category labels — replace-semantics. When provided, the backend
+   * sets this (item, menu)'s labels to exactly this validated set. Omit to
+   * leave existing labels unchanged.
+   */
+  raw_categories?: string[];
   boost_level?: string | null;
   chefs_special?: boolean;
   portion_type?: 'single' | 'shared';
@@ -731,9 +749,15 @@ export interface MenuManagerService {
   cloneMenu?(restaurantId: string, sourceMenuId: string, data: MenuCloneRequest): Promise<MenuSummary>;
 
   // Menu item associations
-  addItemToMenu(itemId: string, menuId: string, price: number | null | undefined, category?: string, settings?: { canonical_categories?: string[] }): Promise<MenuAssociation[]>;
+  addItemToMenu(itemId: string, menuId: string, price: number | null | undefined, category?: string, settings?: { canonical_categories?: string[]; raw_categories?: string[] }): Promise<MenuAssociation[]>;
   removeItemFromMenu(itemId: string, menuId: string): Promise<MenuAssociation[]>;
   updateMenuItemInMenu(itemId: string, menuId: string, patch: Partial<MenuItemJunctionSettings>): Promise<MenuAssociation[]>;
+
+  // Raw sub-categories (menu raw sub-categories feature, 2026-06-09). Optional so
+  // consumers (admin/waiter) without the backend route deployed still type-check.
+  listMenuRawCategories?(menuId: string): Promise<RawCategorySummary[]>;
+  renameMenuRawCategory?(menuId: string, from: string, to: string): Promise<{ updated_count: number }>;
+  deleteMenuRawCategory?(menuId: string, label: string): Promise<{ updated_count: number }>;
 
   // Modifiers & addons
   getItemModifiers?(restaurantId: string, itemId: string): Promise<{

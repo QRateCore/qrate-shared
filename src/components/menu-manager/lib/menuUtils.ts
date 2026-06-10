@@ -99,6 +99,65 @@ export function buildAssignments(
   return result;
 }
 
+/**
+ * Sentinel sub-category key for items that carry no raw_categories label.
+ * Rendered as an "Ungrouped" group, always last (menu raw sub-categories, 2026-06-09).
+ */
+export const UNGROUPED_KEY = '__ungrouped__';
+
+/**
+ * Build the NESTED assignments map: {menuId: {canonical: {rawLabel: itemId[]}}}.
+ *
+ * Second level of buildAssignments — within each canonical bucket, items are
+ * grouped by their raw_categories labels (menu-wide; an item with N labels
+ * appears under each). Items with no label fall under UNGROUPED_KEY. Labels are
+ * per-(item, menu) so an item shared across two canonical buckets shows the
+ * same labels under both. Mirrors buildAssignments' canonical resolution.
+ */
+export function buildNestedAssignments(
+  items: MenuItemDisplay[],
+  menus: MenuSummary[],
+): Record<string, Record<string, Record<string, string[]>>> {
+  const result: Record<string, Record<string, Record<string, string[]>>> = {};
+  for (const menu of menus) {
+    result[menu.id] = Object.fromEntries(
+      CANONICAL_CATEGORIES.map((c) => [c, {} as Record<string, string[]>]),
+    );
+  }
+  for (const item of items) {
+    for (const assoc of item.menu_associations ?? []) {
+      const menuBuckets = result[assoc.menu_id];
+      if (!menuBuckets) continue;
+      const rawCanon = toCanonical(assoc.category_name ?? item.category);
+      const cats = assoc.canonical_categories?.length
+        ? assoc.canonical_categories
+        : rawCanon ? [rawCanon] : [];
+      const labels = assoc.raw_categories?.length ? assoc.raw_categories : [UNGROUPED_KEY];
+      for (const canon of cats) {
+        const bucket = menuBuckets[canon];
+        if (bucket === undefined) continue;
+        for (const label of labels) {
+          if (!bucket[label]) bucket[label] = [];
+          if (!bucket[label].includes(item.id)) bucket[label].push(item.id);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Ordered sub-category labels for a canonical bucket: alphabetical
+ * (case-insensitive), with UNGROUPED_KEY always last.
+ */
+export function sortedSubCategoryLabels(labels: string[]): string[] {
+  return [...labels].sort((a, b) => {
+    if (a === UNGROUPED_KEY) return 1;
+    if (b === UNGROUPED_KEY) return -1;
+    return a.toLowerCase().localeCompare(b.toLowerCase());
+  });
+}
+
 /** Build the junction settings map: {"menuId:itemId": MenuItemJunctionSettings}. */
 export function buildJunctionSettings(
   items: MenuItemDisplay[],
@@ -114,6 +173,7 @@ export function buildJunctionSettings(
         portion_serves: assoc.portion_serves ?? item.portion_serves ?? null,
         category_name: assoc.category_name ?? undefined,
         canonical_categories: assoc.canonical_categories ?? [],
+        raw_categories: assoc.raw_categories ?? [],
         category_prices: assoc.category_prices ?? {},
         category_boost_levels: assoc.category_boost_levels ?? {},
         category_chefs_specials: assoc.category_chefs_specials ?? {},

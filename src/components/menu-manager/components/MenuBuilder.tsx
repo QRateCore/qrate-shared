@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
-import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS } from '../lib/menuUtils';
+import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels } from '../lib/menuUtils';
+import { SubCategoryGroup } from './SubCategoryGroup';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
 import Select from '../../common/Select';
@@ -44,7 +45,7 @@ interface MenuBuilderProps {
   activeMenuId: string | null;
   collapsed: Record<string, boolean>;
   dragging: DragState | null;
-  dragOver: { menuId: string; cat: string } | 'pool' | null;
+  dragOver: { menuId: string; cat: string; label?: string } | 'pool' | null;
   colorMap: (index: number) => MenuColor;
   getSettings: (menuId: string, itemId: string) => MenuItemJunctionSettings;
   /** No longer used — the tab strip moved to MenuTabBar at the
@@ -58,6 +59,13 @@ interface MenuBuilderProps {
   onDragEnterBucket: (e: React.DragEvent, menuId: string, cat: string) => void;
   onDragLeaveBucket: (menuId: string, cat: string) => void;
   onDropBucket: (e: React.DragEvent, menuId: string, cat: string) => void;
+  /** Sub-category drop zones (menu raw sub-categories, 2026-06-09). Optional so
+   *  admin/waiter consumers compile until they wire them. */
+  onDragEnterSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
+  onDragLeaveSubCategory?: (menuId: string, cat: string, label: string) => void;
+  onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
+  onRenameSubCategory?: (menuId: string, from: string, to: string) => void | Promise<void>;
+  onDeleteSubCategory?: (menuId: string, label: string) => void | Promise<void>;
   onCreateMenu: (name: string) => Promise<void>;
   /**
    * STR-521 — clone an existing menu into a new menu (categories + per-category
@@ -603,6 +611,90 @@ function RecInactiveChip({
   );
 }
 
+// Raw sub-category chips on an item row (menu raw sub-categories, Step 8).
+// Reuses onUpdateSettings → handleUpdateSettings (instrumented write path); the
+// refcount pending-write tracker protects against concurrent same-id writes.
+function RawCategoryChips({
+  labels,
+  menuId,
+  itemId,
+  onUpdateSettings,
+}: {
+  labels: string[];
+  menuId: string;
+  itemId: string;
+  onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  // Drop the Ungrouped sentinel — chips only show real labels.
+  const known = labels.filter((l) => l !== UNGROUPED_KEY);
+
+  const addLabel = (raw: string) => {
+    const v = raw.trim();
+    setAdding(false);
+    setDraft('');
+    if (!v || v.length > 60) return;
+    if (known.some((l) => l.toLowerCase() === v.toLowerCase())) return;
+    void onUpdateSettings(menuId, itemId, { raw_categories: [...known, v] });
+  };
+  const removeLabel = (l: string) => {
+    void onUpdateSettings(menuId, itemId, { raw_categories: known.filter((x) => x !== l) });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 ml-1" data-testid={`item-rawcats-${itemId}`}>
+      {known.map((l) => (
+        <span
+          key={l}
+          className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]"
+          style={{ background: 'var(--bg2, #eef2ff)', color: 'var(--text2)' }}
+          data-testid={`item-rawcat-chip-${itemId}-${l}`}
+        >
+          {l}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); removeLabel(l); }}
+            aria-label={`Remove sub-category ${l}`}
+            data-testid={`item-rawcat-remove-${itemId}-${l}`}
+            className="opacity-60 hover:opacity-100 leading-none"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') addLabel(draft);
+            if (e.key === 'Escape') { setAdding(false); setDraft(''); }
+          }}
+          onBlur={() => addLabel(draft)}
+          maxLength={60}
+          placeholder="sub-category…"
+          data-testid={`item-rawcat-input-${itemId}`}
+          className="rounded border px-1 text-[10px] w-24"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setAdding(true); }}
+          aria-label="Add sub-category"
+          data-testid={`item-rawcat-add-${itemId}`}
+          className="rounded-full px-1 text-[10px] opacity-60 hover:opacity-100 leading-none"
+          style={{ border: '1px dashed var(--border)' }}
+        >
+          ＋
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── MenuItemRow ───────────────────────────────────────────────────────────────
 
 function MenuItemRow({
@@ -1060,6 +1152,14 @@ function MenuItemRow({
               )}
             </div>
 
+            {/* Raw sub-category chips (Step 8) — ✕ to remove, ＋ to add. */}
+            <RawCategoryChips
+              labels={settings.raw_categories ?? []}
+              menuId={menuId}
+              itemId={item.id}
+              onUpdateSettings={onUpdateSettings}
+            />
+
             <span className="flex-1" />
 
             {/* Badges */}
@@ -1310,6 +1410,12 @@ function CategoryBucket({
   onDragEnter,
   onDragLeave,
   onDrop,
+  subCatDragOverLabel = null,
+  onDragEnterSubCategory,
+  onDragLeaveSubCategory,
+  onDropSubCategory,
+  onRenameSubCategory,
+  onDeleteSubCategory,
   onDragStart,
   onDragEnd,
   onRemoveItem,
@@ -1348,6 +1454,13 @@ function CategoryBucket({
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
+  /** Raw sub-categories (2026-06-09). Label currently hovered in this bucket, or null. */
+  subCatDragOverLabel?: string | null;
+  onDragEnterSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
+  onDragLeaveSubCategory?: (menuId: string, cat: string, label: string) => void;
+  onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
+  onRenameSubCategory?: (menuId: string, from: string, to: string) => void | Promise<void>;
+  onDeleteSubCategory?: (menuId: string, label: string) => void | Promise<void>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
@@ -1508,8 +1621,9 @@ function CategoryBucket({
                   ? 'No items missing a price'
                   : 'No items in this category yet'}
             </div>
-          ) : (
-            bucketItems.map((item) => {
+          ) : (() => {
+            // Render one item row (with the optional bulk-selection wrapper).
+            const renderRow = (item: MenuItemDisplay) => {
               const row = (
                 <MenuItemRow
                   key={item.id}
@@ -1590,8 +1704,72 @@ function CategoryBucket({
                   <div className="flex-1 min-w-0">{row}</div>
                 </div>
               );
-            })
-          )}
+            };
+
+            // Group the bucket's items by raw sub-category label (menu-wide;
+            // an item with N labels appears under each). Items with no label
+            // fall under UNGROUPED_KEY. When the ONLY group is Ungrouped (no
+            // owner has labelled anything in this bucket yet) render flat — no
+            // sub-group chrome — so existing menus look unchanged until curated.
+            const groups = new Map<string, MenuItemDisplay[]>();
+            for (const item of bucketItems) {
+              const labels = getSettings(menuId, item.id).raw_categories;
+              const keys = labels && labels.length ? labels : [UNGROUPED_KEY];
+              for (const k of keys) {
+                const arr = groups.get(k) ?? [];
+                arr.push(item);
+                groups.set(k, arr);
+              }
+            }
+            const orderedLabels = sortedSubCategoryLabels([...groups.keys()]);
+            const onlyUngrouped = orderedLabels.length === 1 && orderedLabels[0] === UNGROUPED_KEY;
+            if (onlyUngrouped) {
+              return bucketItems.map(renderRow);
+            }
+            return orderedLabels.map((label) => {
+              const groupItems = groups.get(label) ?? [];
+              return (
+                <SubCategoryGroup
+                  key={label}
+                  label={label}
+                  category={category}
+                  menuId={menuId}
+                  itemCount={groupItems.length}
+                  color={color}
+                  isDragOver={subCatDragOverLabel === label}
+                  onDragEnter={
+                    onDragEnterSubCategory
+                      ? (e) => onDragEnterSubCategory(e, menuId, category, label)
+                      : undefined
+                  }
+                  onDragLeave={
+                    onDragLeaveSubCategory
+                      ? () => onDragLeaveSubCategory(menuId, category, label)
+                      : undefined
+                  }
+                  onDrop={
+                    onDropSubCategory
+                      ? (e) => onDropSubCategory(e, menuId, category, label)
+                      : undefined
+                  }
+                  onRename={
+                    onRenameSubCategory
+                      ? (from, to) => onRenameSubCategory(menuId, from, to)
+                      : undefined
+                  }
+                  onDelete={
+                    onDeleteSubCategory
+                      ? (lbl) => onDeleteSubCategory(menuId, lbl)
+                      : undefined
+                  }
+                >
+                  {groupItems.map((item) => (
+                    <Fragment key={`${label}:${item.id}`}>{renderRow(item)}</Fragment>
+                  ))}
+                </SubCategoryGroup>
+              );
+            });
+          })()}
         </div>
       )}
     </div>
@@ -1619,6 +1797,11 @@ export default function MenuBuilder({
   onDragEnterBucket,
   onDragLeaveBucket,
   onDropBucket,
+  onDragEnterSubCategory,
+  onDragLeaveSubCategory,
+  onDropSubCategory,
+  onRenameSubCategory,
+  onDeleteSubCategory,
   onCreateMenu,
   onCloneMenu,
   onEditMenu,
@@ -1772,11 +1955,16 @@ export default function MenuBuilder({
       <div className="flex-1 overflow-y-auto py-2">
         {(visibleBuckets as readonly string[]).map((cat) => {
             const collapseKey = `${activeMenu?.id}:${cat}`;
-            const isDragOverBucket =
+            const dragOverHere =
               dragOver !== null &&
               dragOver !== 'pool' &&
               dragOver.menuId === activeMenu?.id &&
-              dragOver.cat === cat;
+              dragOver.cat === cat
+                ? dragOver
+                : null;
+            // Bucket general-area highlight only when NOT hovering a sub-group.
+            const isDragOverBucket = dragOverHere !== null && dragOverHere.label === undefined;
+            const subCatDragOverLabel = dragOverHere?.label ?? null;
 
             return (
               <CategoryBucket
@@ -1804,6 +1992,12 @@ export default function MenuBuilder({
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}
                 onDrop={(e) => onDropBucket(e, activeMenu!.id, cat)}
+                subCatDragOverLabel={subCatDragOverLabel}
+                onDragEnterSubCategory={onDragEnterSubCategory}
+                onDragLeaveSubCategory={onDragLeaveSubCategory}
+                onDropSubCategory={onDropSubCategory}
+                onRenameSubCategory={onRenameSubCategory}
+                onDeleteSubCategory={onDeleteSubCategory}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}

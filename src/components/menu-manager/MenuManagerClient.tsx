@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary } from '../../types/restaurant';
 import {
   buildAssignments,
   buildJunctionSettings,
   getMenuColor,
   CANONICAL_CATEGORIES,
   toCanonical,
+  UNGROUPED_KEY,
   type MenuColor,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
@@ -16,6 +17,7 @@ import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import MenuTabBar from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
+import { SubCategoryPickModal } from './components/SubCategoryPickModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
@@ -343,6 +345,29 @@ interface Props {
 // One ref per droppable zone; increment on enter, decrement on leave,
 // treat as "over" only when counter > 0.
 
+/**
+ * Refcount-backed pending-write tracker (STR-409 / STR-411 follow-up).
+ * A plain Set breaks when two writes target the SAME itemId concurrently — the
+ * first finally() removes the id while the second is still in flight, and a
+ * refresh-edge then clobbers the second's optimistic state. Step 8 adds exactly
+ * such a same-id surface (label chip writes overlap with handleUpdateSettings),
+ * so we count concurrent writes and only treat an id as settled at count 0.
+ * Exposes add/delete/has so existing call sites (and mergePendingWriteItems,
+ * which only reads .has) are unchanged.
+ */
+function makeRefCountSet() {
+  const counts = new Map<string, number>();
+  return {
+    add(id: string) { counts.set(id, (counts.get(id) ?? 0) + 1); },
+    delete(id: string) {
+      const n = (counts.get(id) ?? 0) - 1;
+      if (n <= 0) counts.delete(id); else counts.set(id, n);
+    },
+    has(id: string) { return counts.has(id); },
+    get size() { return counts.size; },
+  };
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
@@ -390,7 +415,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // upgrade this to `Map<string, number>` (refcount) — increment on add,
   // decrement on settle, treat any non-zero count as pending. STR-411 P3
   // follow-up tracks this.
-  const pendingWriteItemIdsRef = useRef<Set<string>>(new Set());
+  const pendingWriteItemIdsRef = useRef(makeRefCountSet());
   useEffect(() => {
     if (prevRefreshingRef.current && !refreshing) {
       // STR-409: merge the server snapshot with local optimistic state for
@@ -452,7 +477,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
   const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
   const [dragging, setDragging] = useState<DragState | null>(null);
-  const [dragOver, setDragOver] = useState<{ menuId: string; cat: string } | 'pool' | null>(null);
+  // `label` distinguishes a sub-category drop zone from the canonical bucket's
+  // general area (menu raw sub-categories, 2026-06-09). Absent = bucket hover.
+  const [dragOver, setDragOver] = useState<{ menuId: string; cat: string; label?: string } | 'pool' | null>(null);
+  // 7b — general-area drop → pick/create popup. Holds the pending drop; the
+  // modal's confirm applies the chosen label via applyRawCategoryMove.
+  const [subCatPrompt, setSubCatPrompt] = useState<{
+    menuId: string;
+    cat: string;
+    toProcess: MenuItemDisplay[];
+    labels: RawCategorySummary[];
+  } | null>(null);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
   // items missing a price within the active menu. Shared across menu tabs
@@ -953,21 +988,22 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     }
   }, []);
 
-  // STR-267: multi-item bucket drop (add/move to menu)
+  // General-area bucket drop (menu raw sub-categories, 7b). Instead of assigning
+  // the canonical directly, capture the items and open the pick/create popup so
+  // the owner files them under a chosen/created sub-category (or Ungrouped). The
+  // actual write happens in the modal's onConfirm → applyRawCategoryMove, which
+  // also ensures the canonical placement.
   const handleDropBucket = useCallback(
-    (e: React.DragEvent, menuId: string, cat: string) => {
+    async (e: React.DragEvent, menuId: string, cat: string) => {
       e.preventDefault();
-      const key = `${menuId}:${cat}`;
-      bucketDcRef.current[key] = 0;
+      bucketDcRef.current[`${menuId}:${cat}`] = 0;
       setDragOver(null);
       const snap = dragging;
       setDragging(null);
-
       if (!snap) return;
-      const { itemIds, fromMenuId, fromCat } = snap;
 
       // Same menu, same bucket → no-op
-      if (fromMenuId === menuId && fromCat === cat) return;
+      if (snap.fromMenuId === menuId && snap.fromCat === cat) return;
 
       const menu = menus.find((m) => m.id === menuId);
       if (!menu) {
@@ -975,12 +1011,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         return;
       }
 
-      // Resolve items to process — block add-on items from menu assignment
-      const allResolved = itemIds
+      // Resolve items, blocking add-ons (inline to avoid TDZ on resolveDragItems).
+      const allResolved = snap.itemIds
         .map((id) => items.find((i) => i.id === id))
         .filter((i): i is MenuItemDisplay => i != null);
-      if (allResolved.length === 0) return;
-
       const blockedAddons = allResolved.filter((i) => i.item_type === 'addon');
       if (blockedAddons.length > 0) {
         showToast(
@@ -996,147 +1030,233 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         restaurantId,
         metadata: {
           itemCount: toProcess.length,
-          fromMenuId,
+          fromMenuId: snap.fromMenuId,
           toMenuId: menuId,
           toCategory: cat,
           multiSelect: toProcess.length > 1,
         },
       });
 
-      // Partition items by whether they are already associated with the
-      // target menu. Items already in the menu need their canonical_categories
-      // merged (Case A). Items not yet in the menu get a new association
-      // (Case B). This partition is source-agnostic: a drag from the item
-      // pool (fromMenuId === null) onto a second bucket correctly takes the
-      // merge path if the item was previously assigned to the same menu.
-      const alreadyInMenu = toProcess.filter((i) =>
-        (i.menu_associations ?? []).some((a) => a.menu_id === menuId),
-      );
-      const notInMenu = toProcess.filter(
-        (i) => !(i.menu_associations ?? []).some((a) => a.menu_id === menuId),
-      );
-      const alreadyInMenuIds = new Set(alreadyInMenu.map((i) => i.id));
+      if (snap.fromMenuId === null) setMobileDrawerOpen(false);
 
-      // ── Case A: items already in this menu — add to canonical_categories ──
-      if (alreadyInMenu.length > 0) {
-        const prevItems = items;
-        setItems((prev) =>
-          prev.map((i) => {
-            if (!alreadyInMenuIds.has(i.id)) return i;
-            return {
-              ...i,
-              menu_associations: (i.menu_associations ?? []).map((a) => {
-                if (a.menu_id !== menuId) return a;
-                const existing = a.canonical_categories ?? [];
-                const updated = existing.includes(cat)
-                  ? existing
-                  : [...existing, cat];
-                return { ...a, canonical_categories: updated };
-              }),
-            };
-          }),
-        );
-        // STR-409: track all merge-candidate ids up-front so a refresh-edge
-        // mid-loop preserves later items' optimistic canonical_categories.
-        for (const item of alreadyInMenu) pendingWriteItemIdsRef.current.add(item.id);
-        const processCategories = async () => {
-          let failed = 0;
-          for (const item of alreadyInMenu) {
-            try {
-              const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
-              const existing = assoc?.canonical_categories ?? [];
-              if (!existing.includes(cat)) {
-                const updated = [...existing, cat];
-                const associations = await service.updateMenuItemInMenu(item.id, menuId, { canonical_categories: updated });
-                setItems((prev) =>
-                  prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })),
-                );
-              }
-            } catch {
-              failed++;
-              const original = prevItems.find((o) => o.id === item.id);
-              if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
-            } finally {
-              pendingWriteItemIdsRef.current.delete(item.id);
-            }
-          }
-          if (failed > 0) {
-            showToast(`${alreadyInMenu.length - failed} moved, ${failed} failed`);
-          } else if (notInMenu.length === 0) {
-            showToast(alreadyInMenu.length === 1 ? `Added to ${cat}` : `Added ${alreadyInMenu.length} items to ${cat}`);
-          }
-          if (toProcess.length > 1) setSelected(new Set());
-        };
-        processCategories();
+      // Fetch existing labels for the typeahead, then open the popup.
+      let labels: RawCategorySummary[] = [];
+      try {
+        labels = (await service.listMenuRawCategories?.(menuId)) ?? [];
+      } catch {
+        labels = [];
+      }
+      setSubCatPrompt({ menuId, cat, toProcess, labels });
+    },
+    [dragging, items, menus, restaurantId, showToast, trackAction, service],
+  );
+
+  // ── Sub-category drop (menu raw sub-categories, 2026-06-09) ──────────────────
+  // Hover/leave use a 3-axis counter key (`${menuId}:${cat}:${label}`) and
+  // stopPropagation so the parent bucket's enter/drop don't also fire (nested
+  // dragenter bubbling — confidence-vote condition #4).
+  const handleDragEnterSubCategory = useCallback((e: React.DragEvent, menuId: string, cat: string, label: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const key = `${menuId}:${cat}:${label}`;
+    bucketDcRef.current[key] = (bucketDcRef.current[key] ?? 0) + 1;
+    if (bucketDcRef.current[key] === 1) setDragOver({ menuId, cat, label });
+  }, []);
+
+  const handleDragLeaveSubCategory = useCallback((menuId: string, cat: string, label: string) => {
+    const key = `${menuId}:${cat}:${label}`;
+    bucketDcRef.current[key] = Math.max(0, (bucketDcRef.current[key] ?? 1) - 1);
+    if (bucketDcRef.current[key] === 0) {
+      setDragOver((prev) =>
+        prev !== null && prev !== 'pool' && prev.menuId === menuId && prev.cat === cat && prev.label === label ? null : prev,
+      );
+    }
+  }, []);
+
+  // MOVE / re-file: replace the dragged items' raw_categories with [label] on
+  // this menu and ensure `cat` is in canonical_categories. Creates the menu
+  // association if the item isn't on the menu yet. Optimistic + per-item
+  // rollback, mirroring handleDropBucket.
+  // Resolve a drag snapshot into the droppable items (filter out add-ons).
+  const resolveDragItems = useCallback(
+    (snap: DragState): MenuItemDisplay[] =>
+      snap.itemIds
+        .map((id) => items.find((i) => i.id === id))
+        .filter((i): i is MenuItemDisplay => i != null)
+        .filter((i) => i.item_type !== 'addon'),
+    [items],
+  );
+
+  // Shared write for "file these items under `label` in (menu, cat)". Used by
+  // the sub-group MOVE drop (7a) and the general-area pick/create popup (7b).
+  // label === UNGROUPED_KEY clears labels; a real label replaces the set.
+  const applyRawCategoryMove = useCallback(
+    (toProcess: MenuItemDisplay[], menuId: string, cat: string, label: string) => {
+      if (toProcess.length === 0) return;
+      const menu = menus.find((m) => m.id === menuId);
+      if (!menu) {
+        showToast('Menu not found — please refresh the page and try again');
+        return;
       }
 
-      // If there are no new items to assign, we're done.
-      if (notInMenu.length === 0) return;
-
-      // ── Case B: assigning to this menu (from pool or from a different menu) ─
       const prevItems = items;
-      const initialCats = [cat];
-      const notInMenuIds = new Set(notInMenu.map((i) => i.id));
-      // Optimistic batch: add association for items not yet in the menu
+      const isUngroupedTarget = label === UNGROUPED_KEY;
+      const newLabels = isUngroupedTarget ? [] : [label];
+      const moveLabel = isUngroupedTarget ? 'Ungrouped' : label;
+      const ids = new Set(toProcess.map((i) => i.id));
+
       setItems((prev) =>
         prev.map((i) => {
-          if (!notInMenuIds.has(i.id)) return i;
+          if (!ids.has(i.id)) return i;
+          const assocs = i.menu_associations ?? [];
+          const existing = assocs.find((a) => a.menu_id === menuId);
+          if (existing) {
+            return {
+              ...i,
+              menu_associations: assocs.map((a) => {
+                if (a.menu_id !== menuId) return a;
+                const cats = a.canonical_categories ?? [];
+                return {
+                  ...a,
+                  raw_categories: newLabels,
+                  canonical_categories: cats.includes(cat) ? cats : [...cats, cat],
+                };
+              }),
+            };
+          }
           const optimisticAssoc = {
             menu_id: menuId,
             menu_name: menu.name,
             price: i.price ?? null,
             category_name: cat,
-            canonical_categories: initialCats,
+            canonical_categories: [cat],
+            raw_categories: newLabels,
             boost_level: null,
             chefs_special: false,
             portion_type: 'single' as const,
             portion_serves: null,
           };
-          return {
-            ...i,
-            menu_associations: [
-              ...(i.menu_associations ?? []).filter((a) => a.menu_id !== menuId),
-              optimisticAssoc,
-            ],
-          };
+          return { ...i, menu_associations: [...assocs.filter((a) => a.menu_id !== menuId), optimisticAssoc] };
         }),
       );
-      // Auto-close mobile drawer once (pool → bucket only)
-      if (fromMenuId === null) {
-        setMobileDrawerOpen(false);
-      }
-      // STR-409: track all assign-candidate ids up-front so a refresh-edge
-      // mid-loop preserves later items' optimistic association.
-      for (const item of notInMenu) pendingWriteItemIdsRef.current.add(item.id);
-      // Sequential API calls — best-effort, per-item rollback on failure
-      const processAssigns = async () => {
+
+      for (const item of toProcess) pendingWriteItemIdsRef.current.add(item.id);
+      const run = async () => {
         let failed = 0;
-        for (const item of notInMenu) {
+        for (const item of toProcess) {
           try {
-            const associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat, { canonical_categories: initialCats });
-            setItems((prev) =>
-              prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })),
-            );
+            const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
+            let associations;
+            if (assoc) {
+              const cats = assoc.canonical_categories ?? [];
+              const mergedCats = cats.includes(cat) ? cats : [...cats, cat];
+              associations = await service.updateMenuItemInMenu(item.id, menuId, {
+                raw_categories: newLabels,
+                canonical_categories: mergedCats,
+              });
+            } else {
+              associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat, {
+                canonical_categories: [cat],
+                raw_categories: newLabels,
+              });
+            }
+            setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
           } catch {
             failed++;
-            // Rollback this single item
             const original = prevItems.find((o) => o.id === item.id);
             if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
           } finally {
             pendingWriteItemIdsRef.current.delete(item.id);
           }
         }
-        if (failed > 0) {
-          showToast(`${notInMenu.length - failed} added, ${failed} failed`);
-        } else {
-          showToast(notInMenu.length === 1 ? `Added to ${menu.name}` : `Added ${notInMenu.length} items to ${menu.name}`);
-        }
-        // Clear selection after multi-item drop
+        if (failed > 0) showToast(`${toProcess.length - failed} moved, ${failed} failed`);
+        else showToast(toProcess.length === 1 ? `Moved to ${moveLabel}` : `Moved ${toProcess.length} items to ${moveLabel}`);
         if (toProcess.length > 1) setSelected(new Set());
       };
-      processAssigns();
+      run();
     },
-    [dragging, items, menus, restaurantId, showToast, trackAction],
+    [items, menus, service, showToast],
+  );
+
+  // 7a — drop onto an existing sub-group → MOVE/re-file directly (no popup).
+  const handleDropSubCategory = useCallback(
+    (e: React.DragEvent, menuId: string, cat: string, label: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      bucketDcRef.current[`${menuId}:${cat}:${label}`] = 0;
+      setDragOver(null);
+      const snap = dragging;
+      setDragging(null);
+      if (!snap) return;
+      const toProcess = resolveDragItems(snap);
+      if (toProcess.length === 0) return;
+      trackAction('menu.manager.dragToSubCategory', {
+        restaurantId,
+        metadata: { itemCount: toProcess.length, toMenuId: menuId, toCategory: cat, label },
+      });
+      applyRawCategoryMove(toProcess, menuId, cat, label);
+    },
+    [dragging, resolveDragItems, restaurantId, trackAction, applyRawCategoryMove],
+  );
+
+  // ── Sub-category rename / delete (menu raw sub-categories, Step 9) ───────────
+  // Bulk, menu-scoped: rename/delete a label across EVERY item on the menu.
+  // Optimistic with full-list rollback (the bulk op isn't per-item).
+  const handleRenameSubCategory = useCallback(
+    async (menuId: string, from: string, to: string) => {
+      const next = to.trim();
+      if (!next || next === from || !service.renameMenuRawCategory) return;
+      const prevItems = items;
+      setItems((prev) =>
+        prev.map((i) => ({
+          ...i,
+          menu_associations: (i.menu_associations ?? []).map((a) => {
+            if (a.menu_id !== menuId) return a;
+            const labels = a.raw_categories ?? [];
+            if (!labels.includes(from)) return a;
+            const replaced = labels.map((l) => (l === from ? next : l));
+            const deduped = replaced.filter(
+              (l, idx) => replaced.findIndex((x) => x.toLowerCase() === l.toLowerCase()) === idx,
+            );
+            return { ...a, raw_categories: deduped };
+          }),
+        })),
+      );
+      try {
+        await service.renameMenuRawCategory(menuId, from, next);
+        showToast(`Renamed "${from}" to "${next}"`);
+      } catch {
+        setItems(prevItems);
+        showToast(`Couldn't rename "${from}" — try again`);
+      }
+    },
+    [items, service, showToast],
+  );
+
+  const handleDeleteSubCategory = useCallback(
+    async (menuId: string, label: string) => {
+      if (!service.deleteMenuRawCategory) return;
+      const prevItems = items;
+      setItems((prev) =>
+        prev.map((i) => ({
+          ...i,
+          menu_associations: (i.menu_associations ?? []).map((a) => {
+            if (a.menu_id !== menuId) return a;
+            const labels = a.raw_categories ?? [];
+            if (!labels.includes(label)) return a;
+            return { ...a, raw_categories: labels.filter((l) => l !== label) };
+          }),
+        })),
+      );
+      try {
+        await service.deleteMenuRawCategory(menuId, label);
+        showToast(`Deleted "${label}"`);
+      } catch {
+        setItems(prevItems);
+        showToast(`Couldn't delete "${label}" — try again`);
+      }
+    },
+    [items, service, showToast],
   );
 
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
@@ -2026,6 +2146,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragEnterBucket: handleDragEnterBucket,
             onDragLeaveBucket: (menuId, cat) => handleDragLeaveBucket(menuId, cat),
             onDropBucket: handleDropBucket,
+            onDragEnterSubCategory: handleDragEnterSubCategory,
+            onDragLeaveSubCategory: handleDragLeaveSubCategory,
+            onDropSubCategory: handleDropSubCategory,
+            onRenameSubCategory: handleRenameSubCategory,
+            onDeleteSubCategory: handleDeleteSubCategory,
             onCreateMenu: handleCreateMenu,
             onCloneMenu: handleCloneMenu,
             onEditMenu: setEditMenuId,
@@ -2100,6 +2225,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDragEnterBucket={handleDragEnterBucket}
             onDragLeaveBucket={(menuId, cat) => handleDragLeaveBucket(menuId, cat)}
             onDropBucket={handleDropBucket}
+            onDragEnterSubCategory={handleDragEnterSubCategory}
+            onDragLeaveSubCategory={handleDragLeaveSubCategory}
+            onDropSubCategory={handleDropSubCategory}
+            onRenameSubCategory={handleRenameSubCategory}
+            onDeleteSubCategory={handleDeleteSubCategory}
             onCreateMenu={handleCreateMenu}
             onCloneMenu={handleCloneMenu}
             onEditMenu={setEditMenuId}
@@ -2247,6 +2377,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           }}
         />
       )}
+
+      {/* 7b — general-area drop → pick/create a sub-category for the dropped items */}
+      <SubCategoryPickModal
+        open={subCatPrompt !== null}
+        category={subCatPrompt?.cat ?? ''}
+        itemCount={subCatPrompt?.toProcess.length ?? 0}
+        labels={subCatPrompt?.labels ?? []}
+        onConfirm={(label) => {
+          if (subCatPrompt) {
+            applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, label);
+          }
+          setSubCatPrompt(null);
+        }}
+        onCancel={() => setSubCatPrompt(null)}
+      />
     </div>
     </MenuManagerServiceProvider>
   );
