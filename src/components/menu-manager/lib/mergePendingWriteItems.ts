@@ -22,7 +22,9 @@ import type { MenuItemDisplay } from '../../../types/restaurant';
 export function mergePendingWriteItems(
   initialItems: MenuItemDisplay[],
   prevItems: MenuItemDisplay[],
-  pending: Set<string>,
+  // Structural: a Set<string> or the refcount tracker in MenuManagerClient
+  // (STR-411) — only .has + .size are read.
+  pending: { has(id: string): boolean; readonly size: number },
 ): MenuItemDisplay[] {
   if (pending.size === 0) return initialItems;
   return initialItems.map((nextItem) => {
