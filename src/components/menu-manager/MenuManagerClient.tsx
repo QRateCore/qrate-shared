@@ -606,9 +606,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           merged[key] = f;
         } else {
           // Both exist: prev wins to preserve optimistic updates and per-category data
-          // not yet backed by the backend. canonical_categories must come from fresh
-          // so drag-drop category additions are reflected immediately.
-          merged[key] = { ...p, canonical_categories: f.canonical_categories ?? p.canonical_categories ?? [] };
+          // not yet backed by the backend. canonical_categories AND raw_categories
+          // must come from fresh so drag-drop category additions and sub-category
+          // rename/delete (which update items[], not junctionSettings directly) are
+          // reflected immediately in the nested render via getSettings.
+          merged[key] = {
+            ...p,
+            canonical_categories: f.canonical_categories ?? p.canonical_categories ?? [],
+            raw_categories: f.raw_categories ?? p.raw_categories ?? [],
+          };
         }
       }
       return merged;
