@@ -1386,6 +1386,40 @@ function MenuItemRow({
 
 // ── CategoryBucket ────────────────────────────────────────────────────────────
 
+/** Distinct raw sub-category labels carried by a course's items, in display
+ *  form (most-human variant via preferScrapedLabel), sorted. Mirrors the
+ *  per-bucket sub-accordion grouping so the header chip and the accordions
+ *  agree on which labels exist. The Ungrouped sentinel is excluded. */
+function deriveBucketRawCategories(
+  items: MenuItemDisplay[],
+  getLabels: (id: string) => readonly string[] | undefined | null,
+): string[] {
+  const byKey = new Map<string, Map<string, number>>();
+  for (const item of items) {
+    const labels = getLabels(item.id);
+    if (!labels) continue;
+    for (const raw of labels) {
+      if (!raw || raw === UNGROUPED_KEY) continue;
+      const key = normalizeSubcatKey(raw);
+      if (!key) continue;
+      let variants = byKey.get(key);
+      if (!variants) { variants = new Map(); byKey.set(key, variants); }
+      variants.set(raw, (variants.get(raw) ?? 0) + 1);
+    }
+  }
+  const out: string[] = [];
+  for (const variants of byKey.values()) {
+    out.push(preferScrapedLabel([...variants].map(([label, count]) => ({ label, count }))));
+  }
+  return sortedSubCategoryLabels(out);
+}
+
+/** Truncate an over-long raw-category label so one long subcategory can't blow
+ *  out the header chip's width. */
+function truncRawCatLabel(label: string, max = 20): string {
+  return label.length > max ? `${label.slice(0, max).trimEnd()}…` : label;
+}
+
 function CategoryBucket({
   category,
   displayLabel,
@@ -1506,6 +1540,14 @@ function CategoryBucket({
   const emptyIsAttention = bucketEmpty && !suppressEmptyAttention;
   const bucketHasAttention = emptyIsAttention || attentionCount > 0;
 
+  // Raw sub-categories present in this course — surfaced as a width-bounded
+  // chip on the course header so owners see, at a glance, which sub-categories
+  // a course contains without expanding it.
+  const bucketRawCategories = deriveBucketRawCategories(
+    allBucketItems,
+    (id) => getSettings(menuId, id).raw_categories,
+  );
+
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
   // when SOME (but not all) are selected.
@@ -1573,9 +1615,37 @@ function CategoryBucket({
         <span className="text-[var(--text2)] shrink-0">
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </span>
-        <span className="text-xs font-bold text-[var(--text)] flex-1">
+        <span className="text-xs font-bold text-[var(--text)] shrink-0">
           {displayLabel ?? category}
         </span>
+        {bucketRawCategories.length > 0 ? (
+          <span
+            data-testid={`bucket-rawcats-${category}`}
+            title={`${bucketRawCategories.length} raw categor${bucketRawCategories.length === 1 ? 'y' : 'ies'}: ${bucketRawCategories.join(', ')}`}
+            className="flex-1 min-w-0 inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text2)]"
+          >
+            <span
+              className="rounded border border-[var(--border)] bg-[var(--bg2)] px-1.5 py-px normal-case"
+              style={{
+                maxWidth: 260,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'inline-block',
+              }}
+            >
+              {bucketRawCategories.map((l) => truncRawCatLabel(l)).join(' · ')}
+            </span>
+            <span
+              data-testid={`bucket-rawcats-count-${category}`}
+              className="shrink-0 rounded-full bg-[var(--bg2)] px-1.5 py-px font-semibold"
+            >
+              {bucketRawCategories.length}
+            </span>
+          </span>
+        ) : (
+          <span className="flex-1" aria-hidden="true" />
+        )}
         {emptyIsAttention ? (
           <span
             data-testid={`bucket-attention-empty-${category}`}
@@ -2063,3 +2133,11 @@ export default function MenuBuilder({
     </div>
   );
 }
+
+// Test-only exports ("_"-prefixed = test-only public, not part of the
+// component's public API). Pure helpers behind the course-header raw-category
+// chip (2026-06-11).
+export {
+  deriveBucketRawCategories as _deriveBucketRawCategories,
+  truncRawCatLabel as _truncRawCatLabel,
+};
