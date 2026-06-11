@@ -2,8 +2,8 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useEffect, useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2 } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag } from 'lucide-react';
 import { BulkMemberPicker } from './BulkMemberPicker';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
@@ -56,6 +56,13 @@ interface BulkActionsPanelProps {
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add */
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
+  /**
+   * Bulk-assign a raw scraped category label (→ menu_items.category_name) to
+   * the selected items. Opt-in: when omitted, the Raw Category tab is hidden.
+   * Called one item at a time (mirrors the spice/dietary fan-out); the empty
+   * string clears the category to Uncategorized.
+   */
+  onBulkRawCategory?: (category: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk sweetness update — owner app wires this to the sweetness API */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
   /**
@@ -164,6 +171,9 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
     ? [{ key: 'sweetness' as BulkMode, label: 'Sweetness', icon: <Sparkles size={13} /> }]
     : []),
   { key: 'dietary',      label: 'Dietary',      icon: <Leaf size={13} /> },
+  // Raw Category mode is opt-in via the onBulkRawCategory prop (Food Library
+  // page only) — assigns the scraped category label to all selected items.
+  { key: 'rawCategory',  label: 'Raw Category', icon: <Tag size={13} /> },
   // Enrich mode is opt-in via the onBulkEnrich prop (admin-only). Listed
   // here so the render filter has the right ordering when included.
   { key: 'enrich',       label: 'Enrich',       icon: <Wand2 size={13} /> },
@@ -210,6 +220,7 @@ export default function BulkActionsPanel({
   onBulkRemoveGrouping,
   loadGroupingsForItem,
   onBulkAddMembersToGrouping,
+  onBulkRawCategory,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
@@ -219,7 +230,8 @@ export default function BulkActionsPanel({
     .filter((m) => m.key !== 'enrich' || !!onBulkEnrich)
     .filter((m) => m.key !== 'grouping' || !!onBulkApplyGrouping)
     .filter((m) =>
-      m.key !== 'removeGrouping' || (!!onBulkRemoveGrouping && !!loadGroupingsForItem));
+      m.key !== 'removeGrouping' || (!!onBulkRemoveGrouping && !!loadGroupingsForItem))
+    .filter((m) => m.key !== 'rawCategory' || !!onBulkRawCategory);
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -273,6 +285,11 @@ export default function BulkActionsPanel({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [pickedHeat, setPickedHeat] = useState<string | null>(null);
   const [pickedSweetness, setPickedSweetness] = useState<string | null>(null);
+  // Raw Category mode: either pick an existing label (or the Uncategorized
+  // sentinel) from the Select, or type a brand-new label. The typed value
+  // takes precedence when non-empty.
+  const [pickedRawCategory, setPickedRawCategory] = useState('');
+  const [newRawCategory, setNewRawCategory] = useState('');
   const [pickedDietaryTags, setPickedDietaryTags] = useState<Set<string>>(new Set());
 
   // PDD 2026-05-21 — bulk Grouping mode form state.
@@ -329,6 +346,21 @@ export default function BulkActionsPanel({
 
   const selectedItems = items.filter((i) => selected.has(i.id));
   const count = selectedItems.length;
+  // Distinct existing raw categories across the catalogue, for the Raw
+  // Category tab's Select. '__uncat__' is a sentinel for clearing to
+  // Uncategorized (distinct from the empty placeholder value).
+  const RAW_UNCAT_SENTINEL = '__uncat__';
+  const rawCategoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const c = (it.category ?? '').trim();
+      if (c && c.toLowerCase() !== 'uncategorized') set.add(c);
+    }
+    return [
+      { value: RAW_UNCAT_SENTINEL, label: 'Uncategorized' },
+      ...[...set].sort((a, b) => a.localeCompare(b)).map((c) => ({ value: c, label: c })),
+    ];
+  }, [items]);
 
   // Menus that at least one selected item belongs to (for remove/boost/special scope)
   const relevantMenuIds = new Set(
@@ -845,6 +877,43 @@ export default function BulkActionsPanel({
     if (failed < itemIds.length) onComplete(items, selected);
   }
 
+  async function runRawCategory() {
+    // Resolve the target label: a typed new label wins; else the Select value
+    // (sentinel → empty string to clear to Uncategorized).
+    const typed = newRawCategory.trim();
+    if (!typed && !pickedRawCategory) {
+      setError('Pick an existing category or type a new one');
+      return;
+    }
+    const target = typed
+      ? typed
+      : pickedRawCategory === RAW_UNCAT_SENTINEL
+        ? ''
+        : pickedRawCategory;
+    if (!onBulkRawCategory) { onComplete(items, selected); return; }
+    setExecuting(true);
+    setError(null);
+    const itemIds = selectedItems.map((i) => i.id);
+    setProgress({ done: 0, total: itemIds.length });
+    let failed = 0;
+    const okIds = new Set<string>();
+    for (const itemId of itemIds) {
+      try { await onBulkRawCategory(target, [itemId]); okIds.add(itemId); } catch { failed++; }
+      setProgress((p) => p ? { ...p, done: p.done + 1 } : null);
+    }
+    setExecuting(false);
+    setProgress(null);
+    if (failed > 0) {
+      setError(`${failed} item${failed !== 1 ? 's' : ''} failed — others updated`);
+    }
+    if (okIds.size > 0) {
+      // Patch local items so the table + left-rail category filter reflect the
+      // reassignment immediately (onComplete → replaceItem in the parent).
+      const updated = items.map((it) => okIds.has(it.id) ? { ...it, category: target } : it);
+      onComplete(updated, selected);
+    }
+  }
+
   async function executeAll(
     tasks: Array<() => Promise<{ itemId: string; associations: MenuAssociation[] }>>,
     onSuccess: (updates: Array<{ itemId: string; associations: MenuAssociation[] }>) => void,
@@ -912,6 +981,7 @@ export default function BulkActionsPanel({
         case 'spice':        await runSpice(); break;
         case 'sweetness':    await runSweetness(); break;
         case 'dietary':      await runDietary(); break;
+        case 'rawCategory':  await runRawCategory(); break;
         case 'enrich':       await runEnrich(); break;
         case 'grouping':
           if (groupingMode === 'existing') {
@@ -1187,6 +1257,45 @@ export default function BulkActionsPanel({
                 })
               }
             />
+          )}
+          {mode === 'rawCategory' && (
+            <div data-testid="bulk-rawcat-form">
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                Assign raw category
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+                Sets the scraped category label on all {count} selected item{count !== 1 ? 's' : ''}.
+              </p>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>
+                Existing category
+              </label>
+              <Select
+                value={pickedRawCategory}
+                onChange={(e) => { setPickedRawCategory(e.target.value); setNewRawCategory(''); setError(null); }}
+                options={rawCategoryOptions}
+                placeholder="— Select category —"
+                data-testid="bulk-rawcat-select"
+              />
+              <div style={{ fontSize: 11, color: 'var(--text2)', margin: '12px 0 4px' }}>
+                or create a new one
+              </div>
+              <input
+                type="text"
+                value={newRawCategory}
+                onChange={(e) => { setNewRawCategory(e.target.value); setError(null); }}
+                placeholder="New category name"
+                data-testid="bulk-rawcat-new"
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  fontSize: 13,
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
           )}
           {mode === 'delete' && (
             <DeleteForm count={count} confirmed={deleteConfirm} />

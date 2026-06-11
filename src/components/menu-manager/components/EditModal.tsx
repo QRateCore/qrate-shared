@@ -6,7 +6,7 @@ import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type React
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings} from '../../../types/restaurant';
-import { FOOD_TAG_FIELD_MAP, CANONICAL_CATEGORIES, toCanonical, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
+import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import {
   DEFAULT_HEAT_LABELS,
   DEFAULT_SWEETNESS_LABELS,
@@ -635,11 +635,37 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // Form state — initialized from item
   const [name, setName]             = useState(isNewItem ? '' : item.name);
   const [description, setDesc]      = useState(item.description ?? '');
-  // Prefer the AI-pipeline canonical_category (already one of CANONICAL_CATEGORIES),
-  // fall back to mapping the raw category string, then to empty.
+  // `category` here is the CANONICAL classifier (one of CANONICAL_CATEGORIES).
+  // It is no longer user-editable (the "Mapped Course" dropdown was removed
+  // 2026-06-11) but is still needed to gate the Beverages / Desserts-specific
+  // sections below. Prefer the AI-pipeline canonical_category, fall back to
+  // mapping the raw scraped label, then to empty. For NEW items it tracks the
+  // raw-category dropdown (via toCanonical) so beverage/dessert fields surface.
   const [category, setCategory]     = useState(
     item.canonical_category ?? toCanonical(item.category) ?? '',
   );
+  // RAW CATEGORY (2026-06-11) — the item's original scraped category label
+  // (menu_items.category_name, surfaced as `category`). This is now the
+  // owner-editable category field on the item, replacing Mapped Course.
+  const [rawCategory, setRawCategory] = useState(item.category ?? '');
+  // Dropdown options: the distinct raw labels already in use across this
+  // restaurant's catalogue, plus the current value, plus an Uncategorized
+  // escape hatch. Sorted alphabetically.
+  const rawCategoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of allItems ?? []) {
+      const c = (it.category ?? '').trim();
+      if (c) set.add(c);
+    }
+    const current = (item.category ?? '').trim();
+    if (current) set.add(current);
+    return [
+      { value: '', label: 'Uncategorized' },
+      ...[...set]
+        .sort((a, b) => a.localeCompare(b))
+        .map((c) => ({ value: c, label: c })),
+    ];
+  }, [allItems, item.category]);
   // Price is only editable in Add-on mode (dishes price per-menu in MenuBuilder).
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);
@@ -976,7 +1002,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     }
   }, [onEnrichItem, item.id, isNewItem, onItemUpdate]);
   const [descError, setDescError]       = useState(false);
-  const [categoryError, setCategoryError] = useState(false);
 
   // Delete state
   const [deleteConfirming, setDeleteConfirming] = useState(false);
@@ -1550,7 +1575,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     let hasError = false;
     if (!name.trim()) { setNameError(true); hasError = true; }
     if (!isAddon && !description.trim()) { setDescError(true); hasError = true; }
-    if (!isAddon && !category) { setCategoryError(true); hasError = true; }
     // Add-on price validation: required when creating a new add-on; optional when editing.
     // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
     if (isAddon) {
@@ -1573,7 +1597,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
     const start = Date.now();
     setNameError(false);
     setDescError(false);
-    setCategoryError(false);
     setSaving(true);
     setSaveError(null);
 
@@ -1647,7 +1670,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
         const created = await onSaveNewItem({
           name: name.trim(),
           description: description.trim(),
-          category: category.trim(),
+          // Raw scraped category label (→ menu_items.category_name). Falls back
+          // to the derived canonical for brand-new items with no raw label yet.
+          category: rawCategory.trim() || category.trim(),
           food_tags: foodTags,
           item_type: isAddon ? 'addon' : 'dish',
           ...(isAddon && price !== null ? { price } : {}),
@@ -1716,13 +1741,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       }
 
       // ── Existing-item update path ──────────────────────────────────────────
-      // The dropdown edits canonical_category only — the raw scraped `category`
-      // field is preserved untouched so the kitchen's original menu label stays
-      // intact.
+      // The dropdown now edits the RAW scraped category (→ menu_items.category_name).
+      // canonical_category is intentionally NOT sent — it is preserved server-side
+      // and (per the new model) lives as a course mapping on the menu, not here.
       const updates: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim(),
-        canonical_category: category.trim() || undefined,
+        category: rawCategory.trim(),
         food_tags: foodTags,
         item_type: isAddon ? 'addon' : 'dish',
         // STR-303: add-on mode is the sole per-item price surface in this modal.
@@ -1840,10 +1865,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
       const updated: MenuItemDisplay = {
         ...item,
         ...saved,
-        // canonical_category: PUT response carries the raw scraped `category`
-        // column, not the canonical_category column. Local `category` state
-        // is what the user picked in the dropdown — write that through.
-        canonical_category: category.trim() || item.canonical_category,
+        // category: the raw scraped label the owner just picked. `...saved`
+        // already echoes it (PUT returns category_name as `category`), but set
+        // it explicitly so local state is correct even if the echo is stale.
+        category: rawCategory.trim(),
+        // canonical_category: no longer edited here — preserve the stored value.
+        canonical_category: item.canonical_category,
         // food_tags: re-merges heat_spice / sweetness_label written via the
         // separate /spice and /sweetness endpoints (not present in `saved`).
         food_tags: mergedFoodTags,
@@ -2805,23 +2832,29 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
                 )}
             </div>
 
-            {/* Mapped Course — edits canonical_category; raw scraped `category` is preserved. */}
+            {/* Raw Category — edits the item's original scraped category label
+                (menu_items.category_name). Replaces the former "Mapped Course"
+                dropdown; canonical course mapping now lives on the menu, not on
+                the item. Options are the distinct raw labels already used across
+                this restaurant's menu, plus an Uncategorized escape hatch. */}
             <div>
               <label style={labelStyle} htmlFor="edit-category">
-                Mapped Course <span style={{ color: '#b91c1c' }}>*</span>
+                Raw Category
               </label>
               <Select
                 id="edit-category"
-                value={category}
-                onChange={(e) => { setCategory(e.target.value); setCategoryError(false); }}
+                value={rawCategory}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRawCategory(v);
+                  // For brand-new items, keep the canonical classifier in sync so
+                  // the Beverages / Desserts sections still surface during creation.
+                  if (isNewItem) setCategory(toCanonical(v) ?? '');
+                }}
                 data-testid="edit-category-select"
-                options={CANONICAL_CATEGORIES.map((c) => ({ value: c, label: c }))}
-                placeholder="— Select course —"
-                error={categoryError}
+                options={rawCategoryOptions}
+                placeholder="— Select category —"
               />
-              {categoryError && (
-                <span style={{ fontSize: 10, color: '#b91c1c' }}>Mapped course is required</span>
-              )}
             </div>
 
             {/* ── Appears in menus ──────────────────────────────── */}

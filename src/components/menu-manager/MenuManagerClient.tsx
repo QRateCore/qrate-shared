@@ -10,6 +10,8 @@ import {
   CANONICAL_CATEGORIES,
   toCanonical,
   UNGROUPED_KEY,
+  sectionForCanonical,
+  dedupeRawCategoryLabels,
   type MenuColor,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
@@ -31,7 +33,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping';
+export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory';
 
 export interface DragState {
   itemIds: string[];
@@ -486,7 +488,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     menuId: string;
     cat: string;
     toProcess: MenuItemDisplay[];
+    /** Existing sub-categories already under this course (deduped). */
     labels: RawCategorySummary[];
+    /** Most-common raw category across the dropped selection — seeds the
+     *  popup's create field / matches an existing sub-category. */
+    defaultLabel: string;
+    /** Human label for the dragged selection (item name or "N items"). */
+    selectionLabel: string;
   } | null>(null);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
@@ -1045,14 +1053,46 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
       if (snap.fromMenuId === null) setMobileDrawerOpen(false);
 
-      // Fetch existing labels for the typeahead, then open the popup.
-      let labels: RawCategorySummary[] = [];
-      try {
-        labels = (await service.listMenuRawCategories?.(menuId)) ?? [];
-      } catch {
-        labels = [];
+      // Existing sub-categories ALREADY under this course on this menu. Raw
+      // sub-category labels live per-(item, menu) on menu_associations; a label
+      // is "under" this section if any item placed in one of the section's
+      // member canonicals carries it. Deduped case/punctuation-insensitively so
+      // casing variants ("Flavors of Tandoor" vs "flavors of tandoor") collapse
+      // to a single entry (the most-used variant wins the display form).
+      const members = sectionForCanonical(cat)?.members ?? [cat];
+      const subcatCounts = new Map<string, number>();
+      for (const it of items) {
+        const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
+        if (!assoc) continue;
+        const inSection = (assoc.canonical_categories ?? []).some((c) => members.includes(c));
+        if (!inSection) continue;
+        for (const lbl of assoc.raw_categories ?? []) {
+          const t = (lbl ?? '').trim();
+          if (t) subcatCounts.set(t, (subcatCounts.get(t) ?? 0) + 1);
+        }
       }
-      setSubCatPrompt({ menuId, cat, toProcess, labels });
+      const labels: RawCategorySummary[] = dedupeRawCategoryLabels(
+        [...subcatCounts.entries()].map(([label, item_count]) => ({ label, item_count })),
+      ).sort((a, b) => a.label.localeCompare(b.label));
+
+      // Default sub-category = the most-common raw category (item.category)
+      // across the dropped selection, ignoring blank/Uncategorized.
+      const rawCounts = new Map<string, number>();
+      for (const it of toProcess) {
+        const c = (it.category ?? '').trim();
+        if (c && c.toLowerCase() !== 'uncategorized') {
+          rawCounts.set(c, (rawCounts.get(c) ?? 0) + 1);
+        }
+      }
+      let defaultLabel = '';
+      let best = 0;
+      for (const [c, n] of rawCounts) {
+        if (n > best) { best = n; defaultLabel = c; }
+      }
+
+      const selectionLabel = toProcess.length === 1 ? toProcess[0].name : `${toProcess.length} items`;
+
+      setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel });
     },
     [dragging, items, menus, restaurantId, showToast, trackAction, service],
   );
@@ -1094,8 +1134,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
 
   // Shared write for "file these items under `label` in (menu, cat)". Used by
-  // the sub-group MOVE drop (7a) and the general-area pick/create popup (7b).
-  // label === UNGROUPED_KEY clears labels; a real label replaces the set.
+  // the sub-group drop (7a) and the general-area pick/create popup (7b).
+  // ADDITIVE (2026-06-11): a real label is APPENDED to the item's existing
+  // raw_categories (multi-membership — nothing is wiped). UNGROUPED_KEY is a
+  // no-op on labels; it just ensures canonical membership. Removal is via the
+  // ✕ chips, not a drop. The paired menu_item_subcategories table is written in
+  // its default 'add' mode for the same reason.
   const applyRawCategoryMove = useCallback(
     (toProcess: MenuItemDisplay[], menuId: string, cat: string, label: string) => {
       if (toProcess.length === 0) return;
@@ -1110,6 +1154,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const newLabels = isUngroupedTarget ? [] : [label];
       const moveLabel = isUngroupedTarget ? 'Ungrouped' : label;
       const ids = new Set(toProcess.map((i) => i.id));
+      // Append `label` to an item's existing labels (case-insensitive dedupe),
+      // preserving what's already there. Ungrouped adds nothing.
+      const addLabel = (existing?: readonly string[] | null): string[] => {
+        const cur = existing ? [...existing] : [];
+        if (isUngroupedTarget) return cur;
+        return cur.some((l) => l.toLowerCase() === label.toLowerCase()) ? cur : [...cur, label];
+      };
 
       setItems((prev) =>
         prev.map((i) => {
@@ -1124,7 +1175,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 const cats = a.canonical_categories ?? [];
                 return {
                   ...a,
-                  raw_categories: newLabels,
+                  raw_categories: addLabel(a.raw_categories),
                   canonical_categories: cats.includes(cat) ? cats : [...cats, cat],
                 };
               }),
@@ -1157,7 +1208,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               const cats = assoc.canonical_categories ?? [];
               const mergedCats = cats.includes(cat) ? cats : [...cats, cat];
               associations = await service.updateMenuItemInMenu(item.id, menuId, {
-                raw_categories: newLabels,
+                raw_categories: addLabel(assoc.raw_categories),
                 canonical_categories: mergedCats,
               });
             } else {
@@ -1167,6 +1218,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               });
             }
             setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
+            // Dual-write the paired sub-category model (PDD 2026-06-11): the
+            // label is bound to THIS canonical (cat). Best-effort — the legacy
+            // raw_categories write above is the builder's own read source, so a
+            // failure here doesn't roll back the move. Feeds the patron pills
+            // once the env is backfilled.
+            if (service.setItemSubcategories) {
+              try { await service.setItemSubcategories(menuId, item.id, cat, newLabels); }
+              catch { /* non-fatal — paired-model write is additive */ }
+            }
           } catch {
             failed++;
             const original = prevItems.find((o) => o.id === item.id);
@@ -1175,8 +1235,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             pendingWriteItemIdsRef.current.delete(item.id);
           }
         }
-        if (failed > 0) showToast(`${toProcess.length - failed} moved, ${failed} failed`);
-        else showToast(toProcess.length === 1 ? `Moved to ${moveLabel}` : `Moved ${toProcess.length} items to ${moveLabel}`);
+        if (failed > 0) showToast(`${toProcess.length - failed} filed, ${failed} failed`);
+        else showToast(toProcess.length === 1 ? `Filed under ${moveLabel}` : `Filed ${toProcess.length} items under ${moveLabel}`);
         if (toProcess.length > 1) setSelected(new Set());
       };
       run();
@@ -1586,6 +1646,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
           );
         }
+        // Dual-write the paired sub-category model (PDD 2026-06-11) when the
+        // ✕/＋ chips change raw_categories. The legacy raw_categories[] are flat
+        // (menu-wide), so mirror each added/removed label across the item's
+        // canonicals on this menu. Best-effort — the legacy write above is the
+        // builder's own read source, so a failure here doesn't roll back.
+        if (patch.raw_categories !== undefined && service.setItemSubcategories) {
+          const norm = (s: string) => s.trim().toLowerCase();
+          const oldL = (prev.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
+          const newL = (patch.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
+          const oldKeys = new Set(oldL.map(norm));
+          const newKeys = new Set(newL.map(norm));
+          const added = newL.filter((l) => !oldKeys.has(norm(l)));
+          const removed = oldL.filter((l) => !newKeys.has(norm(l)));
+          const assoc = items.find((i) => i.id === itemId)?.menu_associations?.find((a) => a.menu_id === menuId);
+          const cats = assoc?.canonical_categories ?? [];
+          const setSub = service.setItemSubcategories;
+          await Promise.allSettled([
+            ...cats.flatMap((c) => added.map((l) => setSub(menuId, itemId, c, [l], 'add'))),
+            ...cats.flatMap((c) => removed.map((l) => setSub(menuId, itemId, c, [l], 'remove'))),
+          ]);
+        }
       } catch {
         // Rollback
         setJunctionSettings((s) => ({ ...s, [key]: prev }));
@@ -1594,7 +1675,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         pendingWriteItemIdsRef.current.delete(itemId);
       }
     },
-    [junctionSettings, showToast],
+    [junctionSettings, showToast, items, service],
   );
 
   // Add-item from the menu page is gone — new dishes are authored solely
@@ -2387,9 +2468,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       {/* 7b — general-area drop → pick/create a sub-category for the dropped items */}
       <SubCategoryPickModal
         open={subCatPrompt !== null}
-        category={subCatPrompt?.cat ?? ''}
+        category={
+          // Show the 4-section label rather than the underlying canonical.
+          ({ Beverages: 'Drinks', Appetizers: 'Starters', Desserts: 'Dessert' } as Record<string, string>)[
+            subCatPrompt?.cat ?? ''
+          ] ?? subCatPrompt?.cat ?? ''
+        }
         itemCount={subCatPrompt?.toProcess.length ?? 0}
+        selectionLabel={subCatPrompt?.selectionLabel ?? ''}
         labels={subCatPrompt?.labels ?? []}
+        defaultLabel={subCatPrompt?.defaultLabel ?? ''}
         onConfirm={(label) => {
           if (subCatPrompt) {
             applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, label);

@@ -758,6 +758,11 @@ export interface MenuManagerService {
   listMenuRawCategories?(menuId: string): Promise<RawCategorySummary[]>;
   renameMenuRawCategory?(menuId: string, from: string, to: string): Promise<{ updated_count: number }>;
   deleteMenuRawCategory?(menuId: string, label: string): Promise<{ updated_count: number }>;
+  /** Replace-set the per-(item, menu, canonical) sub-category labels (PDD
+   *  2026-06-11). Paired source of truth; the builder dual-writes this beside
+   *  the legacy raw_categories write during the migration window. Optional so
+   *  consumers that haven't wired it (admin/waiter) simply skip the dual-write. */
+  setItemSubcategories?(menuId: string, itemId: string, canonical: string, labels: string[], mode?: 'add' | 'replace' | 'remove'): Promise<void>;
 
   // Modifiers & addons
   getItemModifiers?(restaurantId: string, itemId: string): Promise<{

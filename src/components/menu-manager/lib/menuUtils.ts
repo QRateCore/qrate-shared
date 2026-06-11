@@ -13,6 +13,90 @@ export const CANONICAL_CATEGORIES = [
 
 export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
 
+// ── 4-section menu organization (2026-06-11 prototype) ──────────────────────
+// Collapse the 8 canonical categories into 4 top-level sections. Each section
+// maps to a representative `canonical` (the drop target + collapse/price key)
+// and a `label` shown to the owner. "Entrees" absorbs everything that isn't a
+// drink, starter, or dessert (soups, salads, sides, breads, mains).
+export interface MenuSection {
+  label: string;
+  canonical: string;
+  members: string[];
+}
+export const MENU_SECTIONS: MenuSection[] = [
+  { label: 'Drinks',   canonical: 'Beverages',  members: ['Beverages'] },
+  { label: 'Starters', canonical: 'Appetizers', members: ['Appetizers'] },
+  { label: 'Entrees',  canonical: 'Entrees',    members: ['Entrees', 'Soups', 'Salads', 'Sides', 'Breads'] },
+  { label: 'Dessert',  canonical: 'Desserts',   members: ['Desserts'] },
+];
+/** Resolve the section a canonical belongs to (by representative or member). */
+export function sectionForCanonical(canonical: string): MenuSection | undefined {
+  return MENU_SECTIONS.find((s) => s.canonical === canonical || s.members.includes(canonical));
+}
+
+// ── Sub-category label normalization ────────────────────────────────────────
+// Raw sub-category labels arrive in inconsistent casing/spacing/punctuation
+// ("Flavors of Tandoor" vs "flavors of tandoor" vs "Flavors  of Tandoor"),
+// which otherwise renders as duplicate sub-categories. Collapse to a stable
+// key for de-duplication + matching; the display form is chosen separately
+// (the most-used variant — see dedupeRawCategoryLabels).
+export function normalizeSubcatKey(label: string): string {
+  return label
+    .normalize('NFKD')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // split camelCase boundaries (flavorsOfTandoor → "flavors Of Tandoor")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ') // punctuation/underscores/extra spaces → single space
+    .trim();
+}
+/**
+ * De-duplicate a list of (label, count) pairs case/punctuation-insensitively.
+ * Within a dup group the displayed label is the highest-count variant (ties →
+ * the one with the most uppercase letters, then alphabetical), and counts are
+ * summed so the badge reflects the merged total.
+ */
+export function dedupeRawCategoryLabels(
+  entries: Array<{ label: string; item_count: number }>,
+): Array<{ label: string; item_count: number }> {
+  const groups = new Map<string, { label: string; item_count: number; variants: Array<{ label: string; count: number }> }>();
+  for (const e of entries) {
+    const key = normalizeSubcatKey(e.label);
+    if (!key) continue;
+    const g = groups.get(key);
+    if (g) {
+      g.item_count += e.item_count;
+      g.variants.push({ label: e.label, count: e.item_count });
+    } else {
+      groups.set(key, { label: e.label, item_count: e.item_count, variants: [{ label: e.label, count: e.item_count }] });
+    }
+  }
+  const out: Array<{ label: string; item_count: number }> = [];
+  for (const g of groups.values()) {
+    out.push({ label: preferScrapedLabel(g.variants), item_count: g.item_count });
+  }
+  return out;
+}
+
+/**
+ * Choose the most scrape-faithful display form among casing/snake variants of
+ * the same label. The original scraped string is the SPACED human form
+ * ("Flavors of Tandoor"); the v2 seed also injected a snake_case key
+ * ("flavors_of_tandoor"). Always prefer the spaced human form so the owner sees
+ * exactly what was scraped — never the snake key — even if the snake variant is
+ * more frequent in the (polluted) data.
+ */
+export function preferScrapedLabel(variants: Array<{ label: string; count: number }>): string {
+  const score = (s: string) =>
+    (/\s/.test(s) ? 4 : 0) +        // has a space → scraped human form
+    (/_/.test(s) ? 0 : 2) +          // no underscore → not a snake key
+    (/[A-Z]/.test(s) ? 1 : 0);       // has a capital → human casing
+  const best = [...variants].sort((a, b) =>
+    score(b.label) - score(a.label) ||
+    b.count - a.count ||
+    a.label.localeCompare(b.label),
+  )[0];
+  return best?.label ?? variants[0]?.label ?? '';
+}
+
 export type MenuColorName = 'blue' | 'teal' | 'purple' | 'amber' | 'coral' | 'pink';
 
 export interface MenuColor {

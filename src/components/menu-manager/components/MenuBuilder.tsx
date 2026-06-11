@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
-import { CANONICAL_CATEGORIES, type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels } from '../lib/menuUtils';
+import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
@@ -1388,6 +1388,7 @@ function MenuItemRow({
 
 function CategoryBucket({
   category,
+  displayLabel,
   itemIds,
   itemsById,
   menus,
@@ -1427,6 +1428,10 @@ function CategoryBucket({
   suppressEmptyAttention = false,
 }: {
   category: string;
+  /** Optional friendly header label. Defaults to `category` (the canonical).
+   *  Used by the 4-section view so a bucket can show "Drinks" while keying its
+   *  drop target / collapse / price logic off the canonical "Beverages". */
+  displayLabel?: string;
   itemIds: string[];
   itemsById: Map<string, MenuItemDisplay>;
   menus?: readonly MenuSummary[];
@@ -1569,7 +1574,7 @@ function CategoryBucket({
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </span>
         <span className="text-xs font-bold text-[var(--text)] flex-1">
-          {category}
+          {displayLabel ?? category}
         </span>
         {emptyIsAttention ? (
           <span
@@ -1610,13 +1615,30 @@ function CategoryBucket({
             margin: isDragOver ? '2px 4px' : 0,
           }}
         >
+          {/* Bucket-level drop hint — only while hovering the bucket's general
+              area (NOT a sub-category). Makes a top-level drop visibly distinct
+              from dropping onto a sub-category group (which highlights its own
+              header and files directly, no popup). */}
+          {isDragOver && bucketItems.length > 0 && (
+            <div
+              data-testid={`bucket-drop-hint-${category}`}
+              className="mx-1 my-1 px-3 py-1.5 text-xs font-semibold rounded text-center"
+              style={{
+                color: color.tabBorder,
+                background: color.tab,
+                border: `1px dashed ${color.tabBorder}`,
+              }}
+            >
+              Drop here to file under a sub-category…
+            </div>
+          )}
           {bucketItems.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
               className="px-3 py-2.5 text-xs text-[var(--text2)] italic"
             >
               {isDragOver
-                ? 'Drop to assign here'
+                ? 'Drop here — choose a sub-category'
                 : missingPriceFilter && allBucketItems.length > 0
                   ? 'No items missing a price'
                   : 'No items in this category yet'}
@@ -1706,20 +1728,36 @@ function CategoryBucket({
               );
             };
 
-            // Group the bucket's items by raw sub-category label (menu-wide;
-            // an item with N labels appears under each). Items with no label
-            // fall under UNGROUPED_KEY. When the ONLY group is Ungrouped (no
-            // owner has labelled anything in this bucket yet) render flat — no
-            // sub-group chrome — so existing menus look unchanged until curated.
-            const groups = new Map<string, MenuItemDisplay[]>();
+            // Group the bucket's items by raw sub-category label. Casing /
+            // punctuation variants ("Flavors of Tandoor" vs "flavors of tandoor")
+            // are merged into ONE sub-accordion via normalizeSubcatKey; the
+            // displayed label is the most-used variant. An item with N labels
+            // appears under each; items with no label fall under UNGROUPED_KEY.
+            // When that's the ONLY group, render flat (no sub-group chrome).
+            const byKey = new Map<
+              string,
+              { items: MenuItemDisplay[]; seen: Set<string>; variants: Map<string, number> }
+            >();
             for (const item of bucketItems) {
               const labels = getSettings(menuId, item.id).raw_categories;
-              const keys = labels && labels.length ? labels : [UNGROUPED_KEY];
-              for (const k of keys) {
-                const arr = groups.get(k) ?? [];
-                arr.push(item);
-                groups.set(k, arr);
+              const list = labels && labels.length ? labels : [UNGROUPED_KEY];
+              for (const raw of list) {
+                const key = raw === UNGROUPED_KEY ? UNGROUPED_KEY : (normalizeSubcatKey(raw) || UNGROUPED_KEY);
+                let g = byKey.get(key);
+                if (!g) { g = { items: [], seen: new Set<string>(), variants: new Map<string, number>() }; byKey.set(key, g); }
+                if (!g.seen.has(item.id)) { g.seen.add(item.id); g.items.push(item); }
+                if (raw !== UNGROUPED_KEY) g.variants.set(raw, (g.variants.get(raw) ?? 0) + 1);
               }
+            }
+            const groups = new Map<string, MenuItemDisplay[]>();
+            for (const [key, g] of byKey) {
+              // Show the scraped human string ("Flavors of Tandoor"), never the
+              // snake_case key the v2 seed injected — even when snake is more
+              // frequent. preferScrapedLabel ranks spaced/human forms first.
+              const display = key === UNGROUPED_KEY
+                ? UNGROUPED_KEY
+                : preferScrapedLabel([...g.variants].map(([label, count]) => ({ label, count })));
+              groups.set(display, g.items);
             }
             const orderedLabels = sortedSubCategoryLabels([...groups.keys()]);
             const onlyUngrouped = orderedLabels.length === 1 && orderedLabels[0] === UNGROUPED_KEY;
@@ -1864,18 +1902,22 @@ export default function MenuBuilder({
   const activeMenuIndex = activeMenu ? menus.findIndex((m) => m.id === activeMenu.id) : 0;
   const activeColor = colorMap(activeMenuIndex);
 
-  // Buckets to render: canonical categories only
+  // Buckets to render: the 4 top-level sections (see MENU_SECTIONS). Each
+  // section's items are the union of its member canonicals' assignments,
+  // de-duped so an item placed in two member canonicals (e.g. Sides + Breads)
+  // shows once. The representative canonical drives drop/collapse/price keys.
   const activeAssignments = activeMenu ? (assignments[activeMenu.id] ?? {}) : {};
-  const ALL_BUCKETS = [...CANONICAL_CATEGORIES] as const;
-  // Always show all canonical categories, even empty ones
-  const visibleBuckets = ALL_BUCKETS;
+  const sectionBuckets = MENU_SECTIONS.map((sec) => ({
+    ...sec,
+    itemIds: activeMenu
+      ? [...new Set(sec.members.flatMap((m) => activeAssignments[m] ?? []))]
+      : [],
+  }));
 
-  const totalItems = activeMenu
-    ? Object.values(activeAssignments).reduce((s, ids) => s + ids.length, 0)
-    : 0;
+  const totalItems = sectionBuckets.reduce((s, b) => s + b.itemIds.length, 0);
 
   const allCollapsed = activeMenu
-    ? visibleBuckets.every((cat) => collapsed[`${activeMenu.id}:${cat}`] ?? true)
+    ? sectionBuckets.every((b) => collapsed[`${activeMenu.id}:${b.canonical}`] ?? true)
     : false;
 
   if (menus.length === 0) {
@@ -1953,7 +1995,8 @@ export default function MenuBuilder({
 
       {/* Category buckets */}
       <div className="flex-1 overflow-y-auto py-2">
-        {(visibleBuckets as readonly string[]).map((cat) => {
+        {sectionBuckets.map((sec) => {
+            const cat = sec.canonical;
             const collapseKey = `${activeMenu?.id}:${cat}`;
             const dragOverHere =
               dragOver !== null &&
@@ -1970,7 +2013,8 @@ export default function MenuBuilder({
               <CategoryBucket
                 key={cat}
                 category={cat}
-                itemIds={activeAssignments[cat] ?? []}
+                displayLabel={sec.label}
+                itemIds={sec.itemIds}
                 itemsById={itemsById}
                 menus={menus}
                 menuId={activeMenu!.id}

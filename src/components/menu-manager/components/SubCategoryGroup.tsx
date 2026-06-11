@@ -52,7 +52,9 @@ export function SubCategoryGroup({
 }: SubCategoryGroupProps) {
   const isUngrouped = label === UNGROUPED_KEY;
   const display = isUngrouped ? 'Ungrouped' : label;
-  const [collapsed, setCollapsed] = useState(false);
+  // Sub-accordions start collapsed when their parent canonical/section bucket
+  // is expanded (2026-06-11) — the owner drills in one level at a time.
+  const [collapsed, setCollapsed] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(label);
   const [busy, setBusy] = useState(false);

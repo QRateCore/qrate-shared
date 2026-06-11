@@ -3,10 +3,19 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Pencil, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
-import { type MenuColor, toCanonical, CANONICAL_CATEGORIES } from '../lib/menuUtils';
+import { type MenuColor } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
+
+// ── Raw-category grouping (2026-06-11 prototype) ──────────────────────────────
+// The pool groups by the item's original scraped category label (item.category)
+// rather than the pipeline-assigned canonical course. Items with no scraped
+// label fall into a single catch-all bucket rendered last.
+const UNCATEGORIZED_POOL_KEY = 'Uncategorized';
+function poolRawCategoryOf(item: MenuItemDisplay): string {
+  return (item.category && item.category.trim()) || UNCATEGORIZED_POOL_KEY;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -342,8 +351,19 @@ function CategorySection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Category header */}
+      {/* Category header — the whole row toggles collapse (not just the
+          chevron). Keyboard-accessible via role=button + Enter/Space. The
+          select-all checkbox stops propagation so it keeps its own action. */}
       <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggleCollapse}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleCollapse(); }
+        }}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? `Expand ${category}` : `Collapse ${category}`}
+        data-testid={`pool-category-header-${category.toLowerCase().replace(/\s+/g, '-')}`}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -351,17 +371,16 @@ function CategorySection({
           padding: '6px 4px 6px 0',
           borderBottom: '1px solid var(--border)',
           marginBottom: collapsed ? 0 : 6,
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = '#f6f6f6'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
-        {/* Collapse toggle */}
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          aria-label={collapsed ? `Expand ${category}` : `Collapse ${category}`}
+        {/* Collapse indicator (visual only — the whole header toggles) */}
+        <span
+          aria-hidden="true"
           style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
             color: 'var(--text2)',
             padding: 2,
             display: 'flex',
@@ -373,7 +392,7 @@ function CategorySection({
             ? <ChevronRight size={14} />
             : <ChevronDown size={14} />
           }
-        </button>
+        </span>
 
         {/* Category name */}
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', flex: 1, minWidth: 0 }}>
@@ -407,7 +426,7 @@ function CategorySection({
         {/* Select-all checkbox for category */}
         <button
           type="button"
-          onClick={() => onSelectCategory(categoryIds, !allSelected)}
+          onClick={(e) => { e.stopPropagation(); onSelectCategory(categoryIds, !allSelected); }}
           aria-label={allSelected ? `Deselect all in ${category}` : `Select all in ${category}`}
           aria-pressed={allSelected}
           style={{
@@ -539,34 +558,40 @@ export default function ItemPool({
     const counts: Record<string, number> = {};
     for (const item of items) {
       if (item.item_type === 'addon') continue;
-      const cat = item.canonical_category ?? toCanonical(item.category) ?? 'Other';
+      const cat = poolRawCategoryOf(item);
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
     return counts;
   }, [items]);
 
-  // Group filtered items by canonical category. The pool no longer
+  // RAW-CATEGORY GROUPING (2026-06-11 prototype): the pool now groups items by
+  // their original scraped category label (item.category) instead of the
+  // pipeline-assigned canonical course. Canonical now lives only on a menu as
+  // a course mapping — not at the food-item level. The pool no longer
   // separates dishes from included; both render in the same per-category
   // bucket.
   const groupedItems = useMemo(() => {
     if (itemTypeFilter === 'addons') return null;
     const groups: Record<string, MenuItemDisplay[]> = {};
     for (const item of filtered) {
-      const cat = item.canonical_category ?? toCanonical(item.category) ?? 'Other';
+      const cat = poolRawCategoryOf(item);
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);
     }
     return groups;
   }, [filtered, itemTypeFilter]);
 
-  // Category render order: canonical order first, then any uncategorised
+  // Category render order: alphabetical by raw label, with the "Uncategorized"
+  // catch-all always last so it never buries a real scraped category.
   const orderedCategories = useMemo(() => {
     if (!groupedItems) return [];
-    const canonical = (CANONICAL_CATEGORIES as readonly string[]).filter((c) => (groupedItems[c]?.length ?? 0) > 0);
-    const others = Object.keys(groupedItems).filter(
-      (c) => !(CANONICAL_CATEGORIES as readonly string[]).includes(c) && (groupedItems[c]?.length ?? 0) > 0,
-    );
-    return [...canonical, ...others];
+    return Object.keys(groupedItems)
+      .filter((c) => (groupedItems[c]?.length ?? 0) > 0)
+      .sort((a, b) => {
+        if (a === UNCATEGORIZED_POOL_KEY) return 1;
+        if (b === UNCATEGORIZED_POOL_KEY) return -1;
+        return a.localeCompare(b);
+      });
   }, [groupedItems]);
 
   // Auto-collapse all categories on first data load
