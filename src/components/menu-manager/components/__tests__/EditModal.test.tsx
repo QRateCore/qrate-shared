@@ -225,10 +225,13 @@ describe('EditModal — form initialization', () => {
     expect(descInput.value).toBe('Rich and creamy');
   });
 
-  it('initializes category from canonical_category when present', () => {
+  it('initializes the Raw Category select from item.category', () => {
+    // 2026-06-11: edit-category-select is now the "Raw Category" control bound
+    // to the item's scraped category label (item.category), not the canonical
+    // course. The former "Mapped Course" (canonical) dropdown was removed.
     renderModal({ item: makeDishItem({ canonical_category: 'Desserts', category: 'Sweets' }) });
     const select = screen.getByTestId('edit-category-select');
-    expect(select.textContent).toContain('Desserts');
+    expect(select.textContent).toContain('Sweets');
   });
 
   it('falls back to toCanonical(category) when canonical_category is absent', () => {
@@ -347,7 +350,10 @@ describe('EditModal — validation: dish items', () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it('blocks save when category is empty for a dish item', async () => {
+  it('allows save when category is empty for a dish item (category is optional)', async () => {
+    // 2026-06-11: the former required "Mapped Course" (canonical) was replaced
+    // by an OPTIONAL "Raw Category" control — an empty category no longer blocks
+    // save. Name + description remain required (covered by sibling tests).
     const user = userEvent.setup();
     const service = makeService();
     const onComplete = vi.fn();
@@ -355,7 +361,7 @@ describe('EditModal — validation: dish items', () => {
 
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => {
-      expect(service.updateMenuItem).not.toHaveBeenCalled();
+      expect(service.updateMenuItem).toHaveBeenCalled();
     });
   });
 
