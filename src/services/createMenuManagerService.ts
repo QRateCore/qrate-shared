@@ -92,6 +92,7 @@ export function createMenuManagerService(
           price: price ?? null,
           category_name: category,
           canonical_categories: settings?.canonical_categories,
+          ...(settings?.raw_categories !== undefined && { raw_categories: settings.raw_categories }),
         },
       });
     },
@@ -154,6 +155,33 @@ export function createMenuManagerService(
 
     removeMenuItemImage: async (itemId) => {
       await adapter.fetchJson(`${api}/owner/menu/items/${itemId}/image`, { method: 'DELETE' });
+    },
+
+    // Raw sub-categories (menu raw sub-categories feature, 2026-06-09). Without
+    // these, MenuManagerClient's `service.renameMenuRawCategory?.()` guard
+    // returns early and rename/delete silently no-op (the bug behind the
+    // raw-subcategories E2E rename failure). POST verbs (no new CORS method).
+    listMenuRawCategories: async (menuId) => {
+      const data = await adapter.fetchJson<{ raw_categories: { label: string; item_count: number }[] }>(
+        `${api}/owner/menus/${menuId}/raw-categories`,
+      );
+      return data.raw_categories ?? [];
+    },
+
+    renameMenuRawCategory: async (menuId, from, to) => {
+      const data = await adapter.fetchJson<{ updated_count: number }>(
+        `${api}/owner/menus/${menuId}/raw-categories/rename`,
+        { method: 'POST', body: { from, to } },
+      );
+      return { updated_count: data?.updated_count ?? 0 };
+    },
+
+    deleteMenuRawCategory: async (menuId, label) => {
+      const data = await adapter.fetchJson<{ updated_count: number }>(
+        `${api}/owner/menus/${menuId}/raw-categories/delete`,
+        { method: 'POST', body: { label } },
+      );
+      return { updated_count: data?.updated_count ?? 0 };
     },
   };
 }
