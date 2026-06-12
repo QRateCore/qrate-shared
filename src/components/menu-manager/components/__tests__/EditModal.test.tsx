@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EditModal from '../EditModal';
@@ -138,6 +138,7 @@ interface RenderConfig {
   item?: MenuItemDisplay;
   menus?: MenuSummary[];
   allItems?: MenuItemDisplay[];
+  ownerFoodCategories?: string[];
   isNewItem?: boolean;
   forceAddon?: boolean;
   preselectedDishIds?: string[];
@@ -163,6 +164,7 @@ function renderModal(config: RenderConfig = {}) {
     item = makeDishItem(),
     menus = [],
     allItems = [],
+    ownerFoodCategories = [],
     isNewItem = false,
     forceAddon = false,
     preselectedDishIds,
@@ -181,6 +183,7 @@ function renderModal(config: RenderConfig = {}) {
     <MenuManagerServiceProvider value={service}>
       <EditModal
         item={item}
+        ownerFoodCategories={ownerFoodCategories}
         restaurantId="rest-1"
         menus={menus}
         allItems={allItems}
@@ -238,6 +241,37 @@ describe('EditModal — form initialization', () => {
     renderModal({ item: makeDishItem({ canonical_category: null, category: 'Salads' }) });
     const select = screen.getByTestId('edit-category-select');
     expect(select.textContent).toContain('Salads');
+  });
+
+  it('includes owner-created categories in the Raw Category dropdown (PDD 2026-06-12 #3)', async () => {
+    // An owner-created category with zero dishes wasn't selectable before — the
+    // options came only from existing items' categories.
+    const user = userEvent.setup();
+    renderModal({
+      item: makeDishItem({ category: 'Mains' }),
+      allItems: [makeDishItem({ id: 'x', category: 'Mains' })],
+      ownerFoodCategories: ['Tapas'],
+    });
+    await user.click(screen.getByTestId('edit-category-select'));
+    const listbox = screen.getByTestId('edit-category-select-listbox');
+    expect(within(listbox).getByRole('option', { name: 'Tapas' })).toBeInTheDocument();
+  });
+
+  it('de-dupes owner categories against item categories case-insensitively (PDD 2026-06-12 #3)', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      item: makeDishItem({ category: 'Mains' }),
+      allItems: [makeDishItem({ id: 'x', category: 'Mains' })],
+      ownerFoodCategories: ['mains'], // collides with 'Mains' (first-seen casing wins)
+    });
+    await user.click(screen.getByTestId('edit-category-select'));
+    const listbox = screen.getByTestId('edit-category-select-listbox');
+    // Only one Mains-family option (the item's 'Mains'); 'mains' must not double up.
+    const mainsOptions = within(listbox)
+      .getAllByRole('option')
+      .filter((o) => (o.textContent ?? '').trim().toLowerCase() === 'mains');
+    expect(mainsOptions).toHaveLength(1);
+    expect(mainsOptions[0].textContent?.trim()).toBe('Mains');
   });
 
   it('initializes active toggle from item.active (inactive → aria-pressed false)', () => {

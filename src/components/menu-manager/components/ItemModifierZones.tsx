@@ -33,6 +33,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MenuItemDisplay, SelectionRule } from '../../../types/restaurant';
+import { isDrinkItem } from '../lib/menuUtils';
 
 const COLOR_ERROR = '#dc2626';
 
@@ -340,6 +341,12 @@ export default function ItemModifierZones({
   // No menu context = no UI. Mirrors the v1 behaviour where the
   // expanded panel was hidden when no menu was selected in the sidebar.
   if (!currentMenuId || !perMenuSides) {
+    return null;
+  }
+
+  // Drinks don't have "Includes" sides — hide the editor entirely for them
+  // (PDD 2026-06-12 #7).
+  if (isDrinkItem(parent)) {
     return null;
   }
 

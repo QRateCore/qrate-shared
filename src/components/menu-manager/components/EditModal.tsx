@@ -35,6 +35,9 @@ interface EditModalProps {
   menus?: MenuSummary[];
   /** All non-addon dish items — used to populate the Dishes tab when editing an addon item */
   allItems?: MenuItemDisplay[];
+  /** Owner-created (possibly empty) food categories — union'd into the Raw
+   *  Category dropdown so newly-added categories are selectable (PDD 2026-06-12 #3). */
+  ownerFoodCategories?: string[];
   onClose: () => void;
   /** Called with the fully merged updated item after save, or with _deleted: true after delete */
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
@@ -617,7 +620,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -652,20 +655,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, onClose
   // restaurant's catalogue, plus the current value, plus an Uncategorized
   // escape hatch. Sorted alphabetically.
   const rawCategoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const it of allItems ?? []) {
-      const c = (it.category ?? '').trim();
-      if (c) set.add(c);
-    }
-    const current = (item.category ?? '').trim();
-    if (current) set.add(current);
+    // De-dupe case-insensitively (first-seen casing wins) across: every item's
+    // raw category, the owner-created categories (incl. empty ones — PDD
+    // 2026-06-12 #3), and the current item's category. Without the owner list a
+    // freshly-created category had no backing item, so it never appeared here.
+    const byLower = new Map<string, string>();
+    const add = (raw: string | null | undefined) => {
+      const c = (raw ?? '').trim();
+      if (c && !byLower.has(c.toLowerCase())) byLower.set(c.toLowerCase(), c);
+    };
+    for (const it of allItems ?? []) add(it.category);
+    for (const c of ownerFoodCategories ?? []) add(c);
+    add(item.category);
     return [
       { value: '', label: 'Uncategorized' },
-      ...[...set]
+      ...[...byLower.values()]
         .sort((a, b) => a.localeCompare(b))
         .map((c) => ({ value: c, label: c })),
     ];
-  }, [allItems, item.category]);
+  }, [allItems, ownerFoodCategories, item.category]);
   // Price is only editable in Add-on mode (dishes price per-menu in MenuBuilder).
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);

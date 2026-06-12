@@ -12,6 +12,7 @@ import {
   UNGROUPED_KEY,
   sectionForCanonical,
   dedupeRawCategoryLabels,
+  isDrinkItem,
   type MenuColor,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
@@ -2437,7 +2438,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         </div>
       )}
 
-      {/* PDD 2026-05-22 — Menu Builder bulk Includes drawer */}
+      {/* PDD 2026-05-22 — Menu Builder bulk Includes drawer.
+          Drinks have no "Includes" sides — exclude them from the bulk apply and
+          tell the owner how many were skipped (PDD 2026-06-12 #9). */}
       {bulkSidesEnabled
         && bulkMenuSidesOpen
         && activeMenuId
@@ -2446,8 +2449,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           menuId={activeMenuId}
           menuName={menus.find((m) => m.id === activeMenuId)?.name}
           selectedItems={items
-            .filter((i) => bulkMenuSelection.has(i.id))
+            .filter((i) => bulkMenuSelection.has(i.id) && !isDrinkItem(i))
             .map((i) => ({ id: i.id, name: i.name }))}
+          skippedDrinkCount={
+            items.filter((i) => bulkMenuSelection.has(i.id) && isDrinkItem(i)).length
+          }
           pool={items}
           loadPerMenuSides={(itemId) => loadPerMenuSides!(activeMenuId, itemId)}
           onBulkAddSides={(itemIds, body) =>

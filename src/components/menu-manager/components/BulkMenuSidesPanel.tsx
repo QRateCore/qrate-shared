@@ -46,6 +46,10 @@ export interface BulkMenuSidesPanelProps {
   menuId: string;
   menuName?: string;
   selectedItems: BulkMenuSidesParent[];
+  /** How many of the owner's selected items were drinks and got excluded from
+   *  this bulk apply (drinks have no "Includes" sides — PDD 2026-06-12 #9).
+   *  Rendered as an informational note when > 0. */
+  skippedDrinkCount?: number;
   /** Full item pool — drives the Includes-tab picker. The component
    *  filters to allowed side item_types (`dish` + `included`) and
    *  excludes the selected parents to prevent self-reference. */
@@ -101,6 +105,7 @@ export default function BulkMenuSidesPanel({
   menuId,
   menuName,
   selectedItems,
+  skippedDrinkCount = 0,
   pool,
   loadPerMenuSides,
   onBulkAddSides,
@@ -421,6 +426,15 @@ export default function BulkMenuSidesPanel({
               {itemCount} item{itemCount === 1 ? '' : 's'} selected
               {menuName ? ` · ${menuName}` : ''}
             </div>
+            {skippedDrinkCount > 0 && (
+              <div
+                data-testid="bulk-menu-sides-skipped-drinks"
+                role="status"
+                style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}
+              >
+                {skippedDrinkCount} drink{skippedDrinkCount === 1 ? '' : 's'} skipped — drinks don’t have sides
+              </div>
+            )}
           </div>
           <button
             type="button"

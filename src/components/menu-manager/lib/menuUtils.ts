@@ -34,6 +34,17 @@ export function sectionForCanonical(canonical: string): MenuSection | undefined 
   return MENU_SECTIONS.find((s) => s.canonical === canonical || s.members.includes(canonical));
 }
 
+/** True when an item is a drink (its primary canonical is Beverages). Used to
+ *  hide the per-menu sides "Includes" editor for drinks and to skip drinks in
+ *  the bulk sides action (PDD 2026-06-12 #7/#9). */
+export function isDrinkItem(item: {
+  canonical_category?: string | null;
+  canonical_categories?: readonly string[] | null;
+}): boolean {
+  const primary = (item.canonical_category || (item.canonical_categories ?? [])[0] || '').trim();
+  return primary === 'Beverages';
+}
+
 // ── Sub-category label normalization ────────────────────────────────────────
 // Raw sub-category labels arrive in inconsistent casing/spacing/punctuation
 // ("Flavors of Tandoor" vs "flavors of tandoor" vs "Flavors  of Tandoor"),
