@@ -34,6 +34,22 @@ export function sectionForCanonical(canonical: string): MenuSection | undefined 
   return MENU_SECTIONS.find((s) => s.canonical === canonical || s.members.includes(canonical));
 }
 
+/** Compute an item's canonical_categories after a drag-drop file/move.
+ *  When the drag came from a DIFFERENT section (`fromCat` set and ≠ `targetCat`),
+ *  drop the source section's member canonicals so the item LEAVES the old course
+ *  (a MOVE — PDD 2026-06-12 #6a, decision D). A pool drag (`fromCat` null) or a
+ *  same-course sub-category drop just adds `targetCat`. */
+export function resolveMoveCanonicals(
+  existing: readonly string[],
+  targetCat: string,
+  fromCat?: string | null,
+): string[] {
+  const isMove = !!fromCat && fromCat !== targetCat;
+  const fromMembers = isMove ? (sectionForCanonical(fromCat as string)?.members ?? [fromCat as string]) : [];
+  const base = isMove ? existing.filter((c) => !fromMembers.includes(c)) : [...existing];
+  return base.includes(targetCat) ? base : [...base, targetCat];
+}
+
 /** True when an item is a drink (its primary canonical is Beverages). Used to
  *  hide the per-menu sides "Includes" editor for drinks and to skip drinks in
  *  the bulk sides action (PDD 2026-06-12 #7/#9). */

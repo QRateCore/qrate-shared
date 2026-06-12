@@ -13,6 +13,7 @@ import {
   sectionForCanonical,
   dedupeRawCategoryLabels,
   isDrinkItem,
+  resolveMoveCanonicals,
   type MenuColor,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
@@ -496,6 +497,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     defaultLabel: string;
     /** Human label for the dragged selection (item name or "N items"). */
     selectionLabel: string;
+    /** Source course the drag started from (null for a pool drag). When set and
+     *  ≠ the target course, the apply MOVES (drops the source canonical) — #6a. */
+    fromCat: string | null;
   } | null>(null);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
@@ -868,6 +872,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     setDragging({ itemIds: ids, fromMenuId: null, fromCat: null });
   }, [selected]);
 
+  // Drag a whole pool category → stage ALL its items as a pool-source drag, so
+  // dropping on a course adds every item at once (PDD 2026-06-12 #4). No
+  // multi-select / expand needed.
+  const handleCategoryDragStart = useCallback((e: React.DragEvent, itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+    e.dataTransfer.setData('text/plain', JSON.stringify(itemIds));
+    e.dataTransfer.effectAllowed = 'move';
+    attachMultiDragGhost(e, itemIds.length);
+    setDragging({ itemIds, fromMenuId: null, fromCat: null });
+  }, []);
+
   const handleMenuItemDragStart = useCallback(
     (e: React.DragEvent, itemId: string, fromMenuId: string, fromCat: string) => {
       const ids = selected.has(itemId) ? [...selected] : [itemId];
@@ -1093,7 +1108,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
       const selectionLabel = toProcess.length === 1 ? toProcess[0].name : `${toProcess.length} items`;
 
-      setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel });
+      setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel, fromCat: snap.fromCat });
     },
     [dragging, items, menus, restaurantId, showToast, trackAction, service],
   );
@@ -1142,7 +1157,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // ✕ chips, not a drop. The paired menu_item_subcategories table is written in
   // its default 'add' mode for the same reason.
   const applyRawCategoryMove = useCallback(
-    (toProcess: MenuItemDisplay[], menuId: string, cat: string, label: string) => {
+    (toProcess: MenuItemDisplay[], menuId: string, cat: string, label: string,
+     fromCat?: string | null) => {
       if (toProcess.length === 0) return;
       const menu = menus.find((m) => m.id === menuId);
       if (!menu) {
@@ -1155,6 +1171,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const newLabels = isUngroupedTarget ? [] : [label];
       const moveLabel = isUngroupedTarget ? 'Ungrouped' : label;
       const ids = new Set(toProcess.map((i) => i.id));
+
+      // MOVE between courses (PDD 2026-06-12 #6a, decision D): when the drag came
+      // FROM a different section, resolveMoveCanonicals drops the source section's
+      // canonicals so the item leaves the old course rather than being added to
+      // both. A pool drag (fromCat null) / same-course drop just adds `cat`.
+      const resolveCanonicals = (cats: readonly string[]): string[] =>
+        resolveMoveCanonicals(cats, cat, fromCat);
       // Append `label` to an item's existing labels (case-insensitive dedupe),
       // preserving what's already there. Ungrouped adds nothing.
       const addLabel = (existing?: readonly string[] | null): string[] => {
@@ -1177,7 +1200,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 return {
                   ...a,
                   raw_categories: addLabel(a.raw_categories),
-                  canonical_categories: cats.includes(cat) ? cats : [...cats, cat],
+                  canonical_categories: resolveCanonicals(cats),
                 };
               }),
             };
@@ -1207,7 +1230,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             let associations;
             if (assoc) {
               const cats = assoc.canonical_categories ?? [];
-              const mergedCats = cats.includes(cat) ? cats : [...cats, cat];
+              const mergedCats = resolveCanonicals(cats);
               associations = await service.updateMenuItemInMenu(item.id, menuId, {
                 raw_categories: addLabel(assoc.raw_categories),
                 canonical_categories: mergedCats,
@@ -1261,7 +1284,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         restaurantId,
         metadata: { itemCount: toProcess.length, toMenuId: menuId, toCategory: cat, label },
       });
-      applyRawCategoryMove(toProcess, menuId, cat, label);
+      applyRawCategoryMove(toProcess, menuId, cat, label, snap.fromCat);
     },
     [dragging, resolveDragItems, restaurantId, trackAction, applyRawCategoryMove],
   );
@@ -2209,6 +2232,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onOpenBulk: (mode) => setBulkMode(mode),
             onOpenBulkModifiers: () => setBulkModifiersOpen(true),
             onDragStart: handleDragStart,
+            onCategoryDragStart: handleCategoryDragStart,
             onDragEnd: handleDragEnd,
             onDragEnterPool: handleDragEnterPool,
             onDragLeavePool: handleDragLeavePool,
@@ -2418,6 +2442,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onOpenBulk={(mode) => setBulkMode(mode)}
             onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
             onDragStart={handleDragStart}
+            onCategoryDragStart={handleCategoryDragStart}
             onDragEnd={handleDragEnd}
             onDragEnterPool={handleDragEnterPool}
             onDragLeavePool={handleDragLeavePool}
@@ -2490,7 +2515,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         defaultLabel={subCatPrompt?.defaultLabel ?? ''}
         onConfirm={(label) => {
           if (subCatPrompt) {
-            applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, label);
+            applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, label, subCatPrompt.fromCat);
           }
           setSubCatPrompt(null);
         }}

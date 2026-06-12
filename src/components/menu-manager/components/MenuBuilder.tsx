@@ -1035,8 +1035,26 @@ function MenuItemRow({
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
       data-approved-addons={approvedAddons > 0 ? approvedAddons : undefined}
+      // Drag a collapsed row to MOVE it between courses or file it under a raw
+      // sub-category (PDD 2026-06-12 #6). Disabled while bulk-selecting (drag
+      // would fight the checkbox UX) and while expanded (the editing UI owns the
+      // pointer). onDragStart carries this row's menu + course so the drop target
+      // can move/file it.
+      draggable={!disableDrag && !expanded}
+      onDragStart={
+        !disableDrag && !expanded
+          ? (e) => onDragStart(e, item.id, menuId, cat)
+          : undefined
+      }
+      onDragEnd={!disableDrag && !expanded ? onDragEnd : undefined}
       className={`w-full border-b border-[var(--border)] ${expanded ? 'bg-[var(--bg)]' : ''}`}
-      style={{ borderLeft: `3px solid ${borderLeftColor}` }}
+      style={{
+        borderLeft: `3px solid ${borderLeftColor}`,
+        // grab cursor signals a collapsed row is draggable (drag onto a course
+        // to MOVE it, or into a sub-category to file it — PDD #6). Only when the
+        // row is actually draggable, so editing/bulk-select rows keep default.
+        cursor: !disableDrag && !expanded ? 'grab' : undefined,
+      }}
     >
       <div className="flex items-stretch w-full">
       <button

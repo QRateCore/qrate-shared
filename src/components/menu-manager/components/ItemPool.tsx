@@ -46,6 +46,8 @@ interface ItemPoolProps {
   onOpenBulk: (mode: BulkMode) => void;
   onOpenBulkModifiers: () => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
+  /** Drag a whole pool category to add all its items at once (PDD 2026-06-12 #4). */
+  onCategoryDragStart?: (e: React.DragEvent, itemIds: string[]) => void;
   onDragEnd: () => void;
   onDragEnterPool: (e: React.DragEvent) => void;
   onDragLeavePool: () => void;
@@ -323,6 +325,7 @@ function CategorySection({
   onSelectClick,
   onEdit,
   onDragStart,
+  onCategoryDragStart,
   onDragEnd,
   activateOnRowClick = false,
 }: {
@@ -343,6 +346,9 @@ function CategorySection({
   onSelectClick: (e: React.MouseEvent, itemId: string) => void;
   onEdit: (id: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
+  /** Drag the whole category header to add ALL its items at once (PDD
+   *  2026-06-12 #4). When omitted, the header isn't draggable. */
+  onCategoryDragStart?: (e: React.DragEvent, itemIds: string[]) => void;
   onDragEnd: () => void;
   activateOnRowClick?: boolean;
 }) {
@@ -364,6 +370,13 @@ function CategorySection({
         aria-expanded={!collapsed}
         aria-label={collapsed ? `Expand ${category}` : `Collapse ${category}`}
         data-testid={`pool-category-header-${category.toLowerCase().replace(/\s+/g, '-')}`}
+        draggable={!!onCategoryDragStart && categoryIds.length > 0}
+        onDragStart={
+          onCategoryDragStart && categoryIds.length > 0
+            ? (e) => onCategoryDragStart(e, categoryIds)
+            : undefined
+        }
+        onDragEnd={onCategoryDragStart ? onDragEnd : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -371,7 +384,10 @@ function CategorySection({
           padding: '6px 4px 6px 0',
           borderBottom: '1px solid var(--border)',
           marginBottom: collapsed ? 0 : 6,
-          cursor: 'pointer',
+          // grab cursor signals the header is draggable (drag the whole
+          // category onto a course to add all its items — PDD #4); falls back
+          // to pointer when drag isn't wired, matching the collapse-toggle role.
+          cursor: !!onCategoryDragStart && categoryIds.length > 0 ? 'grab' : 'pointer',
           userSelect: 'none',
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = '#f6f6f6'; }}
@@ -494,6 +510,7 @@ export default function ItemPool({
   onOpenBulk,
   onOpenBulkModifiers,
   onDragStart,
+  onCategoryDragStart,
   onDragEnd,
   onDragEnterPool,
   onDragLeavePool,
@@ -967,6 +984,7 @@ export default function ItemPool({
                   }
                   onEdit={handleEditItemTracked}
                   onDragStart={onDragStart}
+                  onCategoryDragStart={onCategoryDragStart}
                   onDragEnd={onDragEnd}
                   activateOnRowClick={activateOnRowClick}
                 />
