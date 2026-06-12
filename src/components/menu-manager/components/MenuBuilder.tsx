@@ -1386,15 +1386,23 @@ function MenuItemRow({
 
 // ── CategoryBucket ────────────────────────────────────────────────────────────
 
-/** Distinct raw sub-category labels carried by a course's items, in display
- *  form (most-human variant via preferScrapedLabel), sorted. Mirrors the
- *  per-bucket sub-accordion grouping so the header chip and the accordions
- *  agree on which labels exist. The Ungrouped sentinel is excluded. */
+/** Max raw-category chips rendered inline on a course header before the rest
+ *  collapse into a single "+N" overflow chip — keeps the row to one line. */
+const MAX_RAWCAT_CHIPS = 4;
+
+export interface BucketRawCategory { label: string; count: number }
+
+/** Distinct raw sub-categories carried by a course's items, each with its
+ *  food-item count (distinct items carrying that label in the course). Display
+ *  label is the most-human variant (preferScrapedLabel); the Ungrouped sentinel
+ *  is excluded. Mirrors the per-bucket sub-accordion grouping so the header
+ *  chips and the accordions agree. Sorted by count desc, then label, so the
+ *  most-populated sub-categories survive the inline-chip cap. */
 function deriveBucketRawCategories(
   items: MenuItemDisplay[],
   getLabels: (id: string) => readonly string[] | undefined | null,
-): string[] {
-  const byKey = new Map<string, Map<string, number>>();
+): BucketRawCategory[] {
+  const byKey = new Map<string, { variants: Map<string, number>; items: Set<string> }>();
   for (const item of items) {
     const labels = getLabels(item.id);
     if (!labels) continue;
@@ -1402,22 +1410,21 @@ function deriveBucketRawCategories(
       if (!raw || raw === UNGROUPED_KEY) continue;
       const key = normalizeSubcatKey(raw);
       if (!key) continue;
-      let variants = byKey.get(key);
-      if (!variants) { variants = new Map(); byKey.set(key, variants); }
-      variants.set(raw, (variants.get(raw) ?? 0) + 1);
+      let entry = byKey.get(key);
+      if (!entry) { entry = { variants: new Map(), items: new Set() }; byKey.set(key, entry); }
+      entry.variants.set(raw, (entry.variants.get(raw) ?? 0) + 1);
+      entry.items.add(item.id); // distinct food-item count per sub-category
     }
   }
-  const out: string[] = [];
-  for (const variants of byKey.values()) {
-    out.push(preferScrapedLabel([...variants].map(([label, count]) => ({ label, count }))));
+  const out: BucketRawCategory[] = [];
+  for (const entry of byKey.values()) {
+    out.push({
+      label: preferScrapedLabel([...entry.variants].map(([label, count]) => ({ label, count }))),
+      count: entry.items.size,
+    });
   }
-  return sortedSubCategoryLabels(out);
-}
-
-/** Truncate an over-long raw-category label so one long subcategory can't blow
- *  out the header chip's width. */
-function truncRawCatLabel(label: string, max = 20): string {
-  return label.length > max ? `${label.slice(0, max).trimEnd()}…` : label;
+  out.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return out;
 }
 
 function CategoryBucket({
@@ -1621,27 +1628,45 @@ function CategoryBucket({
         {bucketRawCategories.length > 0 ? (
           <span
             data-testid={`bucket-rawcats-${category}`}
-            title={`${bucketRawCategories.length} raw categor${bucketRawCategories.length === 1 ? 'y' : 'ies'}: ${bucketRawCategories.join(', ')}`}
-            className="flex-1 min-w-0 inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text2)]"
+            className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden normal-case"
           >
-            <span
-              className="rounded border border-[var(--border)] bg-[var(--bg2)] px-1.5 py-px normal-case"
-              style={{
-                maxWidth: 260,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: 'inline-block',
-              }}
-            >
-              {bucketRawCategories.map((l) => truncRawCatLabel(l)).join(' · ')}
-            </span>
-            <span
-              data-testid={`bucket-rawcats-count-${category}`}
-              className="shrink-0 rounded-full bg-[var(--bg2)] px-1.5 py-px font-semibold"
-            >
-              {bucketRawCategories.length}
-            </span>
+            {/* One chip per sub-category, each "{label} {item-count}". Each chip
+                is width-bounded (label ellipsis-truncates) and only the first
+                MAX_RAWCAT_CHIPS render inline; the rest collapse into a single
+                "+N" chip so the row stays on one line. */}
+            {bucketRawCategories.slice(0, MAX_RAWCAT_CHIPS).map((rc) => (
+              <span
+                key={rc.label}
+                data-testid={`bucket-rawcat-chip-${category}-${rc.label}`}
+                title={`${rc.label} — ${rc.count} item${rc.count === 1 ? '' : 's'}`}
+                className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text2)] rounded border border-[var(--border)] bg-[var(--bg2)] px-1.5 py-px"
+                style={{ maxWidth: 140 }}
+              >
+                <span
+                  style={{
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: 'inline-block',
+                  }}
+                >
+                  {rc.label}
+                </span>
+                <span className="shrink-0 font-semibold opacity-80">{rc.count}</span>
+              </span>
+            ))}
+            {bucketRawCategories.length > MAX_RAWCAT_CHIPS && (
+              <span
+                data-testid={`bucket-rawcats-overflow-${category}`}
+                title={bucketRawCategories
+                  .slice(MAX_RAWCAT_CHIPS)
+                  .map((rc) => `${rc.label} (${rc.count})`)
+                  .join(', ')}
+                className="shrink-0 text-[10px] font-semibold text-[var(--text2)] rounded-full bg-[var(--bg2)] px-1.5 py-px"
+              >
+                +{bucketRawCategories.length - MAX_RAWCAT_CHIPS}
+              </span>
+            )}
           </span>
         ) : (
           <span className="flex-1" aria-hidden="true" />
@@ -2139,5 +2164,4 @@ export default function MenuBuilder({
 // chip (2026-06-11).
 export {
   deriveBucketRawCategories as _deriveBucketRawCategories,
-  truncRawCatLabel as _truncRawCatLabel,
 };
