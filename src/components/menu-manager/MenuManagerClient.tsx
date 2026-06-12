@@ -34,7 +34,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory';
+export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory';
 
 export interface DragState {
   itemIds: string[];
@@ -2159,6 +2159,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkAddMembersToGrouping,
             heatLabels,
             sweetnessLabels,
+            // Menu Builder is a single-menu context → enable bulk "Remove from
+            // menu" (placement removal; items stay in catalogue) — PDD #8.
+            currentMenuId: activeMenuId ?? undefined,
+            currentMenuName: menus.find((m) => m.id === activeMenuId)?.name,
           }}
         />
       )}

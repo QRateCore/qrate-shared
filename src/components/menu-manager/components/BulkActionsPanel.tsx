@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useEffect, useState, useMemo } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, FolderMinus, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag } from 'lucide-react';
 import { BulkMemberPicker } from './BulkMemberPicker';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
@@ -63,6 +63,12 @@ interface BulkActionsPanelProps {
    * string clears the category to Uncategorized.
    */
   onBulkRawCategory?: (category: string, itemIds: string[]) => Promise<void>;
+  /** When set (Menu Builder only — a single-menu context), enables the
+   *  "Remove from menu" action: bulk-removes the selected items' placement from
+   *  THIS menu (they stay in the catalogue). Distinct from the destructive
+   *  catalogue "Delete" (PDD 2026-06-12 #8). */
+  currentMenuId?: string;
+  currentMenuName?: string;
   /** Optional: bulk sweetness update — owner app wires this to the sweetness API */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
   /**
@@ -185,6 +191,9 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   // (Food Library bulk remove). Listed after Grouping so the two related
   // modes sit together in the tab bar.
   { key: 'removeGrouping', label: 'Remove grouping', icon: <Layers2 size={13} /> },
+  // Remove-from-menu is opt-in via currentMenuId (Menu Builder only) — removes
+  // the placement from THIS menu; items stay in the catalogue (PDD 2026-06-12 #8).
+  { key: 'removeFromMenu', label: 'Remove from menu', icon: <FolderMinus size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -221,6 +230,8 @@ export default function BulkActionsPanel({
   loadGroupingsForItem,
   onBulkAddMembersToGrouping,
   onBulkRawCategory,
+  currentMenuId,
+  currentMenuName,
   heatLabels,
   sweetnessLabels,
 }: BulkActionsPanelProps) {
@@ -231,7 +242,8 @@ export default function BulkActionsPanel({
     .filter((m) => m.key !== 'grouping' || !!onBulkApplyGrouping)
     .filter((m) =>
       m.key !== 'removeGrouping' || (!!onBulkRemoveGrouping && !!loadGroupingsForItem))
-    .filter((m) => m.key !== 'rawCategory' || !!onBulkRawCategory);
+    .filter((m) => m.key !== 'rawCategory' || !!onBulkRawCategory)
+    .filter((m) => m.key !== 'removeFromMenu' || !!currentMenuId);
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
     : [...DEFAULT_HEAT_LABELS];
@@ -401,6 +413,23 @@ export default function BulkActionsPanel({
       }
     }
     if (tasks.length === 0) { setError('None of the selected items are in the chosen menus'); return; }
+    await executeAll(tasks, (updates) => onComplete(mergeAssociations(items, updates), selected));
+  }
+
+  // Remove the selected items' placement from THIS menu (Menu Builder context).
+  // Non-destructive — the items stay in the catalogue (PDD 2026-06-12 #8).
+  async function runRemoveFromMenu() {
+    if (!currentMenuId) return;
+    const tasks: Array<() => Promise<{ itemId: string; associations: MenuAssociation[] }>> = [];
+    for (const item of selectedItems) {
+      const inMenu = (item.menu_associations ?? []).some((a) => a.menu_id === currentMenuId);
+      if (!inMenu) continue;
+      tasks.push(async () => ({
+        itemId: item.id,
+        associations: await service.removeItemFromMenu(item.id, currentMenuId),
+      }));
+    }
+    if (tasks.length === 0) { setError('None of the selected items are on this menu'); return; }
     await executeAll(tasks, (updates) => onComplete(mergeAssociations(items, updates), selected));
   }
 
@@ -974,6 +1003,7 @@ export default function BulkActionsPanel({
       switch (mode) {
         case 'assign':       await runAssign(); break;
         case 'remove':       await runRemove(); break;
+        case 'removeFromMenu': await runRemoveFromMenu(); break;
         case 'boost':        await runBoost(); break;
         case 'special':      await runSpecial(); break;
         case 'availability': await runAvailability(); break;
@@ -1296,6 +1326,15 @@ export default function BulkActionsPanel({
                 }}
               />
             </div>
+          )}
+          {mode === 'removeFromMenu' && (
+            <RemoveFromMenuForm
+              count={count}
+              onMenuCount={selectedItems.filter((i) =>
+                (i.menu_associations ?? []).some((a) => a.menu_id === currentMenuId),
+              ).length}
+              menuName={currentMenuName}
+            />
           )}
           {mode === 'delete' && (
             <DeleteForm count={count} confirmed={deleteConfirm} />
@@ -2035,6 +2074,32 @@ function DietaryForm({
           {pickedTags.size} tag{pickedTags.size !== 1 ? 's' : ''} selected — will be added to all selected items.
         </p>
       )}
+    </div>
+  );
+}
+
+function RemoveFromMenuForm(
+  { count, onMenuCount, menuName }: { count: number; onMenuCount: number; menuName?: string },
+) {
+  const skipped = Math.max(0, count - onMenuCount);
+  return (
+    <div data-testid="remove-from-menu-form">
+      <p style={{ fontSize: 13, color: 'var(--text)', margin: '0 0 6px' }}>
+        Remove {onMenuCount} item{onMenuCount !== 1 ? 's' : ''} from{' '}
+        <strong>{menuName ?? 'this menu'}</strong>?
+      </p>
+      {skipped > 0 && (
+        <p
+          data-testid="remove-from-menu-skipped"
+          style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 6px' }}
+        >
+          {skipped} of {count} selected {skipped === 1 ? 'is' : 'are'} not on this menu and will be skipped.
+        </p>
+      )}
+      <p style={{ fontSize: 12, color: 'var(--text2)', margin: 0 }}>
+        They stay in your catalogue and on any other menus — only this menu’s
+        placement is removed.
+      </p>
     </div>
   );
 }

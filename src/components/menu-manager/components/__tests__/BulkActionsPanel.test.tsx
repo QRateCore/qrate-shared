@@ -28,7 +28,7 @@ import type {
 } from '../../../../types/restaurant';
 
 // ── Local BulkMode replica (avoids importing the 4000-line MenuManagerClient) ─
-type BulkMode = 'assign' | 'remove' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'dietary';
+type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'dietary';
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
@@ -109,6 +109,8 @@ interface PanelConfig {
   items: MenuItemDisplay[];
   menus: MenuSummary[];
   initialMode?: BulkMode;
+  currentMenuId?: string;
+  currentMenuName?: string;
   onClose?: ReturnType<typeof vi.fn>;
   onComplete?: ReturnType<typeof vi.fn>;
 }
@@ -123,6 +125,8 @@ function renderPanel(config: PanelConfig, service: MenuManagerService) {
         items={config.items}
         menus={config.menus}
         initialMode={config.initialMode ?? 'assign'}
+        currentMenuId={config.currentMenuId}
+        currentMenuName={config.currentMenuName}
         onClose={onClose}
         onComplete={onComplete}
       />
@@ -843,5 +847,82 @@ describe('BulkActionsPanel — mergeAssociations (via assign)', () => {
     const [updatedItems] = onComplete.mock.calls[0];
     const updatedItem3 = (updatedItems as MenuItemDisplay[]).find((i) => i.id === 'item-3');
     expect(updatedItem3?.menu_associations).toEqual(newAssocs);
+  });
+});
+
+describe('BulkActionsPanel — Remove from menu (PDD 2026-06-12 #8)', () => {
+  it('hides the Remove-from-menu tab with no current-menu context', () => {
+    const service = makeService();
+    renderPanel({ selected: new Set(['item-1']), items: ALL_ITEMS, menus: ALL_MENUS }, service);
+    expect(screen.queryByTestId('bulk-tab-removeFromMenu')).not.toBeInTheDocument();
+  });
+
+  it('shows the tab on a builder (single-menu) context', () => {
+    const service = makeService();
+    renderPanel(
+      { selected: new Set(['item-1']), items: ALL_ITEMS, menus: ALL_MENUS,
+        currentMenuId: 'menu-a', currentMenuName: 'All Day Menu' },
+      service,
+    );
+    expect(screen.getByTestId('bulk-tab-removeFromMenu')).toBeInTheDocument();
+  });
+
+  it('removes only selected items that are on the current menu; skips the rest', async () => {
+    const user = userEvent.setup();
+    const removeSpy = vi.fn().mockResolvedValue([]);
+    const service = makeService({ removeItemFromMenu: removeSpy });
+    const { onComplete } = renderPanel(
+      { selected: new Set(['item-1', 'item-3']), // item-1 ∈ menu-a; item-3 ∈ no menus
+        items: ALL_ITEMS, menus: ALL_MENUS, initialMode: 'removeFromMenu',
+        currentMenuId: 'menu-a', currentMenuName: 'All Day Menu' },
+      service,
+    );
+    expect(screen.getByTestId('remove-from-menu-form')).toBeInTheDocument();
+    await user.click(screen.getByTestId('bulk-apply'));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledTimes(1));
+    expect(removeSpy).toHaveBeenCalledWith('item-1', 'menu-a');
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+  });
+
+  it('errors (and calls nothing) when none of the selected items are on the menu', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+    renderPanel(
+      { selected: new Set(['item-3']), items: ALL_ITEMS, menus: ALL_MENUS,
+        initialMode: 'removeFromMenu', currentMenuId: 'menu-a' },
+      service,
+    );
+    await user.click(screen.getByRole('button', { name: /apply/i }));
+    expect(screen.getByTestId('bulk-error')).toBeInTheDocument();
+    expect(service.removeItemFromMenu).not.toHaveBeenCalled();
+  });
+
+  it('removes a multi-menu item from this menu only; the merge keeps other-menu placements', async () => {
+    const user = userEvent.setup();
+    // item-2 ∈ menu-a + menu-b; the service returns the REMAINING associations
+    // (menu-b) after removing menu-a — so the merged item keeps its menu-b row.
+    const removeSpy = vi.fn().mockResolvedValue([makeAssoc('menu-b')]);
+    const service = makeService({ removeItemFromMenu: removeSpy });
+    const { onComplete } = renderPanel(
+      { selected: new Set(['item-2']), items: ALL_ITEMS, menus: ALL_MENUS,
+        initialMode: 'removeFromMenu', currentMenuId: 'menu-a', currentMenuName: 'All Day Menu' },
+      service,
+    );
+    await user.click(screen.getByTestId('bulk-apply'));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('item-2', 'menu-a'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const [updatedItems] = onComplete.mock.calls[0];
+    const item2 = (updatedItems as MenuItemDisplay[]).find((i) => i.id === 'item-2');
+    expect(item2?.menu_associations?.map((a) => a.menu_id)).toEqual(['menu-b']);
+  });
+
+  it('shows how many selected items will be skipped (not on this menu)', () => {
+    const service = makeService();
+    renderPanel(
+      { selected: new Set(['item-1', 'item-3']), // item-1 ∈ menu-a; item-3 ∈ none
+        items: ALL_ITEMS, menus: ALL_MENUS, initialMode: 'removeFromMenu', currentMenuId: 'menu-a' },
+      service,
+    );
+    expect(screen.getByTestId('remove-from-menu-skipped')).toHaveTextContent(/1 of 2 .*skipped/i);
   });
 });
