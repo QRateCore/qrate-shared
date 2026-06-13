@@ -20,6 +20,7 @@ import {
 } from '../../../constants/food-tags';
 import { deriveHeatFromLabel } from '../../../utils/spice-derivation';
 import Select from '../../common/Select';
+import RawCategorySelect from './RawCategorySelect';
 import { processImageForUpload } from '../../../utils/imageProcessing';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { broadcastRecommendationChange, onRecommendationChange } from '../../../utils/recommendation-broadcast';
@@ -651,29 +652,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // (menu_items.category_name, surfaced as `category`). This is now the
   // owner-editable category field on the item, replacing Mapped Course.
   const [rawCategory, setRawCategory] = useState(item.category ?? '');
-  // Dropdown options: the distinct raw labels already in use across this
-  // restaurant's catalogue, plus the current value, plus an Uncategorized
-  // escape hatch. Sorted alphabetically.
-  const rawCategoryOptions = useMemo(() => {
-    // De-dupe case-insensitively (first-seen casing wins) across: every item's
-    // raw category, the owner-created categories (incl. empty ones — PDD
-    // 2026-06-12 #3), and the current item's category. Without the owner list a
-    // freshly-created category had no backing item, so it never appeared here.
-    const byLower = new Map<string, string>();
-    const add = (raw: string | null | undefined) => {
-      const c = (raw ?? '').trim();
-      if (c && !byLower.has(c.toLowerCase())) byLower.set(c.toLowerCase(), c);
-    };
-    for (const it of allItems ?? []) add(it.category);
-    for (const c of ownerFoodCategories ?? []) add(c);
-    add(item.category);
-    return [
-      { value: '', label: 'Uncategorized' },
-      ...[...byLower.values()]
-        .sort((a, b) => a.localeCompare(b))
-        .map((c) => ({ value: c, label: c })),
-    ];
-  }, [allItems, ownerFoodCategories, item.category]);
+  // Raw Category dropdown options are derived by the shared <RawCategorySelect>
+  // (single source of truth across the food-item EditModal + bulk-actions
+  // drawer): items[].category ∪ ownerFoodCategories ∪ current value, so a
+  // freshly-created category is selectable even before any dish carries it.
   // Price is only editable in Add-on mode (dishes price per-menu in MenuBuilder).
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);
@@ -2849,18 +2831,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               <label style={labelStyle} htmlFor="edit-category">
                 Raw Category
               </label>
-              <Select
+              <RawCategorySelect
                 id="edit-category"
                 value={rawCategory}
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   setRawCategory(v);
                   // For brand-new items, keep the canonical classifier in sync so
                   // the Beverages / Desserts sections still surface during creation.
                   if (isNewItem) setCategory(toCanonical(v) ?? '');
                 }}
                 data-testid="edit-category-select"
-                options={rawCategoryOptions}
+                items={allItems}
+                ownerFoodCategories={ownerFoodCategories}
+                currentValue={item.category}
                 placeholder="— Select category —"
               />
             </div>

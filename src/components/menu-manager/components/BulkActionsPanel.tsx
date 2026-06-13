@@ -2,12 +2,13 @@
 import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, FolderMinus, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag } from 'lucide-react';
 import { BulkMemberPicker } from './BulkMemberPicker';
 import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
+import RawCategorySelect from './RawCategorySelect';
 import type { BulkMode } from '../MenuManagerClient';
 import {
   DEFAULT_HEAT_LABELS,
@@ -63,6 +64,10 @@ interface BulkActionsPanelProps {
    * string clears the category to Uncategorized.
    */
   onBulkRawCategory?: (category: string, itemIds: string[]) => Promise<void>;
+  /** Owner-created (possibly item-less) food categories — unioned into the Raw
+   *  Category picker so freshly-created categories are selectable here too,
+   *  matching the food-item EditModal (shared <RawCategorySelect>). */
+  ownerFoodCategories?: string[];
   /** When set (Menu Builder only — a single-menu context), enables the
    *  "Remove from menu" action: bulk-removes the selected items' placement from
    *  THIS menu (they stay in the catalogue). Distinct from the destructive
@@ -230,6 +235,7 @@ export default function BulkActionsPanel({
   loadGroupingsForItem,
   onBulkAddMembersToGrouping,
   onBulkRawCategory,
+  ownerFoodCategories,
   currentMenuId,
   currentMenuName,
   heatLabels,
@@ -358,21 +364,11 @@ export default function BulkActionsPanel({
 
   const selectedItems = items.filter((i) => selected.has(i.id));
   const count = selectedItems.length;
-  // Distinct existing raw categories across the catalogue, for the Raw
-  // Category tab's Select. '__uncat__' is a sentinel for clearing to
-  // Uncategorized (distinct from the empty placeholder value).
+  // '__uncat__' is the sentinel for "clear to Uncategorized" (distinct from the
+  // empty placeholder value). The Raw Category tab's options now come from the
+  // shared <RawCategorySelect> (items[].category ∪ ownerFoodCategories ∪ current),
+  // so a freshly-created category is selectable here too — parity with EditModal.
   const RAW_UNCAT_SENTINEL = '__uncat__';
-  const rawCategoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const it of items) {
-      const c = (it.category ?? '').trim();
-      if (c && c.toLowerCase() !== 'uncategorized') set.add(c);
-    }
-    return [
-      { value: RAW_UNCAT_SENTINEL, label: 'Uncategorized' },
-      ...[...set].sort((a, b) => a.localeCompare(b)).map((c) => ({ value: c, label: c })),
-    ];
-  }, [items]);
 
   // Menus that at least one selected item belongs to (for remove/boost/special scope)
   const relevantMenuIds = new Set(
@@ -1299,10 +1295,12 @@ export default function BulkActionsPanel({
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>
                 Existing category
               </label>
-              <Select
+              <RawCategorySelect
                 value={pickedRawCategory}
-                onChange={(e) => { setPickedRawCategory(e.target.value); setNewRawCategory(''); setError(null); }}
-                options={rawCategoryOptions}
+                onChange={(v) => { setPickedRawCategory(v); setNewRawCategory(''); setError(null); }}
+                items={items}
+                ownerFoodCategories={ownerFoodCategories}
+                uncategorizedValue={RAW_UNCAT_SENTINEL}
                 placeholder="— Select category —"
                 data-testid="bulk-rawcat-select"
               />
