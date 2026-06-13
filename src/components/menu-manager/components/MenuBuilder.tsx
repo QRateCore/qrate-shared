@@ -611,139 +611,13 @@ function RecInactiveChip({
   );
 }
 
-// Raw sub-category chips on an item row (menu raw sub-categories, Step 8).
-// Reuses onUpdateSettings → handleUpdateSettings (instrumented write path); the
-// refcount pending-write tracker protects against concurrent same-id writes.
-function RawCategoryChips({
-  labels,
-  menuId,
-  itemId,
-  onUpdateSettings,
-}: {
-  labels: string[];
-  menuId: string;
-  itemId: string;
-  onUpdateSettings: (menuId: string, itemId: string, patch: MenuItemJunctionSettings) => Promise<void>;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState('');
-  // Drop the Ungrouped sentinel — chips only show real labels.
-  const known = labels.filter((l) => l !== UNGROUPED_KEY);
-
-  const addLabel = (raw: string) => {
-    const v = raw.trim();
-    setAdding(false);
-    setDraft('');
-    if (!v || v.length > 60) return;
-    if (known.some((l) => l.toLowerCase() === v.toLowerCase())) return;
-    void onUpdateSettings(menuId, itemId, { raw_categories: [...known, v] });
-  };
-  const removeLabel = (l: string) => {
-    void onUpdateSettings(menuId, itemId, { raw_categories: known.filter((x) => x !== l) });
-  };
-
-  return (
-    <div className="flex flex-wrap items-center gap-1 ml-1" data-testid={`item-rawcats-${itemId}`}>
-      {known.map((l) => (
-        <span
-          key={l}
-          className="inline-flex items-center gap-1 rounded-full"
-          // High-contrast pill: black letters on white with a distinct dark
-          // border so the sub-category label reads clearly on the menu row.
-          style={{
-            background: '#FFFFFF',
-            color: '#1A1613',
-            border: '1.5px solid #1A1613',
-            // Less right padding — the × button below provides its own roomy
-            // hit area, so the pill stays compact while the click target grows.
-            padding: '2px 5px 2px 10px',
-            fontSize: 12,
-            fontWeight: 600,
-            lineHeight: 1.2,
-          }}
-          data-testid={`item-rawcat-chip-${itemId}-${l}`}
-        >
-          {l}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); removeLabel(l); }}
-            aria-label={`Remove sub-category ${l}`}
-            data-testid={`item-rawcat-remove-${itemId}-${l}`}
-            // Roomy 24×24 circular hit target (was just the glyph) with a red
-            // hover wash so the whole area reads as clickable — much easier to
-            // hit than the bare ×.
-            className="inline-flex items-center justify-center rounded-full leading-none hover:bg-red-100"
-            style={{
-              color: '#dc2626',
-              fontSize: 16,
-              fontWeight: 800,
-              lineHeight: 1,
-              width: 24,
-              height: 24,
-              marginLeft: 2,
-              cursor: 'pointer',
-            }}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      {adding ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') addLabel(draft);
-            if (e.key === 'Escape') { setAdding(false); setDraft(''); }
-          }}
-          onBlur={() => addLabel(draft)}
-          maxLength={60}
-          placeholder="sub-category…"
-          data-testid={`item-rawcat-input-${itemId}`}
-          className="rounded-full w-28"
-          style={{
-            border: '1.5px solid #1A1613',
-            background: '#FFFFFF',
-            color: '#1A1613',
-            padding: '3px 9px',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setAdding(true); }}
-          aria-label="Add sub-category"
-          data-testid={`item-rawcat-add-${itemId}`}
-          className="inline-flex items-center justify-center rounded-full leading-none"
-          // Match the larger high-contrast chip: white pill, dark dashed border,
-          // bold dark ＋ so it reads as an actionable "add" affordance.
-          style={{
-            background: '#FFFFFF',
-            color: '#1A1613',
-            border: '1.5px dashed #1A1613',
-            padding: '2px 9px',
-            fontSize: 15,
-            fontWeight: 800,
-            lineHeight: 1,
-            cursor: 'pointer',
-          }}
-        >
-          ＋
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── MenuItemRow ───────────────────────────────────────────────────────────────
 
 function MenuItemRow({
   item,
   menuId,
   cat,
+  subLabel,
   settings,
   itemsById,
   menus,
@@ -766,6 +640,11 @@ function MenuItemRow({
   item: MenuItemDisplay;
   menuId: string;
   cat: string;
+  /** The raw sub-category group this row is rendered under, when nested. Used
+   *  only to label the trash button so it reads "Remove from <sub-category>"
+   *  rather than "Remove from menu" — the scoped removal logic itself lives in
+   *  the parent's onRemove. Undefined / UNGROUPED_KEY ⇒ whole-menu removal. */
+  subLabel?: string;
   settings: MenuItemJunctionSettings;
   itemsById: Map<string, MenuItemDisplay>;
   /** All menus on the restaurant — drives the Active vs Inactive Recs
@@ -1213,14 +1092,6 @@ function MenuItemRow({
               )}
             </div>
 
-            {/* Raw sub-category chips (Step 8) — ✕ to remove, ＋ to add. */}
-            <RawCategoryChips
-              labels={settings.raw_categories ?? []}
-              menuId={menuId}
-              itemId={item.id}
-              onUpdateSettings={onUpdateSettings}
-            />
-
             <span className="flex-1" />
 
             {/* Badges */}
@@ -1271,16 +1142,24 @@ function MenuItemRow({
         <Pencil size={14} />
       </button>
 
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        data-testid={`remove-from-menu-${item.id}`}
-        aria-label={`Remove ${item.name} from menu`}
-        title="Remove from menu"
-        className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]"
-      >
-        <Trash2 size={14} />
-      </button>
+      {(() => {
+        // Scoped trash: when the row sits under a real raw sub-category, the
+        // trash removes the item from THAT sub-category only (parent onRemove);
+        // otherwise (Ungrouped / flat bucket) it removes from the menu.
+        const scoped = !!subLabel && subLabel !== UNGROUPED_KEY;
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            data-testid={`remove-from-menu-${item.id}`}
+            aria-label={scoped ? `Remove ${item.name} from sub-category ${subLabel}` : `Remove ${item.name} from menu`}
+            title={scoped ? `Remove from “${subLabel}”` : 'Remove from menu'}
+            className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]"
+          >
+            <Trash2 size={14} />
+          </button>
+        );
+      })()}
       </div>
 
       {/* Expanded settings — info bar on top, three modifier panels below */}
@@ -1486,6 +1365,44 @@ function deriveBucketRawCategories(
   }
   out.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   return out;
+}
+
+/** The action the row's trash button should take, given where the row is
+ *  rendered. This is the pure decision behind MenuItemRow's onRemove:
+ *
+ *  - `sub-category` — the row sits under a real raw sub-category, so the trash
+ *    is scoped to THAT sub-category only: drop its label (and any casing /
+ *    punctuation variant of it, matched on the normalized key) from the item's
+ *    raw_categories. The item stays on the menu and under any other
+ *    sub-categories. `raw_categories` is the replacement array to PATCH.
+ *  - `canonical-category` — no sub-category to scope to (Ungrouped / flat) and
+ *    the item spans multiple canonical categories on this menu, so remove only
+ *    the current category. `canonical_categories` is the replacement array.
+ *  - `whole-menu` — no sub-category and the item's last/only category, so the
+ *    item leaves the menu entirely.
+ *
+ *  The UNGROUPED_KEY sentinel is never treated as a real sub-category. */
+export type RowRemoval =
+  | { kind: 'sub-category'; raw_categories: string[] }
+  | { kind: 'canonical-category'; canonical_categories: string[] }
+  | { kind: 'whole-menu' };
+
+function computeRowRemoval(
+  settings: Pick<MenuItemJunctionSettings, 'raw_categories' | 'canonical_categories'>,
+  category: string,
+  subLabel: string | undefined,
+): RowRemoval {
+  if (subLabel && subLabel !== UNGROUPED_KEY) {
+    const targetKey = normalizeSubcatKey(subLabel);
+    const known = (settings.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
+    const raw_categories = known.filter((l) => normalizeSubcatKey(l) !== targetKey);
+    return { kind: 'sub-category', raw_categories };
+  }
+  const cats = settings.canonical_categories ?? [];
+  if (cats.length > 1) {
+    return { kind: 'canonical-category', canonical_categories: cats.filter((c) => c !== category) };
+  }
+  return { kind: 'whole-menu' };
 }
 
 function CategoryBucket({
@@ -1801,13 +1718,17 @@ function CategoryBucket({
             </div>
           ) : (() => {
             // Render one item row (with the optional bulk-selection wrapper).
-            const renderRow = (item: MenuItemDisplay) => {
+            // `subLabel` is the raw sub-category group the row is nested under
+            // (undefined for the flat/onlyUngrouped render) — it scopes the
+            // trash button below to that single sub-category.
+            const renderRow = (item: MenuItemDisplay, subLabel?: string) => {
               const row = (
                 <MenuItemRow
                   key={item.id}
                   item={item}
                   menuId={menuId}
                   cat={category}
+                  subLabel={subLabel}
                   settings={getSettings(menuId, item.id)}
                   itemsById={itemsById}
                   menus={menus}
@@ -1833,16 +1754,15 @@ function CategoryBucket({
                     && (bulkSelection?.size ?? 0) > 0
                   }
                   onRemove={() => {
-                    const s = getSettings(menuId, item.id);
-                    const cats = s.canonical_categories ?? [];
-                    if (cats.length > 1) {
-                      // Item spans multiple categories on this menu — remove only
-                      // this category rather than the whole menu placement.
-                      void onUpdateSettings(menuId, item.id, {
-                        canonical_categories: cats.filter((c) => c !== category),
-                      });
+                    // computeRowRemoval decides the scope from where the row is
+                    // rendered (subLabel): drop just this sub-category, drop just
+                    // this canonical category, or remove from the menu entirely.
+                    const removal = computeRowRemoval(getSettings(menuId, item.id), category, subLabel);
+                    if (removal.kind === 'sub-category') {
+                      void onUpdateSettings(menuId, item.id, { raw_categories: removal.raw_categories });
+                    } else if (removal.kind === 'canonical-category') {
+                      void onUpdateSettings(menuId, item.id, { canonical_categories: removal.canonical_categories });
                     } else {
-                      // Last (or only) category — remove from menu entirely.
                       onRemoveItem(item.id, menuId);
                     }
                   }}
@@ -1918,7 +1838,8 @@ function CategoryBucket({
             const orderedLabels = sortedSubCategoryLabels([...groups.keys()]);
             const onlyUngrouped = orderedLabels.length === 1 && orderedLabels[0] === UNGROUPED_KEY;
             if (onlyUngrouped) {
-              return bucketItems.map(renderRow);
+              // No subLabel — flat render falls back to whole-menu removal.
+              return bucketItems.map((item) => renderRow(item));
             }
             return orderedLabels.map((label) => {
               const groupItems = groups.get(label) ?? [];
@@ -1958,7 +1879,7 @@ function CategoryBucket({
                   }
                 >
                   {groupItems.map((item) => (
-                    <Fragment key={`${label}:${item.id}`}>{renderRow(item)}</Fragment>
+                    <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>
                   ))}
                 </SubCategoryGroup>
               );
@@ -2222,7 +2143,8 @@ export default function MenuBuilder({
 
 // Test-only exports ("_"-prefixed = test-only public, not part of the
 // component's public API). Pure helpers behind the course-header raw-category
-// chip (2026-06-11).
+// chip (2026-06-11) and the scoped row-trash removal decision (2026-06-13).
 export {
   deriveBucketRawCategories as _deriveBucketRawCategories,
+  computeRowRemoval as _computeRowRemoval,
 };

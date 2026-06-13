@@ -570,3 +570,143 @@ describe('MenuManagerClient — pending-write cleanup discipline (integration)',
     expect(lastBuilderProps!.items.find((i) => i.id === 'A')?.name).toBe('A-post-undo');
   });
 });
+
+// ── Scoped row-trash removal write path (2026-06-13) ───────────────────────────
+
+/**
+ * The row trash button, when the row is rendered under a real raw sub-category,
+ * calls onUpdateSettings with a `raw_categories` patch that drops that one
+ * sub-category (rather than removing the item from the menu). These tests pin
+ * the resulting write path through MenuManagerClient.handleUpdateSettings:
+ *   - the legacy flat raw_categories[] PATCH (updateMenuItemInMenu), and
+ *   - the dual-write that mirrors the dropped label into the paired
+ *     sub-category model via setItemSubcategories(..., 'remove') across the
+ *     item's canonical categories on that menu.
+ */
+describe('MenuManagerClient — scoped sub-category removal write path (integration)', () => {
+  it('dropping one sub-category PATCHes raw_categories and dual-writes a remove for the dropped label', async () => {
+    const A = makeItem('A', {
+      menu_associations: [
+        makeAssoc('menu-1', {
+          canonical_categories: ['Entrees'],
+          raw_categories: ['Tandoor Specials', 'Spicy'],
+        }),
+      ],
+    });
+    const menus = [makeMenu('menu-1')];
+    const serverAssoc: MenuAssociation[] = [
+      makeAssoc('menu-1', { canonical_categories: ['Entrees'], raw_categories: ['Spicy'] }),
+    ];
+    const setItemSubcategories = vi.fn(() => Promise.resolve());
+    const service = makeService({
+      updateMenuItemInMenu: vi.fn(() => Promise.resolve(serverAssoc)),
+      setItemSubcategories,
+    });
+
+    render(
+      <MenuManagerClient
+        service={service}
+        restaurantId="r1"
+        initialItems={[A]}
+        initialMenus={menus}
+        refreshing={false}
+      />,
+    );
+    await waitFor(() => expect(lastBuilderProps).toBeTruthy());
+
+    // Mirror what MenuBuilder's scoped onRemove emits: the surviving labels
+    // (Tandoor Specials dropped) as a raw_categories replace-patch.
+    await act(async () => {
+      await lastBuilderProps!.onUpdateSettings('menu-1', 'A', { raw_categories: ['Spicy'] });
+    });
+
+    // Legacy flat PATCH carries the replacement array.
+    expect(service.updateMenuItemInMenu).toHaveBeenCalledTimes(1);
+    expect(service.updateMenuItemInMenu).toHaveBeenCalledWith('A', 'menu-1', { raw_categories: ['Spicy'] });
+
+    // Dual-write: the dropped label is removed across the item's canonical
+    // categories on this menu — and nothing is added.
+    expect(setItemSubcategories).toHaveBeenCalledTimes(1);
+    expect(setItemSubcategories).toHaveBeenCalledWith('menu-1', 'A', 'Entrees', ['Tandoor Specials'], 'remove');
+  });
+
+  it('dropping the last sub-category PATCHes an empty array (item falls to Ungrouped, never removeItemFromMenu)', async () => {
+    const A = makeItem('A', {
+      menu_associations: [
+        makeAssoc('menu-1', {
+          canonical_categories: ['Entrees'],
+          raw_categories: ['Tandoor Specials'],
+        }),
+      ],
+    });
+    const menus = [makeMenu('menu-1')];
+    const setItemSubcategories = vi.fn(() => Promise.resolve());
+    const service = makeService({
+      updateMenuItemInMenu: vi.fn(() =>
+        Promise.resolve([makeAssoc('menu-1', { canonical_categories: ['Entrees'], raw_categories: [] })]),
+      ),
+      setItemSubcategories,
+    });
+
+    render(
+      <MenuManagerClient
+        service={service}
+        restaurantId="r1"
+        initialItems={[A]}
+        initialMenus={menus}
+        refreshing={false}
+      />,
+    );
+    await waitFor(() => expect(lastBuilderProps).toBeTruthy());
+
+    await act(async () => {
+      await lastBuilderProps!.onUpdateSettings('menu-1', 'A', { raw_categories: [] });
+    });
+
+    // Scoped removal keeps the item on the menu — it must NOT call the
+    // whole-menu removal path.
+    expect(service.removeItemFromMenu).not.toHaveBeenCalled();
+    expect(service.updateMenuItemInMenu).toHaveBeenCalledWith('A', 'menu-1', { raw_categories: [] });
+    expect(setItemSubcategories).toHaveBeenCalledWith('menu-1', 'A', 'Entrees', ['Tandoor Specials'], 'remove');
+  });
+
+  it('removing a sub-category that spans multiple canonical categories removes it from each', async () => {
+    const A = makeItem('A', {
+      menu_associations: [
+        makeAssoc('menu-1', {
+          canonical_categories: ['Entrees', 'Specials'],
+          raw_categories: ['Tandoor Specials', 'Spicy'],
+        }),
+      ],
+    });
+    const menus = [makeMenu('menu-1')];
+    const setItemSubcategories = vi.fn(() => Promise.resolve());
+    const service = makeService({
+      updateMenuItemInMenu: vi.fn(() =>
+        Promise.resolve([
+          makeAssoc('menu-1', { canonical_categories: ['Entrees', 'Specials'], raw_categories: ['Spicy'] }),
+        ]),
+      ),
+      setItemSubcategories,
+    });
+
+    render(
+      <MenuManagerClient
+        service={service}
+        restaurantId="r1"
+        initialItems={[A]}
+        initialMenus={menus}
+        refreshing={false}
+      />,
+    );
+    await waitFor(() => expect(lastBuilderProps).toBeTruthy());
+
+    await act(async () => {
+      await lastBuilderProps!.onUpdateSettings('menu-1', 'A', { raw_categories: ['Spicy'] });
+    });
+
+    expect(setItemSubcategories).toHaveBeenCalledTimes(2);
+    expect(setItemSubcategories).toHaveBeenCalledWith('menu-1', 'A', 'Entrees', ['Tandoor Specials'], 'remove');
+    expect(setItemSubcategories).toHaveBeenCalledWith('menu-1', 'A', 'Specials', ['Tandoor Specials'], 'remove');
+  });
+});
