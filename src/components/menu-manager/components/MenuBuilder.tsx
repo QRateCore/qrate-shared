@@ -647,8 +647,20 @@ function RawCategoryChips({
       {known.map((l) => (
         <span
           key={l}
-          className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]"
-          style={{ background: 'var(--bg2, #eef2ff)', color: 'var(--text2)' }}
+          className="inline-flex items-center gap-1 rounded-full"
+          // High-contrast pill: black letters on white with a distinct dark
+          // border so the sub-category label reads clearly on the menu row.
+          style={{
+            background: '#FFFFFF',
+            color: '#1A1613',
+            border: '1.5px solid #1A1613',
+            // Less right padding — the × button below provides its own roomy
+            // hit area, so the pill stays compact while the click target grows.
+            padding: '2px 5px 2px 10px',
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: 1.2,
+          }}
           data-testid={`item-rawcat-chip-${itemId}-${l}`}
         >
           {l}
@@ -657,7 +669,20 @@ function RawCategoryChips({
             onClick={(e) => { e.stopPropagation(); removeLabel(l); }}
             aria-label={`Remove sub-category ${l}`}
             data-testid={`item-rawcat-remove-${itemId}-${l}`}
-            className="opacity-60 hover:opacity-100 leading-none"
+            // Roomy 24×24 circular hit target (was just the glyph) with a red
+            // hover wash so the whole area reads as clickable — much easier to
+            // hit than the bare ×.
+            className="inline-flex items-center justify-center rounded-full leading-none hover:bg-red-100"
+            style={{
+              color: '#dc2626',
+              fontSize: 16,
+              fontWeight: 800,
+              lineHeight: 1,
+              width: 24,
+              height: 24,
+              marginLeft: 2,
+              cursor: 'pointer',
+            }}
           >
             ×
           </button>
@@ -676,8 +701,15 @@ function RawCategoryChips({
           maxLength={60}
           placeholder="sub-category…"
           data-testid={`item-rawcat-input-${itemId}`}
-          className="rounded border px-1 text-[10px] w-24"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+          className="rounded-full w-28"
+          style={{
+            border: '1.5px solid #1A1613',
+            background: '#FFFFFF',
+            color: '#1A1613',
+            padding: '3px 9px',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
         />
       ) : (
         <button
@@ -685,8 +717,19 @@ function RawCategoryChips({
           onClick={(e) => { e.stopPropagation(); setAdding(true); }}
           aria-label="Add sub-category"
           data-testid={`item-rawcat-add-${itemId}`}
-          className="rounded-full px-1 text-[10px] opacity-60 hover:opacity-100 leading-none"
-          style={{ border: '1px dashed var(--border)' }}
+          className="inline-flex items-center justify-center rounded-full leading-none"
+          // Match the larger high-contrast chip: white pill, dark dashed border,
+          // bold dark ＋ so it reads as an actionable "add" affordance.
+          style={{
+            background: '#FFFFFF',
+            color: '#1A1613',
+            border: '1.5px dashed #1A1613',
+            padding: '2px 9px',
+            fontSize: 15,
+            fontWeight: 800,
+            lineHeight: 1,
+            cursor: 'pointer',
+          }}
         >
           ＋
         </button>

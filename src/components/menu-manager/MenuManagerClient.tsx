@@ -1018,6 +1018,41 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     }
   }, []);
 
+  // Shared popup opener: gather the sub-categories already under this course and
+  // open the pick/create modal, pre-selecting `defaultLabel`. Used by BOTH the
+  // generic-bucket drop AND a drop onto a specific sub-category group — so EVERY
+  // drop into a course area surfaces the chooser (the owner no longer has to
+  // find the small generic strip to trigger it).
+  const openSubCatPrompt = useCallback(
+    (
+      menuId: string,
+      cat: string,
+      toProcess: MenuItemDisplay[],
+      fromCat: string | null,
+      defaultLabel: string,
+    ) => {
+      const members = sectionForCanonical(cat)?.members ?? [cat];
+      const subcatCounts = new Map<string, number>();
+      for (const it of items) {
+        const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
+        if (!assoc) continue;
+        const inSection = (assoc.canonical_categories ?? []).some((c) => members.includes(c));
+        if (!inSection) continue;
+        for (const lbl of assoc.raw_categories ?? []) {
+          const t = (lbl ?? '').trim();
+          if (t) subcatCounts.set(t, (subcatCounts.get(t) ?? 0) + 1);
+        }
+      }
+      const labels: RawCategorySummary[] = dedupeRawCategoryLabels(
+        [...subcatCounts.entries()].map(([label, item_count]) => ({ label, item_count })),
+      ).sort((a, b) => a.label.localeCompare(b.label));
+      const selectionLabel =
+        toProcess.length === 1 ? toProcess[0].name : `${toProcess.length} items`;
+      setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel, fromCat });
+    },
+    [items],
+  );
+
   // General-area bucket drop (menu raw sub-categories, 7b). Instead of assigning
   // the canonical directly, capture the items and open the pick/create popup so
   // the owner files them under a chosen/created sub-category (or Ungrouped). The
@@ -1069,30 +1104,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
       if (snap.fromMenuId === null) setMobileDrawerOpen(false);
 
-      // Existing sub-categories ALREADY under this course on this menu. Raw
-      // sub-category labels live per-(item, menu) on menu_associations; a label
-      // is "under" this section if any item placed in one of the section's
-      // member canonicals carries it. Deduped case/punctuation-insensitively so
-      // casing variants ("Flavors of Tandoor" vs "flavors of tandoor") collapse
-      // to a single entry (the most-used variant wins the display form).
-      const members = sectionForCanonical(cat)?.members ?? [cat];
-      const subcatCounts = new Map<string, number>();
-      for (const it of items) {
-        const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
-        if (!assoc) continue;
-        const inSection = (assoc.canonical_categories ?? []).some((c) => members.includes(c));
-        if (!inSection) continue;
-        for (const lbl of assoc.raw_categories ?? []) {
-          const t = (lbl ?? '').trim();
-          if (t) subcatCounts.set(t, (subcatCounts.get(t) ?? 0) + 1);
-        }
-      }
-      const labels: RawCategorySummary[] = dedupeRawCategoryLabels(
-        [...subcatCounts.entries()].map(([label, item_count]) => ({ label, item_count })),
-      ).sort((a, b) => a.label.localeCompare(b.label));
-
       // Default sub-category = the most-common raw category (item.category)
-      // across the dropped selection, ignoring blank/Uncategorized.
+      // across the dropped selection, ignoring blank/Uncategorized. The popup's
+      // existing-label list is computed by openSubCatPrompt.
       const rawCounts = new Map<string, number>();
       for (const it of toProcess) {
         const c = (it.category ?? '').trim();
@@ -1106,11 +1120,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         if (n > best) { best = n; defaultLabel = c; }
       }
 
-      const selectionLabel = toProcess.length === 1 ? toProcess[0].name : `${toProcess.length} items`;
-
-      setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel, fromCat: snap.fromCat });
+      openSubCatPrompt(menuId, cat, toProcess, snap.fromCat, defaultLabel);
     },
-    [dragging, items, menus, restaurantId, showToast, trackAction, service],
+    [dragging, items, menus, restaurantId, showToast, trackAction, service, openSubCatPrompt],
   );
 
   // ── Sub-category drop (menu raw sub-categories, 2026-06-09) ──────────────────
@@ -1284,9 +1296,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         restaurantId,
         metadata: { itemCount: toProcess.length, toMenuId: menuId, toCategory: cat, label },
       });
-      applyRawCategoryMove(toProcess, menuId, cat, label, snap.fromCat);
+      // Open the SAME chooser as a generic-area drop, but pre-select the group
+      // the items landed on. Every course-area drop now confirms through the
+      // popup (the owner can keep this sub-category or pick/create another),
+      // rather than some drops filing silently and others opening the chooser.
+      openSubCatPrompt(menuId, cat, toProcess, snap.fromCat, label);
     },
-    [dragging, resolveDragItems, restaurantId, trackAction, applyRawCategoryMove],
+    [dragging, resolveDragItems, restaurantId, trackAction, openSubCatPrompt],
   );
 
   // ── Sub-category rename / delete (menu raw sub-categories, Step 9) ───────────

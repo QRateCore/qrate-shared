@@ -71,77 +71,93 @@ export function SubCategoryPickModal({
 
   if (!open) return null;
 
-  const rowCls =
-    'flex items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg2,#f3f4f6)]';
-  const capCls = 'px-1 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide';
+  const capCls = 'mb-2 text-xs font-semibold uppercase tracking-wide';
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.45)' }}
+      style={{ background: 'rgba(0,0,0,0.5)' }}
       data-testid="subcategory-pick-modal"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-lg shadow-xl"
+        className="w-full max-w-xl rounded-xl shadow-2xl"
         style={{ background: 'var(--bg, #fff)', color: 'var(--text)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="text-sm font-semibold">
-            File under a sub-category
-            <div className="text-[11px] font-normal" style={{ color: 'var(--text2)' }}>
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <div className="text-base font-bold">File under a sub-category</div>
+            <div className="mt-1 text-sm" style={{ color: 'var(--text2)' }}>
               {selectionLabel} → {category}
             </div>
           </div>
-          <button type="button" onClick={onCancel} aria-label="Cancel" data-testid="subcategory-pick-cancel">
-            <X size={16} />
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel"
+            data-testid="subcategory-pick-cancel"
+            className="-mr-1 ml-3 rounded-full p-1.5 hover:bg-[var(--bg2,#f3f4f6)]"
+          >
+            <X size={20} />
           </button>
         </div>
 
-        <div className="p-3 flex flex-col gap-1">
-          {/* (a) Add to the matching existing sub-category. */}
-          {matched && (
-            <button
-              type="button"
-              onClick={() => onConfirm(matched.label)}
-              data-testid="subcategory-pick-matched"
-              className="flex items-center gap-2 rounded px-2 py-2 text-left text-sm font-semibold"
-              style={{ color: '#fff', background: 'var(--brand-s, #c2710a)' }}
-            >
-              <Plus size={14} />
-              <span>
-                Add {selectionLabel} to &ldquo;{matched.label}&rdquo;
-              </span>
-            </button>
-          )}
-
-          {/* (b) Choose a different existing sub-category under this course. */}
-          {others.length > 0 && (
-            <div>
-              <div className={capCls} style={{ color: 'var(--text2)' }}>
-                {matched ? 'Or choose a different sub-category' : 'Add to an existing sub-category'}
+        {/* Body — three visually-distinct, lightly-tinted sections. */}
+        <div className="px-6 py-5 flex flex-col gap-4">
+          {/* Section 1 (amber tint) — existing sub-categories as compact,
+              wrapping chips. The matching one is the highlighted recommendation. */}
+          {(matched || others.length > 0) && (
+            <div className="rounded-lg p-4" style={{ background: '#FFF7ED' }}>
+              <div className={capCls} style={{ color: '#9A6A1E' }}>
+                Add to an existing sub-category
               </div>
-              <div className="max-h-44 overflow-y-auto flex flex-col gap-0.5">
+              <div className="flex flex-wrap gap-2">
+                {matched && (
+                  <button
+                    type="button"
+                    onClick={() => onConfirm(matched.label)}
+                    data-testid="subcategory-pick-matched"
+                    title={`Recommended: file under "${matched.label}"`}
+                    className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm"
+                    style={{ color: '#fff', background: 'var(--brand-s, #c2710a)' }}
+                  >
+                    <Plus size={15} />
+                    <span className="truncate max-w-[15rem]">{matched.label}</span>
+                    <span
+                      className="rounded-full px-1.5 text-xs font-semibold"
+                      style={{ background: 'rgba(255,255,255,0.28)' }}
+                    >
+                      {matched.item_count}
+                    </span>
+                  </button>
+                )}
                 {others.map((l) => (
                   <button
                     key={l.label}
                     type="button"
                     onClick={() => onConfirm(l.label)}
                     data-testid={`subcategory-pick-option-${l.label}`}
-                    className={rowCls}
+                    className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium hover:shadow-sm"
+                    style={{ borderColor: '#E7C9A3', background: '#FFFFFF', color: 'var(--text)' }}
                   >
-                    <span className="truncate">{l.label}</span>
-                    <span className="text-[11px]" style={{ color: 'var(--text2)' }}>{l.item_count}</span>
+                    <span className="truncate max-w-[15rem]">{l.label}</span>
+                    <span
+                      className="rounded-full px-1.5 text-xs font-semibold"
+                      style={{ background: '#F3EAD9', color: '#9A6A1E' }}
+                    >
+                      {l.item_count}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* (c) Create a new sub-category. */}
-          <div>
-            <div className={capCls} style={{ color: 'var(--text2)' }}>
+          {/* Section 2 (green tint) — create a new sub-category. */}
+          <div className="rounded-lg p-4" style={{ background: '#F0FDF4' }}>
+            <div className={capCls} style={{ color: '#15803D' }}>
               Create a new sub-category
             </div>
             <input
@@ -155,37 +171,38 @@ export function SubCategoryPickModal({
               maxLength={60}
               placeholder="New sub-category name…"
               data-testid="subcategory-pick-input"
-              className="w-full rounded border px-2 py-1.5 text-sm"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+              className="w-full rounded-lg border px-4 py-3 text-sm"
+              style={{ borderColor: '#BBF7D0', background: '#FFFFFF' }}
             />
             {canCreate && (
               <button
                 type="button"
                 onClick={() => onConfirm(trimmed)}
                 data-testid="subcategory-pick-create"
-                className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg2,#f3f4f6)]"
+                className="mt-2 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold"
+                style={{ color: '#fff', background: '#16A34A' }}
               >
-                <Plus size={14} />
-                <span>Create &ldquo;{trimmed}&rdquo;</span>
+                <Plus size={16} />
+                <span className="truncate max-w-[18rem]">Create &ldquo;{trimmed}&rdquo;</span>
               </button>
             )}
             {trimmed.length > 0 && exactExists && (
-              <div className="px-1 pt-1 text-[11px] italic" style={{ color: 'var(--text2)' }}>
+              <div className="mt-2 text-xs italic" style={{ color: '#15803D' }}>
                 &ldquo;{trimmed}&rdquo; already exists above.
               </div>
             )}
           </div>
 
-          {/* Ungrouped escape hatch. */}
-          <div className="mt-1 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+          {/* Section 3 (slate tint) — no sub-category escape hatch. */}
+          <div className="rounded-lg p-4" style={{ background: '#F1F5F9' }}>
             <button
               type="button"
               onClick={() => onConfirm(UNGROUPED_KEY)}
               data-testid="subcategory-pick-ungrouped"
-              className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg2,#f3f4f6)]"
-              style={{ color: 'var(--text2)' }}
+              className="w-full rounded-lg px-1 text-left text-sm font-medium hover:underline"
+              style={{ color: '#475569' }}
             >
-              No sub-category (add directly to {category})
+              No sub-category — add directly to {category}
             </button>
           </div>
         </div>
