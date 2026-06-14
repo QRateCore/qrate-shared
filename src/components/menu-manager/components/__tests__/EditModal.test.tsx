@@ -146,6 +146,10 @@ interface RenderConfig {
   onDishAddonsChange?: (dishId: string, nextAddons: unknown[]) => void;
   service?: MenuManagerService;
   dietaryTagService?: DietaryTagService;
+  customAllergens?: string[];
+  customDietary?: string[];
+  allergenDefaults?: string[];
+  dietaryDefaults?: string[];
   onClose?: () => void;
   onComplete?: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   heatLabels?: string[];
@@ -172,6 +176,10 @@ function renderModal(config: RenderConfig = {}) {
     onDishAddonsChange,
     service = makeService(),
     dietaryTagService,
+    customAllergens,
+    customDietary,
+    allergenDefaults,
+    dietaryDefaults,
     onClose = vi.fn(),
     onComplete = vi.fn(),
     heatLabels,
@@ -193,6 +201,10 @@ function renderModal(config: RenderConfig = {}) {
         onSaveNewItem={onSaveNewItem}
         onDishAddonsChange={onDishAddonsChange}
         dietaryTagService={dietaryTagService}
+        customAllergens={customAllergens}
+        customDietary={customDietary}
+        allergenDefaults={allergenDefaults}
+        dietaryDefaults={dietaryDefaults}
         onClose={onClose}
         onComplete={onComplete}
         heatLabels={heatLabels}
@@ -2127,5 +2139,59 @@ describe('EditModal — is_byo toggle (PDD 2026-05-26)', () => {
     });
     const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(updates.is_byo).toBe(true);
+  });
+});
+
+describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14)', () => {
+  // The pill picker base is the per-restaurant EFFECTIVE canonical set
+  // (canonical minus hidden) when the consumer passes dietaryDefaults/
+  // allergenDefaults, merged with customDietary/customAllergens. This is what
+  // keeps the Menu Builder drawer, the Food Items drawer, and the bulk panel
+  // showing identical pills.
+
+  it('hides a canonical dietary default the restaurant has hidden', () => {
+    // Restaurant hid kosher + halal → dietaryDefaults excludes them.
+    renderModal({
+      item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
+      dietaryTagService: makeDietaryTagService(),
+      dietaryDefaults: ['vegetarian', 'vegan', 'gluten-free'],
+    });
+    expect(screen.getByTestId('dietary-pill-dietary-vegetarian')).toBeTruthy();
+    expect(screen.queryByTestId('dietary-pill-dietary-kosher')).toBeNull();
+    expect(screen.queryByTestId('dietary-pill-dietary-halal')).toBeNull();
+  });
+
+  it('renders a custom dietary entry (e.g. jain) as a pickable pill', () => {
+    renderModal({
+      item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
+      dietaryTagService: makeDietaryTagService(),
+      dietaryDefaults: ['vegetarian', 'vegan', 'gluten-free'],
+      customDietary: ['jain'],
+    });
+    const jain = screen.getByTestId('dietary-pill-dietary-jain');
+    expect(jain).toBeTruthy();
+    // slug is title-cased for display
+    expect(jain.textContent).toContain('Jain');
+  });
+
+  it('renders a custom allergen as a pickable pill alongside the FDA-9', () => {
+    renderModal({
+      item: makeDishItem({ food_tags: { allergens: [] } as MenuItemDisplay['food_tags'] }),
+      dietaryTagService: makeDietaryTagService(),
+      customAllergens: ['msg'],
+    });
+    expect(screen.getByTestId('dietary-pill-allergen-sesame')).toBeTruthy(); // FDA-9 still there
+    expect(screen.getByTestId('dietary-pill-allergen-msg')).toBeTruthy();    // custom appended
+  });
+
+  it('falls back to the hardcoded canonical 5 when no defaults prop is passed (waiter/admin)', () => {
+    renderModal({
+      item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    // All five canonical defaults render, including kosher/halal.
+    for (const slug of ['vegetarian', 'vegan', 'gluten-free', 'kosher', 'halal']) {
+      expect(screen.getByTestId(`dietary-pill-dietary-${slug}`)).toBeTruthy();
+    }
   });
 });
