@@ -48,8 +48,8 @@ export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
 export { SelectionRuleEditor } from './components/menu-manager';
 export type { RulePresetKind } from './components/menu-manager';
-export { ItemPool, getMenuColor, CANONICAL_CATEGORIES, toCanonical } from './components/menu-manager';
-export type { MenuColor, MenuColorName, CanonicalCategory } from './components/menu-manager';
+export { ItemPool, getMenuColor, CANONICAL_CATEGORIES, toCanonical, UNGROUPED_KEY, ItemPlacementModal } from './components/menu-manager';
+export type { MenuColor, MenuColorName, CanonicalCategory, ItemPlacementModalProps } from './components/menu-manager';
 
 // Components — Common
 export { QRateLogo, Button, Card, Select } from './components/common';

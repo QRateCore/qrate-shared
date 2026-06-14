@@ -86,7 +86,9 @@ export function SubCategoryGroup({
       data-testid={`subcategory-group-${category}-${label}`}
       data-sub-label={label}
       className="ml-1 border-l-2"
-      style={{ borderColor: isDragOver ? color.tabBorder : 'var(--border)' }}
+      // Green = "valid drop target", consistent with the course buckets and
+      // modifier zones (see DROP_TARGET in MenuBuilder).
+      style={{ borderColor: isDragOver ? '#16A34A' : 'var(--border)' }}
     >
       {/* Header — always rendered (unconditional E2E sync-point). */}
       <div
@@ -97,8 +99,8 @@ export function SubCategoryGroup({
         data-testid={`subcategory-drop-${category}-${label}`}
         className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors"
         style={{
-          color: 'var(--text2)',
-          background: isDragOver ? color.tab : 'transparent',
+          color: isDragOver ? '#15803D' : 'var(--text2)',
+          background: isDragOver ? '#DCFCE7' : 'transparent',
         }}
       >
         <button

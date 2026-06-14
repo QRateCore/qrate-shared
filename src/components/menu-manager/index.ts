@@ -35,5 +35,10 @@ export type { RulePresetKind } from './components/SelectionRuleEditor';
 // the Menu page's left column. `activateOnRowClick` + `showBulkActions=false`
 // adapt it to the Food Items "click row → open editor" interaction.
 export { default as ItemPool } from './components/ItemPool';
-export { getMenuColor, CANONICAL_CATEGORIES, toCanonical } from './lib/menuUtils';
+export { getMenuColor, CANONICAL_CATEGORIES, toCanonical, UNGROUPED_KEY } from './lib/menuUtils';
 export type { MenuColor, MenuColorName, CanonicalCategory } from './lib/menuUtils';
+
+// Unified drag-drop placement modal (replaces SubCategoryPickModal +
+// the owner-app CategorySelectionModal).
+export { ItemPlacementModal } from './components/ItemPlacementModal';
+export type { ItemPlacementModalProps } from './components/ItemPlacementModal';

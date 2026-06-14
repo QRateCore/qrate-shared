@@ -21,7 +21,7 @@ import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import MenuTabBar from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
-import { SubCategoryPickModal } from './components/SubCategoryPickModal';
+import { ItemPlacementModal } from './components/ItemPlacementModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel from './components/BulkActionsPanel';
 import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
@@ -2538,10 +2538,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         />
       )}
 
-      {/* 7b — general-area drop → pick/create a sub-category for the dropped items */}
-      <SubCategoryPickModal
+      {/* Drop onto a course / sub-category → the course is already known, so the
+          unified modal locks the category and leads with the sub-category step. */}
+      <ItemPlacementModal
         open={subCatPrompt !== null}
-        category={
+        lockedCategory={subCatPrompt?.cat ?? null}
+        lockedCategoryLabel={
           // Show the 4-section label rather than the underlying canonical.
           ({ Beverages: 'Drinks', Appetizers: 'Starters', Desserts: 'Dessert' } as Record<string, string>)[
             subCatPrompt?.cat ?? ''
@@ -2551,9 +2553,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         selectionLabel={subCatPrompt?.selectionLabel ?? ''}
         labels={subCatPrompt?.labels ?? []}
         defaultLabel={subCatPrompt?.defaultLabel ?? ''}
-        onConfirm={(label) => {
+        testid="subcategory-pick-modal"
+        onConfirm={({ subLabel }) => {
           if (subCatPrompt) {
-            applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, label, subCatPrompt.fromCat);
+            applyRawCategoryMove(subCatPrompt.toProcess, subCatPrompt.menuId, subCatPrompt.cat, subLabel, subCatPrompt.fromCat);
           }
           setSubCatPrompt(null);
         }}

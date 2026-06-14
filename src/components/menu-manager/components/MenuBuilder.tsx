@@ -271,6 +271,14 @@ function GroupingChip({
 const REC_ACTIVE_PALETTE = { bg: '#dcfce7', fg: '#166534', border: '#86efac' };
 const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' };
 
+// Single, consistent "valid drop target" highlight. Green is reserved for
+// "you can drop here" and is used identically across every drop zone — course
+// buckets, sub-category groups, and the modifier (Includes/Recommendations)
+// zones — so the builder reads the same wherever the owner drags. Course
+// colours still own the collapsed tab/identity; only the *drop* affordance is
+// green.
+export const DROP_TARGET = { bg: '#F0FDF4', fill: '#DCFCE7', border: '#16A34A', accent: '#15803D' };
+
 export function _classifyRecMembersForTest(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
@@ -1427,6 +1435,7 @@ function CategoryBucket({
   perMenuSides,
   onConfirmIncludeDrop,
   isDragOver,
+  dragActive = false,
   onDragEnter,
   onDragLeave,
   onDrop,
@@ -1475,6 +1484,8 @@ function CategoryBucket({
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   isDragOver: boolean;
+  /** True while a drag is in progress anywhere — drives always-visible drop hints. */
+  dragActive?: boolean;
   onDragEnter: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
@@ -1682,36 +1693,45 @@ function CategoryBucket({
           data-testid={`bucket-drop-${category}`}
           className="min-h-10 transition-all duration-150"
           style={{
-            background: isDragOver ? color.tab : 'transparent',
-            border: isDragOver ? `2px dashed ${color.tabBorder}` : '2px dashed transparent',
-            borderRadius: isDragOver ? 'var(--r-xs)' : 0,
-            margin: isDragOver ? '2px 4px' : 0,
+            // Consistent green = "valid drop target". A faint outline appears on
+            // every droppable bucket the moment a drag starts (always-visible
+            // labeled zones), filling in solid when you actually hover it.
+            background: isDragOver ? DROP_TARGET.fill : 'transparent',
+            border: isDragOver
+              ? `2px dashed ${DROP_TARGET.border}`
+              : dragActive
+                ? `2px dashed ${DROP_TARGET.border}55`
+                : '2px dashed transparent',
+            borderRadius: isDragOver || dragActive ? 'var(--r-xs)' : 0,
+            margin: isDragOver || dragActive ? '2px 4px' : 0,
           }}
         >
-          {/* Bucket-level drop hint — only while hovering the bucket's general
-              area (NOT a sub-category). Makes a top-level drop visibly distinct
-              from dropping onto a sub-category group (which highlights its own
-              header and files directly, no popup). */}
-          {isDragOver && bucketItems.length > 0 && (
+          {/* Bucket-level drop hint. Visible for the whole drag (not just on
+              hover) so every course advertises itself as a drop target and
+              spells out what dropping does. Intensifies when actually hovered. */}
+          {dragActive && bucketItems.length > 0 && (
             <div
               data-testid={`bucket-drop-hint-${category}`}
-              className="mx-1 my-1 px-3 py-1.5 text-xs font-semibold rounded text-center"
+              className="mx-1 my-1 px-3 py-1.5 text-xs font-semibold rounded text-center transition-colors"
               style={{
-                color: color.tabBorder,
-                background: color.tab,
-                border: `1px dashed ${color.tabBorder}`,
+                color: DROP_TARGET.accent,
+                background: isDragOver ? DROP_TARGET.fill : DROP_TARGET.bg,
+                border: `1px dashed ${DROP_TARGET.border}`,
               }}
             >
-              Drop here to file under a sub-category…
+              {isDragOver
+                ? `Drop to add to ${displayLabel} — pick a sub-category next`
+                : `Drop here to add to ${displayLabel}`}
             </div>
           )}
           {bucketItems.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
-              className="px-3 py-2.5 text-xs text-[var(--text2)] italic"
+              className="px-3 py-2.5 text-xs italic"
+              style={dragActive ? { color: DROP_TARGET.accent } : { color: 'var(--text2)' }}
             >
-              {isDragOver
-                ? 'Drop here — choose a sub-category'
+              {dragActive
+                ? `Drop here to add to ${displayLabel}`
                 : missingPriceFilter && allBucketItems.length > 0
                   ? 'No items missing a price'
                   : 'No items in this category yet'}
@@ -2110,6 +2130,7 @@ export default function MenuBuilder({
                 perMenuSides={perMenuSides}
                 onConfirmIncludeDrop={onConfirmIncludeDrop}
                 isDragOver={isDragOverBucket}
+                dragActive={dragging !== null}
                 onDragEnter={(e) => onDragEnterBucket(e, activeMenu!.id, cat)}
                 onDragLeave={() => onDragLeaveBucket(activeMenu!.id, cat)}
                 onDrop={(e) => onDropBucket(e, activeMenu!.id, cat)}
