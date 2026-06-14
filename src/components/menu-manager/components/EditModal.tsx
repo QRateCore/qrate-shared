@@ -87,6 +87,17 @@ interface EditModalProps {
    *  (vegetarian / vegan / gluten-free / kosher / halal). Same wiring as
    *  customAllergens. */
   customDietary?: string[];
+  /** Per-restaurant *effective* canonical allergen defaults — the FDA-9 set
+   *  minus any the owner has hidden. When provided, replaces the hardcoded
+   *  FDA_BIG_9_ALLERGENS base for the pill picker so hidden defaults don't
+   *  reappear. Omitted (waiter/admin) → falls back to FDA_BIG_9_ALLERGENS. */
+  allergenDefaults?: string[];
+  /** Per-restaurant *effective* canonical dietary defaults — the canonical 5
+   *  minus any the owner has hidden via hidden-dietary-defaults (STR-483).
+   *  When provided, replaces the hardcoded DIETARY_RESTRICTIONS_LIST base so
+   *  a deleted/hidden default (e.g. kosher, halal) no longer shows as a
+   *  pickable pill. Omitted (waiter/admin) → falls back to the hardcoded 5. */
+  dietaryDefaults?: string[];
   /** Per-restaurant spice scale labels. Falls back to the default 5-level palette. */
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
@@ -621,7 +632,7 @@ function DietaryMultiSelect({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -739,23 +750,37 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // entries are appended after the canonical set, deduped, and given a
   // title-cased fallback label when they aren't in the static label map.
   const allergenOptions = useMemo<string[]>(() => {
+    // Base = per-restaurant effective canonical set when the consumer supplies
+    // it (FDA-9 minus hidden); else the hardcoded FDA-9 fallback. Non-canonical
+    // applied values (legacy aliases) are intentionally NOT surfaced — the
+    // backend is the single source of truth for canonicalization, and hiding a
+    // default cascade-purges it from every item's food_tags server-side, so an
+    // item never legitimately retains an unlisted tag.
+    const base = allergenDefaults ?? [...FDA_BIG_9_ALLERGENS];
     const extras = (customAllergens ?? []).filter((s) => typeof s === 'string' && s.length > 0);
-    if (extras.length === 0) return [...FDA_BIG_9_ALLERGENS];
-    return Array.from(new Set([...FDA_BIG_9_ALLERGENS, ...extras]));
-  }, [customAllergens]);
+    return Array.from(new Set([...base, ...extras]));
+  }, [allergenDefaults, customAllergens]);
   const dietaryOptions = useMemo<string[]>(() => {
+    // Base = per-restaurant effective canonical set when the consumer supplies
+    // it (canonical 5 minus hidden defaults, STR-483); else the hardcoded
+    // fallback. Using the effective set is what makes a hidden default
+    // (e.g. kosher/halal removed from the Dietary table) stop rendering here.
+    const base = dietaryDefaults ?? [...DIETARY_RESTRICTIONS_LIST];
     const extras = (customDietary ?? []).filter((s) => typeof s === 'string' && s.length > 0);
-    if (extras.length === 0) return [...DIETARY_RESTRICTIONS_LIST];
-    return Array.from(new Set([...DIETARY_RESTRICTIONS_LIST, ...extras]));
-  }, [customDietary]);
-  const allergenLabelsMerged = useMemo<Record<string, string>>(() => ({
-    ...ALLERGEN_LABELS,
-    ...Object.fromEntries((customAllergens ?? []).map((s) => [s, ALLERGEN_LABELS[s] ?? slugToLabel(s)])),
-  }), [customAllergens]);
-  const dietaryLabelsMerged = useMemo<Record<string, string>>(() => ({
-    ...DIETARY_LABELS,
-    ...Object.fromEntries((customDietary ?? []).map((s) => [s, DIETARY_LABELS[s] ?? slugToLabel(s)])),
-  }), [customDietary]);
+    return Array.from(new Set([...base, ...extras]));
+  }, [dietaryDefaults, customDietary]);
+  // Label maps cover the full option set (defaults + customs); fall back to a
+  // title-cased slug when an entry isn't in the curated static label map.
+  const allergenLabelsMerged = useMemo<Record<string, string>>(() => {
+    const m: Record<string, string> = { ...ALLERGEN_LABELS };
+    for (const s of allergenOptions) if (!(s in m)) m[s] = slugToLabel(s);
+    return m;
+  }, [allergenOptions]);
+  const dietaryLabelsMerged = useMemo<Record<string, string>>(() => {
+    const m: Record<string, string> = { ...DIETARY_LABELS };
+    for (const s of dietaryOptions) if (!(s in m)) m[s] = slugToLabel(s);
+    return m;
+  }, [dietaryOptions]);
 
   // Allergen + dietary state — initialized from item.food_tags (canonical
   // source after PR 3 of consolidation). Toggling a pill computes the

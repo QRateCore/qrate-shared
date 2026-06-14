@@ -43,6 +43,15 @@ const DIETARY_LABELS: Record<string, string> = {
   'vegetarian': 'Vegetarian', 'vegan': 'Vegan', 'gluten-free': 'Gluten-Free', 'kosher': 'Kosher', 'halal': 'Halal',
 };
 
+/** Title-case a slug ("jain" → "Jain", "low-carb" → "Low Carb") for custom
+ *  entries that aren't in the curated label maps. Mirrors EditModal.slugToLabel. */
+function slugToBulkLabel(slug: string): string {
+  return slug
+    .split('-')
+    .map((p) => (p.length > 0 ? p[0]!.toUpperCase() + p.slice(1) : p))
+    .join(' ');
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface BulkActionsPanelProps {
@@ -165,6 +174,15 @@ interface BulkActionsPanelProps {
   heatLabels?: string[];
   /** Per-restaurant sweetness scale labels. Falls back to the default 4-level palette. */
   sweetnessLabels?: string[];
+  /** Per-restaurant custom allergens / dietary + effective canonical defaults
+   *  (canonical minus hidden). When provided, the bulk Dietary tab's pill
+   *  picker matches the EditModal / Food Items page: custom entries appear and
+   *  hidden defaults (e.g. kosher/halal) drop out. Omitted → hardcoded
+   *  FDA-9 / canonical-5 fallback. */
+  customAllergens?: string[];
+  customDietary?: string[];
+  allergenDefaults?: string[];
+  dietaryDefaults?: string[];
 }
 
 // ── Mode config ───────────────────────────────────────────────────────────────
@@ -240,7 +258,27 @@ export default function BulkActionsPanel({
   currentMenuName,
   heatLabels,
   sweetnessLabels,
+  customAllergens,
+  customDietary,
+  allergenDefaults,
+  dietaryDefaults,
 }: BulkActionsPanelProps) {
+  // Effective option sets — per-restaurant defaults (canonical minus hidden)
+  // merged with custom entries; fall back to the hardcoded canonical lists
+  // when the consumer doesn't supply them (waiter/admin). Mirrors EditModal.
+  const bulkAllergenOptions = Array.from(new Set([
+    ...(allergenDefaults ?? FDA_BIG_9),
+    ...(customAllergens ?? []).filter((s) => typeof s === 'string' && s.length > 0),
+  ]));
+  const bulkDietaryOptions = Array.from(new Set([
+    ...(dietaryDefaults ?? DIETARY_RESTRICTIONS_LIST),
+    ...(customDietary ?? []).filter((s) => typeof s === 'string' && s.length > 0),
+  ]));
+  const bulkAllergenSet = new Set(bulkAllergenOptions);
+  const bulkAllergenLabels: Record<string, string> = { ...ALLERGEN_LABELS };
+  for (const s of bulkAllergenOptions) if (!(s in bulkAllergenLabels)) bulkAllergenLabels[s] = slugToBulkLabel(s);
+  const bulkDietaryLabels: Record<string, string> = { ...DIETARY_LABELS };
+  for (const s of bulkDietaryOptions) if (!(s in bulkDietaryLabels)) bulkDietaryLabels[s] = slugToBulkLabel(s);
   // Hide opt-in tabs unless the consumer wired the matching callbacks.
   // 'removeGrouping' needs BOTH the action AND the discovery loader.
   const availableModes = MODES
@@ -883,7 +921,9 @@ export default function BulkActionsPanel({
     if (!onBulkDietary) { onComplete(items, selected); return; }
     const tags = [...pickedDietaryTags].map((name) => ({
       name,
-      type: (FDA_BIG_9 as readonly string[]).includes(name) ? 'allergen' as const : 'dietary' as const,
+      // Classify against the effective allergen set so custom allergens are
+      // written as allergens (not misfiled as dietary).
+      type: bulkAllergenSet.has(name) ? 'allergen' as const : 'dietary' as const,
     }));
     const itemIds = selectedItems.map((i) => i.id);
     setExecuting(true);
@@ -1274,6 +1314,10 @@ export default function BulkActionsPanel({
           )}
           {mode === 'dietary' && (
             <DietaryForm
+              allergenOptions={bulkAllergenOptions}
+              dietaryOptions={bulkDietaryOptions}
+              allergenLabels={bulkAllergenLabels}
+              dietaryLabels={bulkDietaryLabels}
               pickedTags={pickedDietaryTags}
               onToggle={(tag) =>
                 setPickedDietaryTags((prev) => {
@@ -1997,9 +2041,17 @@ function SweetnessForm({
 }
 
 function DietaryForm({
+  allergenOptions,
+  dietaryOptions,
+  allergenLabels,
+  dietaryLabels,
   pickedTags,
   onToggle,
 }: {
+  allergenOptions: string[];
+  dietaryOptions: string[];
+  allergenLabels: Record<string, string>;
+  dietaryLabels: Record<string, string>;
   pickedTags: Set<string>;
   onToggle: (tag: string) => void;
 }) {
@@ -2010,7 +2062,7 @@ function DietaryForm({
           Allergens
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {FDA_BIG_9.map((name) => {
+          {allergenOptions.map((name) => {
             const selected = pickedTags.has(name);
             return (
               <button
@@ -2029,7 +2081,7 @@ function DietaryForm({
                   cursor: 'pointer',
                 }}
               >
-                {ALLERGEN_LABELS[name] ?? name}
+                {allergenLabels[name] ?? name}
               </button>
             );
           })}
@@ -2041,7 +2093,7 @@ function DietaryForm({
           Dietary Restrictions
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {DIETARY_RESTRICTIONS_LIST.map((name) => {
+          {dietaryOptions.map((name) => {
             const selected = pickedTags.has(name);
             return (
               <button
@@ -2060,7 +2112,7 @@ function DietaryForm({
                   cursor: 'pointer',
                 }}
               >
-                {DIETARY_LABELS[name] ?? name}
+                {dietaryLabels[name] ?? name}
               </button>
             );
           })}

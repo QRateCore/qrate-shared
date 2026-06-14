@@ -149,6 +149,16 @@ interface Props {
   showVisibilityFilter?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
   dietaryTagService?: DietaryTagService;
+  /** Per-restaurant custom allergens / dietary + their effective canonical
+   *  defaults (canonical minus hidden). Forwarded verbatim to EditModal so the
+   *  allergen/dietary pill picker matches the Food Items page exactly — without
+   *  these, the Menu Builder drawer shows only the hardcoded canonical lists
+   *  (no custom entries like "Jain", and hidden defaults like kosher/halal
+   *  still appear). Consumer loads these from /customization/{allergens,dietary}. */
+  customAllergens?: string[];
+  customDietary?: string[];
+  allergenDefaults?: string[];
+  dietaryDefaults?: string[];
   /** Optional: bulk spice level update for the Spice tab in BulkActionsPanel. */
   onBulkSpice?: (heatLabel: string, itemIds: string[]) => Promise<void>;
   /** Optional: bulk dietary/allergen tag add for the Dietary tab in BulkActionsPanel. */
@@ -374,7 +384,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -2079,6 +2089,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             sourceItemId={cloneDraftSource.id}
             onCloneSave={cloneMenuItem}
             dietaryTagService={dietaryTagService}
+            customAllergens={customAllergens}
+            customDietary={customDietary}
+            allergenDefaults={allergenDefaults}
+            dietaryDefaults={dietaryDefaults}
             heatLabels={heatLabels}
             sweetnessLabels={sweetnessLabels}
             imageLibrarySlot={imageLibrarySlot}
@@ -2098,6 +2112,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             isNewItem={newlyCreatedItemIdRef.current === editItemId}
             onSaveNewItem={handleSaveNewItem}
             dietaryTagService={dietaryTagService}
+            customAllergens={customAllergens}
+            customDietary={customDietary}
+            allergenDefaults={allergenDefaults}
+            dietaryDefaults={dietaryDefaults}
             heatLabels={heatLabels}
             sweetnessLabels={sweetnessLabels}
             onSweetnessUpdate={onSweetnessUpdate}
@@ -2198,6 +2216,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkAddMembersToGrouping,
             heatLabels,
             sweetnessLabels,
+            customAllergens,
+            customDietary,
+            allergenDefaults,
+            dietaryDefaults,
             // Menu Builder is a single-menu context → enable bulk "Remove from
             // menu" (placement removal; items stay in catalogue) — PDD #8.
             currentMenuId: activeMenuId ?? undefined,
