@@ -178,6 +178,22 @@ export interface MenuItemJunctionSettings {
   category_portions?: Record<string, { portion_type: 'single' | 'shared'; portion_serves: number | null }>;
 }
 
+/**
+ * Wine serving size (PDD 2026-06-15). Owner-configured option so a wine can be
+ * sold by the glass AND/OR the bottle, each priced independently. Stored on
+ * `menu_items.serving_options` (JSONB). `id` is a slug unique within the array;
+ * exactly one option has `is_default` (server-normalized on write).
+ */
+export interface ServingOption {
+  id: string;
+  label: string;
+  /** Pour size in millilitres (display only; optional). */
+  volume_ml?: number;
+  /** Price for this serving, in cents. */
+  price_cents: number;
+  is_default: boolean;
+}
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -189,6 +205,11 @@ export interface MenuItem {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /**
+   * Wine serving sizes (PDD 2026-06-15). Owner-configured glass/bottle options.
+   * Absent / empty ⇒ single-priced wine (patron skips the serving step).
+   */
+  serving_options?: ServingOption[] | null;
   /**
    * PDD 2026-05-15: owner per-item opt-out for the patron composition page
    * Spice Level slider. Defaults to TRUE on the wire.
@@ -381,6 +402,8 @@ export interface MenuItemDisplay {
   gallery_urls?: (string | null)[];
   boost_level?: number;
   chefs_special?: boolean;
+  /** Wine serving sizes (PDD 2026-06-15) — owner-configured glass/bottle options. */
+  serving_options?: ServingOption[] | null;
   /**
    * PDD 2026-05-15: owner per-item opt-out for the patron composition page
    * Spice Level slider. Defaults to TRUE on the wire (backend column

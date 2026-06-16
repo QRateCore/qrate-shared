@@ -731,6 +731,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     setBevDraft(item.food_tags?.beverage ?? {});
   }, [item.id, item.food_tags?.beverage]);
 
+  // Wine serving sizes (PDD 2026-06-15) — owner-configured glass/bottle options
+  // on menu_items.serving_options. Prices held here in DOLLARS for the input;
+  // converted to price_cents on Save. Resyncs when the item prop changes.
+  type ServingRow = { id: string; label: string; volume_ml: string; price: string; is_default: boolean };
+  const itemServingRows = (it: MenuItemDisplay): ServingRow[] =>
+    (it.serving_options ?? []).map((o, i) => ({
+      id: o.id || `opt-${i}`,
+      label: o.label ?? '',
+      volume_ml: o.volume_ml != null ? String(o.volume_ml) : '',
+      price: o.price_cents != null ? (o.price_cents / 100).toFixed(2) : '',
+      is_default: !!o.is_default,
+    }));
+  const [servingRows, setServingRows] = useState<ServingRow[]>(() => itemServingRows(item));
+  useEffect(() => {
+    setServingRows(itemServingRows(item));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.serving_options]);
+
+  const addServingRow = () =>
+    setServingRows((rows) => [
+      ...rows,
+      { id: `new-${rows.length}-${rows.reduce((n, r) => n + r.label.length, 0)}`, label: '', volume_ml: '', price: '', is_default: rows.length === 0 },
+    ]);
+  const removeServingRow = (idx: number) =>
+    setServingRows((rows) => {
+      const next = rows.filter((_, i) => i !== idx);
+      // Keep exactly one default alive when rows remain.
+      if (next.length > 0 && !next.some((r) => r.is_default)) next[0].is_default = true;
+      return next;
+    });
+  const updateServingRow = (idx: number, patch: Partial<ServingRow>) =>
+    setServingRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const setServingDefault = (idx: number) =>
+    setServingRows((rows) => rows.map((r, i) => ({ ...r, is_default: i === idx })));
+
   // Other food tags (heat_spice handled separately)
   const [tags, setTags] = useState<Record<string, string[]>>(() => {
     const ft = item.food_tags ?? {};
@@ -1676,6 +1711,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       }
     }
 
+    // Wine serving sizes (PDD 2026-06-15). Build the serving_options payload from
+    // the editor rows when the item is a wine. Drops rows without a label or a
+    // valid (>= 0) price; converts dollars → price_cents; forces exactly one
+    // default. Returns [] (clear) when wine with no valid rows, or undefined
+    // (untouched) when the item isn't a wine — so non-wine saves never send it.
+    const buildServingOptions = (): Array<{ id: string; label: string; volume_ml?: number; price_cents: number; is_default: boolean }> | undefined => {
+      if (!(category === 'Beverages' && bevDraft.beverage_type === 'wine')) return undefined;
+      const seen = new Set<string>();
+      const out: Array<{ id: string; label: string; volume_ml?: number; price_cents: number; is_default: boolean }> = [];
+      for (const row of servingRows) {
+        const label = row.label.trim();
+        const priceNum = parseFloat(row.price);
+        if (!label || !isFinite(priceNum) || priceNum < 0) continue;
+        let slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'option';
+        let n = 2;
+        while (seen.has(slug)) { slug = `${slug}-${n}`; n += 1; }
+        seen.add(slug);
+        const opt: { id: string; label: string; volume_ml?: number; price_cents: number; is_default: boolean } = {
+          id: slug, label, price_cents: Math.round(priceNum * 100), is_default: !!row.is_default,
+        };
+        const vol = parseInt(row.volume_ml, 10);
+        if (isFinite(vol) && vol > 0) opt.volume_ml = vol;
+        out.push(opt);
+      }
+      if (out.length > 0 && !out.some((o) => o.is_default)) out[0].is_default = true;
+      // Only one default survives — first flagged wins.
+      let defaulted = false;
+      for (const o of out) {
+        if (o.is_default && !defaulted) { defaulted = true; }
+        else { o.is_default = false; }
+      }
+      return out;
+    };
+    const servingOptionsPayload = buildServingOptions();
+
     try {
       // ── Deferred-creation path ─────────────────────────────────────────────
       // When onSaveNewItem is provided the item has no DB row yet (draft only in
@@ -1692,6 +1762,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           item_type: isAddon ? 'addon' : 'dish',
           ...(isAddon && price !== null ? { price } : {}),
           ...(isAddon ? { memo: memo.trim() || null } : {}),
+          ...(servingOptionsPayload !== undefined ? { serving_options: servingOptionsPayload } : {}),
         });
         const updated: MenuItemDisplay = {
           ...item,
@@ -1787,6 +1858,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         // add-ons can never be BYO themselves. API enforces hard-block
         // when is_byo=true and groupings empty (returns 400).
         ...(isAddon ? {} : { is_byo: isByo }),
+        // Wine serving sizes (PDD 2026-06-15) — sent only for wine items
+        // (undefined ⇒ omitted, so non-wine saves leave the column untouched).
+        ...(servingOptionsPayload !== undefined ? { serving_options: servingOptionsPayload } : {}),
       };
 
       // When converting dish → addon, remove all menu associations first.
@@ -3446,6 +3520,83 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 ]}
                               />
                             </div>
+                          </div>
+                        )}
+
+                        {/* Wine serving sizes (PDD 2026-06-15) — sell by the
+                            glass AND/OR the bottle. Each row: label, optional
+                            volume (ml), price. One default (pre-selected on the
+                            patron composition page). Empty ⇒ single-priced wine. */}
+                        {bevType === 'wine' && (
+                          <div data-testid="serving-sizes-section" style={{ marginTop: 4 }}>
+                            <label style={fieldLabel}>Serving sizes</label>
+                            <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--text2)' }}>
+                              Offer this wine by the glass and/or bottle. Leave empty for a single price.
+                            </p>
+                            {servingRows.map((row, idx) => (
+                              <div
+                                key={row.id}
+                                data-testid={`serving-option-row-${idx}`}
+                                style={{ display: 'grid', gridTemplateColumns: '1fr 70px 80px auto auto', gap: 6, alignItems: 'center', marginBottom: 6 }}
+                              >
+                                <input
+                                  data-testid={`serving-option-label-${idx}`}
+                                  value={row.label}
+                                  placeholder="Glass / Bottle"
+                                  onChange={(e) => updateServingRow(idx, { label: e.target.value })}
+                                  style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+                                />
+                                <input
+                                  data-testid={`serving-option-volume-${idx}`}
+                                  value={row.volume_ml}
+                                  inputMode="numeric"
+                                  placeholder="ml"
+                                  onChange={(e) => updateServingRow(idx, { volume_ml: e.target.value.replace(/[^0-9]/g, '') })}
+                                  style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+                                />
+                                <input
+                                  data-testid={`serving-option-price-${idx}`}
+                                  value={row.price}
+                                  inputMode="decimal"
+                                  placeholder="$"
+                                  onChange={(e) => updateServingRow(idx, { price: e.target.value.replace(/[^0-9.]/g, '') })}
+                                  style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+                                />
+                                <button
+                                  type="button"
+                                  data-testid={`serving-option-default-${idx}`}
+                                  aria-pressed={row.is_default}
+                                  title="Default serving"
+                                  onClick={() => setServingDefault(idx)}
+                                  style={{
+                                    padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid',
+                                    borderColor: row.is_default ? '#9333ea' : 'var(--border)',
+                                    background: row.is_default ? '#9333ea' : 'white',
+                                    color: row.is_default ? 'white' : 'var(--text2)',
+                                    fontSize: 12, fontWeight: row.is_default ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {row.is_default ? '★ Default' : 'Default'}
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid={`serving-option-remove-${idx}`}
+                                  aria-label="Remove serving size"
+                                  onClick={() => removeServingRow(idx)}
+                                  style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'white', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              data-testid="add-serving-option-btn"
+                              onClick={addServingRow}
+                              style={{ marginTop: 2, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'white', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
+                            >
+                              + Add serving size
+                            </button>
                           </div>
                         )}
 
