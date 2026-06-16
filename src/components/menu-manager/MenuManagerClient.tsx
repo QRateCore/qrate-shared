@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary, ServingOption } from '../../types/restaurant';
 import {
   buildAssignments,
   buildJunctionSettings,
@@ -35,7 +35,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory';
+export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory' | 'serving';
 
 export interface DragState {
   itemIds: string[];
@@ -165,6 +165,8 @@ interface Props {
   onBulkDietary?: (tags: Array<{ name: string; type: 'allergen' | 'dietary' }>, itemIds: string[]) => Promise<void>;
   /** Optional: bulk sweetness update for the Sweetness tab in BulkActionsPanel. */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
+  /** Optional: bulk wine serving sizes (PDD 2026-06-15) for the Serving sizes tab. */
+  onBulkServingSizes?: (servingOptions: ServingOption[], itemIds: string[]) => Promise<void>;
   /**
    * Admin-only: bulk AI enrich for the Enrich tab in BulkActionsPanel.
    * When provided, the panel surfaces an Enrich mode. Consumer is
@@ -384,7 +386,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -2209,6 +2211,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBulkSpice,
             onBulkDietary,
             onBulkSweetness,
+            onBulkServingSizes,
             onBulkEnrich,
             onBulkApplyGrouping,
             onBulkRemoveGrouping,

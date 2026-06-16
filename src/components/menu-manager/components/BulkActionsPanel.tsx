@@ -3,9 +3,9 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { useEffect, useState } from 'react';
-import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, FolderMinus, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag } from 'lucide-react';
+import { X, Star, Zap, EyeOff, Eye, Trash2, MinusCircle, FolderMinus, PlusCircle, Flame, Leaf, Sparkles, Wand2, Layers, Layers2, Tag, Wine } from 'lucide-react';
 import { BulkMemberPicker } from './BulkMemberPicker';
-import type { MenuItemDisplay, MenuSummary, MenuAssociation } from '../../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuAssociation, ServingOption } from '../../../types/restaurant';
 import { CANONICAL_CATEGORIES, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
 import Select from '../../common/Select';
 import RawCategorySelect from './RawCategorySelect';
@@ -85,6 +85,13 @@ interface BulkActionsPanelProps {
   currentMenuName?: string;
   /** Optional: bulk sweetness update — owner app wires this to the sweetness API */
   onBulkSweetness?: (label: string, itemIds: string[]) => Promise<void>;
+  /**
+   * Optional: bulk wine serving sizes (PDD 2026-06-15). Applies one owner-defined
+   * set of serving options to every selected item. Opt-in — the "Serving sizes"
+   * tab only appears when wired. The owner app implements this as a per-item
+   * serving_options PATCH. An empty array clears serving sizes on the selection.
+   */
+  onBulkServingSizes?: (servingOptions: ServingOption[], itemIds: string[]) => Promise<void>;
   /**
    * Admin-only: bulk AI enrich. When provided, the panel surfaces an
    * Enrich tab (Wand2 icon). Calls the consumer's batch-enrich endpoint
@@ -217,6 +224,10 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   // Remove-from-menu is opt-in via currentMenuId (Menu Builder only) — removes
   // the placement from THIS menu; items stay in the catalogue (PDD 2026-06-12 #8).
   { key: 'removeFromMenu', label: 'Remove from menu', icon: <FolderMinus size={13} /> },
+  // Wine serving sizes (PDD 2026-06-15) — opt-in via onBulkServingSizes. Applies
+  // one owner-defined set of serving options (Glass/Bottle …) to every selected
+  // wine. Intended for a wine-filtered selection.
+  { key: 'serving',      label: 'Serving sizes', icon: <Wine size={13} /> },
   { key: 'delete',       label: 'Delete',       icon: <Trash2 size={13} /> },
 ];
 
@@ -247,6 +258,7 @@ export default function BulkActionsPanel({
   onBulkSpice,
   onBulkDietary,
   onBulkSweetness,
+  onBulkServingSizes,
   onBulkEnrich,
   onBulkApplyGrouping,
   onBulkRemoveGrouping,
@@ -287,6 +299,7 @@ export default function BulkActionsPanel({
     .filter((m) =>
       m.key !== 'removeGrouping' || (!!onBulkRemoveGrouping && !!loadGroupingsForItem))
     .filter((m) => m.key !== 'rawCategory' || !!onBulkRawCategory)
+    .filter((m) => m.key !== 'serving' || !!onBulkServingSizes)
     .filter((m) => m.key !== 'removeFromMenu' || !!currentMenuId);
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -341,6 +354,12 @@ export default function BulkActionsPanel({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [pickedHeat, setPickedHeat] = useState<string | null>(null);
   const [pickedSweetness, setPickedSweetness] = useState<string | null>(null);
+  // Wine serving sizes (PDD 2026-06-15) — one set of rows applied to every
+  // selected item. Prices held in dollars for the input; → price_cents on Apply.
+  const [servingRows, setServingRows] = useState<ServingBulkRow[]>([
+    { label: 'Glass', volume_ml: '', price: '', is_default: true },
+    { label: 'Bottle', volume_ml: '', price: '', is_default: false },
+  ]);
   // Raw Category mode: either pick an existing label (or the Uncategorized
   // sentinel) from the Select, or type a brand-new label. The typed value
   // takes precedence when non-empty.
@@ -1026,6 +1045,32 @@ export default function BulkActionsPanel({
     if (failed < tasks.length) onSuccess();
   }
 
+  async function runServingSizes() {
+    if (!onBulkServingSizes) { onComplete(items, selected); return; }
+    let options: ServingOption[];
+    try {
+      options = buildBulkServingOptions(servingRows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid serving sizes');
+      return;
+    }
+    setExecuting(true);
+    setError(null);
+    const itemIds = selectedItems.map((i) => i.id);
+    setProgress({ done: 0, total: itemIds.length });
+    let failed = 0;
+    for (const itemId of itemIds) {
+      try { await onBulkServingSizes(options, [itemId]); } catch { failed++; }
+      setProgress((p) => p ? { ...p, done: p.done + 1 } : null);
+    }
+    setExecuting(false);
+    setProgress(null);
+    if (failed > 0) {
+      setError(`${failed} item${failed !== 1 ? 's' : ''} failed — others updated`);
+    }
+    if (failed < itemIds.length) onComplete(items, selected);
+  }
+
   async function handleApply() {
     setError(null);
     // Gate the delete click-through so we don't emit on confirmation click.
@@ -1046,6 +1091,7 @@ export default function BulkActionsPanel({
         case 'spiceModifier': await runSpiceModifier(); break;
         case 'spice':        await runSpice(); break;
         case 'sweetness':    await runSweetness(); break;
+        case 'serving':      await runServingSizes(); break;
         case 'dietary':      await runDietary(); break;
         case 'rawCategory':  await runRawCategory(); break;
         case 'enrich':       await runEnrich(); break;
@@ -1311,6 +1357,9 @@ export default function BulkActionsPanel({
           )}
           {mode === 'sweetness' && (
             <SweetnessForm sweetnessLabels={activeSweetnessLabels} pickedSweetness={pickedSweetness} onChange={setPickedSweetness} />
+          )}
+          {mode === 'serving' && (
+            <ServingSizesForm rows={servingRows} onChange={setServingRows} count={selected.size} />
           )}
           {mode === 'dietary' && (
             <DietaryForm
@@ -2036,6 +2085,141 @@ function SweetnessForm({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Wine serving sizes (PDD 2026-06-15) ─────────────────────────────────────
+
+export interface ServingBulkRow { label: string; volume_ml: string; price: string; is_default: boolean }
+
+/**
+ * Build the serving_options payload from the bulk editor rows. Drops rows
+ * without a label or a valid (>= 0) price; converts dollars → price_cents;
+ * forces exactly one default; slug-dedupes ids. An all-empty editor yields []
+ * (clears serving sizes on the selection). Throws when rows are present but
+ * none are valid, so Apply surfaces a friendly error instead of a no-op clear.
+ */
+export function buildBulkServingOptions(rows: ServingBulkRow[]): ServingOption[] {
+  const hasAnyInput = rows.some((r) => r.label.trim() || r.price.trim());
+  const out: ServingOption[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const label = row.label.trim();
+    const priceNum = parseFloat(row.price);
+    if (!label || !isFinite(priceNum) || priceNum < 0) continue;
+    let slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'option';
+    let n = 2;
+    while (seen.has(slug)) { slug = `${slug}-${n}`; n += 1; }
+    seen.add(slug);
+    const opt: ServingOption = { id: slug, label, price_cents: Math.round(priceNum * 100), is_default: !!row.is_default };
+    const vol = parseInt(row.volume_ml, 10);
+    if (isFinite(vol) && vol > 0) opt.volume_ml = vol;
+    out.push(opt);
+  }
+  if (hasAnyInput && out.length === 0) {
+    throw new Error('Each serving size needs a label and a price');
+  }
+  if (out.length > 0 && !out.some((o) => o.is_default)) out[0].is_default = true;
+  let defaulted = false;
+  for (const o of out) {
+    if (o.is_default && !defaulted) defaulted = true;
+    else o.is_default = false;
+  }
+  return out;
+}
+
+function ServingSizesForm({
+  rows,
+  onChange,
+  count,
+}: {
+  rows: ServingBulkRow[];
+  onChange: (rows: ServingBulkRow[]) => void;
+  count: number;
+}) {
+  const update = (i: number, patch: Partial<ServingBulkRow>) =>
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const setDefault = (i: number) => onChange(rows.map((r, idx) => ({ ...r, is_default: idx === i })));
+  const remove = (i: number) => {
+    const next = rows.filter((_, idx) => idx !== i);
+    if (next.length > 0 && !next.some((r) => r.is_default)) next[0].is_default = true;
+    onChange(next);
+  };
+  const add = () => onChange([...rows, { label: '', volume_ml: '', price: '', is_default: rows.length === 0 }]);
+
+  return (
+    <div data-testid="bulk-serving-form">
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+        Set wine serving sizes
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+        Applied to all {count} selected item{count !== 1 ? 's' : ''} — intended for wines. Clear all rows to remove serving sizes.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rows.map((row, i) => (
+          <div
+            key={i}
+            data-testid={`bulk-serving-row-${i}`}
+            style={{ display: 'grid', gridTemplateColumns: '1fr 64px 72px auto auto', gap: 6, alignItems: 'center' }}
+          >
+            <input
+              data-testid={`bulk-serving-label-${i}`}
+              value={row.label}
+              placeholder="Glass / Bottle"
+              onChange={(e) => update(i, { label: e.target.value })}
+              style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+            />
+            <input
+              data-testid={`bulk-serving-volume-${i}`}
+              value={row.volume_ml}
+              inputMode="numeric"
+              placeholder="ml"
+              onChange={(e) => update(i, { volume_ml: e.target.value.replace(/[^0-9]/g, '') })}
+              style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+            />
+            <input
+              data-testid={`bulk-serving-price-${i}`}
+              value={row.price}
+              inputMode="decimal"
+              placeholder="$"
+              onChange={(e) => update(i, { price: e.target.value.replace(/[^0-9.]/g, '') })}
+              style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+            />
+            <button
+              type="button"
+              data-testid={`bulk-serving-default-${i}`}
+              aria-pressed={row.is_default}
+              onClick={() => setDefault(i)}
+              style={{
+                padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid',
+                borderColor: row.is_default ? 'var(--accent, #9333ea)' : 'var(--border)',
+                background: row.is_default ? 'var(--accent, #9333ea)' : 'white',
+                color: row.is_default ? 'white' : 'var(--text2)', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {row.is_default ? '★' : '☆'}
+            </button>
+            <button
+              type="button"
+              data-testid={`bulk-serving-remove-${i}`}
+              aria-label="Remove serving size"
+              onClick={() => remove(i)}
+              style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'white', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        data-testid="bulk-serving-add"
+        onClick={add}
+        style={{ marginTop: 8, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'white', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
+      >
+        + Add serving size
+      </button>
     </div>
   );
 }
