@@ -125,6 +125,14 @@ export interface MenuAssociation {
    */
   category_prices?: Record<string, number>;
   /**
+   * Per-menu WINE serving PRICE override (PDD 2026-06-15). Keyed by serving
+   * option id → price in CENTS, overriding the item-level
+   * `serving_options[].price_cents` for this (item, menu) placement only.
+   * Price-only; the servings themselves stay item-level. Absent ⇒ use the
+   * item default.
+   */
+  serving_price_overrides?: Record<string, number>;
+  /**
    * Per-canonical-category boost level overrides. Keys are canonical category
    * names; values are the boost level string ("1"/"2"/"3"). Missing keys fall
    * back to the shared `boost_level` for this (item, menu) placement.
@@ -170,6 +178,14 @@ export interface MenuItemJunctionSettings {
    * Use `{}` or omit to clear all overrides; the base `price` applies.
    */
   category_prices?: Record<string, number>;
+  /**
+   * Per-menu WINE serving PRICE override (PDD 2026-06-15). Keyed by serving
+   * option id → price in CENTS, overriding the item-level
+   * `serving_options[].price_cents` for this (item, menu) placement only.
+   * Price-only; the servings themselves stay item-level. Absent ⇒ use the
+   * item default.
+   */
+  serving_price_overrides?: Record<string, number>;
   /** Per-category boost level overrides (same replace-semantics as category_prices). */
   category_boost_levels?: Record<string, string | null>;
   /** Per-category chef's special flag overrides (same replace-semantics as category_prices). */

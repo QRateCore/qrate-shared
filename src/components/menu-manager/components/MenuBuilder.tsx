@@ -744,6 +744,22 @@ function MenuItemRow({
   const [portionType, setPortionType] = useState<'single' | 'shared'>(effectivePortionType);
   const [portionServes, setPortionServes] = useState(effectivePortionServes);
 
+  // Per-menu WINE serving PRICE override (PDD 2026-06-15). The servings (Glass/
+  // Bottle …) come from the item-level menu_items.serving_options; this row lets
+  // the owner override each serving's PRICE for THIS menu. One $ field per
+  // serving; held in DOLLARS, persisted as cents in serving_price_overrides.
+  const servingOptions = item.serving_options ?? [];
+  const hasServingOptions = servingOptions.length > 0;
+  const buildServingStrs = (): Record<string, string> => {
+    const o: Record<string, string> = {};
+    for (const s of servingOptions) {
+      const override = settings.serving_price_overrides?.[s.id];
+      o[s.id] = override != null ? String(override / 100) : '';
+    }
+    return o;
+  };
+  const [servingPriceStrs, setServingPriceStrs] = useState<Record<string, string>>(buildServingStrs);
+
   // STR-262: Re-sync local form state when settings prop changes externally
   // (e.g. when the useEffect rebuild in MenuManagerClient overwrites
   // junctionSettings). Without this, local state becomes stale after any
@@ -757,6 +773,7 @@ function MenuItemRow({
       setChefsSpecial(effectiveChefsSpecial());
       setPortionType(effectivePortionType());
       setPortionServes(effectivePortionServes());
+      setServingPriceStrs(buildServingStrs());
       prevSettingsRef.current = settings;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -833,6 +850,30 @@ function MenuItemRow({
       category_chefs_specials: settings.category_chefs_specials ?? {},
       category_portions:       settings.category_portions ?? {},
     });
+  }
+
+  // Per-menu wine serving price blur (PDD 2026-06-15): patch ONLY this serving's
+  // override in the saved map (replace-semantics — send the full map). Dollars
+  // in the input → cents in serving_price_overrides. Empty clears that serving's
+  // override (falls back to the item-level price).
+  function handleServingPriceBlur(servingId: string) {
+    const raw = servingPriceStrs[servingId] ?? '';
+    const dollars = raw.trim() === '' ? null : parseFloat(raw);
+    if (raw.trim() !== '' && (dollars === null || isNaN(dollars) || dollars < 0)) {
+      const saved = settings.serving_price_overrides?.[servingId];
+      setServingPriceStrs((prev) => ({ ...prev, [servingId]: saved != null ? String(saved / 100) : '' }));
+      return;
+    }
+    const cents = dollars != null ? Math.round(dollars * 100) : null;
+    const current = settings.serving_price_overrides ?? {};
+    if (cents === (current[servingId] ?? null)) return; // no-op
+    const next: Record<string, number> = { ...current };
+    if (cents != null) next[servingId] = cents;
+    else delete next[servingId];
+    trackAction('menu.menuBuilder.inlineEditServingPrice', {
+      metadata: { itemId: item.id, menuId, servingId, newPriceCents: cents },
+    });
+    save({ serving_price_overrides: next });
   }
 
   function handleBoostChange(label: string | null) {
@@ -1182,6 +1223,35 @@ function MenuItemRow({
             {/* Price — always a single input scoped to the current bucket (cat).
                 multiCat items bind to categoryPriceStrs[cat] so the owner edits
                 only the price for the category they are looking at, not all. */}
+            {/* Wine serving prices (PDD 2026-06-15): one $ field per serving
+                (Glass/Bottle …), overriding the item-level serving price for
+                THIS menu. Placeholder shows the item-level default. */}
+            {hasServingOptions ? (
+              <div className="flex items-center gap-2 flex-wrap" data-testid={`serving-prices-${item.id}`}>
+                {servingOptions.map((s) => (
+                  <div key={s.id} className="flex items-center gap-1">
+                    <label className="section-header !mb-0 shrink-0" htmlFor={`serving-${menuId}-${item.id}-${s.id}`}>
+                      {s.label}
+                    </label>
+                    <div className="flex items-center gap-0.5 rounded-[var(--r-xs)] bg-white px-2 py-1 border border-[var(--border)]">
+                      <span className="text-xs text-[var(--text2)]">$</span>
+                      <input
+                        id={`serving-${menuId}-${item.id}-${s.id}`}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={servingPriceStrs[s.id] ?? ''}
+                        onChange={(e) => setServingPriceStrs((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                        onBlur={() => handleServingPriceBlur(s.id)}
+                        placeholder={String((s.price_cents ?? 0) / 100)}
+                        data-testid={`serving-price-input-${item.id}-${s.id}`}
+                        className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="flex items-center gap-1.5">
               <label className="section-header !mb-0 shrink-0" htmlFor={`price-${menuId}-${item.id}`}>
                 Price
@@ -1221,6 +1291,7 @@ function MenuItemRow({
                 )}
               </div>
             </div>
+            )}
 
             {/* Divider */}
             <div className="w-px h-4 bg-[var(--border)] shrink-0" />
