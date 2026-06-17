@@ -15,7 +15,6 @@ import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
-import { isMenuLiveNow } from '../../../utils/menuSchedule';
 
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
@@ -283,32 +282,36 @@ export function _classifyRecMembersForTest(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
   menusById: ReadonlyMap<string, MenuSummary>,
-  now: Date,
 ) {
-  return classifyRecMembers(members, itemsById, menusById, now);
+  return classifyRecMembers(members, itemsById, menusById);
 }
 
+// "Active" means the rec target is placed on at least one non-paused menu
+// — schedule windows are NOT considered, because an owner editing the
+// Dinner menu at 11 AM still thinks of dinner-menu items as "on the menu",
+// not "inactive". The previous live-now predicate produced false positives
+// in the Inactive popover for every cross-menu rec whose target menu was
+// out of its time window at the moment the owner opened the builder.
 function classifyRecMembers(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
   menusById: ReadonlyMap<string, MenuSummary>,
-  now: Date,
 ): { active: typeof members; inactive: typeof members } {
   const active: typeof members[number][] = [];
   const inactive: typeof members[number][] = [];
   for (const m of members) {
     const target = m.menu_item_id ? itemsById.get(m.menu_item_id) : undefined;
     const assocs = target?.menu_associations ?? [];
-    let isLive = false;
+    let onActiveMenu = false;
     for (const a of assocs) {
       if (!a.menu_id) continue;
       const menu = menusById.get(a.menu_id);
-      if (menu && isMenuLiveNow(menu, now)) {
-        isLive = true;
+      if (menu && menu.active) {
+        onActiveMenu = true;
         break;
       }
     }
-    (isLive ? active : inactive).push(m);
+    (onActiveMenu ? active : inactive).push(m);
   }
   return { active, inactive };
 }
@@ -328,17 +331,13 @@ export function RecGroupingChips({
   menus: readonly MenuSummary[];
   onBringIntoMenu?: (memberId: string, ownerMenuId: string) => void;
 }) {
-  // Captured per-render. The chip flips on next render when crossing a
-  // schedule boundary; running a 1Hz interval would cause visual jitter
-  // that owners would find more confusing than the rare boundary-cross.
-  const now = useMemo(() => new Date(), []);
   const menusById = useMemo(
     () => new Map(menus.map((m) => [m.id, m])),
     [menus],
   );
   const { active, inactive } = useMemo(
-    () => classifyRecMembers(grouping.items, itemsById, menusById, now),
-    [grouping.items, itemsById, menusById, now],
+    () => classifyRecMembers(grouping.items, itemsById, menusById),
+    [grouping.items, itemsById, menusById],
   );
   if (active.length + inactive.length === 0) return null;
   return (

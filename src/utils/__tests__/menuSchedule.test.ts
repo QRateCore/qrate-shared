@@ -122,50 +122,62 @@ describe('classifyRecMember', () => {
     end_time: null,
   });
 
+  // The classifier asks "is this rec placed on a non-paused menu?" —
+  // schedule windows are intentionally ignored. `at()` references are
+  // kept only as documentation of when this test runs in the wall clock;
+  // they no longer influence the result.
+
   it('orphan (empty menu_ids) classifies as inactive', () => {
-    const result = classifyRecMember(
-      { menu_ids: [] },
-      [dinner, brunch],
-      at('2026-05-27T19:00:00'),
-    );
+    const result = classifyRecMember({ menu_ids: [] }, [dinner, brunch]);
     expect(result).toBe('inactive');
   });
 
-  it('active when ANY referenced menu is live now', () => {
+  it('active when ANY referenced menu is non-paused', () => {
     const result = classifyRecMember(
       { menu_ids: ['brunch', 'dinner'] },
       [dinner, brunch],
-      at('2026-05-27T19:00:00'),
     );
     expect(result).toBe('active');
   });
 
-  it('inactive when all referenced menus are outside their window', () => {
-    const result = classifyRecMember(
-      { menu_ids: ['brunch'] },
-      [dinner, brunch],
-      at('2026-05-27T19:00:00'),
-    );
-    expect(result).toBe('inactive');
+  // REGRESSION — pre-fix this was 'inactive' at 19:00 because Brunch was
+  // outside its 10:00-14:00 window. Owners editing at dinner time saw
+  // brunch-placed recs treated as orphans.
+  it('active when referenced menu is non-paused but currently OUTSIDE its time window', () => {
+    const result = classifyRecMember({ menu_ids: ['brunch'] }, [dinner, brunch]);
+    expect(result).toBe('active');
   });
 
   it('inactive when referenced menu is unknown to the loaded menus list', () => {
-    const result = classifyRecMember(
-      { menu_ids: ['ghost-menu'] },
-      [dinner, brunch],
-      at('2026-05-27T19:00:00'),
-    );
+    const result = classifyRecMember({ menu_ids: ['ghost-menu'] }, [dinner, brunch]);
     expect(result).toBe('inactive');
   });
 
   it('inactive when referenced menu is itself paused (active=false)', () => {
-    // Defence-in-depth — backend SHOULD filter these out, but the
-    // frontend still rejects them via isMenuLiveNow's active check.
+    const result = classifyRecMember({ menu_ids: ['winter'] }, [winter]);
+    expect(result).toBe('inactive');
+  });
+
+  it('active when target is on a mix of paused and non-paused menus', () => {
     const result = classifyRecMember(
-      { menu_ids: ['winter'] },
-      [winter],
-      at('2026-05-27T19:00:00'),
+      { menu_ids: ['winter', 'dinner'] },
+      [winter, dinner],
+    );
+    expect(result).toBe('active');
+  });
+
+  it('inactive when target is on multiple menus and EVERY one is paused', () => {
+    const summer = makeMenu({ id: 'summer', name: 'Summer', active: false });
+    const result = classifyRecMember(
+      { menu_ids: ['winter', 'summer'] },
+      [winter, summer],
     );
     expect(result).toBe('inactive');
+  });
+
+  it('uses the pre-built menusById index when supplied', () => {
+    const index = new Map<string, MenuSummary>([['dinner', dinner]]);
+    const result = classifyRecMember({ menu_ids: ['dinner'] }, [], index);
+    expect(result).toBe('active');
   });
 });

@@ -2547,10 +2547,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         open={subCatPrompt !== null}
         lockedCategory={subCatPrompt?.cat ?? null}
         lockedCategoryLabel={
-          // Show the 4-section label rather than the underlying canonical.
-          ({ Beverages: 'Drinks', Appetizers: 'Starters', Desserts: 'Dessert' } as Record<string, string>)[
-            subCatPrompt?.cat ?? ''
-          ] ?? subCatPrompt?.cat ?? ''
+          // Show the 4-section label (Drinks / Starters / Mains / Desserts)
+          // rather than the underlying canonical (Beverages / Appetizers /
+          // Entrees / Desserts). Routes through sectionForCanonical so the
+          // labels can never drift out of sync with MENU_SECTIONS.
+          subCatPrompt
+            ? sectionForCanonical(subCatPrompt.cat)?.label ?? subCatPrompt.cat
+            : ''
         }
         itemCount={subCatPrompt?.toProcess.length ?? 0}
         selectionLabel={subCatPrompt?.selectionLabel ?? ''}

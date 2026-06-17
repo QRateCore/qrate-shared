@@ -67,9 +67,17 @@ function toMinutes(hhmm: string): number | null {
 
 /**
  * Classify a recommendation grouping member as 'active' or 'inactive'
- * against the loaded menus list, in browser tz. Empty `menu_ids` →
- * inactive (orphan). Any menu in `menu_ids` that resolves to a live
- * menu → active.
+ * against the loaded menus list. Empty `menu_ids` → inactive (orphan).
+ * Any menu in `menu_ids` that resolves to a non-paused menu → active.
+ *
+ * Schedule windows are intentionally NOT considered: from the owner's
+ * point of view a rec target sitting on the Dinner menu is "on a menu",
+ * not "inactive", regardless of whether they happen to be editing at
+ * 11 AM. The previous live-now predicate produced false positives in
+ * the Inactive popover for every cross-menu rec whose target menu was
+ * out of its time window at the moment the page rendered. Owner-paused
+ * menus (active = false) still count as inactive because the owner
+ * took an explicit action to take that menu offline.
  *
  * Accepts an optional pre-built `menusById` index so callers rendering
  * one row per dish don't rebuild the map per member.
@@ -77,14 +85,13 @@ function toMinutes(hhmm: string): number | null {
 export function classifyRecMember(
   member: { menu_ids: readonly string[] },
   menus: readonly MenuSummary[],
-  now: Date = new Date(),
   menusById?: ReadonlyMap<string, MenuSummary>,
 ): 'active' | 'inactive' {
   if (member.menu_ids.length === 0) return 'inactive';
   const index = menusById ?? new Map(menus.map((m) => [m.id, m]));
   for (const id of member.menu_ids) {
     const menu = index.get(id);
-    if (menu && isMenuLiveNow(menu, now)) return 'active';
+    if (menu && menu.active) return 'active';
   }
   return 'inactive';
 }

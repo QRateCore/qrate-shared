@@ -14,10 +14,13 @@ export const CANONICAL_CATEGORIES = [
 export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
 
 // ── 4-section menu organization (2026-06-11 prototype) ──────────────────────
-// Collapse the 8 canonical categories into 4 top-level sections. Each section
-// maps to a representative `canonical` (the drop target + collapse/price key)
-// and a `label` shown to the owner. "Entrees" absorbs everything that isn't a
-// drink, starter, or dessert (soups, salads, sides, breads, mains).
+// Collapse the 8 canonical categories into 4 top-level sections — the well-
+// known courses owners think in (Drinks / Starters / Mains / Desserts). Each
+// section maps to a representative `canonical` (the drop target + collapse /
+// price key) and a `label` shown to the owner. The "Mains" section absorbs
+// everything that isn't a drink, starter, or dessert (soups, salads, sides,
+// breads, mains). The canonical_categories array on items is still the 8-value
+// data model; these 4 sections are the display + modal layer over it.
 export interface MenuSection {
   label: string;
   canonical: string;
@@ -26,8 +29,8 @@ export interface MenuSection {
 export const MENU_SECTIONS: MenuSection[] = [
   { label: 'Drinks',   canonical: 'Beverages',  members: ['Beverages'] },
   { label: 'Starters', canonical: 'Appetizers', members: ['Appetizers'] },
-  { label: 'Entrees',  canonical: 'Entrees',    members: ['Entrees', 'Soups', 'Salads', 'Sides', 'Breads'] },
-  { label: 'Dessert',  canonical: 'Desserts',   members: ['Desserts'] },
+  { label: 'Mains',    canonical: 'Entrees',    members: ['Entrees', 'Soups', 'Salads', 'Sides', 'Breads'] },
+  { label: 'Desserts', canonical: 'Desserts',   members: ['Desserts'] },
 ];
 /** Resolve the section a canonical belongs to (by representative or member). */
 export function sectionForCanonical(canonical: string): MenuSection | undefined {
