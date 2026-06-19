@@ -183,5 +183,41 @@ export function createMenuManagerService(
       );
       return { updated_count: data?.updated_count ?? 0 };
     },
+
+    // ── First-class sub-category structure (PDD 2026-06-19 Phase 3) ──────────
+    // The single-source replacement for raw_categories grouping + junction
+    // dual-write, gated behind isSubcategoryV2Enabled() in MenuManagerClient.
+    getMenuStructure: async (menuId) => {
+      return adapter.fetchJson(`${api}/owner/menus/${menuId}/structure`);
+    },
+    createMenuSubcategory: async (menuId, body) => {
+      return adapter.fetchJson(`${api}/owner/menus/${menuId}/subcategories`, {
+        method: 'POST',
+        body,
+      });
+    },
+    updateMenuSubcategory: async (menuId, subId, body) => {
+      return adapter.fetchJson(`${api}/owner/menus/${menuId}/subcategories/${subId}`, {
+        method: 'PATCH',
+        body,
+      });
+    },
+    deleteMenuSubcategory: async (menuId, subId) => {
+      await adapter.fetchJson(`${api}/owner/menus/${menuId}/subcategories/${subId}`, {
+        method: 'DELETE',
+      });
+    },
+    assignItemToSubcategory: async (menuId, itemId, subId) => {
+      await adapter.fetchJson(`${api}/owner/menus/${menuId}/items/${itemId}/subcategory`, {
+        method: 'PUT',
+        body: { subcategory_id: subId },
+      });
+    },
+    unassignItemFromSubcategory: async (menuId, itemId, course) => {
+      await adapter.fetchJson(`${api}/owner/menus/${menuId}/items/${itemId}/subcategory`, {
+        method: 'PUT',
+        body: { subcategory_id: null, course },
+      });
+    },
   };
 }

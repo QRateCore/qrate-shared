@@ -156,6 +156,30 @@ export interface RawCategorySummary {
   item_count: number;
 }
 
+// ── First-class menu sub-category structure (PDD 2026-06-19 Phase 3) ──────────
+// The new single-source model behind GET /owner/menus/{menuId}/structure. The 4
+// fixed courses each hold an ordered list of sub-categories; each sub-category
+// holds the ordered item ids assigned to it (single-membership within a course).
+
+/** The 4 fixed top-level courses in the first-class sub-category model. */
+export const STRUCTURE_COURSES = ['Beverages', 'Appetizers', 'Entrees', 'Desserts'] as const;
+export type StructureCourse = (typeof STRUCTURE_COURSES)[number];
+
+/** One first-class sub-category within a course. */
+export interface MenuSubcategory {
+  subcategory_id: string;
+  name: string;
+  sort_order: number;
+  item_ids: string[];
+  count: number;
+}
+
+/** GET /owner/menus/{menuId}/structure response shape. */
+export interface MenuStructure {
+  menu_id: string;
+  courses: Record<StructureCourse, MenuSubcategory[]>;
+}
+
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
 export interface MenuItemJunctionSettings {
   price?: number | null;
@@ -802,6 +826,25 @@ export interface MenuManagerService {
    *  the legacy raw_categories write during the migration window. Optional so
    *  consumers that haven't wired it (admin/waiter) simply skip the dual-write. */
   setItemSubcategories?(menuId: string, itemId: string, canonical: string, labels: string[], mode?: 'add' | 'replace' | 'remove'): Promise<void>;
+
+  // ── First-class sub-category structure (PDD 2026-06-19 Phase 3) ────────────
+  // The single-source replacement for the raw_categories grouping + junction
+  // dual-write. Gated behind isSubcategoryV2Enabled() in MenuManagerClient.
+  // Optional so consumers (admin/waiter) that haven't wired them still
+  // type-check; when absent and the flag is ON, the client falls back to the
+  // legacy read/write path.
+  /** Read the menu's grouped view: course → sub-categories → item ids. */
+  getMenuStructure?(menuId: string): Promise<MenuStructure>;
+  /** Create a sub-category under a course. */
+  createMenuSubcategory?(menuId: string, body: { course: string; name: string; sort_order?: number }): Promise<MenuSubcategory>;
+  /** Rename / reorder a sub-category. */
+  updateMenuSubcategory?(menuId: string, subId: string, body: { name?: string; sort_order?: number }): Promise<MenuSubcategory>;
+  /** Delete a sub-category (its items become unassigned within the course). */
+  deleteMenuSubcategory?(menuId: string, subId: string): Promise<void>;
+  /** Assign an item to a sub-category (REPLACES within that course). */
+  assignItemToSubcategory?(menuId: string, itemId: string, subId: string): Promise<void>;
+  /** Unassign an item from its sub-category within a course (keeps it on the menu). */
+  unassignItemFromSubcategory?(menuId: string, itemId: string, course: string): Promise<void>;
 
   // Modifiers & addons
   getItemModifiers?(restaurantId: string, itemId: string): Promise<{

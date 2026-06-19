@@ -104,7 +104,7 @@ export {
 } from './constants';
 
 // Feature flags
-export { SWEETNESS_VISIBLE } from './constants/feature-flags';
+export { SWEETNESS_VISIBLE, isSubcategoryV2Enabled } from './constants/feature-flags';
 
 // Utils — Recommendation Broadcast (cross-tab reactivity)
 export { broadcastRecommendationChange, onRecommendationChange } from './utils/recommendation-broadcast';

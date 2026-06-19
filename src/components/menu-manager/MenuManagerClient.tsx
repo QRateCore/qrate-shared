@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary, ServingOption } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory } from '../../types/restaurant';
+import { isSubcategoryV2Enabled } from '../../constants/feature-flags';
 import {
   buildAssignments,
   buildJunctionSettings,
@@ -450,6 +451,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     () => buildJunctionSettings(initialItems),
   );
 
+  // ── First-class sub-category structure (PDD 2026-06-19 Phase 3) ────────────
+  // When the flag is ON, the builder's grouped view is the SINGLE source from
+  // GET /owner/menus/{menuId}/structure (course → sub-categories → item ids) —
+  // not menu_item_menus.raw_categories[]. We keep a per-menu cache of the loaded
+  // structure and PROJECT it into the existing `assignments` + `raw_categories`
+  // shapes the renderer already consumes, so the entire render path (MenuBuilder
+  // / CategoryBucket / SubCategoryGroup) is untouched. When OFF, none of this
+  // runs and the legacy path is byte-for-byte preserved.
+  const subcatV2 = isSubcategoryV2Enabled()
+    && !!service.getMenuStructure
+    && !!service.assignItemToSubcategory;
+  const [structureByMenu, setStructureByMenu] = useState<Record<string, MenuStructure>>({});
+  // Bumped after every structure write so the loader re-fetches the active menu.
+  const [structureRefreshKey, setStructureRefreshKey] = useState(0);
+
   // UI state
   const [activeMenuId, setActiveMenuId] = useState<string | null>(() => {
     // Pre-selected menu tab from URL beats the default-active fallback. Only
@@ -652,6 +668,135 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     };
   }, []);
+
+  // ── Structure loader (flag ON only) ─────────────────────────────────────────
+  // Fetch the active menu's first-class structure on tab change + after each
+  // structure write (structureRefreshKey bump). Cached per-menu so switching
+  // back to a loaded tab is instant; re-fetch keeps it fresh after writes.
+  useEffect(() => {
+    if (!subcatV2 || !activeMenuId || !service.getMenuStructure) return;
+    let cancelled = false;
+    service
+      .getMenuStructure(activeMenuId)
+      .then((structure) => {
+        if (cancelled) return;
+        setStructureByMenu((prev) => ({ ...prev, [activeMenuId]: structure }));
+      })
+      .catch(() => {
+        // Non-fatal: leave any cached structure in place. The projection memos
+        // fall back to the legacy assignments for menus with no loaded structure.
+      });
+    return () => { cancelled = true; };
+  }, [subcatV2, activeMenuId, structureRefreshKey, service]);
+
+  // Course (canonical) an item is assigned to within a loaded structure, plus
+  // the sub-category name it sits under. Used to project into the legacy shapes
+  // AND to resolve the source course/sub-category for writes.
+  const structureItemIndex = useMemo(() => {
+    // menuId -> itemId -> { course, subName, subId }
+    const idx: Record<string, Record<string, { course: string; subName: string; subId: string }>> = {};
+    if (!subcatV2) return idx;
+    for (const [menuId, structure] of Object.entries(structureByMenu)) {
+      const perItem: Record<string, { course: string; subName: string; subId: string }> = {};
+      for (const [course, subs] of Object.entries(structure.courses ?? {})) {
+        for (const sub of subs as MenuSubcategory[]) {
+          for (const itemId of sub.item_ids ?? []) {
+            perItem[itemId] = { course, subName: sub.name, subId: sub.subcategory_id };
+          }
+        }
+      }
+      idx[menuId] = perItem;
+    }
+    return idx;
+  }, [subcatV2, structureByMenu]);
+
+  // Sub-category name -> id within a course, for a given menu (write resolution).
+  const findSubcategoryId = useCallback(
+    (menuId: string, course: string, name: string): string | undefined => {
+      const subs = structureByMenu[menuId]?.courses?.[course as keyof MenuStructure['courses']];
+      if (!subs) return undefined;
+      const target = name.trim().toLowerCase();
+      return (subs as MenuSubcategory[]).find((s) => s.name.trim().toLowerCase() === target)?.subcategory_id;
+    },
+    [structureByMenu],
+  );
+
+  // Sub-category name -> { subId } scanning every course on a menu. Used by the
+  // menu-scoped rename/delete handlers, which receive only (menuId, label) and
+  // no course. Sub-category names are course-unique in practice, so the first
+  // match is correct.
+  const findSubcategoryByName = useCallback(
+    (menuId: string, name: string): { subId: string; course: string } | undefined => {
+      const structure = structureByMenu[menuId];
+      if (!structure) return undefined;
+      const target = name.trim().toLowerCase();
+      for (const [course, subs] of Object.entries(structure.courses ?? {})) {
+        const hit = (subs as MenuSubcategory[]).find((s) => s.name.trim().toLowerCase() === target);
+        if (hit) return { subId: hit.subcategory_id, course };
+      }
+      return undefined;
+    },
+    [structureByMenu],
+  );
+
+  // Projected assignments + per-item settings (flag ON). For any menu with a
+  // loaded structure, course membership and the sub-category label come from the
+  // structure (the single source). Items on the menu but not yet in any
+  // sub-category still appear (merged from legacy assignments) under Ungrouped,
+  // so a freshly-dropped or just-unassigned item is never invisible. Menus
+  // without a loaded structure (and the whole flag-OFF path) fall through to the
+  // legacy `assignments` / `junctionSettings` unchanged.
+  const effectiveAssignments = useMemo(() => {
+    if (!subcatV2) return assignments;
+    const out: Record<string, Record<string, string[]>> = { ...assignments };
+    for (const [menuId, perItem] of Object.entries(structureItemIndex)) {
+      const legacy = assignments[menuId] ?? {};
+      // Start from a blank set of canonical buckets, then fill from structure.
+      const next: Record<string, string[]> = {};
+      for (const cat of CANONICAL_CATEGORIES) next[cat] = [];
+      const seen = new Set<string>();
+      for (const [itemId, info] of Object.entries(perItem)) {
+        if (next[info.course] && !seen.has(`${info.course}:${itemId}`)) {
+          next[info.course].push(itemId);
+          seen.add(`${info.course}:${itemId}`);
+        }
+      }
+      // Merge legacy placements not represented in the structure (items on the
+      // menu but unassigned to any sub-category) so they still render (Ungrouped).
+      for (const [cat, ids] of Object.entries(legacy)) {
+        if (next[cat] === undefined) { next[cat] = [...ids]; continue; }
+        for (const id of ids) {
+          if (!perItem[id] && !next[cat].includes(id)) next[cat].push(id);
+        }
+      }
+      out[menuId] = next;
+    }
+    return out;
+  }, [subcatV2, assignments, structureItemIndex]);
+
+  const effectiveGetSettings = useCallback(
+    (menuId: string, itemId: string): MenuItemJunctionSettings => {
+      const base = junctionSettings[`${menuId}:${itemId}`] ?? {
+        price: null,
+        boost_level: null,
+        chefs_special: false,
+        portion_type: 'single',
+        portion_serves: null,
+        category_name: undefined,
+      };
+      if (!subcatV2) return base;
+      const info = structureItemIndex[menuId]?.[itemId];
+      if (!structureByMenu[menuId]) return base; // structure not loaded for this menu
+      // Override grouping fields from the structure: single course + single
+      // sub-category label (single-membership). Unassigned → no labels (Ungrouped).
+      return {
+        ...base,
+        canonical_categories: info ? [info.course] : (base.canonical_categories ?? []),
+        raw_categories: info && info.subName ? [info.subName] : [],
+      };
+    },
+    [subcatV2, junctionSettings, structureItemIndex, structureByMenu],
+  );
 
   // Open edit modal for a specific item when navigated from another page (e.g. Patron Engagement)
   useEffect(() => {
@@ -1003,12 +1148,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         } else {
           showToast(idsInMenu.length === 1 ? 'Removed from menu' : `Removed ${idsInMenu.length} items from menu`);
         }
+        // Flag ON: re-derive the grouped view so removed items drop out of the
+        // structure-projected buckets (the cached structure still listed them).
+        if (subcatV2) setStructureRefreshKey((k) => k + 1);
         // Clear selection after multi-item drop
         if (idsInMenu.length > 1) setSelected(new Set());
       };
       processRemovals();
     },
-    [dragging, items, restaurantId, showToast, trackAction],
+    [dragging, items, restaurantId, showToast, trackAction, subcatV2],
   );
 
   // ── Bucket drag handlers ──────────────────────────────────────────────────
@@ -1043,26 +1191,37 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       fromCat: string | null,
       defaultLabel: string,
     ) => {
-      const members = sectionForCanonical(cat)?.members ?? [cat];
-      const subcatCounts = new Map<string, number>();
-      for (const it of items) {
-        const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
-        if (!assoc) continue;
-        const inSection = (assoc.canonical_categories ?? []).some((c) => members.includes(c));
-        if (!inSection) continue;
-        for (const lbl of assoc.raw_categories ?? []) {
-          const t = (lbl ?? '').trim();
-          if (t) subcatCounts.set(t, (subcatCounts.get(t) ?? 0) + 1);
+      let labels: RawCategorySummary[];
+      if (subcatV2 && structureByMenu[menuId]) {
+        // Flag ON: the chooser's existing sub-categories come from the loaded
+        // first-class structure for this course (the single source) — not from
+        // legacy raw_categories on items.
+        const subs = (structureByMenu[menuId].courses?.[cat as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+        labels = subs
+          .map((s) => ({ label: s.name, item_count: s.count }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } else {
+        const members = sectionForCanonical(cat)?.members ?? [cat];
+        const subcatCounts = new Map<string, number>();
+        for (const it of items) {
+          const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
+          if (!assoc) continue;
+          const inSection = (assoc.canonical_categories ?? []).some((c) => members.includes(c));
+          if (!inSection) continue;
+          for (const lbl of assoc.raw_categories ?? []) {
+            const t = (lbl ?? '').trim();
+            if (t) subcatCounts.set(t, (subcatCounts.get(t) ?? 0) + 1);
+          }
         }
+        labels = dedupeRawCategoryLabels(
+          [...subcatCounts.entries()].map(([label, item_count]) => ({ label, item_count })),
+        ).sort((a, b) => a.label.localeCompare(b.label));
       }
-      const labels: RawCategorySummary[] = dedupeRawCategoryLabels(
-        [...subcatCounts.entries()].map(([label, item_count]) => ({ label, item_count })),
-      ).sort((a, b) => a.label.localeCompare(b.label));
       const selectionLabel =
         toProcess.length === 1 ? toProcess[0].name : `${toProcess.length} items`;
       setSubCatPrompt({ menuId, cat, toProcess, labels, defaultLabel, selectionLabel, fromCat });
     },
-    [items],
+    [items, subcatV2, structureByMenu],
   );
 
   // General-area bucket drop (menu raw sub-categories, 7b). Instead of assigning
@@ -1190,6 +1349,51 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         return;
       }
 
+      // ── Flag ON: write through the first-class sub-category structure API ──
+      // No legacy raw_categories / junction dual-write. Resolve (or create) the
+      // sub-category under `cat`, then assign each item to it (the API replaces
+      // within the course). Ungrouped → unassign within the course. The grouped
+      // view is re-derived from /structure on success (structureRefreshKey bump).
+      if (subcatV2 && service.assignItemToSubcategory) {
+        const ungrouped = label === UNGROUPED_KEY;
+        const moveLabelV2 = ungrouped ? 'Ungrouped' : label;
+        const runV2 = async () => {
+          let subId: string | undefined;
+          if (!ungrouped) {
+            subId = findSubcategoryId(menuId, cat, label);
+            if (!subId && service.createMenuSubcategory) {
+              try {
+                const created = await service.createMenuSubcategory(menuId, { course: cat, name: label });
+                subId = created.subcategory_id;
+              } catch {
+                showToast(`Couldn't create sub-category "${label}" — try again`);
+                return;
+              }
+            }
+            if (!subId) { showToast(`Couldn't file under "${label}" — try again`); return; }
+          }
+          let failed = 0;
+          for (const item of toProcess) {
+            try {
+              if (ungrouped) {
+                await service.unassignItemFromSubcategory?.(menuId, item.id, cat);
+              } else {
+                await service.assignItemToSubcategory!(menuId, item.id, subId!);
+              }
+            } catch {
+              failed++;
+            }
+          }
+          if (failed > 0) showToast(`${toProcess.length - failed} filed, ${failed} failed`);
+          else showToast(toProcess.length === 1 ? `Filed under ${moveLabelV2}` : `Filed ${toProcess.length} items under ${moveLabelV2}`);
+          if (toProcess.length > 1) setSelected(new Set());
+          // Re-fetch the structure so the grouped view reflects the write.
+          setStructureRefreshKey((k) => k + 1);
+        };
+        void runV2();
+        return;
+      }
+
       const prevItems = items;
       const isUngroupedTarget = label === UNGROUPED_KEY;
       const newLabels = isUngroupedTarget ? [] : [label];
@@ -1289,7 +1493,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       };
       run();
     },
-    [items, menus, service, showToast],
+    [items, menus, service, showToast, subcatV2, findSubcategoryId],
   );
 
   // 7a — drop onto an existing sub-group → MOVE/re-file directly (no popup).
@@ -1323,7 +1527,23 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const handleRenameSubCategory = useCallback(
     async (menuId: string, from: string, to: string) => {
       const next = to.trim();
-      if (!next || next === from || !service.renameMenuRawCategory) return;
+      if (!next || next === from) return;
+
+      // ── Flag ON: rename the first-class sub-category by id ──────────────────
+      if (subcatV2 && service.updateMenuSubcategory) {
+        const found = findSubcategoryByName(menuId, from);
+        if (!found) { showToast(`Couldn't find "${from}" — try again`); return; }
+        try {
+          await service.updateMenuSubcategory(menuId, found.subId, { name: next });
+          showToast(`Renamed "${from}" to "${next}"`);
+          setStructureRefreshKey((k) => k + 1);
+        } catch {
+          showToast(`Couldn't rename "${from}" — try again`);
+        }
+        return;
+      }
+
+      if (!service.renameMenuRawCategory) return;
       const prevItems = items;
       setItems((prev) =>
         prev.map((i) => ({
@@ -1348,11 +1568,25 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         showToast(`Couldn't rename "${from}" — try again`);
       }
     },
-    [items, service, showToast],
+    [items, service, showToast, subcatV2, findSubcategoryByName],
   );
 
   const handleDeleteSubCategory = useCallback(
     async (menuId: string, label: string) => {
+      // ── Flag ON: delete the first-class sub-category by id ──────────────────
+      if (subcatV2 && service.deleteMenuSubcategory) {
+        const found = findSubcategoryByName(menuId, label);
+        if (!found) { showToast(`Couldn't find "${label}" — try again`); return; }
+        try {
+          await service.deleteMenuSubcategory(menuId, found.subId);
+          showToast(`Deleted "${label}"`);
+          setStructureRefreshKey((k) => k + 1);
+        } catch {
+          showToast(`Couldn't delete "${label}" — try again`);
+        }
+        return;
+      }
+
       if (!service.deleteMenuRawCategory) return;
       const prevItems = items;
       setItems((prev) =>
@@ -1374,7 +1608,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         showToast(`Couldn't delete "${label}" — try again`);
       }
     },
-    [items, service, showToast],
+    [items, service, showToast, subcatV2, findSubcategoryByName],
   );
 
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
@@ -1630,6 +1864,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           setItems((prev) =>
             prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
           );
+          // Flag ON: re-derive so the removed item leaves the structure buckets.
+          if (subcatV2) setStructureRefreshKey((k) => k + 1);
         })
         .catch((err) => {
           setItems(prevItems);
@@ -1655,6 +1891,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             setItems((prev) =>
               prev.map((i) => (i.id !== itemId ? i : { ...i, menu_associations: associations })),
             );
+            if (subcatV2) setStructureRefreshKey((k) => k + 1);
             dismissUndoToast();
           })
           .catch(() => {
@@ -1665,7 +1902,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           });
       });
     },
-    [items, menus, dismissUndoToast, showUndoToast, showToast, onConfirmItemRemoval],
+    [items, menus, dismissUndoToast, showUndoToast, showToast, onConfirmItemRemoval, subcatV2],
   );
 
   // ── Settings update ───────────────────────────────────────────────────────
@@ -1681,6 +1918,41 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         portion_serves: null,
         category_name: undefined,
       };
+
+      // ── Flag ON: grouping mutations route to the structure API ──────────────
+      // The scoped row-trash and the ✕/＋ chips both call this with
+      // `patch.raw_categories` (the new label set). In the single-membership v2
+      // model that's either one sub-category (assign) or none (unassign) within
+      // the item's current course. No legacy raw_categories write, no junction
+      // dual-write. Non-grouping patches (price/boost/special/portion) fall
+      // through to the normal updateMenuItemInMenu path below.
+      if (subcatV2 && patch.raw_categories !== undefined && service.assignItemToSubcategory) {
+        const resolvedCourse = structureItemIndex[menuId]?.[itemId]?.course;
+        const newLabels = (patch.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
+        const runGrouping = async () => {
+          if (!resolvedCourse) { showToast('Couldn’t update — refresh and try again'); return; }
+          try {
+            if (newLabels.length === 0) {
+              await service.unassignItemFromSubcategory?.(menuId, itemId, resolvedCourse);
+            } else {
+              const name = newLabels[newLabels.length - 1];
+              let subId = findSubcategoryId(menuId, resolvedCourse, name);
+              if (!subId && service.createMenuSubcategory) {
+                const created = await service.createMenuSubcategory(menuId, { course: resolvedCourse, name });
+                subId = created.subcategory_id;
+              }
+              if (!subId) { showToast('Couldn’t file — try again'); return; }
+              await service.assignItemToSubcategory!(menuId, itemId, subId);
+            }
+            setStructureRefreshKey((k) => k + 1);
+          } catch {
+            showToast('Failed to save — please try again');
+          }
+        };
+        void runGrouping();
+        return;
+      }
+
       // Optimistic update
       setJunctionSettings((s) => ({ ...s, [key]: { ...prev, ...patch } }));
       // STR-409: track this PATCH as in-flight so a refresh-edge mid-call
@@ -1703,7 +1975,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         // (menu-wide), so mirror each added/removed label across the item's
         // canonicals on this menu. Best-effort — the legacy write above is the
         // builder's own read source, so a failure here doesn't roll back.
-        if (patch.raw_categories !== undefined && service.setItemSubcategories) {
+        if (!subcatV2 && patch.raw_categories !== undefined && service.setItemSubcategories) {
           const norm = (s: string) => s.trim().toLowerCase();
           const oldL = (prev.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
           const newL = (patch.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
@@ -1727,7 +1999,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         pendingWriteItemIdsRef.current.delete(itemId);
       }
     },
-    [junctionSettings, showToast, items, service],
+    [junctionSettings, showToast, items, service, subcatV2, structureItemIndex, findSubcategoryId],
   );
 
   // Add-item from the menu page is gone — new dishes are authored solely
@@ -2285,14 +2557,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           menuBuilderProps={{
             items,
             menus,
-            assignments,
+            assignments: effectiveAssignments,
             junctionSettings,
             activeMenuId,
             collapsed,
             dragging,
             dragOver,
             colorMap,
-            getSettings,
+            getSettings: effectiveGetSettings,
             onTabChange: setActiveMenuId,
             onToggleCollapse: (key) =>
               setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) })),
@@ -2364,14 +2636,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           <MenuBuilder
             items={items}
             menus={menus}
-            assignments={assignments}
+            assignments={effectiveAssignments}
             junctionSettings={junctionSettings}
             activeMenuId={activeMenuId}
             collapsed={collapsed}
             dragging={dragging}
             dragOver={dragOver}
             colorMap={colorMap}
-            getSettings={getSettings}
+            getSettings={effectiveGetSettings}
             onToggleCollapse={(key) =>
               setCollapsed((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }))
             }
