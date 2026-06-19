@@ -282,36 +282,46 @@ export function _classifyRecMembersForTest(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
   menusById: ReadonlyMap<string, MenuSummary>,
+  parentActiveMenuIds: ReadonlySet<string>,
 ) {
-  return classifyRecMembers(members, itemsById, menusById);
+  return classifyRecMembers(members, itemsById, menusById, parentActiveMenuIds);
 }
 
-// "Active" means the rec target is placed on at least one non-paused menu
-// — schedule windows are NOT considered, because an owner editing the
-// Dinner menu at 11 AM still thinks of dinner-menu items as "on the menu",
-// not "inactive". The previous live-now predicate produced false positives
-// in the Inactive popover for every cross-menu rec whose target menu was
-// out of its time window at the moment the owner opened the builder.
+// "Active" means the rec target shares at least one non-paused menu with the
+// PARENT dish it is recommended with (2026-06-19). The diner views the parent
+// on a menu and can only order pairings available on that SAME menu, so the
+// patron app (diner_recommendations.py Pass 4) only surfaces a rec whose
+// target shares an active menu with the parent — this chip mirrors that so an
+// owner never sees a rec marked "Active" that diners can't actually get.
+// A rec target that is live, but only on a DIFFERENT menu than the parent, is
+// Inactive here (the Inactive popover's "Bring into Menu" lets the owner add
+// it to the parent's menu). Schedule windows are NOT considered — an owner
+// editing the Dinner menu at 11 AM still thinks of dinner-menu items as "on
+// the menu"; the menu just has to be non-paused (menus.active).
 function classifyRecMembers(
   members: readonly Grouping['items'][number][],
   itemsById: Map<string, MenuItemDisplay>,
   menusById: ReadonlyMap<string, MenuSummary>,
+  parentActiveMenuIds: ReadonlySet<string>,
 ): { active: typeof members; inactive: typeof members } {
   const active: typeof members[number][] = [];
   const inactive: typeof members[number][] = [];
   for (const m of members) {
     const target = m.menu_item_id ? itemsById.get(m.menu_item_id) : undefined;
     const assocs = target?.menu_associations ?? [];
-    let onActiveMenu = false;
+    let sharesParentMenu = false;
     for (const a of assocs) {
       if (!a.menu_id) continue;
+      // The target must be placed on a menu the PARENT is also on, and that
+      // menu must be non-paused.
+      if (!parentActiveMenuIds.has(a.menu_id)) continue;
       const menu = menusById.get(a.menu_id);
       if (menu && menu.active) {
-        onActiveMenu = true;
+        sharesParentMenu = true;
         break;
       }
     }
-    (onActiveMenu ? active : inactive).push(m);
+    (sharesParentMenu ? active : inactive).push(m);
   }
   return { active, inactive };
 }
@@ -335,9 +345,19 @@ export function RecGroupingChips({
     () => new Map(menus.map((m) => [m.id, m])),
     [menus],
   );
+  // The parent dish's own non-paused menus. A rec is Active only if its
+  // target shares one of these (see classifyRecMembers) — mirrors the patron
+  // app's same-menu pairing rule.
+  const parentActiveMenuIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of owningItem?.menu_associations ?? []) {
+      if (a.menu_id && menusById.get(a.menu_id)?.active) ids.add(a.menu_id);
+    }
+    return ids;
+  }, [owningItem, menusById]);
   const { active, inactive } = useMemo(
-    () => classifyRecMembers(grouping.items, itemsById, menusById),
-    [grouping.items, itemsById, menusById],
+    () => classifyRecMembers(grouping.items, itemsById, menusById, parentActiveMenuIds),
+    [grouping.items, itemsById, menusById, parentActiveMenuIds],
   );
   if (active.length + inactive.length === 0) return null;
   return (

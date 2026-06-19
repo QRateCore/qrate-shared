@@ -135,8 +135,14 @@ function assocTo(
   };
 }
 
-describe('classifyRecMembers', () => {
-  it('marks a member active when target is on a non-paused menu', () => {
+// 2026-06-19 — a rec is Active ONLY if its target shares a non-paused menu
+// with the PARENT dish it is recommended with (mirrors the patron app's
+// same-menu pairing rule). The 4th arg is the set of the parent's own
+// non-paused menu ids. Most parents in these tests live on Dinner.
+const PARENT_ON_DINNER: ReadonlySet<string> = new Set(['menu-dinner']);
+
+describe('classifyRecMembers (parent-menu-scoped)', () => {
+  it('marks active when target shares the parent\'s non-paused menu', () => {
     const member = makeRecMember({ menu_item_id: 'rec-1' });
     const recTarget = makeItem({
       id: 'rec-1',
@@ -149,9 +155,34 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
     expect(active).toHaveLength(1);
     expect(inactive).toHaveLength(0);
+  });
+
+  // THE new-rule signature case: the target is perfectly live — on an active
+  // menu — but that menu is NOT one the parent is on, so the diner can't get
+  // it as a pairing. It must be Inactive.
+  it('marks inactive when target is live but only on a DIFFERENT menu than the parent', () => {
+    const member = makeRecMember({ menu_item_id: 'rec-lunch' });
+    const recTarget = makeItem({
+      id: 'rec-lunch',
+      menu_associations: [assocTo('menu-lunch', { menu_name: 'Lunch' })],
+    });
+    const itemsById = new Map([[recTarget.id, recTarget]]);
+    const menusById = new Map([
+      ['menu-lunch', makeMenu({ id: 'menu-lunch', name: 'Lunch', active: true })],
+      ['menu-dinner', makeMenu()],
+    ]);
+    const { active, inactive } = _classifyRecMembersForTest(
+      [member],
+      itemsById,
+      menusById,
+      PARENT_ON_DINNER, // parent is on Dinner, not Lunch
+    );
+    expect(active).toHaveLength(0);
+    expect(inactive).toHaveLength(1);
   });
 
   it('marks a member inactive when its target is not on any menu (orphan)', () => {
@@ -163,6 +194,7 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
     expect(active).toHaveLength(0);
     expect(inactive).toHaveLength(1);
@@ -185,17 +217,15 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
     expect(active).toHaveLength(0);
     expect(inactive).toHaveLength(1);
   });
 
-  // REGRESSION — pre-fix this case classified the member as inactive
-  // because isMenuLiveNow(Brunch) returned false outside the 10:00-14:00
-  // window. Owners editing the Dinner menu at 19:00 saw Brunch-placed
-  // recs show up in the Inactive popover even though those items are
-  // on Brunch and Brunch is not paused.
-  it('marks a member active when target is on a non-paused menu currently OUTSIDE its time window', () => {
+  // Schedule windows are still ignored — as long as the target shares the
+  // parent's menu, the time-of-day window doesn't demote it to Inactive.
+  it('marks active when the shared parent menu is currently OUTSIDE its time window', () => {
     const member = makeRecMember({ menu_item_id: 'rec-3' });
     const recTarget = makeItem({
       id: 'rec-3',
@@ -219,42 +249,13 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      new Set(['menu-brunch']), // parent is on Brunch too
     );
     expect(active).toHaveLength(1);
     expect(inactive).toHaveLength(0);
   });
 
-  // REGRESSION — same idea, the days_of_week axis. A menu that runs only
-  // on weekends shouldn't make weekday-placed recs look orphaned.
-  it('marks a member active when target is on a non-paused menu whose days_of_week excludes today', () => {
-    const member = makeRecMember({ menu_item_id: 'rec-weekend' });
-    const recTarget = makeItem({
-      id: 'rec-weekend',
-      menu_associations: [assocTo('menu-weekend', { menu_name: 'Weekend' })],
-    });
-    const itemsById = new Map([[recTarget.id, recTarget]]);
-    const menusById = new Map([
-      [
-        'menu-weekend',
-        makeMenu({
-          id: 'menu-weekend',
-          name: 'Weekend',
-          active: true,
-          is_all_day: true,
-          days_of_week: [0, 6], // Sun + Sat only — guaranteed off most days
-        }),
-      ],
-    ]);
-    const { active, inactive } = _classifyRecMembersForTest(
-      [member],
-      itemsById,
-      menusById,
-    );
-    expect(active).toHaveLength(1);
-    expect(inactive).toHaveLength(0);
-  });
-
-  it('marks active when ANY of multiple menu placements is non-paused', () => {
+  it('marks active when the target shares the parent menu among multiple placements', () => {
     const member = makeRecMember({ menu_item_id: 'rec-4' });
     const recTarget = makeItem({
       id: 'rec-4',
@@ -265,27 +266,47 @@ describe('classifyRecMembers', () => {
     });
     const itemsById = new Map([[recTarget.id, recTarget]]);
     const menusById = new Map([
-      [
-        'menu-brunch',
-        makeMenu({
-          id: 'menu-brunch',
-          is_all_day: false,
-          start_time: '10:00',
-          end_time: '14:00',
-        }),
-      ],
+      ['menu-brunch', makeMenu({ id: 'menu-brunch', active: true })],
       ['menu-dinner', makeMenu()],
     ]);
     const { active, inactive } = _classifyRecMembersForTest(
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER, // shares Dinner
     );
     expect(active).toHaveLength(1);
     expect(inactive).toHaveLength(0);
   });
 
-  it('marks active when target sits on a mix of paused and non-paused menus', () => {
+  // The flip side of the multi-placement case: the target is on several
+  // active menus, but NONE of them is a menu the parent is on → Inactive.
+  it('marks inactive when target shares NONE of the parent\'s menus despite multiple live placements', () => {
+    const member = makeRecMember({ menu_item_id: 'rec-elsewhere' });
+    const recTarget = makeItem({
+      id: 'rec-elsewhere',
+      menu_associations: [
+        assocTo('menu-lunch', { menu_name: 'Lunch' }),
+        assocTo('menu-breakfast', { menu_name: 'Breakfast' }),
+      ],
+    });
+    const itemsById = new Map([[recTarget.id, recTarget]]);
+    const menusById = new Map([
+      ['menu-lunch', makeMenu({ id: 'menu-lunch', active: true })],
+      ['menu-breakfast', makeMenu({ id: 'menu-breakfast', active: true })],
+      ['menu-dinner', makeMenu()],
+    ]);
+    const { active, inactive } = _classifyRecMembersForTest(
+      [member],
+      itemsById,
+      menusById,
+      PARENT_ON_DINNER,
+    );
+    expect(active).toHaveLength(0);
+    expect(inactive).toHaveLength(1);
+  });
+
+  it('marks inactive when target sits on a shared menu that is paused (parent also there)', () => {
     const member = makeRecMember({ menu_item_id: 'rec-mixed' });
     const recTarget = makeItem({
       id: 'rec-mixed',
@@ -299,33 +320,30 @@ describe('classifyRecMembers', () => {
       ['menu-archived', makeMenu({ id: 'menu-archived', active: false })],
       ['menu-dinner', makeMenu()],
     ]);
+    // Parent only on the paused Archived menu → no shared ACTIVE menu → inactive.
     const { active, inactive } = _classifyRecMembersForTest(
       [member],
       itemsById,
       menusById,
+      new Set<string>(), // parent has no active menus (its only menu is paused)
     );
-    expect(active).toHaveLength(1);
-    expect(inactive).toHaveLength(0);
+    expect(active).toHaveLength(0);
+    expect(inactive).toHaveLength(1);
   });
 
-  it('marks inactive when target sits on multiple menus and EVERY one is paused', () => {
-    const member = makeRecMember({ menu_item_id: 'rec-all-paused' });
+  it('marks inactive when the parent has no active menus', () => {
+    const member = makeRecMember({ menu_item_id: 'rec-5' });
     const recTarget = makeItem({
-      id: 'rec-all-paused',
-      menu_associations: [
-        assocTo('menu-a', { menu_name: 'A' }),
-        assocTo('menu-b', { menu_name: 'B' }),
-      ],
+      id: 'rec-5',
+      menu_associations: [assocTo('menu-dinner', { menu_name: 'Dinner' })],
     });
     const itemsById = new Map([[recTarget.id, recTarget]]);
-    const menusById = new Map([
-      ['menu-a', makeMenu({ id: 'menu-a', active: false })],
-      ['menu-b', makeMenu({ id: 'menu-b', active: false })],
-    ]);
+    const menusById = new Map([['menu-dinner', makeMenu()]]);
     const { active, inactive } = _classifyRecMembersForTest(
       [member],
       itemsById,
       menusById,
+      new Set<string>(), // parent paused everywhere → nothing can share its menu
     );
     expect(active).toHaveLength(0);
     expect(inactive).toHaveLength(1);
@@ -346,6 +364,7 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
     expect(active).toHaveLength(0);
     expect(inactive).toHaveLength(1);
@@ -359,6 +378,7 @@ describe('classifyRecMembers', () => {
       [member],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
     expect(active).toHaveLength(0);
     expect(inactive).toHaveLength(1);
@@ -366,30 +386,45 @@ describe('classifyRecMembers', () => {
 
   it('splits a mixed batch correctly across active and inactive buckets', () => {
     const placed = makeRecMember({ id: 'gi-placed', menu_item_id: 'placed' });
+    const offmenu = makeRecMember({ id: 'gi-offmenu', menu_item_id: 'offmenu' });
     const paused = makeRecMember({ id: 'gi-paused', menu_item_id: 'paused' });
     const orphan = makeRecMember({ id: 'gi-orphan', menu_item_id: 'orphan' });
     const itemsById = new Map([
       ['placed', makeItem({ id: 'placed', menu_associations: [assocTo('menu-dinner')] })],
+      ['offmenu', makeItem({ id: 'offmenu', menu_associations: [assocTo('menu-lunch')] })],
       ['paused', makeItem({ id: 'paused', menu_associations: [assocTo('menu-archived')] })],
       ['orphan', makeItem({ id: 'orphan', menu_associations: [] })],
     ]);
     const menusById = new Map([
       ['menu-dinner', makeMenu()],
+      ['menu-lunch', makeMenu({ id: 'menu-lunch', active: true })],
       ['menu-archived', makeMenu({ id: 'menu-archived', active: false })],
     ]);
     const { active, inactive } = _classifyRecMembersForTest(
-      [placed, paused, orphan],
+      [placed, offmenu, paused, orphan],
       itemsById,
       menusById,
+      PARENT_ON_DINNER,
     );
+    // Only the Dinner-placed rec shares the parent's menu. The live-but-off-menu
+    // (Lunch), the paused, and the orphan are all Inactive.
     expect(active.map((m) => m.id)).toEqual(['gi-placed']);
-    expect(inactive.map((m) => m.id).sort()).toEqual(['gi-orphan', 'gi-paused']);
+    expect(inactive.map((m) => m.id).sort()).toEqual([
+      'gi-offmenu',
+      'gi-orphan',
+      'gi-paused',
+    ]);
   });
 });
 
 describe('RecGroupingChips', () => {
   // Use real timers by default; switch to fake on hover-delay tests.
-  const owningItem = makeItem({ id: 'owner-1', name: 'Biryani — Lamb' });
+  // Parent dish lives on Dinner — the active rec targets below share it.
+  const owningItem = makeItem({
+    id: 'owner-1',
+    name: 'Biryani — Lamb',
+    menu_associations: [assocTo('menu-dinner', { menu_name: 'Dinner' })],
+  });
   const menus = [makeMenu()];
 
   function setup(opts: {
@@ -504,7 +539,12 @@ describe('Reactivity — chip re-classifies when itemsById changes', () => {
   // (e.g., reading from a stale closure, missing menusById dep) is
   // caught at the unit tier instead of waiting for E2E.
 
-  const owningItem = makeItem({ id: 'owner-1', name: 'Biryani — Lamb' });
+  // Parent dish lives on Dinner — the active rec targets below share it.
+  const owningItem = makeItem({
+    id: 'owner-1',
+    name: 'Biryani — Lamb',
+    menu_associations: [assocTo('menu-dinner', { menu_name: 'Dinner' })],
+  });
   const menus = [makeMenu()];
 
   // Re-classify the same grouping members against an updated
@@ -755,7 +795,7 @@ describe('RecActiveChip hover popover', () => {
     render(
       <RecGroupingChips
         grouping={makeGrouping([member])}
-        owningItem={makeItem()}
+        owningItem={makeItem({ menu_associations: [assocTo('menu-dinner')] })}
         menuId="menu-dinner"
         itemsById={itemsById}
         menus={[makeMenu()]}
