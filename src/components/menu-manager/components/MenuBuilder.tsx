@@ -1619,10 +1619,13 @@ function CategoryBucket({
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
-  // STR-775 — which sub-category label is being drag-reordered (grip drag).
-  // Tracked here so the grip drop can compute the new order; kept separate from
-  // the item-refile drag so the two never collide.
+  // STR-775 — which sub-category label is being drag-reordered (row drag).
+  // Tracked here so the drop can compute the new order; kept separate from the
+  // item-refile drag so the two never collide.
   const [reorderFrom, setReorderFrom] = useState<string | null>(null);
+  // STR-775 rework — the current drop target + which side the insertion line
+  // shows (before/after), derived from the pointer's Y vs the row midpoint.
+  const [reorderOver, setReorderOver] = useState<{ label: string; position: 'before' | 'after' } | null>(null);
 
   // STR-251 round 3 — rollup attention indicator. Empty buckets are themselves
   // "needs attention" — except during initial load / brand-new menu state,
@@ -1985,6 +1988,21 @@ function CategoryBucket({
               next.splice(toIdx, 0, label);
               void onReorderSubCategory(menuId, category, next);
             };
+            // STR-775 rework — drop `dragLabel` before/after `targetLabel`,
+            // computed in the post-removal frame so indices never drift.
+            const moveLabelRelative = (dragLabel: string, targetLabel: string, position: 'before' | 'after') => {
+              if (!onReorderSubCategory || dragLabel === targetLabel) return;
+              const next = [...reorderableLabels];
+              const from = next.indexOf(dragLabel);
+              if (from < 0) return;
+              next.splice(from, 1);
+              const targetIdx = next.indexOf(targetLabel);
+              if (targetIdx < 0) return;
+              const insertAt = position === 'before' ? targetIdx : targetIdx + 1;
+              next.splice(insertAt, 0, dragLabel);
+              if (next.every((l, i) => l === reorderableLabels[i])) return; // no-op
+              void onReorderSubCategory(menuId, category, next);
+            };
             return orderedLabels.map((label) => {
               const groupItems = groups.get(label) ?? [];
               const reorderIdx = reorderableLabels.indexOf(label);
@@ -2024,10 +2042,28 @@ function CategoryBucket({
                   }
                   reorderEnabled={reorderEnabled && label !== UNGROUPED_KEY}
                   isReorderDragging={reorderFrom === label}
-                  onReorderDragStart={() => setReorderFrom(label)}
-                  onReorderDragEnd={() => setReorderFrom(null)}
-                  onReorderDragOver={reorderFrom ? (e) => e.preventDefault() : undefined}
-                  onReorderDrop={() => { if (reorderFrom && reorderFrom !== label) moveLabel(reorderFrom, reorderIdx); setReorderFrom(null); }}
+                  isReorderActive={reorderFrom !== null && reorderFrom !== label && label !== UNGROUPED_KEY}
+                  insertionLine={reorderOver && reorderOver.label === label ? reorderOver.position : null}
+                  onReorderDragStart={() => { setReorderFrom(label); setReorderOver(null); }}
+                  onReorderDragEnd={() => { setReorderFrom(null); setReorderOver(null); }}
+                  onReorderDragOver={(e) => {
+                    if (!reorderFrom || reorderFrom === label) return;
+                    // Pointer in the top half → insert before, bottom half → after.
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                    setReorderOver((prev) =>
+                      prev && prev.label === label && prev.position === position ? prev : { label, position },
+                    );
+                  }}
+                  onReorderDrop={() => {
+                    if (reorderFrom && reorderOver && reorderFrom !== label) {
+                      moveLabelRelative(reorderFrom, reorderOver.label, reorderOver.position);
+                    } else if (reorderFrom && reorderFrom !== label) {
+                      moveLabel(reorderFrom, reorderIdx);
+                    }
+                    setReorderFrom(null);
+                    setReorderOver(null);
+                  }}
                   onMoveUp={() => moveLabel(label, reorderIdx - 1)}
                   onMoveDown={() => moveLabel(label, reorderIdx + 1)}
                   canMoveUp={reorderIdx > 0}

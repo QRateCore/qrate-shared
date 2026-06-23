@@ -35,15 +35,23 @@ export interface SubCategoryGroupProps {
   onRename?: (from: string, to: string) => void | Promise<void>;
   onDelete?: (label: string) => void | Promise<void>;
   /**
-   * Reorder (STR-775) — drag-grip + keyboard ▲▼. These are DISTINCT from the
-   * item-refile drop above: the grip is its own draggable handle and drop
-   * target (stopPropagation), so dragging a group to reorder never collides
-   * with dragging an item into the group. Only wired for real labels.
+   * Reorder (STR-775, refined in the STR-775 rework) — the WHOLE header row is
+   * the drag source (the grip is the visual cue) plus keyboard ▲▼. The row is
+   * also the drop target: an insertion line shows above/below it while hovered,
+   * and dropping commits the move. Reorder-drag vs item-refile-drag are
+   * disambiguated by `isReorderActive` (a sub-category reorder is in flight),
+   * so the two drag modes never collide. Only wired for real labels.
    */
   reorderEnabled?: boolean;
+  /** This row is the one currently being dragged (dims it). */
   isReorderDragging?: boolean;
+  /** A sub-category reorder drag is in flight somewhere in this bucket. */
+  isReorderActive?: boolean;
+  /** Show the drop insertion line above/below this row while hovered. */
+  insertionLine?: 'before' | 'after' | null;
   onReorderDragStart?: () => void;
   onReorderDragEnd?: () => void;
+  /** Hover during a reorder drag — caller computes before/after from pointer Y. */
   onReorderDragOver?: (e: React.DragEvent) => void;
   onReorderDrop?: () => void;
   onMoveUp?: () => void;
@@ -67,6 +75,8 @@ export function SubCategoryGroup({
   onDelete,
   reorderEnabled = false,
   isReorderDragging = false,
+  isReorderActive = false,
+  insertionLine = null,
   onReorderDragStart,
   onReorderDragEnd,
   onReorderDragOver,
@@ -116,39 +126,58 @@ export function SubCategoryGroup({
       // modifier zones (see DROP_TARGET in MenuBuilder).
       style={{ borderColor: isDragOver ? '#16A34A' : 'var(--border)' }}
     >
-      {/* Header — always rendered (unconditional E2E sync-point). */}
+      {/* Insertion line above this row while a reorder drag hovers its top half. */}
+      {insertionLine === 'before' && (
+        <div
+          data-testid={`subcategory-insertion-before-${category}-${label}`}
+          aria-hidden="true"
+          className="ml-1 mr-1 rounded-full"
+          style={{ height: 3, background: '#2563EB' }}
+        />
+      )}
+      {/* Header — always rendered (unconditional E2E sync-point). The WHOLE row
+          is the reorder drag source (when reorderEnabled && not renaming) and
+          the drop target; the grip is the visual affordance. */}
       <div
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDragOver={onDrop ? (e) => e.preventDefault() : undefined}
-        onDrop={onDrop}
+        // Row-level drag source — grab anywhere on the header to reorder. A
+        // separate marker keeps the header's item-refile drop from mistaking a
+        // group reorder for an item drag.
+        draggable={reorderEnabled && !renaming}
+        onDragStart={reorderEnabled && !renaming ? (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
+          onReorderDragStart?.();
+        } : undefined}
+        onDragEnd={reorderEnabled ? () => onReorderDragEnd?.() : undefined}
+        // Item-refile enter/leave only when NOT reordering (no green highlight
+        // during a group reorder).
+        onDragEnter={isReorderActive ? undefined : onDragEnter}
+        onDragLeave={isReorderActive ? undefined : onDragLeave}
+        onDragOver={(e) => {
+          if (isReorderActive) { e.preventDefault(); onReorderDragOver?.(e); }
+          else if (onDrop) { e.preventDefault(); }
+        }}
+        onDrop={(e) => {
+          if (isReorderActive) { e.preventDefault(); e.stopPropagation(); onReorderDrop?.(); }
+          else { onDrop?.(e); }
+        }}
         data-testid={`subcategory-drop-${category}-${label}`}
         className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors"
         style={{
           color: isDragOver ? '#15803D' : 'var(--text2)',
           background: isDragOver ? '#DCFCE7' : 'transparent',
+          cursor: reorderEnabled && !renaming ? 'grab' : undefined,
+          opacity: isReorderDragging ? 0.4 : undefined,
         }}
       >
         {reorderEnabled && (
           <span
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              // Marker so the header's item-refile drop never mistakes a group
-              // reorder for an item drag.
-              try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
-              onReorderDragStart?.();
-            }}
-            onDragEnd={() => onReorderDragEnd?.()}
-            onDragOver={onReorderDragOver}
-            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onReorderDrop?.(); }}
-            role="button"
-            aria-label={`Drag to reorder ${display}`}
+            aria-hidden="true"
             data-testid={`subcategory-reorder-grip-${category}-${label}`}
-            className="flex items-center cursor-grab shrink-0"
-            style={{ touchAction: 'none', opacity: isReorderDragging ? 0.4 : 0.6, minWidth: 16, minHeight: 16 }}
+            className="flex items-center justify-center shrink-0"
+            style={{ cursor: 'grab', opacity: 0.55, width: 18, height: 18 }}
           >
-            <GripVertical size={12} />
+            <GripVertical size={14} />
           </span>
         )}
         <button
@@ -291,6 +320,16 @@ export function SubCategoryGroup({
           </>
         )}
       </div>
+
+      {/* Insertion line below this row while a reorder drag hovers its bottom half. */}
+      {insertionLine === 'after' && (
+        <div
+          data-testid={`subcategory-insertion-after-${category}-${label}`}
+          aria-hidden="true"
+          className="ml-1 mr-1 rounded-full"
+          style={{ height: 3, background: '#2563EB' }}
+        />
+      )}
 
       {!collapsed && <div>{children}</div>}
     </div>
