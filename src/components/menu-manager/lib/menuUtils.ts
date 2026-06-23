@@ -272,6 +272,58 @@ export function sortedSubCategoryLabels(labels: string[]): string[] {
   });
 }
 
+/**
+ * STR-775 — order display labels by the owner's first-class sub-category
+ * `sort_order`. `subs` are the structure rows for one (menu × course). A label
+ * is matched to a row by `normalizeSubcatKey` (the same casing/punctuation
+ * collapse the builder groups by). Labels WITH a row sort by that row's
+ * sort_order (ties → alphabetical); labels with NO row yet (just-scraped, never
+ * reordered) sort after them alphabetically; UNGROUPED_KEY is always last.
+ * Pure — extracted from MenuManagerClient so the ordering is unit-testable.
+ */
+export function orderSubcategoryLabels(
+  labels: string[],
+  subs: ReadonlyArray<{ name: string; sort_order: number | null }>,
+): string[] {
+  const orderByKey = new Map<string, number>();
+  subs.forEach((s, i) => orderByKey.set(normalizeSubcatKey(s.name), s.sort_order ?? i));
+  const real = labels.filter((l) => l !== UNGROUPED_KEY);
+  const known = real.filter((l) => orderByKey.has(normalizeSubcatKey(l)));
+  const unknown = real.filter((l) => !orderByKey.has(normalizeSubcatKey(l)));
+  known.sort((a, b) => (orderByKey.get(normalizeSubcatKey(a))! - orderByKey.get(normalizeSubcatKey(b))!));
+  unknown.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const out = [...known, ...unknown];
+  if (labels.includes(UNGROUPED_KEY)) out.push(UNGROUPED_KEY);
+  return out;
+}
+
+/**
+ * STR-775 — assemble the COMPLETE `ordered_ids` permutation the reorder endpoint
+ * requires. `orderedRealLabels` is the owner's new order (Ungrouped already
+ * stripped); `resolveId` maps a label to an existing first-class row id (or
+ * undefined → caller create-on-demands it and feeds the new id back via the
+ * `created` map). Every existing row NOT covered by a displayed label (e.g. an
+ * empty sub-category) is appended in its existing order so the payload is the
+ * full set for (menu × course). Pure — the async create-on-demand stays in the
+ * caller; this is the order/completeness logic that must be exactly right.
+ */
+export function buildReorderedIds(
+  orderedRealLabels: string[],
+  resolveId: (label: string) => string | undefined,
+  existingIdsInOrder: ReadonlyArray<string>,
+): string[] {
+  const ids: string[] = [];
+  const used = new Set<string>();
+  for (const label of orderedRealLabels) {
+    const id = resolveId(label);
+    if (id && !used.has(id)) { ids.push(id); used.add(id); }
+  }
+  for (const id of existingIdsInOrder) {
+    if (!used.has(id)) { ids.push(id); used.add(id); }
+  }
+  return ids;
+}
+
 /** Build the junction settings map: {"menuId:itemId": MenuItemJunctionSettings}. */
 export function buildJunctionSettings(
   items: MenuItemDisplay[],

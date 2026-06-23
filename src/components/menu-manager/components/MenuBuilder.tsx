@@ -65,6 +65,11 @@ interface MenuBuilderProps {
   onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
   onRenameSubCategory?: (menuId: string, from: string, to: string) => void | Promise<void>;
   onDeleteSubCategory?: (menuId: string, label: string) => void | Promise<void>;
+  /** STR-775 — resolve the display order of a course's sub-category labels
+   *  (owner sort_order from the first-class structure; falls back to alphabetical). */
+  orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
+  /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
+  onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
   onCreateMenu: (name: string) => Promise<void>;
   /**
    * STR-521 — clone an existing menu into a new menu (categories + per-category
@@ -1535,6 +1540,8 @@ function CategoryBucket({
   onDropSubCategory,
   onRenameSubCategory,
   onDeleteSubCategory,
+  orderSubCategories,
+  onReorderSubCategory,
   onDragStart,
   onDragEnd,
   onRemoveItem,
@@ -1586,6 +1593,11 @@ function CategoryBucket({
   onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
   onRenameSubCategory?: (menuId: string, from: string, to: string) => void | Promise<void>;
   onDeleteSubCategory?: (menuId: string, label: string) => void | Promise<void>;
+  /** STR-775 — resolve the display order of a course's sub-category labels
+   *  (owner sort_order from the first-class structure; falls back to alphabetical). */
+  orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
+  /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
+  onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
@@ -1606,6 +1618,11 @@ function CategoryBucket({
   suppressEmptyAttention?: boolean;
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
+
+  // STR-775 — which sub-category label is being drag-reordered (grip drag).
+  // Tracked here so the grip drop can compute the new order; kept separate from
+  // the item-refile drag so the two never collide.
+  const [reorderFrom, setReorderFrom] = useState<string | null>(null);
 
   // STR-251 round 3 — rollup attention indicator. Empty buckets are themselves
   // "needs attention" — except during initial load / brand-new menu state,
@@ -1945,14 +1962,32 @@ function CategoryBucket({
                 : preferScrapedLabel([...g.variants].map(([label, count]) => ({ label, count })));
               groups.set(display, g.items);
             }
-            const orderedLabels = sortedSubCategoryLabels([...groups.keys()]);
+            // STR-775 — owner sort_order wins (resolver reads the first-class
+            // structure); falls back to alphabetical when no order is set.
+            const orderedLabels = orderSubCategories
+              ? orderSubCategories(menuId, category, [...groups.keys()])
+              : sortedSubCategoryLabels([...groups.keys()]);
             const onlyUngrouped = orderedLabels.length === 1 && orderedLabels[0] === UNGROUPED_KEY;
             if (onlyUngrouped) {
               // No subLabel — flat render falls back to whole-menu removal.
               return bucketItems.map((item) => renderRow(item));
             }
+            // STR-775 — the non-Ungrouped labels are the reorderable set; Ungrouped
+            // is a sentinel bucket, never reordered (always rendered last).
+            const reorderableLabels = orderedLabels.filter((l) => l !== UNGROUPED_KEY);
+            const reorderEnabled = !!onReorderSubCategory && reorderableLabels.length > 1;
+            const moveLabel = (label: string, toIdx: number) => {
+              if (!onReorderSubCategory) return;
+              const fromIdx = reorderableLabels.indexOf(label);
+              if (fromIdx < 0 || toIdx < 0 || toIdx >= reorderableLabels.length || fromIdx === toIdx) return;
+              const next = [...reorderableLabels];
+              next.splice(fromIdx, 1);
+              next.splice(toIdx, 0, label);
+              void onReorderSubCategory(menuId, category, next);
+            };
             return orderedLabels.map((label) => {
               const groupItems = groups.get(label) ?? [];
+              const reorderIdx = reorderableLabels.indexOf(label);
               return (
                 <SubCategoryGroup
                   key={label}
@@ -1987,6 +2022,16 @@ function CategoryBucket({
                       ? (lbl) => onDeleteSubCategory(menuId, lbl)
                       : undefined
                   }
+                  reorderEnabled={reorderEnabled && label !== UNGROUPED_KEY}
+                  isReorderDragging={reorderFrom === label}
+                  onReorderDragStart={() => setReorderFrom(label)}
+                  onReorderDragEnd={() => setReorderFrom(null)}
+                  onReorderDragOver={reorderFrom ? (e) => e.preventDefault() : undefined}
+                  onReorderDrop={() => { if (reorderFrom && reorderFrom !== label) moveLabel(reorderFrom, reorderIdx); setReorderFrom(null); }}
+                  onMoveUp={() => moveLabel(label, reorderIdx - 1)}
+                  onMoveDown={() => moveLabel(label, reorderIdx + 1)}
+                  canMoveUp={reorderIdx > 0}
+                  canMoveDown={reorderIdx >= 0 && reorderIdx < reorderableLabels.length - 1}
                 >
                   {groupItems.map((item) => (
                     <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>
@@ -2027,6 +2072,8 @@ export default function MenuBuilder({
   onDropSubCategory,
   onRenameSubCategory,
   onDeleteSubCategory,
+  orderSubCategories,
+  onReorderSubCategory,
   onCreateMenu,
   onCloneMenu,
   onEditMenu,
@@ -2230,6 +2277,8 @@ export default function MenuBuilder({
                 onDropSubCategory={onDropSubCategory}
                 onRenameSubCategory={onRenameSubCategory}
                 onDeleteSubCategory={onDeleteSubCategory}
+                orderSubCategories={orderSubCategories}
+                onReorderSubCategory={onReorderSubCategory}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronRight, ChevronDown, Pencil, Trash2, Check, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { MenuColor } from '../lib/menuUtils';
 import { UNGROUPED_KEY } from '../lib/menuUtils';
 
@@ -34,6 +34,22 @@ export interface SubCategoryGroupProps {
   /** Bulk management (Step 9) — only offered for real labels, not Ungrouped. */
   onRename?: (from: string, to: string) => void | Promise<void>;
   onDelete?: (label: string) => void | Promise<void>;
+  /**
+   * Reorder (STR-775) — drag-grip + keyboard ▲▼. These are DISTINCT from the
+   * item-refile drop above: the grip is its own draggable handle and drop
+   * target (stopPropagation), so dragging a group to reorder never collides
+   * with dragging an item into the group. Only wired for real labels.
+   */
+  reorderEnabled?: boolean;
+  isReorderDragging?: boolean;
+  onReorderDragStart?: () => void;
+  onReorderDragEnd?: () => void;
+  onReorderDragOver?: (e: React.DragEvent) => void;
+  onReorderDrop?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 export function SubCategoryGroup({
@@ -49,6 +65,16 @@ export function SubCategoryGroup({
   onDrop,
   onRename,
   onDelete,
+  reorderEnabled = false,
+  isReorderDragging = false,
+  onReorderDragStart,
+  onReorderDragEnd,
+  onReorderDragOver,
+  onReorderDrop,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp = false,
+  canMoveDown = false,
 }: SubCategoryGroupProps) {
   const isUngrouped = label === UNGROUPED_KEY;
   const display = isUngrouped ? 'Ungrouped' : label;
@@ -103,6 +129,28 @@ export function SubCategoryGroup({
           background: isDragOver ? '#DCFCE7' : 'transparent',
         }}
       >
+        {reorderEnabled && (
+          <span
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              // Marker so the header's item-refile drop never mistakes a group
+              // reorder for an item drag.
+              try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
+              onReorderDragStart?.();
+            }}
+            onDragEnd={() => onReorderDragEnd?.()}
+            onDragOver={onReorderDragOver}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onReorderDrop?.(); }}
+            role="button"
+            aria-label={`Drag to reorder ${display}`}
+            data-testid={`subcategory-reorder-grip-${category}-${label}`}
+            className="flex items-center cursor-grab shrink-0"
+            style={{ touchAction: 'none', opacity: isReorderDragging ? 0.4 : 0.6, minWidth: 16, minHeight: 16 }}
+          >
+            <GripVertical size={12} />
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
@@ -165,6 +213,30 @@ export function SubCategoryGroup({
             >
               {itemCount}
             </span>
+            {reorderEnabled && (
+              <>
+                <button
+                  type="button"
+                  onClick={onMoveUp}
+                  disabled={!canMoveUp}
+                  aria-label={`Move ${display} up`}
+                  data-testid={`subcategory-move-up-${category}-${label}`}
+                  className="opacity-60 hover:opacity-100 disabled:opacity-20"
+                >
+                  <ChevronUp size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={onMoveDown}
+                  disabled={!canMoveDown}
+                  aria-label={`Move ${display} down`}
+                  data-testid={`subcategory-move-down-${category}-${label}`}
+                  className="opacity-60 hover:opacity-100 disabled:opacity-20"
+                >
+                  <ChevronDown size={12} />
+                </button>
+              </>
+            )}
             {canManage && onRename && (
               <button
                 type="button"
