@@ -319,6 +319,33 @@ export interface DaySchedule {
 // Keys are day numbers as strings: "0"=Sun, "1"=Mon, ... "6"=Sat
 export type MenuSchedule = Record<string, DaySchedule>;
 
+/**
+ * Owner-set intent label for the patron Now Serving banner.
+ * Allowlist enforced by the backend (qrate-core owner_menus.py
+ * MENU_INTENT_LABELS). NULL = unspecified (banner suppressed).
+ * Phase 1 Analyze-Menu-Configurations (PDD 2026-06-22).
+ */
+export type MenuIntentLabel =
+  | 'breakfast'
+  | 'brunch'
+  | 'lunch'
+  | 'happy_hour'
+  | 'dinner'
+  | 'late_night'
+  | 'all_day'
+  | 'drinks';
+
+export const MENU_INTENT_LABELS: readonly MenuIntentLabel[] = [
+  'breakfast',
+  'brunch',
+  'lunch',
+  'happy_hour',
+  'dinner',
+  'late_night',
+  'all_day',
+  'drinks',
+] as const;
+
 export interface MenuSummary {
   id: string;
   name: string;
@@ -332,6 +359,17 @@ export interface MenuSummary {
   schedule: MenuSchedule | null;
   /** Crawler-set source URL. NULL for menus the owner created manually. */
   source_url?: string | null;
+  /**
+   * Owner-set intent (drives patron "Now Serving" banner). NULL = unspecified.
+   * Phase 1 Analyze-Menu-Configurations (PDD 2026-06-22).
+   */
+  intent_label?: MenuIntentLabel | null;
+  /**
+   * Owner-set integer rank for overlap tiebreaking. Lower = higher priority.
+   * NULL = unconfigured (patron evaluator falls back to narrowest then display_order).
+   * Phase 1 (Q14).
+   */
+  display_precedence?: number | null;
   item_count: number;
   created_at?: string;
   updated_at?: string;
@@ -355,6 +393,18 @@ export interface MenuUpdate {
   active?: boolean;
   display_order?: number;
   schedule?: MenuSchedule | null;
+  /**
+   * Owner-set intent (drives patron "Now Serving" banner).
+   * Allowlist enforced server-side; null clears the label.
+   * Phase 1 (PDD 2026-06-22).
+   */
+  intent_label?: MenuIntentLabel | null;
+  /**
+   * Owner-set integer rank for overlap tiebreaking (Q14).
+   * Lower int = higher priority. null clears (algorithmic fallback applies).
+   * Validated server-side: int >= 0 or null. Bools rejected.
+   */
+  display_precedence?: number | null;
 }
 
 export interface MenuCloneRequest {
