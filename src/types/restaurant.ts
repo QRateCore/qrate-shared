@@ -887,8 +887,12 @@ export interface MenuManagerService {
   getMenuStructure?(menuId: string): Promise<MenuStructure>;
   /** Create a sub-category under a course. */
   createMenuSubcategory?(menuId: string, body: { course: string; name: string; sort_order?: number }): Promise<MenuSubcategory>;
-  /** Rename / reorder a sub-category. */
+  /** Rename / reorder a single sub-category. */
   updateMenuSubcategory?(menuId: string, subId: string, body: { name?: string; sort_order?: number }): Promise<MenuSubcategory>;
+  /** Reorder ALL sub-categories within one course of a menu (STR-775). `ordered_ids`
+   *  is the complete set of sub-category ids for (menuId, course) in display order;
+   *  backend assigns sort_order = position. `course` is a canonical course value. */
+  reorderMenuSubcategories?(menuId: string, body: { course: string; ordered_ids: string[] }): Promise<{ menu_id: string; course: string; reordered: boolean; count: number }>;
   /** Delete a sub-category (its items become unassigned within the course). */
   deleteMenuSubcategory?(menuId: string, subId: string): Promise<void>;
   /** Assign an item to a sub-category (REPLACES within that course). */

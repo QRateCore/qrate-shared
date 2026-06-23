@@ -15,6 +15,9 @@ import {
   dedupeRawCategoryLabels,
   isDrinkItem,
   resolveMoveCanonicals,
+  sortedSubCategoryLabels,
+  orderSubcategoryLabels,
+  buildReorderedIds,
   type MenuColor,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
@@ -1611,6 +1614,56 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [items, service, showToast, subcatV2, findSubcategoryByName],
   );
 
+  // STR-775 — order a course's sub-category labels by the owner's sort_order
+  // from the first-class structure (flag ON + structure loaded); else alphabetical.
+  // UNGROUPED_KEY is always last; labels with no structure row yet (just-scraped,
+  // never reordered) sort after the ordered ones, alphabetically.
+  const orderSubCategories = useCallback(
+    (menuId: string, category: string, labels: string[]): string[] => {
+      if (!subcatV2 || !structureByMenu[menuId]) return sortedSubCategoryLabels(labels);
+      const subs = (structureByMenu[menuId].courses?.[category as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+      return orderSubcategoryLabels(labels, subs);
+    },
+    [subcatV2, structureByMenu],
+  );
+
+  // STR-775 — persist a new sub-category order for a course. Resolves each
+  // displayed label to its first-class row, CREATING any missing row seeded with
+  // its NEW position (so a course whose rows don't exist yet never collapses to
+  // 0 — C2), then appends any existing rows not currently displayed (e.g. empty
+  // sub-categories) so ordered_ids is the COMPLETE permutation the API requires.
+  // `category` is already the canonical course (Beverages/Appetizers/Entrees/
+  // Desserts) the bucket renders, which is exactly what the endpoint expects.
+  const handleReorderSubCategories = useCallback(
+    async (menuId: string, category: string, orderedLabels: string[]) => {
+      if (!subcatV2 || !service.reorderMenuSubcategories) return;
+      const real = orderedLabels.filter((l) => l !== UNGROUPED_KEY);
+      try {
+        // Resolve each displayed label to its first-class row id, CREATING any
+        // missing row seeded with its NEW position (C2 — never 0).
+        const idByLabel = new Map<string, string>();
+        for (let i = 0; i < real.length; i++) {
+          let id = findSubcategoryId(menuId, category, real[i]);
+          if (!id && service.createMenuSubcategory) {
+            const created = await service.createMenuSubcategory(menuId, { course: category, name: real[i], sort_order: i });
+            id = created.subcategory_id;
+          }
+          if (id) idByLabel.set(real[i], id);
+        }
+        const existing = (structureByMenu[menuId]?.courses?.[category as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+        // Complete permutation = displayed (new order) + any existing rows not
+        // displayed (e.g. empty sub-categories), so the endpoint's set-equality holds.
+        const ids = buildReorderedIds(real, (l) => idByLabel.get(l), existing.map((s) => s.subcategory_id));
+        await service.reorderMenuSubcategories(menuId, { course: category, ordered_ids: ids });
+        setStructureRefreshKey((k) => k + 1);
+      } catch {
+        showToast("Couldn't reorder sub-categories — try again");
+        setStructureRefreshKey((k) => k + 1); // re-sync from server
+      }
+    },
+    [subcatV2, service, findSubcategoryId, structureByMenu, showToast],
+  );
+
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
   // Optimistically updates the parent item's modifiers and PUTs to the API.
   // Add-ons are managed per item in the Edit modal (Add-ons tab).
@@ -2580,6 +2633,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDropSubCategory: handleDropSubCategory,
             onRenameSubCategory: handleRenameSubCategory,
             onDeleteSubCategory: handleDeleteSubCategory,
+            orderSubCategories,
+            onReorderSubCategory: handleReorderSubCategories,
             onCreateMenu: handleCreateMenu,
             onCloneMenu: handleCloneMenu,
             onEditMenu: setEditMenuId,
@@ -2659,6 +2714,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDropSubCategory={handleDropSubCategory}
             onRenameSubCategory={handleRenameSubCategory}
             onDeleteSubCategory={handleDeleteSubCategory}
+            orderSubCategories={orderSubCategories}
+            onReorderSubCategory={handleReorderSubCategories}
             onCreateMenu={handleCreateMenu}
             onCloneMenu={handleCloneMenu}
             onEditMenu={setEditMenuId}
