@@ -30,11 +30,15 @@ export const SWEETNESS_VISIBLE = false;
  * use time — Next.js inlines NEXT_PUBLIC_* at build, and a function keeps unit
  * tests free to stub process.env per-case.
  */
+// Module-local, type-only declaration of `process` so this package typechecks
+// without an @types/node dep (its tsconfig has no `node` lib). It is ERASED at
+// emit, leaving a bare `process.env.NEXT_PUBLIC_SUBCATEGORY_V2` member access —
+// which is the EXACT form Next.js inlines to a literal at build time. The prior
+// `globalThis.process?.env?.…` form was NOT inlined (it survived as a runtime
+// lookup, and `globalThis.process` is undefined in the browser → always false),
+// which silently gated this feature OFF in every deployed build (STR-775).
+declare const process: { env: { NEXT_PUBLIC_SUBCATEGORY_V2?: string } };
+
 export function isSubcategoryV2Enabled(): boolean {
-  // Avoid a @types/node dep in this package — read process via globalThis with
-  // an inline cast, mirroring spice-derivation.ts. The Next.js bundler replaces
-  // process.env.NEXT_PUBLIC_* with a literal at build time in consumers.
-  const value = (globalThis as { process?: { env?: { NEXT_PUBLIC_SUBCATEGORY_V2?: string } } })
-    .process?.env?.NEXT_PUBLIC_SUBCATEGORY_V2;
-  return value === 'true';
+  return process.env.NEXT_PUBLIC_SUBCATEGORY_V2 === 'true';
 }
