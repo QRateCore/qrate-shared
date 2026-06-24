@@ -1796,24 +1796,30 @@ function CategoryBucket({
       {/* Bucket items + drop zone */}
       {!collapsed && (
         <div
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
+          // STR-775 — during a SUB-CATEGORY reorder drag (reorderFrom set), the
+          // item-refile bucket drop is suppressed: its enter/drop fire as the
+          // reorder drag passes over the bucket, but the reorder drop is handled
+          // (stopPropagation) at the sub-category row, so the bucket never gets a
+          // drop/leave to clear isDragOver → the green box stuck after reordering.
+          onDragEnter={reorderFrom ? undefined : onDragEnter}
+          onDragLeave={reorderFrom ? undefined : onDragLeave}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={onDrop}
+          onDrop={reorderFrom ? undefined : onDrop}
           data-testid={`bucket-drop-${category}`}
           className="min-h-10 transition-all duration-150"
           style={{
             // Consistent green = "valid drop target". A faint outline appears on
             // every droppable bucket the moment a drag starts (always-visible
-            // labeled zones), filling in solid when you actually hover it.
-            background: isDragOver ? DROP_TARGET.fill : 'transparent',
-            border: isDragOver
+            // labeled zones), filling in solid when you actually hover it. Both
+            // suppressed while reordering sub-categories (not an item-refile).
+            background: isDragOver && !reorderFrom ? DROP_TARGET.fill : 'transparent',
+            border: isDragOver && !reorderFrom
               ? `2px dashed ${DROP_TARGET.border}`
-              : dragActive
+              : dragActive && !reorderFrom
                 ? `2px dashed ${DROP_TARGET.border}55`
                 : '2px dashed transparent',
-            borderRadius: isDragOver || dragActive ? 'var(--r-xs)' : 0,
-            margin: isDragOver || dragActive ? '2px 4px' : 0,
+            borderRadius: (isDragOver || dragActive) && !reorderFrom ? 'var(--r-xs)' : 0,
+            margin: (isDragOver || dragActive) && !reorderFrom ? '2px 4px' : 0,
           }}
         >
           {/* Bucket-level drop hint. Visible for the whole drag (not just on
@@ -2045,7 +2051,9 @@ function CategoryBucket({
                   isReorderActive={reorderFrom !== null && reorderFrom !== label && label !== UNGROUPED_KEY}
                   insertionLine={reorderOver && reorderOver.label === label ? reorderOver.position : null}
                   onReorderDragStart={() => { setReorderFrom(label); setReorderOver(null); }}
-                  onReorderDragEnd={() => { setReorderFrom(null); setReorderOver(null); }}
+                  // Safety net: clear any item-refile bucket highlight the reorder
+                  // drag may have triggered, so the green box never sticks.
+                  onReorderDragEnd={() => { setReorderFrom(null); setReorderOver(null); onDragLeave?.(); }}
                   onReorderDragOver={(e) => {
                     if (!reorderFrom || reorderFrom === label) return;
                     // Pointer in the top half → insert before, bottom half → after.
