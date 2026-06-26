@@ -1377,6 +1377,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             if (!subId) { showToast(`Couldn't file under "${label}" — try again`); return; }
           }
           let failed = 0;
+          let firstError = '';
           for (const item of toProcess) {
             try {
               if (ungrouped) {
@@ -1384,11 +1385,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               } else {
                 await service.assignItemToSubcategory!(menuId, item.id, subId!);
               }
-            } catch {
+            } catch (e) {
               failed++;
+              if (!firstError) firstError = e instanceof Error ? e.message : String(e);
             }
           }
-          if (failed > 0) showToast(`${toProcess.length - failed} filed, ${failed} failed`);
+          // Surface the actual failure reason — never silently drop a failed
+          // file. A swallowed error here looks to the owner like the drag
+          // worked when the item was never added to the menu.
+          if (failed > 0) showToast(`Couldn't file ${failed} of ${toProcess.length} under ${moveLabelV2}${firstError ? ` — ${firstError}` : ''}`);
           else showToast(toProcess.length === 1 ? `Filed under ${moveLabelV2}` : `Filed ${toProcess.length} items under ${moveLabelV2}`);
           if (toProcess.length > 1) setSelected(new Set());
           // Re-fetch the structure so the grouped view reflects the write.
@@ -1456,6 +1461,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       for (const item of toProcess) pendingWriteItemIdsRef.current.add(item.id);
       const run = async () => {
         let failed = 0;
+        let firstError = '';
         for (const item of toProcess) {
           try {
             const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
@@ -1483,15 +1489,19 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               try { await service.setItemSubcategories(menuId, item.id, cat, newLabels); }
               catch { /* non-fatal — paired-model write is additive */ }
             }
-          } catch {
+          } catch (e) {
             failed++;
+            if (!firstError) firstError = e instanceof Error ? e.message : String(e);
             const original = prevItems.find((o) => o.id === item.id);
             if (original) setItems((prev) => prev.map((i) => (i.id !== item.id ? i : original)));
           } finally {
             pendingWriteItemIdsRef.current.delete(item.id);
           }
         }
-        if (failed > 0) showToast(`${toProcess.length - failed} filed, ${failed} failed`);
+        // Surface the actual failure reason — never silently drop a failed
+        // file. A swallowed error here looks to the owner like the drag
+        // worked when the item was never added to the menu.
+        if (failed > 0) showToast(`Couldn't file ${failed} of ${toProcess.length} under ${moveLabel}${firstError ? ` — ${firstError}` : ''}`);
         else showToast(toProcess.length === 1 ? `Filed under ${moveLabel}` : `Filed ${toProcess.length} items under ${moveLabel}`);
         if (toProcess.length > 1) setSelected(new Set());
       };
