@@ -77,6 +77,9 @@ export type { CreateMenuItemsServiceOptions } from './services/createMenuItemsSe
 // Utils — Order Status Display
 export { STATUS_DISPLAY, getNextStatus, getNextStatusLabel, ACTIVE_STATUSES, isActiveStatus } from './utils/order-status-display';
 
+// Utils — canonical dietary/allergen display label (STR-822)
+export { formatTagLabel } from './utils/labelFormat';
+
 // Constants
 export {
   TAG_CATEGORIES,

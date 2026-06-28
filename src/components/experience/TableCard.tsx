@@ -3,6 +3,7 @@
 import { Bell, Eye, Star } from 'lucide-react';
 import type { RestaurantTable, TableActivityEntry, WaiterCall } from '../../types/experience';
 import { allergenColor } from './table-utils';
+import { formatTagLabel } from '../../utils/labelFormat';
 
 export interface TableCardProps {
   table: RestaurantTable;
@@ -106,7 +107,7 @@ export default function TableCard({
                     key={j}
                     className="w-2 h-2 rounded-full flex-shrink-0"
                     style={{ backgroundColor: allergenColor(a) }}
-                    title={a}
+                    title={formatTagLabel(a)}
                   />
                 ))}
               </div>
