@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { X, AlertTriangle, BellRing, Check, Loader2 } from 'lucide-react';
 import type { TableActivityEntry, WaiterCall, OrderSummary, OrderStatus } from '../../types/experience';
 import { callTypeLabel, timeSince, initials, allergenColor, StatusPill } from './table-utils';
+import { formatTagLabel } from '../../utils/labelFormat';
 import SwipeSlider from '../staff/SwipeSlider';
 
 export interface TableDetailSheetProps {
@@ -318,7 +319,7 @@ export default function TableDetailSheet({
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
                                   style={{ backgroundColor: allergenColor(a) }}
                                 >
-                                  {a}
+                                  {formatTagLabel(a)}
                                 </span>
                               ))}
                             </div>
@@ -332,7 +333,7 @@ export default function TableDetailSheet({
                             <div className="flex flex-wrap gap-1.5">
                               {guest.dietary_restrictions.map(d => (
                                 <span key={d} className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                  {d}
+                                  {formatTagLabel(d)}
                                 </span>
                               ))}
                             </div>
