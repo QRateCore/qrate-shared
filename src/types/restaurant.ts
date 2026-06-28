@@ -101,6 +101,10 @@ export interface MenuAssociation {
   menu_id: string;
   menu_name: string;
   price: number | null;
+  /** Wine-only: price per glass in dollars. Null for all other drink types. */
+  price_by_glass?: number | null;
+  /** Wine-only: price per bottle in dollars. Null for all other drink types. */
+  price_by_bottle?: number | null;
   category_name?: string;
   canonical_categories?: string[];
   boost_level?: string | null;
@@ -139,6 +143,10 @@ export interface MenuAssociation {
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
 export interface MenuItemJunctionSettings {
   price?: number | null;
+  /** Wine-only: price per glass in dollars. Ignored by the backend for non-wine items. */
+  price_by_glass?: number | null;
+  /** Wine-only: price per bottle in dollars. Ignored by the backend for non-wine items. */
+  price_by_bottle?: number | null;
   category_name?: string | null;
   canonical_categories?: string[];
   boost_level?: string | null;
