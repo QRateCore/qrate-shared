@@ -189,7 +189,7 @@ export default function TableDetailSheet({
   // (Mark Served) → Served. The legacy "Ready" row is gone — Step 6b
   // confirmed zero `ready` rows remained in the DB.
   const statusGroups = [
-    { statuses: ['pending'],               label: 'Order Placed',   actionLabel: 'Enter in POS', nextStatus: 'confirmed' as OrderStatus, labelCls: 'text-blue-700',    bgCls: 'bg-blue-50'   },
+    { statuses: ['pending'],               label: 'Order Placed',   actionLabel: 'Enter in POS', nextStatus: 'confirmed' as OrderStatus, labelCls: 'text-orange-500',  bgCls: 'bg-blue-50'   },
     { statuses: ['confirmed', 'preparing'], label: 'In Kitchen',     actionLabel: 'Mark Served', nextStatus: 'delivered' as OrderStatus, labelCls: 'text-purple-700',  bgCls: 'bg-purple-50' },
     { statuses: ['delivered'],             label: 'Served',         actionLabel: null,            nextStatus: null,                       labelCls: 'text-emerald-700', bgCls: 'bg-emerald-50'},
     { statuses: ['completed'],             label: 'Completed',      actionLabel: null,            nextStatus: null,                       labelCls: 'text-gray-500',    bgCls: 'bg-gray-50'   },
@@ -297,48 +297,59 @@ export default function TableDetailSheet({
                     ))}
                   </div>
 
-                  {/* Guest dietary profile card */}
-                  {guestFilter && (() => {
-                    const guest = table.guests.find(g => (g.name || 'Guest') === guestFilter);
-                    if (!guest) return null;
-                    const hasAllergens = guest.allergens.length > 0;
-                    const hasDietary = guest.dietary_restrictions.length > 0;
-                    if (!hasAllergens && !hasDietary) return null;
+                  {/* Guest dietary preferences — all guests in "All" view, single guest when filtered */}
+                  {(() => {
+                    const guestsToShow = guestFilter
+                      ? table.guests.filter(g => (g.name || 'Guest') === guestFilter)
+                      : table.guests.filter(g => g.allergens.length > 0 || g.dietary_restrictions.length > 0);
+                    if (guestsToShow.length === 0) return null;
+                    const guestsWithPrefs = guestsToShow.filter(g => g.allergens.length > 0 || g.dietary_restrictions.length > 0);
+                    if (guestsWithPrefs.length === 0) return null;
                     return (
-                      <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
-                        {hasAllergens && (
-                          <div>
-                            <p className="section-header text-red-600 mb-1">
-                              <AlertTriangle className="inline h-3 w-3 mr-0.5 -mt-0.5" />
-                              Allergens
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {guest.allergens.map(a => (
-                                <span
-                                  key={a}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                                  style={{ backgroundColor: allergenColor(a) }}
-                                >
-                                  {formatTagLabel(a)}
-                                </span>
-                              ))}
-                            </div>
+                      <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
+                        {guestsWithPrefs.map(guest => (
+                          <div key={guest.diner_id || guest.name}>
+                            {!guestFilter && (
+                              <p className="section-header mb-1.5">{guest.name || 'Guest'}</p>
+                            )}
+                            {guest.allergens.length > 0 && (
+                              <div className={!guestFilter && guest.dietary_restrictions.length > 0 ? 'mb-1.5' : ''}>
+                                {guestFilter && (
+                                  <p className="section-header text-red-600 mb-1">
+                                    <AlertTriangle className="inline h-3 w-3 mr-0.5 -mt-0.5" />
+                                    Allergens
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {guest.allergens.map(a => (
+                                    <span
+                                      key={a}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                                      style={{ backgroundColor: allergenColor(a) }}
+                                    >
+                                      {!guestFilter && <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" />}
+                                      {formatTagLabel(a)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {guest.dietary_restrictions.length > 0 && (
+                              <div>
+                                {guestFilter && (
+                                  <p className="section-header mb-1">Dietary Preferences</p>
+                                )}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {guest.dietary_restrictions.map(d => (
+                                    <span key={d} className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                      {formatTagLabel(d)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {hasDietary && (
-                          <div>
-                            <p className="section-header mb-1">
-                              Dietary Preferences
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {guest.dietary_restrictions.map(d => (
-                                <span key={d} className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                  {formatTagLabel(d)}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     );
                   })()}
@@ -360,7 +371,11 @@ export default function TableDetailSheet({
                                 await onStatusUpdate(orderIds, group.nextStatus!);
                               }}
                               disabled={!!updatingStatus}
-                              className="text-xs font-semibold text-gray-700 bg-gray-100 px-2.5 py-1 rounded-full active:bg-gray-200 disabled:opacity-50"
+                              className={`text-xs px-2.5 py-1 rounded-full disabled:opacity-50 ${
+                                group.statuses.includes('pending')
+                                  ? 'font-medium text-white bg-orange-500 active:bg-orange-600'
+                                  : 'font-medium text-white bg-[#2a7a3b] active:bg-[#236633]'
+                              }`}
                             >
                               {group.actionLabel}
                             </button>
