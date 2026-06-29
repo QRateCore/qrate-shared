@@ -402,6 +402,7 @@ export function buildJunctionSettings(
         category_name: assoc.category_name ?? undefined,
         canonical_categories: assoc.canonical_categories ?? [],
         raw_categories: assoc.raw_categories ?? [],
+        serving_price_overrides: assoc.serving_price_overrides ?? {},
         category_prices: assoc.category_prices ?? {},
         category_boost_levels: assoc.category_boost_levels ?? {},
         category_chefs_specials: assoc.category_chefs_specials ?? {},
