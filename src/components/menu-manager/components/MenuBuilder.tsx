@@ -31,6 +31,8 @@ export type { ModifierEntry };
 export function itemHasAttention(item: MenuItemDisplay, settings: MenuItemJunctionSettings): boolean {
   if (settings.price != null) return false;
   if (item.price != null) return false;
+  const spo = settings.serving_price_overrides;
+  if (spo != null && (spo['glass'] != null || spo['bottle'] != null)) return false;
   return true;
 }
 
@@ -774,11 +776,18 @@ function MenuItemRow({
   // serving; held in DOLLARS, persisted as cents in serving_price_overrides.
   const servingOptions = item.serving_options ?? [];
   const hasServingOptions = servingOptions.length > 0;
+  const isWine = item.food_tags?.beverage?.beverage_type?.toLowerCase() === 'wine';
+  const useWineFallback = isWine && !hasServingOptions;
   const buildServingStrs = (): Record<string, string> => {
     const o: Record<string, string> = {};
     for (const s of servingOptions) {
       const override = settings.serving_price_overrides?.[s.id];
       o[s.id] = override != null ? String(override / 100) : '';
+    }
+    if (useWineFallback) {
+      const spo = settings.serving_price_overrides ?? {};
+      o['glass'] = spo['glass'] != null ? String(spo['glass'] / 100) : '';
+      o['bottle'] = spo['bottle'] != null ? String(spo['bottle'] / 100) : '';
     }
     return o;
   };
@@ -1269,6 +1278,31 @@ function MenuItemRow({
                         onBlur={() => handleServingPriceBlur(s.id)}
                         placeholder={String((s.price_cents ?? 0) / 100)}
                         data-testid={`serving-price-input-${item.id}-${s.id}`}
+                        className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : useWineFallback ? (
+              <div className="flex items-center gap-2 flex-wrap" data-testid={`wine-prices-${item.id}`}>
+                {(['glass', 'bottle'] as const).map((sid) => (
+                  <div key={sid} className="flex items-center gap-1">
+                    <label className="section-header !mb-0 shrink-0" htmlFor={`serving-${menuId}-${item.id}-${sid}`}>
+                      {sid === 'glass' ? 'Glass' : 'Bottle'}
+                    </label>
+                    <div className={`flex items-center gap-0.5 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}>
+                      <span className="text-xs text-[var(--text2)]">$</span>
+                      <input
+                        id={`serving-${menuId}-${item.id}-${sid}`}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={servingPriceStrs[sid] ?? ''}
+                        onChange={(e) => setServingPriceStrs((prev) => ({ ...prev, [sid]: e.target.value }))}
+                        onBlur={() => handleServingPriceBlur(sid)}
+                        placeholder="—"
+                        data-testid={`serving-price-input-${item.id}-${sid}`}
                         className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                     </div>
