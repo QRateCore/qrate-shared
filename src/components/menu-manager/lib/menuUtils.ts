@@ -285,8 +285,21 @@ export function orderSubcategoryLabels(
   labels: string[],
   subs: ReadonlyArray<{ name: string; sort_order: number | null }>,
 ): string[] {
+  // Two structure rows can collapse to the SAME normalized key (e.g. the Anant
+  // Lunch menu carries both "Bread (Kulcha)" and "Bread Kulcha"). The builder
+  // merges them into ONE displayed pill, so the pill's position must resolve to
+  // the EARLIEST (min) sort_order of its colliding rows — NOT last-write-wins.
+  // Last-wins was the bug: after a reorder the moved row took the new position
+  // but its orphaned sibling was pushed to the bottom, and last-wins resolved the
+  // merged pill to the bottom → the pill snapped back every time. Min makes the
+  // pill follow the row the owner actually moved.
   const orderByKey = new Map<string, number>();
-  subs.forEach((s, i) => orderByKey.set(normalizeSubcatKey(s.name), s.sort_order ?? i));
+  subs.forEach((s, i) => {
+    const k = normalizeSubcatKey(s.name);
+    const v = s.sort_order ?? i;
+    const prev = orderByKey.get(k);
+    orderByKey.set(k, prev === undefined ? v : Math.min(prev, v));
+  });
   const real = labels.filter((l) => l !== UNGROUPED_KEY);
   const known = real.filter((l) => orderByKey.has(normalizeSubcatKey(l)));
   const unknown = real.filter((l) => !orderByKey.has(normalizeSubcatKey(l)));
@@ -320,6 +333,55 @@ export function buildReorderedIds(
   }
   for (const id of existingIdsInOrder) {
     if (!used.has(id)) { ids.push(id); used.add(id); }
+  }
+  return ids;
+}
+
+/**
+ * Collision-aware successor to {@link buildReorderedIds}. A single displayed
+ * sub-category pill can be backed by MORE THAN ONE first-class row when their
+ * names collapse to the same {@link normalizeSubcatKey} (e.g. "Bread (Kulcha)"
+ * + "Bread Kulcha" on the Anant Lunch menu). `buildReorderedIds` resolved a
+ * label to ONE id and appended every other row to the end — so the colliding
+ * sibling drifted to the bottom on every save. This version groups ALL rows
+ * that share a pill's normalized key and places them CONSECUTIVELY at the pill's
+ * new position, so siblings travel together and never strand at the bottom.
+ *
+ * - `orderedRealLabels` — the owner's new pill order (UNGROUPED already stripped).
+ * - `rows` — the course's current first-class rows (id + name), current order.
+ * - `createdIdByLabel` — ids of rows just created on-demand for labels that had
+ *   no backing row yet (placed at the label's position).
+ *
+ * Returns the COMPLETE permutation the reorder endpoint requires: every grouped
+ * row, then any row whose key matched no displayed label (e.g. an empty
+ * sub-category), each exactly once. Pure.
+ */
+export function buildReorderedSubcategoryIds(
+  orderedRealLabels: string[],
+  rows: ReadonlyArray<{ subcategory_id: string; name: string }>,
+  createdIdByLabel?: ReadonlyMap<string, string>,
+): string[] {
+  const rowsByKey = new Map<string, string[]>();
+  for (const r of rows) {
+    const k = normalizeSubcatKey(r.name);
+    const group = rowsByKey.get(k);
+    if (group) group.push(r.subcategory_id);
+    else rowsByKey.set(k, [r.subcategory_id]);
+  }
+  const ids: string[] = [];
+  const used = new Set<string>();
+  for (const label of orderedRealLabels) {
+    const key = normalizeSubcatKey(label);
+    for (const id of rowsByKey.get(key) ?? []) {
+      if (!used.has(id)) { ids.push(id); used.add(id); }
+    }
+    const created = createdIdByLabel?.get(label);
+    if (created && !used.has(created)) { ids.push(created); used.add(created); }
+  }
+  // Rows whose key matched no displayed label (empty sub-categories, Ungrouped)
+  // keep their relative order at the end so the permutation stays complete.
+  for (const r of rows) {
+    if (!used.has(r.subcategory_id)) { ids.push(r.subcategory_id); used.add(r.subcategory_id); }
   }
   return ids;
 }

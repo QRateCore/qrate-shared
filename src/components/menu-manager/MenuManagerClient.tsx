@@ -17,7 +17,7 @@ import {
   resolveMoveCanonicals,
   sortedSubCategoryLabels,
   orderSubcategoryLabels,
-  buildReorderedIds,
+  buildReorderedSubcategoryIds,
   normalizeSubcatKey,
   type MenuColor,
 } from './lib/menuUtils';
@@ -1674,21 +1674,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       });
 
       try {
-        // Resolve each displayed label to its first-class row id, CREATING any
-        // missing row seeded with its NEW position (C2 — never 0).
-        const idByLabel = new Map<string, string>();
-        for (let i = 0; i < real.length; i++) {
-          let id = findSubcategoryId(menuId, category, real[i]);
-          if (!id && service.createMenuSubcategory) {
-            const created = await service.createMenuSubcategory(menuId, { course: category, name: real[i], sort_order: i });
-            id = created.subcategory_id;
-          }
-          if (id) idByLabel.set(real[i], id);
-        }
         const existing = (prevStructure?.courses?.[courseKey] ?? []) as MenuSubcategory[];
-        // Complete permutation = displayed (new order) + any existing rows not
-        // displayed (e.g. empty sub-categories), so the endpoint's set-equality holds.
-        const ids = buildReorderedIds(real, (l) => idByLabel.get(l), existing.map((s) => s.subcategory_id));
+        // Create-on-demand for any displayed label that has NO backing row yet,
+        // matched by NORMALIZED key (not exact name) so a punctuation/spacing
+        // variant of an existing row (e.g. "Bread (Kulcha)" vs "Bread Kulcha")
+        // never spawns a DUPLICATE row — duplicate rows that collide on the
+        // normalized key are the root cause of the snap-to-bottom defect.
+        const haveKey = new Set(existing.map((s) => normalizeSubcatKey(s.name)));
+        const createdIdByLabel = new Map<string, string>();
+        for (let i = 0; i < real.length; i++) {
+          const key = normalizeSubcatKey(real[i]);
+          if (!key || haveKey.has(key) || !service.createMenuSubcategory) continue;
+          const created = await service.createMenuSubcategory(menuId, { course: category, name: real[i], sort_order: i });
+          createdIdByLabel.set(real[i], created.subcategory_id);
+          haveKey.add(key);
+        }
+        // Complete permutation = displayed pills (new order, with ALL rows that
+        // share a pill's normalized key kept together) + created rows + any
+        // existing row not displayed (e.g. empty sub-categories), so the
+        // endpoint's set-equality holds and colliding siblings never strand at
+        // the bottom.
+        const ids = buildReorderedSubcategoryIds(real, existing, createdIdByLabel);
         await service.reorderMenuSubcategories(menuId, { course: category, ordered_ids: ids });
         // Silent reconcile (created rows' real ids / server sort_order). The
         // optimistic order already matches, so nothing visibly moves.
@@ -1700,7 +1706,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         setStructureRefreshKey((k) => k + 1);
       }
     },
-    [subcatV2, service, findSubcategoryId, structureByMenu, showToast],
+    [subcatV2, service, structureByMenu, showToast],
   );
 
   // ── Update item modifiers (sides + recommendations) ─────────────────────────
