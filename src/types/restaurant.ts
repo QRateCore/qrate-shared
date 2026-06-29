@@ -101,6 +101,12 @@ export interface MenuAssociation {
   menu_id: string;
   menu_name: string;
   price: number | null;
+  /**
+   * Per-menu wine serving price overrides. Keys are serving option IDs
+   * ("glass", "bottle"); values are price in cents. Set via the inline
+   * editor for wine items. Absent or empty = no override (base price applies).
+   */
+  serving_price_overrides?: Record<string, number> | null;
   category_name?: string;
   canonical_categories?: string[];
   /**
@@ -183,6 +189,11 @@ export interface MenuStructure {
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
 export interface MenuItemJunctionSettings {
   price?: number | null;
+  /**
+   * Per-menu wine serving price overrides (cents). Keys: "glass" | "bottle".
+   * Send only the keys to set. Empty object clears all overrides.
+   */
+  serving_price_overrides?: Record<string, number>;
   category_name?: string | null;
   canonical_categories?: string[];
   /**
