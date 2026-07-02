@@ -1585,6 +1585,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [items, service, showToast, subcatV2, findSubcategoryByName],
   );
 
+  // Create a new (empty) sub-category in a course. subcatV2 only — the legacy
+  // raw_categories model has no first-class sub-category row to create empty.
+  // The new row starts item-less; `orderSubCategories` surfaces it (count 0)
+  // so its box appears, ready for the owner to file items into. It becomes
+  // patron-visible once it holds a visible item.
+  const handleCreateSubCategory = useCallback(
+    async (menuId: string, category: string, name: string) => {
+      const n = name.trim();
+      if (!n) return;
+      if (!(subcatV2 && service.createMenuSubcategory)) return;
+      try {
+        await service.createMenuSubcategory(menuId, { course: category, name: n });
+        showToast(`Added "${n}"`);
+        setStructureRefreshKey((k) => k + 1);
+      } catch {
+        showToast(`Couldn't add "${n}" — try again`);
+      }
+    },
+    [service, showToast, subcatV2],
+  );
+
   const handleDeleteSubCategory = useCallback(
     async (menuId: string, label: string) => {
       // ── Flag ON: delete the first-class sub-category by id ──────────────────
@@ -1633,7 +1654,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     (menuId: string, category: string, labels: string[]): string[] => {
       if (!subcatV2 || !structureByMenu[menuId]) return sortedSubCategoryLabels(labels);
       const subs = (structureByMenu[menuId].courses?.[category as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
-      return orderSubcategoryLabels(labels, subs);
+      // Surface EMPTY sub-categories (count 0) — they have no items to derive a
+      // rail label from, so without this an owner-created sub-category stays
+      // invisible until an item is filed into it. Populated subs already arrive
+      // via `labels` (item-derived); dedupe by normalized key so one is never
+      // double-rendered.
+      const present = new Set(labels.map((l) => normalizeSubcatKey(l)));
+      const emptyNames = subs
+        .filter((s) => s.count === 0 && !present.has(normalizeSubcatKey(s.name)))
+        .map((s) => s.name);
+      return orderSubcategoryLabels([...labels, ...emptyNames], subs);
     },
     [subcatV2, structureByMenu],
   );
@@ -2775,6 +2805,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDeleteSubCategory={handleDeleteSubCategory}
             orderSubCategories={orderSubCategories}
             onReorderSubCategory={subcatV2 ? handleReorderSubCategories : undefined}
+            onCreateSubCategory={subcatV2 ? handleCreateSubCategory : undefined}
             onCreateMenu={handleCreateMenu}
             onCloneMenu={handleCloneMenu}
             onEditMenu={setEditMenuId}

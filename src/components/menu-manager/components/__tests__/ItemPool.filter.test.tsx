@@ -29,6 +29,9 @@ function makeItem(id: string, name: string, itemType: 'dish' | 'addon' | 'includ
     active: true,
     item_type: itemType,
     category: 'Entrees',
+    // The pool groups by owner-facing canonical SECTION (primary canonical →
+    // MENU_SECTIONS label). 'Entrees' → the "Mains" section.
+    canonical_category: 'Entrees',
     menu_associations: [],
   } as MenuItemDisplay;
 }
@@ -140,9 +143,9 @@ describe('ItemPool — category count badge', () => {
       />,
     );
 
-    // Expand Entrees so the cards render in the DOM (collapsed sections
-    // omit their children entirely — they're not just hidden).
-    await user.click(screen.getByLabelText('Expand Entrees'));
+    // Expand the "Mains" section (Entrees → Mains) so the cards render in the
+    // DOM (collapsed sections omit their children entirely — not just hidden).
+    await user.click(screen.getByLabelText('Expand Mains'));
 
     expect(screen.getByTestId('item-card-d-keep')).toBeInTheDocument();
     expect(screen.getByTestId('item-card-i-keep')).toBeInTheDocument();

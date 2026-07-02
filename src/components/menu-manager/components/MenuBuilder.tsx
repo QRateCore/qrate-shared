@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { SubCategoryGroup } from './SubCategoryGroup';
+import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
 import Select from '../../common/Select';
@@ -72,6 +73,9 @@ interface MenuBuilderProps {
   orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
   /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
   onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
+  /** Create a new (empty) sub-category in a course from the rail's [+] box.
+   *  Optional so waiter/admin consumers compile until they wire it. */
+  onCreateSubCategory?: (menuId: string, category: string, name: string) => void | Promise<void>;
   onCreateMenu: (name: string) => Promise<void>;
   /**
    * STR-521 — clone an existing menu into a new menu (categories + per-category
@@ -1576,6 +1580,7 @@ function CategoryBucket({
   onDeleteSubCategory,
   orderSubCategories,
   onReorderSubCategory,
+  onCreateSubCategory,
   onDragStart,
   onDragEnd,
   onRemoveItem,
@@ -1632,6 +1637,8 @@ function CategoryBucket({
   orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
   /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
   onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
+  /** Create a new (empty) sub-category in this course from the rail's [+] box. */
+  onCreateSubCategory?: (menuId: string, category: string, name: string) => void | Promise<void>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
@@ -1741,9 +1748,19 @@ function CategoryBucket({
             />
           </label>
         )}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggleCollapse}
+        onKeyDown={(e) => {
+          // Preserve the button's keyboard affordance now that this is a div
+          // (a div was needed so the header can contain the inline [+] create
+          // control — an <input>/<button> can't nest inside a real <button>).
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleCollapse();
+          }
+        }}
         data-testid={`collapse-bucket-${category}`}
         className="flex-1 flex items-center gap-2 py-1.5 px-3 cursor-pointer text-left transition-colors duration-150"
         style={{
@@ -1758,11 +1775,10 @@ function CategoryBucket({
         <span className="text-xs font-bold text-[var(--text)] shrink-0">
           {displayLabel ?? category}
         </span>
-        {bucketRawCategories.length > 0 ? (
-          <span
-            data-testid={`bucket-rawcats-${category}`}
-            className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden normal-case"
-          >
+        <span
+          data-testid={`bucket-rawcats-${category}`}
+          className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden normal-case"
+        >
             {/* One chip per sub-category, each "{label} {item-count}". Each chip
                 is width-bounded (label ellipsis-truncates) and only the first
                 MAX_RAWCAT_CHIPS render inline; the rest collapse into a single
@@ -1800,10 +1816,17 @@ function CategoryBucket({
                 +{bucketRawCategories.length - MAX_RAWCAT_CHIPS}
               </span>
             )}
-          </span>
-        ) : (
-          <span className="flex-1" aria-hidden="true" />
-        )}
+          {/* Bare [+] at the end of the sub-category row → inline create.
+              Commits on Enter or blur; stops propagation so it never toggles
+              the course collapse. */}
+          {onCreateSubCategory && (
+            <SubCategoryCreateBox
+              menuId={menuId}
+              category={category}
+              onCreate={onCreateSubCategory}
+            />
+          )}
+        </span>
         {emptyIsAttention ? (
           <span
             data-testid={`bucket-attention-empty-${category}`}
@@ -1824,7 +1847,7 @@ function CategoryBucket({
         <span className="text-xs font-semibold text-[var(--text2)] bg-[var(--bg)] rounded-full px-1.5 py-px">
           {bucketItems.length}
         </span>
-      </button>
+      </div>
       </div>
 
       {/* Bucket items + drop zone */}
@@ -2152,6 +2175,7 @@ export default function MenuBuilder({
   onDeleteSubCategory,
   orderSubCategories,
   onReorderSubCategory,
+  onCreateSubCategory,
   onCreateMenu,
   onCloneMenu,
   onEditMenu,
@@ -2357,6 +2381,7 @@ export default function MenuBuilder({
                 onDeleteSubCategory={onDeleteSubCategory}
                 orderSubCategories={orderSubCategories}
                 onReorderSubCategory={onReorderSubCategory}
+                onCreateSubCategory={onCreateSubCategory}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}
