@@ -2195,3 +2195,36 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
     }
   });
 });
+
+// ── Dishes/Add-ons type toggle — edit mode visibility (2026-07-02) ──────────
+//
+// Historically the pill toggle was gated to isNewItem only. Owner request
+// 2026-07-02 relaxed that so an existing item's type can be flipped inline.
+// forceAddon / forceDish still pin the type (setup-guide surfaces).
+
+describe('EditModal — dish↔addon type toggle in edit mode', () => {
+  it('renders the type toggle for an existing dish item (edit mode)', () => {
+    renderModal({ item: makeDishItem(), isNewItem: false });
+    expect(screen.getByTestId('type-toggle')).toBeTruthy();
+    expect(screen.getByTestId('type-toggle-dishes')).toBeTruthy();
+    expect(screen.getByTestId('type-toggle-addons')).toBeTruthy();
+  });
+
+  it('renders the type toggle for an existing addon item (edit mode)', () => {
+    renderModal({ item: makeAddonItem(), isNewItem: false });
+    expect(screen.getByTestId('type-toggle')).toBeTruthy();
+    // Add-ons pill is the active side when the item is an addon
+    expect(screen.getByTestId('type-toggle-addons')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('type-toggle-dishes')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('still renders the type toggle in new-item mode (regression guard)', () => {
+    renderModal({ item: makeDishItem(), isNewItem: true });
+    expect(screen.getByTestId('type-toggle')).toBeTruthy();
+  });
+
+  it('does NOT render the type toggle when forceAddon pins the type', () => {
+    renderModal({ item: makeAddonItem(), isNewItem: false, forceAddon: true });
+    expect(screen.queryByTestId('type-toggle')).toBeNull();
+  });
+});

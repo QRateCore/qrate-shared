@@ -44,7 +44,11 @@ interface EditModalProps {
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   /** Called when user clicks a menu chip — close modal and navigate to that menu+item */
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
-  /** True when the modal was opened via "Add Item" — shows the Dishes/Add-ons type toggle. Hidden in edit mode. */
+  /** True when the modal was opened via "Add Item". Historically gated the
+   *  Dishes/Add-ons type toggle to new-item flow only; as of 2026-07-02 the
+   *  toggle also shows in edit mode so owners can convert an existing item's
+   *  type inline (dish ↔ addon). This prop is still forwarded for other
+   *  flow-differentiating logic (rename gates, deferred creation). */
   isNewItem?: boolean;
   /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
   forceAddon?: boolean;
@@ -2213,9 +2217,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             </button>
           </div>
 
-          {/* Dishes / Add-ons pill toggle — only shown when creating a new
-              item (hidden when forceAddon or forceDish). */}
-          {isNewItem && !forceAddon && !forceDish && (
+          {/* Dishes / Add-ons pill toggle — visible in BOTH new-item and
+              edit flows so owners can convert an existing item's type inline.
+              (2026-07-02: relaxed the isNewItem gate per owner request.)
+              Still hidden when forceAddon or forceDish pins the type at the
+              call site (e.g. AddonsCheckbox setup-guide surface). The Add-ons
+              button remains disabled (addonDisabled) when the item carries
+              sides or recommendations, and dish→addon with active menu
+              placements still routes through the addonConfirmPending banner. */}
+          {!forceAddon && !forceDish && (
             <div
               role="radiogroup"
               aria-label="Item type"
