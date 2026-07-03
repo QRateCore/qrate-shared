@@ -563,10 +563,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     const startWidth = poolWidth;
     setDividerActive(true);
     const onMouseMove = (mv: MouseEvent) => {
-      // ItemPool moved to the RIGHT panel — dragging the divider rightwards
-      // should shrink the pool (and grow the menu builder on the left),
-      // which means we subtract the cursor delta from the stored width.
-      const next = Math.min(Math.max(startWidth - (mv.clientX - startX), 200), 520);
+      // ItemPool now lives on the LEFT panel — dragging the divider rightwards
+      // should GROW the pool (and shrink the menu builder on the right), which
+      // means we add the cursor delta to the stored width.
+      const next = Math.min(Math.max(startWidth + (mv.clientX - startX), 200), 520);
       setPoolWidth(next);
     };
     const onMouseUp = () => {
@@ -2737,8 +2737,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         />
       ) : (
         /* Two-panel layout — desktop. The menu tab bar spans both panels at
-           the top; below, MenuBuilder lives on the LEFT (flex-fills) and
-           ItemPool (the library) lives on the RIGHT (fixed/resizable width). */
+           the top; below, ItemPool (the Food Item Library) lives on the LEFT
+           (fixed/resizable width) and MenuBuilder fills the RIGHT. The three
+           panels are laid out with an explicit flex `order` (pool=1, divider=2,
+           builder=3) so the visual left→right order is pool → divider → builder
+           regardless of source order. */
         <div
           style={{
             display: 'flex',
@@ -2775,8 +2778,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               overflow: 'hidden',
             }}
           >
-          {/* Left panel — MenuBuilder (flex fills remaining space) */}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+          {/* Right panel — MenuBuilder (flex fills remaining space) */}
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, order: 3 }}>
           <MenuBuilder
             items={items}
             menus={menus}
@@ -2852,6 +2855,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               justifyContent: 'center',
               position: 'relative',
               zIndex: 10,
+              order: 2,
             }}
           >
             <div
@@ -2878,8 +2882,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             </div>
           </div>
 
-          {/* Right panel — ItemPool / Food Item Library (fixed width, resizable) */}
-          <div style={{ width: poolWidth, flexShrink: 0, minHeight: 0 }}>
+          {/* Left panel — ItemPool / Food Item Library (fixed width, resizable) */}
+          <div style={{ width: poolWidth, flexShrink: 0, minHeight: 0, order: 1 }}>
           <ItemPool
             items={items}
             menus={menus}
