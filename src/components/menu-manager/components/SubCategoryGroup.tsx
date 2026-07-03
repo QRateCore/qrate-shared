@@ -161,12 +161,42 @@ export function SubCategoryGroup({
           if (isReorderActive) { e.preventDefault(); e.stopPropagation(); onReorderDrop?.(); }
           else { onDrop?.(e); }
         }}
+        // Row-level click-to-toggle (2026-07-02): the entire header row is a
+        // click target for expand/collapse. Interactive children (chevron
+        // toggle, rename input, action buttons) bail via the closest() check
+        // so their onClick handlers keep working without a double-toggle.
+        // Skip in rename mode so clicking outside the input doesn't fire.
+        onClick={(e) => {
+          if (renaming) return;
+          const target = e.target as HTMLElement | null;
+          // NOTE: intentionally NOT matching [role="button"] — we set that on
+          // the row itself, so closest() would match self and short-circuit
+          // every click. Native <button>/<input>/<a> descendants are what
+          // we actually want to bail on.
+          if (target?.closest('button, input, a')) return;
+          setCollapsed((c) => !c);
+        }}
+        // Keyboard equivalent — Enter or Space on the row toggles too.
+        onKeyDown={(e) => {
+          if (renaming) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest('button, input, a')) return;
+            e.preventDefault();
+            setCollapsed((c) => !c);
+          }
+        }}
+        role="button"
+        tabIndex={renaming ? -1 : 0}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
         data-testid={`subcategory-drop-${category}-${label}`}
         className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors"
         style={{
           color: isDragOver ? '#15803D' : 'var(--text2)',
           background: isDragOver ? '#DCFCE7' : 'transparent',
-          cursor: reorderEnabled && !renaming ? 'grab' : undefined,
+          // grab cursor when reorder is armed; pointer otherwise (row is clickable)
+          cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),
           opacity: isReorderDragging ? 0.4 : undefined,
         }}
       >

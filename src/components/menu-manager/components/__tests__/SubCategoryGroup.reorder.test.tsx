@@ -116,3 +116,86 @@ describe('SubCategoryGroup reorder controls', () => {
     expect(screen.queryByTestId('subcategory-reorder-grip-Beverages-__ungrouped__')).toBeNull();
   });
 });
+
+// ── Row-level click-to-toggle (2026-07-02) ────────────────────────────────
+//
+// User request: clicking anywhere on the subcategory row should
+// expand/collapse the item list — historically only the chevron button
+// (subcategory-toggle-*) did. Interactive children (buttons, inputs) must
+// still fire their own handlers without a double-toggle.
+
+describe('SubCategoryGroup row-level click-to-toggle', () => {
+  function getChild() {
+    return screen.queryByText('child row');
+  }
+
+  it('starts collapsed (child rows hidden)', () => {
+    renderGroup();
+    expect(getChild()).toBeNull();
+  });
+
+  it('clicking the row toggles expanded state', () => {
+    renderGroup();
+    fireEvent.click(screen.getByTestId(ROW));
+    expect(getChild()).toBeTruthy();
+    fireEvent.click(screen.getByTestId(ROW));
+    expect(getChild()).toBeNull();
+  });
+
+  it('exposes role=button + aria-expanded that reflects state', () => {
+    renderGroup();
+    const row = screen.getByTestId(ROW);
+    expect(row.getAttribute('role')).toBe('button');
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('Enter key on the row toggles expanded', () => {
+    renderGroup();
+    fireEvent.keyDown(screen.getByTestId(ROW), { key: 'Enter' });
+    expect(getChild()).toBeTruthy();
+  });
+
+  it('Space key on the row toggles expanded', () => {
+    renderGroup();
+    fireEvent.keyDown(screen.getByTestId(ROW), { key: ' ' });
+    expect(getChild()).toBeTruthy();
+  });
+
+  it('clicking the chevron button toggles only once (no double-toggle from row bubble)', () => {
+    renderGroup();
+    // Chevron click expands; the row's onClick also fires via bubble, but
+    // the closest('button') guard short-circuits it — should end EXPANDED.
+    fireEvent.click(screen.getByTestId('subcategory-toggle-Beverages-Beer (Bottle)'));
+    expect(getChild()).toBeTruthy();
+  });
+
+  it('clicking a nested action button (move up) does NOT toggle the row', () => {
+    const onMoveUp = vi.fn();
+    renderGroup({ onMoveUp });
+    fireEvent.click(screen.getByTestId('subcategory-move-up-Beverages-Beer (Bottle)'));
+    // Row stays collapsed
+    expect(getChild()).toBeNull();
+    expect(onMoveUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking the rename input does NOT toggle the row', () => {
+    renderGroup({ onRename: vi.fn() });
+    fireEvent.click(screen.getByTestId('subcategory-rename-Beverages-Beer (Bottle)'));
+    const input = screen.getByTestId('subcategory-rename-input-Beverages-Beer (Bottle)');
+    fireEvent.click(input);
+    // Row stays collapsed (renaming mode also disables toggle entirely)
+    expect(getChild()).toBeNull();
+  });
+
+  it('row is not toggled while in rename mode (tabIndex=-1, no keyboard trap)', () => {
+    renderGroup({ onRename: vi.fn() });
+    fireEvent.click(screen.getByTestId('subcategory-rename-Beverages-Beer (Bottle)'));
+    const row = screen.getByTestId(ROW);
+    expect(row.getAttribute('tabindex')).toBe('-1');
+    // Even if the row is somehow clicked directly, no toggle
+    fireEvent.click(row);
+    expect(getChild()).toBeNull();
+  });
+});
