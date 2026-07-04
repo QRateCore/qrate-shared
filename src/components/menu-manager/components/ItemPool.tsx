@@ -3,19 +3,34 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Pencil, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
-import { type MenuColor } from '../lib/menuUtils';
+import { type MenuColor, MENU_SECTIONS, sectionForCanonical } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 
-// ── Raw-category grouping (2026-06-11 prototype) ──────────────────────────────
-// The pool groups by the item's original scraped category label (item.category)
-// rather than the pipeline-assigned canonical course. Items with no scraped
-// label fall into a single catch-all bucket rendered last.
+// ── Canonical-section grouping ────────────────────────────────────────────────
+// The pool groups items by the 4 owner-facing CANONICAL SECTIONS the menu
+// builder's left column uses — Drinks / Starters / Mains / Desserts
+// (MENU_SECTIONS in menuUtils.ts) — NOT the raw 8-value canonical taxonomy
+// (Beverages/Appetizers/Soups/Salads/Sides/Breads/Entrees/Desserts) and NOT
+// the scraped sub-category label. Each item is placed by its PRIMARY canonical
+// (singular `canonical_category`, else first non-empty `canonical_categories`
+// entry) → one card per item. The section's owner label is the display key;
+// the Mains section absorbs Soups/Salads/Sides/Breads. Items whose canonical
+// maps to no section (or have none) fall into a catch-all bucket rendered last.
 const UNCATEGORIZED_POOL_KEY = 'Uncategorized';
-function poolRawCategoryOf(item: MenuItemDisplay): string {
-  return (item.category && item.category.trim()) || UNCATEGORIZED_POOL_KEY;
+/** Owner-facing section LABEL (Drinks/Starters/Mains/Desserts) for an item's
+ *  primary canonical, or 'Uncategorized' when it maps to no section. */
+function poolSectionLabelOf(item: MenuItemDisplay): string {
+  const primary =
+    item.canonical_category?.trim() ||
+    item.canonical_categories?.find((c) => c && c.trim())?.trim() ||
+    '';
+  if (!primary) return UNCATEGORIZED_POOL_KEY;
+  return sectionForCanonical(primary)?.label ?? UNCATEGORIZED_POOL_KEY;
 }
+// Section labels in owner order — used to sort the pool's group headers.
+const POOL_SECTION_ORDER: string[] = MENU_SECTIONS.map((s) => s.label);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -575,39 +590,43 @@ export default function ItemPool({
     const counts: Record<string, number> = {};
     for (const item of items) {
       if (item.item_type === 'addon') continue;
-      const cat = poolRawCategoryOf(item);
+      const cat = poolSectionLabelOf(item);
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
     return counts;
   }, [items]);
 
-  // RAW-CATEGORY GROUPING (2026-06-11 prototype): the pool now groups items by
-  // their original scraped category label (item.category) instead of the
-  // pipeline-assigned canonical course. Canonical now lives only on a menu as
-  // a course mapping — not at the food-item level. The pool no longer
-  // separates dishes from included; both render in the same per-category
-  // bucket.
+  // CANONICAL-SECTION GROUPING: the pool groups items by the 4 owner-facing
+  // sections (Drinks/Starters/Mains/Desserts via poolSectionLabelOf) instead of
+  // the scraped sub-category label — matching the menu builder's left column.
+  // The pool does not separate dishes from included; both render in the same
+  // per-section bucket.
   const groupedItems = useMemo(() => {
     if (itemTypeFilter === 'addons') return null;
     const groups: Record<string, MenuItemDisplay[]> = {};
     for (const item of filtered) {
-      const cat = poolRawCategoryOf(item);
+      const cat = poolSectionLabelOf(item);
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);
     }
     return groups;
   }, [filtered, itemTypeFilter]);
 
-  // Category render order: alphabetical by raw label, with the "Uncategorized"
-  // catch-all always last so it never buries a real scraped category.
+  // Section render order: owner section order (Drinks → Starters → Mains →
+  // Desserts) first, then the "Uncategorized" catch-all always last.
   const orderedCategories = useMemo(() => {
     if (!groupedItems) return [];
+    const rank = (c: string): number => {
+      if (c === UNCATEGORIZED_POOL_KEY) return 1000;
+      const idx = POOL_SECTION_ORDER.indexOf(c);
+      return idx >= 0 ? idx : 500;
+    };
     return Object.keys(groupedItems)
       .filter((c) => (groupedItems[c]?.length ?? 0) > 0)
       .sort((a, b) => {
-        if (a === UNCATEGORIZED_POOL_KEY) return 1;
-        if (b === UNCATEGORIZED_POOL_KEY) return -1;
-        return a.localeCompare(b);
+        const ra = rank(a);
+        const rb = rank(b);
+        return ra !== rb ? ra - rb : a.localeCompare(b);
       });
   }, [groupedItems]);
 
