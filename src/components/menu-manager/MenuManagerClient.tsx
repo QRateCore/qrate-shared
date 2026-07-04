@@ -2154,9 +2154,20 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         }
         showToast('Item saved');
       }
+      // Refetch the active menu's first-class structure. A delete OR a save
+      // that changed placements (convert dish→addon strips ALL menu placements
+      // server-side; menu-association edits inside the modal already write to
+      // /structure) must be reflected in the rendered menu without a page
+      // refresh. The refetch is cheap (single GET per active menu) and only
+      // runs once per save.
+      if (subcatV2) setStructureRefreshKey((k) => k + 1);
+      // Also invalidate the page-level TanStack Query cache so navigations
+      // (leave and return to Menu Builder, switch restaurants) read the fresh
+      // server state rather than the pre-save snapshot.
+      onRefresh?.();
       setEditItemId(null);
     },
-    [showToast],
+    [showToast, subcatV2, onRefresh],
   );
 
   // ── Dish-addon association changed from EditModal ────────────────────────
