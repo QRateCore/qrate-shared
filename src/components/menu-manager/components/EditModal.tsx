@@ -2328,8 +2328,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             {isActive ? 'Visible' : 'Hidden'}
           </button>
 
-          {/* Divider */}
-          <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+          {/* Divider — hidden on mobile where the header reflows into rows. */}
+          <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, display: isMobile ? 'none' : undefined }} />
 
           {/* Delete / confirmation */}
           {deleteConfirming ? (
@@ -2430,6 +2430,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
                     padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
+                    // Mobile: primary action spans the last row for a clear,
+                    // thumb-friendly commit target.
+                    order: isMobile ? 2 : undefined,
+                    flex: isMobile ? '1 1 100%' : undefined,
+                    justifyContent: isMobile ? 'center' : undefined,
                     cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
                     opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2449,6 +2454,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
                     padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
+                    // Mobile: primary action spans the last row for a clear,
+                    // thumb-friendly commit target.
+                    order: isMobile ? 2 : undefined,
+                    flex: isMobile ? '1 1 100%' : undefined,
+                    justifyContent: isMobile ? 'center' : undefined,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     opacity: saving ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2471,6 +2481,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               color: 'var(--text2)', padding: 4, borderRadius: 4,
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined,
+              // Mobile: sits at the right end of the secondary row (order 1 keeps
+              // it ahead of the full-width Save at order 2).
+              order: isMobile ? 1 : undefined, marginLeft: isMobile ? 'auto' : undefined,
             }}
           >
             <X size={isMobile ? 20 : 16} />
