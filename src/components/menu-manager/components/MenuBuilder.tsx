@@ -1900,12 +1900,16 @@ function CategoryBucket({
         </span>
         <span
           data-testid={`bucket-rawcats-${category}`}
-          className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden normal-case"
+          // STR-858 — on mobile the chips WRAP to multiple lines (flex-wrap, no
+          // overflow-hidden) so no sub-category label is cut off; the "+N" chip
+          // still summarises any beyond MAX_RAWCAT_CHIPS. Desktop keeps the
+          // single-line clip + "+N".
+          className={`flex-1 min-w-0 flex items-center gap-1 normal-case ${isMobile ? 'flex-wrap' : 'overflow-hidden'}`}
         >
             {/* One chip per sub-category, each "{label} {item-count}". Each chip
-                is width-bounded (label ellipsis-truncates) and only the first
-                MAX_RAWCAT_CHIPS render inline; the rest collapse into a single
-                "+N" chip so the row stays on one line. */}
+                is width-bounded (label ellipsis-truncates). On desktop only the
+                first MAX_RAWCAT_CHIPS render inline (rest → "+N"); on mobile they
+                wrap so nothing is cut off. */}
             {bucketRawCategories.slice(0, MAX_RAWCAT_CHIPS).map((rc) => (
               <span
                 key={rc.label}
