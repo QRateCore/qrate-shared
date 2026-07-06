@@ -566,6 +566,18 @@ function RecInactiveChip({
     }, REC_POPOVER_LEAVE_GRACE_MS);
   };
 
+  // STR-858 — tap toggles the popover. Hover is unreachable on touch, which
+  // stranded the "Bring into Menu" action inside this popover on a phone. Tap is
+  // additive (desktop hover still works); stopPropagation keeps the row collapsed.
+  const handleTriggerClick = () => {
+    if (isEmpty) return;
+    cancelTimers();
+    if (open) { setOpen(false); return; }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ top: rect.bottom + 6, left: rect.left });
+    setOpen(true);
+  };
+
   const popoverNode = open && !isEmpty && anchor ? (
     <div
       role="dialog"
@@ -646,6 +658,7 @@ function RecInactiveChip({
       className="relative inline-flex"
       onMouseEnter={handleTriggerEnter}
       onMouseLeave={handleTriggerLeave}
+      onClick={(e) => { e.stopPropagation(); handleTriggerClick(); }}
     >
       <span
         className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
