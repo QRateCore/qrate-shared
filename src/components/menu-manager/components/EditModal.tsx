@@ -1135,11 +1135,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
 
   // Mobile accordion (STR-858) — which sections are expanded on the mobile
   // layout. Desktop ignores this entirely (it uses the tab bar + activeTab).
-  // "basics" is open by default; everything else collapses to tame density and
-  // eliminate the horizontal-scroll tab strip. Toggling a tab-backed section
+  // "basics" + "image" are open by default; the heavier tab-backed sections
+  // collapse to tame density and eliminate the horizontal-scroll tab strip.
+  // Toggling a tab-backed section
   // ALSO sets activeTab so the lazy per-tab fetches (performance/dishes) still
   // fire on expand — the guarded effects key off activeTab.
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(['basics']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(['basics', 'image']));
   const toggleSection = useCallback((id: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);

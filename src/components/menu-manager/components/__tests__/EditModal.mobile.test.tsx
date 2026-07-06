@@ -121,6 +121,12 @@ describe('EditModal — mobile accordion (STR-858)', () => {
     expect(foodTags.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('opens the Image section by default', () => {
+    renderMobile();
+    const image = screen.getByTestId('edit-mobile-section-header-image');
+    expect(image.getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('expands a section when its header is tapped', () => {
     renderMobile();
     const foodTags = screen.getByTestId('edit-mobile-section-header-food_tags');
