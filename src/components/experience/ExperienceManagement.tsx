@@ -656,7 +656,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
           });
 
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 ${isMobile ? 'pb-24' : ''}`}>
             {sorted.map(table => {
               const activity = tableActivity?.tables?.find(t => t.table_number === table.table_number) ?? null;
               const isOccupied = activity?.has_active_session === true;
@@ -683,7 +683,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => setQrModalTable(table)}
-                        className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+                        className={`rounded-md hover:bg-gray-100 transition-colors ${isMobile ? 'min-h-[44px] min-w-[44px] flex items-center justify-center' : 'p-1.5'}`}
                         title="Show QR code"
                       >
                         <QrCode className={`h-4 w-4 ${isOccupied ? 'text-red-400' : 'text-green-500'}`} />
@@ -722,7 +722,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                       <div className="mt-3 flex rounded-lg border border-gray-200 overflow-hidden">
                         <button
                           onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'orders' }))}
-                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                          className={`flex-1 ${isMobile ? 'py-3' : 'py-1.5'} text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
                           Orders
                           {activity.placed_orders.length > 0 && (
@@ -733,7 +733,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                         </button>
                         <button
                           onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'service' }))}
-                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'service' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                          className={`flex-1 ${isMobile ? 'py-3' : 'py-1.5'} text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'service' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
                           Service
                           {tableCalls.length > 0 && (
@@ -798,9 +798,10 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                                 </div>
                                 <button
                                   onClick={() => handleAcknowledgeCall(call.id)}
-                                  className="ml-2 flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0"
+                                  className={`ml-2 flex items-center justify-center gap-1 rounded-md font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0 ${isMobile ? 'min-h-[44px] px-4 text-sm' : 'px-2 py-1 text-[11px]'}`}
+                                  data-testid={`table-ack-call-${table.table_number}`}
                                 >
-                                  <Check className="h-3 w-3" />
+                                  <Check className={isMobile ? 'h-4 w-4' : 'h-3 w-3'} />
                                   Done
                                 </button>
                               </div>
@@ -836,6 +837,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                     <Select
                       fullWidth
                       size="sm"
+                      className={isMobile ? '[&>button]:min-h-[44px]' : ''}
                       value={table.assigned_server_id || ''}
                       onChange={e => handleAssignServer(table.id, e.target.value || null)}
                       placeholder="No server assigned"
@@ -851,13 +853,13 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                         min={0}
                         value={capacityEdits[table.id] ?? table.capacity ?? 0}
                         onChange={e => handleCapacityChange(table.id, e.target.value)}
-                        className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 text-center"
+                        className={`px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 text-center ${isMobile ? 'w-20 min-h-[44px]' : 'w-16 py-1'}`}
                       />
                       {capacityEdits[table.id] !== undefined && capacityEdits[table.id] !== (table.capacity ?? 0) && (
                         <button
                           onClick={() => handleSaveCapacity(table.id)}
                           disabled={savingCapacity[table.id]}
-                          className="px-2 py-1 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50"
+                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         >
                           {savingCapacity[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
                         </button>
@@ -866,7 +868,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                     {!isOccupied && service.deleteTable && (
                       <button
                         onClick={() => setDeleteConfirm({ tableId: table.id, tableNumber: table.table_number })}
-                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        className={`w-full px-2 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                         data-testid={`table-delete-${table.table_number}`}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -895,7 +897,7 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
                             showFeedback('error', `Failed to reset Table #${table.table_number}`);
                           }
                         }}
-                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        className={`w-full px-2 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                       >
                         <Trash2 className="h-3 w-3" />
                         Reset Table

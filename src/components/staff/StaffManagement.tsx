@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2 } from 'lucide-react';
 import Select from '../common/Select';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { StaffMember, StaffRole, ExperienceService } from '../../types/experience';
 
 const ROLE_LABELS: Record<StaffRole, string> = {
@@ -27,6 +28,7 @@ interface StaffManagementProps {
 }
 
 export default function StaffManagement({ restaurantId, service }: StaffManagementProps) {
+  const isMobile = useIsMobile();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -146,7 +148,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center gap-2"
+          className={`bg-orange-500 text-white px-4 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center gap-2 ${isMobile ? 'min-h-[44px]' : 'py-2'}`}
         >
           {showForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
           {showForm ? 'Cancel' : 'Add Staff'}
@@ -217,7 +219,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 flex items-center justify-center ${isMobile ? 'right-1 min-h-[44px] min-w-[44px]' : 'right-3'}`}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -228,7 +230,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
               <button
                 type="submit"
                 disabled={creating}
-                className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className={`bg-orange-500 text-white px-6 rounded-lg font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center gap-2 ${isMobile ? 'min-h-[44px]' : 'py-2'}`}
               >
                 {creating && <Loader2 className="h-4 w-4 animate-spin" />}
                 {creating ? 'Creating...' : 'Create Staff Account'}
@@ -289,7 +291,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                 <button
                   onClick={() => handleToggleActive(member)}
                   disabled={togglingId === member.id || deletingId === member.id}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                  className={`text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${isMobile ? 'px-4 min-h-[44px]' : 'px-3 py-1.5'} ${
                     member.is_active
                       ? 'text-red-700 bg-red-50 hover:bg-red-100'
                       : 'text-green-700 bg-green-50 hover:bg-green-100'
@@ -309,7 +311,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                       <button
                         onClick={() => handleDelete(member)}
                         disabled={deletingId === member.id}
-                        className="px-2 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                        className={`px-3 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                       >
                         {deletingId === member.id ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -320,7 +322,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                       <button
                         onClick={() => setConfirmDeleteId(null)}
                         disabled={deletingId === member.id}
-                        className="px-2 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                        className={`px-3 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                       >
                         Cancel
                       </button>
@@ -330,7 +332,7 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
                       onClick={() => setConfirmDeleteId(member.id)}
                       disabled={togglingId === member.id || deletingId === member.id}
                       title="Remove staff member"
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                      className={`text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 ${isMobile ? 'min-h-[44px] min-w-[44px] flex items-center justify-center' : 'p-1.5'}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
