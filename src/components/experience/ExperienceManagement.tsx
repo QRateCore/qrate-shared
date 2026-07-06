@@ -13,11 +13,13 @@ import {
   AlertTriangle,
   Check,
   X,
+  Settings2,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 type Tab = 'staff' | 'tables';
 
@@ -25,9 +27,17 @@ interface ExperienceManagementProps {
   initialTab?: Tab;
   restaurantId?: string | null;
   service: ExperienceService;
+  /**
+   * Optional owner-only deep link to the dedicated in-shift floor board
+   * (`/owner/host-station`). When provided, the mobile Tables tab surfaces
+   * an "Open Host Station" affordance for full sound/push alerting — which
+   * this management surface deliberately does NOT duplicate. Omitted by
+   * waiter/admin consumers, so no link renders there.
+   */
+  hostStationHref?: string;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
@@ -89,14 +99,20 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         {/* Tab Content */}
         <div className="p-6">
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
-          {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} />}
+          {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
         </div>
       </div>
     </div>
   );
 }
 
-function TablesTab({ restaurantId, service }: { restaurantId?: string; service: ExperienceService }) {
+function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: string; service: ExperienceService; hostStationHref?: string }) {
+  const isMobile = useIsMobile();
+  // Mobile-only: which occupied cards have the config controls ("Manage")
+  // expanded. Config is collapsed by default on a phone so the card's
+  // default state is glanceable READ (status / calls / orders). Desktop
+  // always shows the controls (this Set is ignored when !isMobile).
+  const [expandedManage, setExpandedManage] = useState<Set<number>>(new Set());
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -365,6 +381,13 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
   const tablesWithQR = tables.filter(t => t.qr_code_url);
   const activeTables = tables.filter(t => t.is_active);
+  // Distinct occupied tables with an active/overdue service call — drives the
+  // mobile "needs service" banner (glanceable urgency without scanning cards).
+  const tablesNeedingService = new Set(
+    waiterCalls
+      .filter(c => (c.status === 'active' || c.status === 'overdue') && c.table_number != null)
+      .map(c => c.table_number)
+  ).size;
 
   if (!restaurantId) {
     return (
@@ -453,7 +476,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className={isMobile ? 'flex flex-col gap-3 mb-4' : 'flex items-center justify-between mb-6'}>
         <div>
           <h3 className="text-lg font-bold text-gray-900">Table Management</h3>
           <p className="text-sm text-gray-500">
@@ -462,7 +485,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
             {tablesWithQR.length} with QR codes
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className={`flex gap-2 ${isMobile ? 'flex-wrap [&>button]:min-h-[44px]' : ''}`}>
           {tablesWithQR.length > 0 && (
             <button
               onClick={handleDownloadZip}
@@ -584,6 +607,28 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
         </div>
       )}
 
+      {/* Mobile-only "needs service" banner — surfaces call urgency at the top
+          of the tab without the manager scanning every card. Full live alerting
+          (sound/push) stays in Host Station (linked when hostStationHref given). */}
+      {isMobile && tablesNeedingService > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <BellRing className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <span className="text-sm font-semibold text-red-700 truncate">
+              {tablesNeedingService} table{tablesNeedingService !== 1 ? 's' : ''} need{tablesNeedingService === 1 ? 's' : ''} service
+            </span>
+          </div>
+          {hostStationHref && (
+            <a
+              href={hostStationHref}
+              className="flex-shrink-0 text-xs font-semibold text-red-700 underline underline-offset-2 min-h-[44px] flex items-center"
+            >
+              Open Host Station →
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Table Grid — host station style */}
       {(() => {
         const sorted = [...tables]
@@ -606,8 +651,11 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
               const activity = tableActivity?.tables?.find(t => t.table_number === table.table_number) ?? null;
               const isOccupied = activity?.has_active_session === true;
               const borderClass = isOccupied ? 'border-red-400' : 'border-green-400';
-              const activeTab = cardTabState[table.table_number] || 'orders';
               const tableCalls = waiterCalls.filter(c => c.table_number === table.table_number && (c.status === 'active' || c.status === 'overdue'));
+              // Mobile: when a table has active calls and the manager hasn't
+              // explicitly picked a sub-tab, default to Service so the call + the
+              // large "Done" ack show without a tap (desktop keeps the Orders default).
+              const activeTab = cardTabState[table.table_number] ?? ((isMobile && tableCalls.length > 0) ? 'service' : 'orders');
               const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
 
               return (
@@ -753,8 +801,28 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                     </>
                   )}
 
-                  {/* Management controls (always visible) */}
+                  {/* Management controls. Mobile: config (server / seats / delete)
+                      collapses behind "Manage" so the card default is glanceable READ;
+                      Reset Table stays visible below (in-shift core). Desktop: always shown. */}
                   <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    {isMobile && (
+                      <button
+                        onClick={() => setExpandedManage(prev => {
+                          const n = new Set(prev);
+                          if (n.has(table.table_number)) n.delete(table.table_number);
+                          else n.add(table.table_number);
+                          return n;
+                        })}
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-semibold text-gray-600 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        data-testid={`table-manage-toggle-${table.table_number}`}
+                        aria-expanded={expandedManage.has(table.table_number)}
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        {expandedManage.has(table.table_number) ? 'Hide manage' : 'Manage'}
+                      </button>
+                    )}
+                    {(!isMobile || expandedManage.has(table.table_number)) && (
+                    <>
                     <Select
                       fullWidth
                       size="sm"
@@ -794,6 +862,8 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                         <Trash2 className="h-3 w-3" />
                         Delete Table
                       </button>
+                    )}
+                    </>
                     )}
                     {isOccupied && service.closeTableSession && (
                       <button
