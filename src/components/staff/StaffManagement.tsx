@@ -95,14 +95,17 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
 
   const handleToggleActive = async (member: StaffMember) => {
     if (!restaurantId) return;
+    const nextActive = !member.is_active;
     setTogglingId(member.id);
+    // Optimistic: flip is_active in place so the toggle responds instantly on a
+    // phone; roll back on failure. Previously this awaited the round-trip AND a
+    // full-list refetch, which made a simple toggle feel broken on mobile.
+    setStaff(prev => prev.map(s => (s.id === member.id ? { ...s, is_active: nextActive } : s)));
     try {
-      await service.updateStaff(restaurantId, member.id, {
-        is_active: !member.is_active,
-      });
-      await fetchStaff();
-      showFeedback('success', `${member.name} ${member.is_active ? 'deactivated' : 'activated'}`);
+      await service.updateStaff(restaurantId, member.id, { is_active: nextActive });
+      showFeedback('success', `${member.name} ${nextActive ? 'activated' : 'deactivated'}`);
     } catch (err: any) {
+      setStaff(prev => prev.map(s => (s.id === member.id ? { ...s, is_active: member.is_active } : s)));
       showFeedback('error', err?.response?.data?.error || err?.message || 'Failed to update staff');
     } finally {
       setTogglingId(null);

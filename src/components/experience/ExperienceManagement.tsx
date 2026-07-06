@@ -166,10 +166,16 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
   }, [restaurantId, service]);
 
   const handleAcknowledgeCall = async (callId: string) => {
+    // Optimistic: drop the call immediately — this is the single most
+    // time-critical in-shift tap, and on restaurant wifi an await-then-remove
+    // felt laggy. Re-add on failure (only if a poll hasn't already restored it)
+    // so a service request is never silently lost.
+    const call = waiterCalls.find(c => c.id === callId);
+    setWaiterCalls(prev => prev.filter(c => c.id !== callId));
     try {
       await service.acknowledgeWaiterCall(callId);
-      setWaiterCalls(prev => prev.filter(c => c.id !== callId));
     } catch {
+      if (call) setWaiterCalls(prev => (prev.some(c => c.id === callId) ? prev : [...prev, call]));
       showFeedback('error', 'Failed to dismiss call');
     }
   };
@@ -252,6 +258,10 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
     const interval = setInterval(() => {
       fetchWaiterCalls();
       fetchTableActivity();
+      // Re-poll staff so a server added/activated mid-shift (from another
+      // device or the Staff tab) appears in the per-table assignment dropdown.
+      // Previously fetchStaff ran only once at mount → stale dropdown options.
+      fetchStaff();
     }, 10000);
     return () => clearInterval(interval);
   }, [fetchTables, fetchStaff, fetchWaiterCalls, fetchTableActivity]);
@@ -424,8 +434,8 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
 
         {/* Add Table Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
-            <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
+            <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
               <div className="space-y-4">
                 <div>
@@ -901,8 +911,8 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
 
       {/* Add Table Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
+          <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
             <div className="space-y-4">
               <div>
