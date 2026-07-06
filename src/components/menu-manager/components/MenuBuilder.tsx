@@ -94,6 +94,8 @@ interface MenuBuilderProps {
   /** STR-858 — mobile-only "Move to…" (re-file a row to a different course via
    *  the tap course picker). Wired by MenuManagerClient's mobile branch only. */
   onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
+  /** STR-858 — mobile-only "86 whole course" (bulk-hide). Mobile branch only. */
+  onHideCategory?: (itemIds: string[]) => void;
   onEditItem: (itemId: string) => void;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   /**
@@ -1644,6 +1646,7 @@ function CategoryBucket({
   onEditItem,
   onToggleItemActive,
   onMoveItemCourse,
+  onHideCategory,
   missingPriceFilter = false,
   bulkSelectionEnabled = false,
   bulkSelection,
@@ -1706,6 +1709,9 @@ function CategoryBucket({
   onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
   /** STR-858 — mobile "Move to…", forwarded to each MenuItemRow. */
   onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
+  /** STR-858 — mobile "86 whole course" (bulk-hide a downed course). Receives
+   *  the bucket's currently-active item IDs. */
+  onHideCategory?: (itemIds: string[]) => void;
   /** PDD 2026-05-22 — bulk Includes selection (forwarded from MenuBuilder). */
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
@@ -1722,6 +1728,12 @@ function CategoryBucket({
   suppressEmptyAttention?: boolean;
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
+
+  // STR-858 — mobile "86 whole course" (bulk-hide a downed course, e.g. fryer
+  // out). 2-tap confirm since it's a bulk action.
+  const isMobile = useIsMobile();
+  const [confirmHideCourse, setConfirmHideCourse] = useState(false);
+  const activeBucketItemIds = allBucketItems.filter((i) => i.active).map((i) => i.id);
 
   // STR-775 — which sub-category label is being drag-reordered (row drag).
   // Tracked here so the drop can compute the new order; kept separate from the
@@ -1811,6 +1823,41 @@ function CategoryBucket({
             />
           </label>
         )}
+      {/* STR-858 — mobile "86 whole course" (bulk-hide a downed course). 2-tap
+          confirm; hidden on desktop and when the course has no active items. */}
+      {isMobile && onHideCategory && activeBucketItemIds.length > 0 && (
+        confirmHideCourse ? (
+          <div className="flex items-stretch shrink-0 border-l border-l-[var(--border)]">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setConfirmHideCourse(false); }}
+              data-testid={`bucket-hide-course-cancel-${category}`}
+              className="px-3 min-h-11 text-xs font-semibold text-[var(--text2)] bg-[var(--bg2)] border-none cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onHideCategory(activeBucketItemIds); setConfirmHideCourse(false); }}
+              data-testid={`bucket-hide-course-confirm-${category}`}
+              className="px-3 min-h-11 text-xs font-bold text-white bg-[var(--red)] border-none cursor-pointer whitespace-nowrap"
+            >
+              86 all ({activeBucketItemIds.length})
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setConfirmHideCourse(true); }}
+            data-testid={`bucket-hide-course-${category}`}
+            aria-label={`86 all items in ${displayLabel ?? category}`}
+            title="86 all items in this course"
+            className="shrink-0 min-w-11 min-h-11 flex items-center justify-center bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] hover:text-[var(--red)] cursor-pointer"
+          >
+            <Ban size={16} />
+          </button>
+        )
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -2255,6 +2302,7 @@ export default function MenuBuilder({
   onRemoveItemFromMenu,
   onToggleItemActive,
   onMoveItemCourse,
+  onHideCategory,
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
@@ -2489,6 +2537,7 @@ export default function MenuBuilder({
                 onEditItem={onEditItem}
                 onToggleItemActive={onToggleItemActive}
                 onMoveItemCourse={onMoveItemCourse}
+                onHideCategory={onHideCategory}
                 missingPriceFilter={missingPriceFilter}
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}

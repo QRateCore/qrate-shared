@@ -2013,6 +2013,31 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [items, service, showToast],
   );
 
+  // STR-858 Phase B — mobile "86 whole course". Bulk-hide the given items'
+  // GLOBAL availability (a downed station takes the course offline). Optimistic
+  // with all-or-nothing rollback + a single toast; tracks each write in-flight.
+  const handleHideCategoryItems = useCallback(
+    async (itemIds: string[]) => {
+      const ids = items.filter((i) => itemIds.includes(i.id) && i.active).map((i) => i.id);
+      if (ids.length === 0) { showToast('Nothing to hide in this course'); return; }
+      const prevItems = items;
+      setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, active: false } : i)));
+      ids.forEach((id) => pendingWriteItemIdsRef.current.add(id));
+      let failed = 0;
+      await Promise.all(
+        ids.map((id) => service.toggleMenuItemActive(id, false).catch(() => { failed += 1; })),
+      );
+      ids.forEach((id) => pendingWriteItemIdsRef.current.delete(id));
+      if (failed > 0) {
+        setItems(prevItems); // rollback — a partially-applied 86 is worse than none
+        showToast(`Couldn't 86 ${failed} of ${ids.length} — check connection and retry`);
+      } else {
+        showToast(`86’d ${ids.length} item${ids.length === 1 ? '' : 's'} in this course`);
+      }
+    },
+    [items, service, showToast],
+  );
+
   const handleRemoveItemFromMenu = useCallback(
     async (itemId: string, menuId: string) => {
       const item = items.find((i) => i.id === itemId);
@@ -2816,6 +2841,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             // STR-858 Phase B — mobile "Move to…" (re-file a row's course via
             // the same tap-driven course picker; native drag is dead on touch).
             onMoveItemCourse: handleMoveItem,
+            // STR-858 Phase B — mobile "86 whole course" (bulk-hide a downed course).
+            onHideCategory: handleHideCategoryItems,
             // STR-858 Phase B prop-parity — these were omitted on mobile,
             // silently disabling sub-category creation + the rec/include drop
             // prompts on a phone. Match desktop.
