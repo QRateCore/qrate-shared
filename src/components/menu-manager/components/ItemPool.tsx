@@ -32,6 +32,13 @@ function poolSectionLabelOf(item: MenuItemDisplay): string {
 // Section labels in owner order — used to sort the pool's group headers.
 const POOL_SECTION_ORDER: string[] = MENU_SECTIONS.map((s) => s.label);
 
+/** RAW sub-category label (the menu's own scraped `category`, e.g. "Beverages",
+ *  "Bottle Beers") — the same grouping the Food Items page rail uses. Opt-in via
+ *  `groupByRawCategory`; falls back to 'Uncategorized'. */
+function poolRawCategoryOf(item: MenuItemDisplay): string {
+  return (item.category || UNCATEGORIZED_POOL_KEY).trim() || UNCATEGORIZED_POOL_KEY;
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface ItemPoolProps {
@@ -100,6 +107,14 @@ interface ItemPoolProps {
    * addon management lives elsewhere. Default: false.
    */
   showItemTypeFilter?: boolean;
+  /**
+   * When true, the pool groups items by their RAW sub-category label
+   * (item.category — the menu's own scraped labels, e.g. "Beverages" /
+   * "Bottle Beers"), matching the Food Items page rail, instead of the 4
+   * canonical course sections (Drinks / Starters / Mains / Desserts). Owner
+   * menu page opts in; other consumers keep the course grouping. Default: false.
+   */
+  groupByRawCategory?: boolean;
 }
 
 // ── ItemPoolCard ─────────────────────────────────────────────────────────────
@@ -535,8 +550,12 @@ export default function ItemPool({
   showBulkActions = true,
   showVisibilityFilter = true,
   showItemTypeFilter = false,
+  groupByRawCategory = false,
 }: ItemPoolProps) {
   const trackAction = useTrackAction();
+  // Group key: raw sub-category (Food Items rail parity) when opted in, else
+  // the 4 canonical course sections.
+  const poolCategoryOf = groupByRawCategory ? poolRawCategoryOf : poolSectionLabelOf;
 
   // Per-category collapsed state (local — no need to persist)
   // Start all-collapsed; initialised once when categories first populate
@@ -590,11 +609,11 @@ export default function ItemPool({
     const counts: Record<string, number> = {};
     for (const item of items) {
       if (item.item_type === 'addon') continue;
-      const cat = poolSectionLabelOf(item);
+      const cat = poolCategoryOf(item);
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
     return counts;
-  }, [items]);
+  }, [items, poolCategoryOf]);
 
   // CANONICAL-SECTION GROUPING: the pool groups items by the 4 owner-facing
   // sections (Drinks/Starters/Mains/Desserts via poolSectionLabelOf) instead of
@@ -605,19 +624,23 @@ export default function ItemPool({
     if (itemTypeFilter === 'addons') return null;
     const groups: Record<string, MenuItemDisplay[]> = {};
     for (const item of filtered) {
-      const cat = poolSectionLabelOf(item);
+      const cat = poolCategoryOf(item);
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);
     }
     return groups;
-  }, [filtered, itemTypeFilter]);
+  }, [filtered, itemTypeFilter, poolCategoryOf]);
 
   // Section render order: owner section order (Drinks → Starters → Mains →
   // Desserts) first, then the "Uncategorized" catch-all always last.
   const orderedCategories = useMemo(() => {
     if (!groupedItems) return [];
+    // Raw-category mode: alphabetical with 'Uncategorized' last (Food Items
+    // rail parity). Course mode: fixed section order (Drinks → … → Desserts),
+    // 'Uncategorized' last.
     const rank = (c: string): number => {
       if (c === UNCATEGORIZED_POOL_KEY) return 1000;
+      if (groupByRawCategory) return 500;
       const idx = POOL_SECTION_ORDER.indexOf(c);
       return idx >= 0 ? idx : 500;
     };
@@ -628,7 +651,7 @@ export default function ItemPool({
         const rb = rank(b);
         return ra !== rb ? ra - rb : a.localeCompare(b);
       });
-  }, [groupedItems]);
+  }, [groupedItems, groupByRawCategory]);
 
   // Auto-collapse all categories on first data load
   useEffect(() => {
