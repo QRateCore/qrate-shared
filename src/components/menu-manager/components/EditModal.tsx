@@ -2433,11 +2433,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     // Mobile: primary action spans the last row for a clear,
                     // thumb-friendly commit target.
                     order: isMobile ? 2 : undefined,
-                    flex: isMobile ? '1 1 100%' : undefined,
+                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
+                    // so it never conflicts with flexShrink on rerender (React warns
+                    // when shorthand + longhand for the same value are mixed).
+                    flexGrow: isMobile ? 1 : 0,
+                    flexShrink: isMobile ? 1 : 0,
+                    flexBasis: isMobile ? '100%' : 'auto',
                     justifyContent: isMobile ? 'center' : undefined,
                     cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
                     opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {cloneSaving ? 'Saving…' : 'Save Copy'}
@@ -2457,11 +2462,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     // Mobile: primary action spans the last row for a clear,
                     // thumb-friendly commit target.
                     order: isMobile ? 2 : undefined,
-                    flex: isMobile ? '1 1 100%' : undefined,
+                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
+                    // so it never conflicts with flexShrink on rerender (React warns
+                    // when shorthand + longhand for the same value are mixed).
+                    flexGrow: isMobile ? 1 : 0,
+                    flexShrink: isMobile ? 1 : 0,
+                    flexBasis: isMobile ? '100%' : 'auto',
                     justifyContent: isMobile ? 'center' : undefined,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     opacity: saving ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {saving ? 'Saving…' : 'Save Changes'}
