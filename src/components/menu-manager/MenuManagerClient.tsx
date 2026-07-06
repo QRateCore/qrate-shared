@@ -569,6 +569,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
      *  ≠ the target course, the apply MOVES (drops the source canonical) — #6a. */
     fromCat: string | null;
   } | null>(null);
+  // STR-858 Phase B — mobile tap-to-place. Native drag can't place a pool item
+  // on a phone; this drives a course-picker ItemPlacementModal so the owner taps
+  // "＋ Add to menu" on a pool card, picks a course (+ optional sub-category),
+  // and the item lands on the ACTIVE menu via the same applyRawCategoryMove
+  // write the drop path uses (which creates the menu association when absent).
+  const [placePrompt, setPlacePrompt] = useState<MenuItemDisplay | null>(null);
+  const handlePlaceItem = useCallback((item: MenuItemDisplay) => {
+    setMobileDrawerOpen(false);
+    setPlacePrompt(item);
+  }, []);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
   // items missing a price within the active menu. Shared across menu tabs
@@ -2751,6 +2761,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             colorMap,
             showVisibilityFilter,
             showItemTypeFilter,
+            // STR-858 Phase B — mobile tap-to-place (native drag is dead on
+            // touch). ItemPool renders a "＋ Add to menu" button per card on
+            // mobile when this is wired.
+            onPlaceItem: handlePlaceItem,
           }}
           menuBuilderProps={{
             items,
@@ -3055,6 +3069,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           setSubCatPrompt(null);
         }}
         onCancel={() => setSubCatPrompt(null)}
+      />
+
+      {/* STR-858 Phase B — mobile tap-to-place course picker. The owner taps
+          "＋ Add to menu" on a pool card → this modal (course picker, since the
+          course is unknown for a fresh placement) → the item lands on the ACTIVE
+          menu via applyRawCategoryMove (fromCat=null ⇒ ADD, not move). */}
+      <ItemPlacementModal
+        open={placePrompt !== null}
+        categories={CANONICAL_CATEGORIES}
+        itemCount={1}
+        selectionLabel={placePrompt?.name ?? ''}
+        labels={[]}
+        defaultLabel={placePrompt?.category ?? ''}
+        testid="mobile-place-item-modal"
+        onConfirm={({ category, subLabel }) => {
+          if (placePrompt && activeMenuId && category) {
+            applyRawCategoryMove([placePrompt], activeMenuId, category, subLabel, null);
+          }
+          setPlacePrompt(null);
+        }}
+        onCancel={() => setPlacePrompt(null)}
       />
     </div>
     </MenuManagerServiceProvider>

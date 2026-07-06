@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Pencil, Search, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Search, Check, X, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary } from '../../../types/restaurant';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { type MenuColor, MENU_SECTIONS, sectionForCanonical } from '../lib/menuUtils';
 import type { BulkMode, DragState } from '../MenuManagerClient';
 import { useTrackAction } from '../track-action-context';
@@ -61,6 +62,9 @@ interface ItemPoolProps {
   onClearSelect: () => void;
   onSelectCategoryItems: (ids: string[], selectAll: boolean) => void;
   onEditItem: (id: string) => void;
+  /** STR-858 — mobile tap-to-place. Forwarded to each pool card so a phone can
+   *  add an item to the active menu without native drag. */
+  onPlaceItem?: (item: MenuItemDisplay) => void;
   visibilityFilter: 'All' | 'Visible' | 'Hidden';
   onVisibilityFilterChange: (v: 'All' | 'Visible' | 'Hidden') => void;
   itemTypeFilter: 'dishes' | 'addons' | 'included';
@@ -127,6 +131,7 @@ function ItemPoolCard({
   colorMap,
   onSelectClick,
   onEdit,
+  onPlaceItem,
   onDragStart,
   onDragEnd,
   activateOnRowClick = false,
@@ -138,10 +143,14 @@ function ItemPoolCard({
   colorMap: (index: number) => MenuColor;
   onSelectClick: (e: React.MouseEvent) => void;
   onEdit: (id: string) => void;
+  /** STR-858 — mobile tap-to-place. Native drag can't place on touch; when
+   *  wired, the card shows a "＋ Add to menu" button. */
+  onPlaceItem?: (item: MenuItemDisplay) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   onDragEnd: () => void;
   activateOnRowClick?: boolean;
 }) {
+  const isMobile = useIsMobile();
   const bg = isEditing
     ? 'var(--blue-bg)'
     : isSelected
@@ -313,6 +322,27 @@ function ItemPoolCard({
         )}
       </div>
 
+      {/* STR-858 — mobile tap-to-place. Native drag is dead on touch, so a
+          phone gets an explicit "＋ Add to menu" button that opens the course
+          picker. 44px target; stops propagation so it doesn't select the row. */}
+      {onPlaceItem && isMobile && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPlaceItem(item); }}
+          data-testid={`pool-place-item-${item.id}`}
+          aria-label={`Add ${item.name} to a menu`}
+          title="Add to menu"
+          style={{
+            background: 'var(--brand-gradient)', color: '#fff', border: 'none',
+            cursor: 'pointer', minWidth: 44, minHeight: 44, borderRadius: 8,
+            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            ...noDrag,
+          }}
+        >
+          <Plus size={18} />
+        </button>
+      )}
+
       {/* Edit button */}
       <button
         type="button"
@@ -354,6 +384,7 @@ function CategorySection({
   onSelectCategory,
   onSelectClick,
   onEdit,
+  onPlaceItem,
   onDragStart,
   onCategoryDragStart,
   onDragEnd,
@@ -375,6 +406,7 @@ function CategorySection({
   onSelectCategory: (ids: string[], selectAll: boolean) => void;
   onSelectClick: (e: React.MouseEvent, itemId: string) => void;
   onEdit: (id: string) => void;
+  onPlaceItem?: (item: MenuItemDisplay) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   /** Drag the whole category header to add ALL its items at once (PDD
    *  2026-06-12 #4). When omitted, the header isn't draggable. */
@@ -505,6 +537,7 @@ function CategorySection({
               colorMap={colorMap}
               onSelectClick={(e) => onSelectClick(e, item.id)}
               onEdit={onEdit}
+              onPlaceItem={onPlaceItem}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               activateOnRowClick={activateOnRowClick}
@@ -533,6 +566,7 @@ export default function ItemPool({
   onClearSelect,
   onSelectCategoryItems,
   onEditItem,
+  onPlaceItem,
   visibilityFilter,
   onVisibilityFilterChange,
   itemTypeFilter,
@@ -997,6 +1031,7 @@ export default function ItemPool({
                   onSelectClick(e, item.id, 'pool', filtered.map((i) => i.id))
                 }
                 onEdit={handleEditItemTracked}
+                onPlaceItem={onPlaceItem}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
               />
@@ -1025,6 +1060,7 @@ export default function ItemPool({
                     onSelectClick(e, itemId, `pool:${cat}`, catItems.map((i) => i.id))
                   }
                   onEdit={handleEditItemTracked}
+                  onPlaceItem={onPlaceItem}
                   onDragStart={onDragStart}
                   onCategoryDragStart={onCategoryDragStart}
                   onDragEnd={onDragEnd}
