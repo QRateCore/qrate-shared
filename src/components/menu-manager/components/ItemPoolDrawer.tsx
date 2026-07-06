@@ -149,13 +149,15 @@ export default function ItemPoolDrawer({
               border: 'none',
               cursor: 'pointer',
               color: 'var(--text2)',
-              padding: 4,
+              minWidth: 44,
+              minHeight: 44,
               borderRadius: 4,
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
 

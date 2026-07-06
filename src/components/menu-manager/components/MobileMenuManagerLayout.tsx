@@ -205,12 +205,15 @@ export default function MobileMenuManagerLayout({
           style={{
             position: 'fixed',
             bottom: 20,
-            right: 20,
+            // STR-858 — anchored bottom-LEFT so it clears the Crisp chat bubble
+            // (bottom-right); the two round bottom-corner elements were stacking.
+            left: 20,
             zIndex: 40,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             padding: '12px 18px',
+            minHeight: 44,
             borderRadius: 999,
             background: 'var(--blue, #2563eb)',
             color: 'white',

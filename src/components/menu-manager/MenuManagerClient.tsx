@@ -574,10 +574,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // "＋ Add to menu" on a pool card, picks a course (+ optional sub-category),
   // and the item lands on the ACTIVE menu via the same applyRawCategoryMove
   // write the drop path uses (which creates the menu association when absent).
-  const [placePrompt, setPlacePrompt] = useState<MenuItemDisplay | null>(null);
+  // fromCat null ⇒ ADD (new placement from the pool); a course ⇒ MOVE an item
+  // already on the menu to a different course (re-file), reusing the same modal.
+  const [placePrompt, setPlacePrompt] = useState<{ item: MenuItemDisplay; fromCat: string | null } | null>(null);
   const handlePlaceItem = useCallback((item: MenuItemDisplay) => {
     setMobileDrawerOpen(false);
-    setPlacePrompt(item);
+    setPlacePrompt({ item, fromCat: null });
+  }, []);
+  const handleMoveItem = useCallback((item: MenuItemDisplay, fromCat: string) => {
+    setPlacePrompt({ item, fromCat });
   }, []);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
@@ -2808,6 +2813,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             // uses EditModal). MenuBuilder renders the control only when this is
             // present, so desktop is unaffected.
             onToggleItemActive: handleToggleItemActive,
+            // STR-858 Phase B — mobile "Move to…" (re-file a row's course via
+            // the same tap-driven course picker; native drag is dead on touch).
+            onMoveItemCourse: handleMoveItem,
+            // STR-858 Phase B prop-parity — these were omitted on mobile,
+            // silently disabling sub-category creation + the rec/include drop
+            // prompts on a phone. Match desktop.
+            onCreateSubCategory: subcatV2 ? handleCreateSubCategory : undefined,
+            onConfirmRecommendationDrop,
+            onConfirmIncludeDrop,
+            perMenuSides,
             scrollToItemId,
             onScrollComplete: () => setScrollToItemId(null),
           }}
@@ -3079,13 +3094,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         open={placePrompt !== null}
         categories={CANONICAL_CATEGORIES}
         itemCount={1}
-        selectionLabel={placePrompt?.name ?? ''}
+        selectionLabel={placePrompt?.item.name ?? ''}
         labels={[]}
-        defaultLabel={placePrompt?.category ?? ''}
+        defaultLabel={placePrompt?.item.category ?? ''}
         testid="mobile-place-item-modal"
         onConfirm={({ category, subLabel }) => {
           if (placePrompt && activeMenuId && category) {
-            applyRawCategoryMove([placePrompt], activeMenuId, category, subLabel, null);
+            // fromCat set ⇒ MOVE (drops the source course); null ⇒ ADD.
+            applyRawCategoryMove([placePrompt.item], activeMenuId, category, subLabel, placePrompt.fromCat);
           }
           setPlacePrompt(null);
         }}

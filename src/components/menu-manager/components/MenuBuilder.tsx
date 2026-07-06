@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
@@ -91,6 +91,9 @@ interface MenuBuilderProps {
    *  Wired by MenuManagerClient's mobile branch only; when absent the row 86
    *  control doesn't render (desktop / other consumers). */
   onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
+  /** STR-858 — mobile-only "Move to…" (re-file a row to a different course via
+   *  the tap course picker). Wired by MenuManagerClient's mobile branch only. */
+  onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
   onEditItem: (itemId: string) => void;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   /**
@@ -687,6 +690,7 @@ function MenuItemRow({
   onRemove,
   onEdit,
   onToggleActive,
+  onMove,
   disableDrag = false,
 }: {
   item: MenuItemDisplay;
@@ -732,6 +736,8 @@ function MenuItemRow({
    *  this item's global availability. Undefined ⇒ control not rendered (desktop
    *  / consumers that don't wire it). */
   onToggleActive?: () => void;
+  /** STR-858 — mobile-only "Move to…" (re-file this row's course). Pre-bound. */
+  onMove?: () => void;
   /** PDD 2026-05-22 — when bulk-selection is enabled, drag-to-move-
    *  between-buckets is suppressed so it doesn't fight the bulk
    *  selection UX. */
@@ -1253,6 +1259,21 @@ function MenuItemRow({
         </button>
       )}
 
+      {/* STR-858 — mobile-only "Move to…" (re-file this row's course via the tap
+          course picker; native drag is dead on touch). 44px target. */}
+      {onMove && isMobile && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onMove(); }}
+          data-testid={`menu-item-move-${item.id}`}
+          aria-label={`Move ${item.name} to another course`}
+          title="Move to another course"
+          className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]"
+        >
+          <FolderInput size={16} />
+        </button>
+      )}
+
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
@@ -1622,6 +1643,7 @@ function CategoryBucket({
   onRemoveItem,
   onEditItem,
   onToggleItemActive,
+  onMoveItemCourse,
   missingPriceFilter = false,
   bulkSelectionEnabled = false,
   bulkSelection,
@@ -1682,6 +1704,8 @@ function CategoryBucket({
   onEditItem: (itemId: string) => void;
   /** STR-858 — mobile 1-tap 86/restore, forwarded to each MenuItemRow. */
   onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
+  /** STR-858 — mobile "Move to…", forwarded to each MenuItemRow. */
+  onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
   /** PDD 2026-05-22 — bulk Includes selection (forwarded from MenuBuilder). */
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
@@ -2004,6 +2028,11 @@ function CategoryBucket({
                       ? () => onToggleItemActive(item.id, !item.active)
                       : undefined
                   }
+                  onMove={
+                    onMoveItemCourse
+                      ? () => onMoveItemCourse(item, category)
+                      : undefined
+                  }
                 />
               );
               if (!bulkSelectionEnabled) return row;
@@ -2225,6 +2254,7 @@ export default function MenuBuilder({
   onEditMenu,
   onRemoveItemFromMenu,
   onToggleItemActive,
+  onMoveItemCourse,
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
@@ -2458,6 +2488,7 @@ export default function MenuBuilder({
                 onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
                 onToggleItemActive={onToggleItemActive}
+                onMoveItemCourse={onMoveItemCourse}
                 missingPriceFilter={missingPriceFilter}
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}
