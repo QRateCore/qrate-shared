@@ -72,4 +72,24 @@ describe('MobileMenuManagerLayout — mobile menu switcher (STR-858)', () => {
     renderLayout({ menus: [], activeMenuId: null });
     expect(screen.queryByTestId('mobile-menu-switcher')).toBeNull();
   });
+
+  it('sorts the sheet list by status — live-now menus first', () => {
+    // Fixture deliberately out of order: a Paused menu, then a Scheduled one,
+    // then a Live (all-day) one. The sheet must reorder to active → scheduled → paused.
+    const menus = [
+      menu('paused', 'Late Night', false, false), // active:false → 'archived'/Paused
+      menu('sched', 'Dinner', true, false),       // not all-day → 'scheduled'
+      menu('live', 'Lunch', true, true),          // all-day, every day → 'active'
+    ];
+    renderLayout({ menus, activeMenuId: 'live' });
+    fireEvent.click(screen.getByTestId('mobile-menu-switcher'));
+    const sheet = screen.getByTestId('mobile-menu-sheet');
+    const order = Array.from(sheet.querySelectorAll('[data-testid^="mobile-menu-sheet-item-"]'))
+      .map((el) => el.getAttribute('data-testid'));
+    expect(order).toEqual([
+      'mobile-menu-sheet-item-live',
+      'mobile-menu-sheet-item-sched',
+      'mobile-menu-sheet-item-paused',
+    ]);
+  });
 });

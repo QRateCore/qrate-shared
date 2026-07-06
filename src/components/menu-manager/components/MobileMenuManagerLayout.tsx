@@ -78,6 +78,14 @@ export default function MobileMenuManagerLayout({
   const now = new Date();
   const activeMenu = menus.find((m) => m.id === activeMenuId) ?? menus[0] ?? null;
   const activeStatus = activeMenu ? getMenuTabStatus(activeMenu, now) : null;
+  // STR-858 — sort the switcher list by status so the menus that matter mid-
+  // service (Live now, then Scheduled) sit at the top; Paused sinks to the
+  // bottom. Stable within a status band (preserves the owner's menu order).
+  const STATUS_RANK: Record<string, number> = { active: 0, scheduled: 1, archived: 2 };
+  const sortedMenus = menus
+    .map((m, i) => ({ m, i, rank: STATUS_RANK[getMenuTabStatus(m, now)] ?? 3 }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((x) => x.m);
 
   return (
     <>
@@ -145,8 +153,10 @@ export default function MobileMenuManagerLayout({
                 <X size={20} />
               </button>
             </div>
-            <div style={{ overflowY: 'auto', padding: 8 }}>
-              {menus.map((m) => {
+            {/* paddingBottom clears the fixed Crisp chat bubble so the last
+                menu's status pill isn't covered when scrolled to the end. */}
+            <div style={{ overflowY: 'auto', padding: '8px 8px 84px' }}>
+              {sortedMenus.map((m) => {
                 const status = getMenuTabStatus(m, now);
                 const isActive = m.id === activeMenuId;
                 return (
