@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
@@ -87,6 +87,10 @@ interface MenuBuilderProps {
   onCloneMenu?: (sourceMenuId: string, name: string) => Promise<void>;
   onEditMenu: (menuId: string) => void;
   onRemoveItemFromMenu: (itemId: string, menuId: string) => void;
+  /** STR-858 — mobile-only 1-tap 86/restore of an item's GLOBAL availability.
+   *  Wired by MenuManagerClient's mobile branch only; when absent the row 86
+   *  control doesn't render (desktop / other consumers). */
+  onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
   onEditItem: (itemId: string) => void;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   /**
@@ -682,6 +686,7 @@ function MenuItemRow({
   onDragEnd,
   onRemove,
   onEdit,
+  onToggleActive,
   disableDrag = false,
 }: {
   item: MenuItemDisplay;
@@ -723,6 +728,10 @@ function MenuItemRow({
   onDragEnd: () => void;
   onRemove: () => void;
   onEdit: () => void;
+  /** STR-858 — mobile-only 1-tap 86/restore. Pre-bound by the caller to toggle
+   *  this item's global availability. Undefined ⇒ control not rendered (desktop
+   *  / consumers that don't wire it). */
+  onToggleActive?: () => void;
   /** PDD 2026-05-22 — when bulk-selection is enabled, drag-to-move-
    *  between-buckets is suppressed so it doesn't fight the bulk
    *  selection UX. */
@@ -1226,15 +1235,33 @@ function MenuItemRow({
         )}
       </button>
 
+      {/* STR-858 — mobile-only 1-tap 86 / restore (the #1 in-shift action).
+          A dedicated tap target outside the expand button, so it never expands
+          the row. Ban = 86 it (hide everywhere); RotateCcw = restore. Desktop
+          uses EditModal's Visible/Hidden, so this renders only when the mobile
+          handler is wired. 44px touch target. */}
+      {onToggleActive && isMobile && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
+          data-testid={`menu-item-86-toggle-${item.id}`}
+          aria-label={item.active ? `86 (hide) ${item.name} on all menus` : `Restore ${item.name}`}
+          title={item.active ? '86 — hide on all menus' : 'Restore'}
+          className={`shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] cursor-pointer flex items-center justify-center ${item.active ? 'text-[var(--text2)] hover:text-[var(--red)]' : 'text-[var(--red)]'}`}
+        >
+          {item.active ? <Ban size={16} /> : <RotateCcw size={16} />}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
         data-testid={`edit-menu-item-${item.id}`}
         aria-label={`Edit ${item.name}`}
         title="Edit item"
-        className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]"
+        className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]`}
       >
-        <Pencil size={14} />
+        <Pencil size={isMobile ? 16 : 14} />
       </button>
 
       {(() => {
@@ -1249,9 +1276,9 @@ function MenuItemRow({
             data-testid={`remove-from-menu-${item.id}`}
             aria-label={scoped ? `Remove ${item.name} from sub-category ${subLabel}` : `Remove ${item.name} from menu`}
             title={scoped ? `Remove from “${subLabel}”` : 'Remove from menu'}
-            className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]"
+            className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]`}
           >
-            <Trash2 size={14} />
+            <Trash2 size={isMobile ? 16 : 14} />
           </button>
         );
       })()}
@@ -1594,6 +1621,7 @@ function CategoryBucket({
   onDragEnd,
   onRemoveItem,
   onEditItem,
+  onToggleItemActive,
   missingPriceFilter = false,
   bulkSelectionEnabled = false,
   bulkSelection,
@@ -1652,6 +1680,8 @@ function CategoryBucket({
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
+  /** STR-858 — mobile 1-tap 86/restore, forwarded to each MenuItemRow. */
+  onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
   /** PDD 2026-05-22 — bulk Includes selection (forwarded from MenuBuilder). */
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
@@ -1969,6 +1999,11 @@ function CategoryBucket({
                     }
                   }}
                   onEdit={() => onEditItem(item.id)}
+                  onToggleActive={
+                    onToggleItemActive
+                      ? () => onToggleItemActive(item.id, !item.active)
+                      : undefined
+                  }
                 />
               );
               if (!bulkSelectionEnabled) return row;
@@ -2189,6 +2224,7 @@ export default function MenuBuilder({
   onCloneMenu,
   onEditMenu,
   onRemoveItemFromMenu,
+  onToggleItemActive,
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
@@ -2421,6 +2457,7 @@ export default function MenuBuilder({
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
+                onToggleItemActive={onToggleItemActive}
                 missingPriceFilter={missingPriceFilter}
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}
