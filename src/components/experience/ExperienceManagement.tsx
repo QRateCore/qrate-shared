@@ -488,7 +488,9 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
       {/* Header */}
       <div className={isMobile ? 'flex flex-col gap-3 mb-4' : 'flex items-center justify-between mb-6'}>
         <div>
-          <h3 className="text-lg font-bold text-gray-900">Table Management</h3>
+          {/* Redundant title hidden on mobile (Tables tab already labels this);
+              the count line stays as lightweight glanceable status. */}
+          {!isMobile && <h3 className="text-lg font-bold text-gray-900">Table Management</h3>}
           <p className="text-sm text-gray-500">
             {activeTables.length} active table{activeTables.length !== 1 ? 's' : ''}
             {' '}&middot;{' '}
