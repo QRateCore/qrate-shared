@@ -2139,7 +2139,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               title is editable — clicking it focuses the input and
               selects all text for fast rename. Errors render below
               the header in the body so the layout stays compact. */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ flex: isMobile ? '1 1 100%' : 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
             <input
               ref={nameInputRef}
               id="edit-name"
@@ -2197,8 +2197,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               }}
               style={{
                 flexShrink: 0,
-                width: 28,
-                height: 28,
+                width: isMobile ? 44 : 28,
+                height: isMobile ? 44 : 28,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2248,6 +2248,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 data-testid="type-toggle-dishes"
                 style={{
                   padding: '4px 14px',
+                  minHeight: isMobile ? 44 : undefined,
                   fontSize: 12,
                   fontWeight: !isAddon ? 700 : 500,
                   color: !isAddon ? 'white' : 'var(--text2)',
@@ -2281,6 +2282,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 data-testid="type-toggle-addons"
                 style={{
                   padding: '4px 14px',
+                  minHeight: isMobile ? 44 : undefined,
                   fontSize: 12,
                   fontWeight: isAddon ? 700 : 500,
                   color: isAddon ? 'white' : 'var(--text2)',
@@ -2313,7 +2315,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             aria-pressed={isActive}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontWeight: 600, padding: '4px 10px',
+              fontSize: 11, fontWeight: 600, padding: isMobile ? '0 12px' : '4px 10px',
+              minHeight: isMobile ? 44 : undefined,
               borderRadius: 4,
               border: isActive ? '1px solid #16a34a' : '1px solid #b91c1c',
               background: isActive ? '#dcfce7' : '#fee2e2',
@@ -2339,7 +2342,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
                 data-testid="delete-item-cancel"
                 disabled={deleteLoading}
-                style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -2348,7 +2351,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={handleDelete}
                 data-testid="delete-item-confirm"
                 disabled={deleteLoading}
-                style={{ padding: '5px 10px', fontSize: 12, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
               >
                 {deleteLoading ? 'Deleting…' : 'Confirm'}
               </button>
@@ -2360,7 +2363,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={() => setDeleteConfirming(true)}
                 disabled={saving}
                 data-testid="delete-item-btn"
-                style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: isMobile ? '0 10px' : '4px 6px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', flexShrink: 0 }}
               >
                 Delete
               </button>
@@ -2380,7 +2383,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 600, color: '#c2410c',
                     background: '#fff7ed', border: '1px solid #fed7aa',
                     borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px',
+                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || enriching) ? 'not-allowed' : 'pointer',
                     opacity: (saving || enriching) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2406,7 +2409,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 600, color: '#3730A3',
                     background: '#EEF2FF', border: '1px solid #C7D2FE',
                     borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px',
+                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || cloneSaving) ? 'not-allowed' : 'pointer',
                     opacity: (saving || cloneSaving) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2426,7 +2429,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 700, color: 'white',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px',
+                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
                     cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
                     opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2445,7 +2448,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 700, color: 'white',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px',
+                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     opacity: saving ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2466,10 +2469,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               color: 'var(--text2)', padding: 4, borderRadius: 4,
-              display: 'flex', alignItems: 'center', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined,
             }}
           >
-            <X size={16} />
+            <X size={isMobile ? 20 : 16} />
           </button>
         </div>
 
@@ -3168,6 +3172,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               gap: 0,
               borderBottom: '1px solid var(--border)',
               flexShrink: 0,
+              // Mobile: 4 tabs don't fit 343px and the modal clips overflow —
+              // let the tab strip scroll horizontally instead of getting cut off.
+              overflowX: isMobile ? 'auto' : undefined,
+              WebkitOverflowScrolling: 'touch',
             }}
           >
             {(isAddon
@@ -3216,7 +3224,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   onClick={() => setActiveTab(tab)}
                   data-testid={`tab-${tab}`}
                   style={{
-                    padding: '12px 14px',
+                    padding: isMobile ? '13px 16px' : '12px 14px',
+                    minHeight: isMobile ? 44 : undefined,
+                    flexShrink: 0,
                     fontSize: 14,
                     fontWeight: isActive ? 600 : 500,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
