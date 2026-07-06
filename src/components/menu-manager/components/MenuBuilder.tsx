@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
+import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { COLOR_WARNING } from '../../../constants/colors';
@@ -125,6 +126,14 @@ interface MenuBuilderProps {
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
   onScrollComplete?: () => void;
+  /**
+   * Free-text filter for the chosen menu's rows (2026-07-05). Driven by the
+   * app-shell search on the owner Menu page (PageSearchContext). When non-empty,
+   * only rows whose name/description match are shown, empty categories are
+   * hidden, and matching categories auto-expand. Optional + defaults to no
+   * filtering, so waiter/admin consumers are unaffected.
+   */
+  builderSearchQuery?: string;
   /**
    * PDD 2026-05-22 — bulk Includes/Choose-One action on the active menu.
    * When wired (via onOpenBulkPanel), a checkbox column appears at the
@@ -2192,6 +2201,7 @@ export default function MenuBuilder({
   onConfirmIncludeDrop,
   scrollToItemId,
   onScrollComplete,
+  builderSearchQuery,
   onRefresh,
   refreshing = false,
   onCollapseAll,
@@ -2243,12 +2253,25 @@ export default function MenuBuilder({
   // de-duped so an item placed in two member canonicals (e.g. Sides + Breads)
   // shows once. The representative canonical drives drop/collapse/price keys.
   const activeAssignments = activeMenu ? (assignments[activeMenu.id] ?? {}) : {};
-  const sectionBuckets = MENU_SECTIONS.map((sec) => ({
-    ...sec,
-    itemIds: activeMenu
+  // Free-text filter for the chosen menu (app-shell search). Filter the ids in
+  // each bucket by the resolved item's name/description — leaves the full
+  // `itemsById` map (used for id lookups / rec classification) untouched.
+  const builderQuery = (builderSearchQuery ?? '').trim();
+  const searchActive = builderQuery.length > 0;
+  const sectionBuckets = MENU_SECTIONS.map((sec) => {
+    const ids = activeMenu
       ? [...new Set(sec.members.flatMap((m) => activeAssignments[m] ?? []))]
-      : [],
-  }));
+      : [];
+    return {
+      ...sec,
+      itemIds: searchActive
+        ? ids.filter((id) => {
+            const it = itemsById.get(id);
+            return it ? matchesItemText(it, builderQuery) : false;
+          })
+        : ids,
+    };
+  });
 
   const totalItems = sectionBuckets.reduce((s, b) => s + b.itemIds.length, 0);
 
@@ -2331,7 +2354,19 @@ export default function MenuBuilder({
 
       {/* Category buckets */}
       <div className="flex-1 overflow-y-auto py-2">
-        {sectionBuckets.map((sec) => {
+        {searchActive && totalItems === 0 && (
+          <div
+            data-testid="menu-builder-search-empty"
+            className="px-4 py-8 text-center text-xs text-[var(--text2)]"
+          >
+            No items in this menu match “{builderQuery}”.
+          </div>
+        )}
+        {sectionBuckets
+          // While searching, drop categories with no matching rows so the
+          // owner only sees sections that contain a hit.
+          .filter((sec) => !searchActive || sec.itemIds.length > 0)
+          .map((sec) => {
             const cat = sec.canonical;
             const collapseKey = `${activeMenu?.id}:${cat}`;
             const dragOverHere =
@@ -2354,7 +2389,7 @@ export default function MenuBuilder({
                 itemsById={itemsById}
                 menus={menus}
                 menuId={activeMenu!.id}
-                collapsed={collapsed[collapseKey] ?? true}
+                collapsed={searchActive ? false : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}
                 onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}

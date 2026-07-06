@@ -24,6 +24,7 @@ import {
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
+import { filterItemsByText } from './filterItemsByText';
 import MenuTabBar from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
 import { ItemPlacementModal } from './components/ItemPlacementModal';
@@ -360,6 +361,14 @@ interface Props {
     item_type?: string;
     source_id?: string;
   }>;
+  /**
+   * Free-text filter for the chosen menu's rows (the right Menu Builder panel),
+   * driven by the app-shell search on the owner Menu page (2026-07-05).
+   * Forwarded to MenuBuilder. Optional + defaults to no filtering so
+   * waiter/admin consumers are unaffected. Independent of the left item-pool
+   * "Search items…" box, which keeps its own `search` state.
+   */
+  builderSearchQuery?: string;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -391,7 +400,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -883,10 +892,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       result = items.filter((i) => i.item_type !== 'addon');
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((i) =>
-        i.name.toLowerCase().includes(q) || (i.description ?? '').toLowerCase().includes(q),
-      );
+      result = filterItemsByText(result, search);
     }
     if (visibilityFilter === 'Visible') result = result.filter((i) => i.active !== false);
     if (visibilityFilter === 'Hidden')  result = result.filter((i) => i.active === false);
@@ -2819,6 +2825,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onBringIntoMenu={onBringIntoMenu}
             onConfirmIncludeDrop={onConfirmIncludeDrop}
             scrollToItemId={scrollToItemId}
+            builderSearchQuery={builderSearchQuery}
             onScrollComplete={() => setScrollToItemId(null)}
             onRefresh={onRefresh ? handleRefresh : undefined}
             refreshing={refreshing}
