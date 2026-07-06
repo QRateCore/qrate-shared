@@ -178,13 +178,16 @@ export default function MobileMenuManagerLayout({
         </>
       )}
 
-      {/* Full-width MenuBuilder occupies the primary surface */}
+      {/* Full-width MenuBuilder occupies the primary surface. paddingBottom
+          clears the floating "Items" FAB so the last course/row isn't hidden
+          under it (STR-858 P3). */}
       <div
         style={{
           flex: 1,
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
+          paddingBottom: 76,
         }}
         data-testid="mobile-menu-manager"
       >
