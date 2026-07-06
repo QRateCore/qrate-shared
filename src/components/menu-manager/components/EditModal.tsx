@@ -2616,6 +2616,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             style={{
               flex: 1,
               minHeight: 0,
+              // Mobile: the whole dish editor is ONE scroll column (image →
+              // basic info → "Appears in" → tabs). Without this, dish-basic-info
+              // is a fixed, non-scrolling top block; a tall image + fields pushes
+              // "Appears in" off the bottom edge where it's clipped and covered by
+              // the Crisp chat bubble with no way to reach it. paddingBottom keeps
+              // the last content clear of the fixed bottom-corner bubble.
+              ...(isMobile
+                ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 88 }
+                : {}),
               ...(!isAddon && !isMobile
                 ? {
                     display: 'grid',
@@ -3169,7 +3178,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
-              flex: 1,
+              // Mobile: natural height so it flows inside the single page-scroll
+              // (the parent column scrolls). Desktop keeps flex:1 to fill its
+              // grid/flex column with the tab content scrolling internally.
+              flex: isMobile ? 'none' : 1,
             }}
           >
           {/* When the owner clicked "Choose from Gallery", the tab bar +
@@ -3269,7 +3281,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           </div>
 
           {/* ── Scrollable tab content ── */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
+          <div style={{ flex: isMobile ? 'none' : 1, overflowY: isMobile ? 'visible' : 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
 
           {/* ── Food Tags tab ──
               For dishes: full set of fields (heat/spice, sweetness,
