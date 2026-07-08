@@ -13,11 +13,13 @@ import {
   AlertTriangle,
   Check,
   X,
+  Settings2,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 type Tab = 'staff' | 'tables';
 
@@ -25,9 +27,17 @@ interface ExperienceManagementProps {
   initialTab?: Tab;
   restaurantId?: string | null;
   service: ExperienceService;
+  /**
+   * Optional owner-only deep link to the dedicated in-shift floor board
+   * (`/owner/host-station`). When provided, the mobile Tables tab surfaces
+   * an "Open Host Station" affordance for full sound/push alerting — which
+   * this management surface deliberately does NOT duplicate. Omitted by
+   * waiter/admin consumers, so no link renders there.
+   */
+  hostStationHref?: string;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
@@ -89,14 +99,20 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         {/* Tab Content */}
         <div className="p-6">
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
-          {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} />}
+          {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
         </div>
       </div>
     </div>
   );
 }
 
-function TablesTab({ restaurantId, service }: { restaurantId?: string; service: ExperienceService }) {
+function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: string; service: ExperienceService; hostStationHref?: string }) {
+  const isMobile = useIsMobile();
+  // Mobile-only: which occupied cards have the config controls ("Manage")
+  // expanded. Config is collapsed by default on a phone so the card's
+  // default state is glanceable READ (status / calls / orders). Desktop
+  // always shows the controls (this Set is ignored when !isMobile).
+  const [expandedManage, setExpandedManage] = useState<Set<number>>(new Set());
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,10 +166,16 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   }, [restaurantId, service]);
 
   const handleAcknowledgeCall = async (callId: string) => {
+    // Optimistic: drop the call immediately — this is the single most
+    // time-critical in-shift tap, and on restaurant wifi an await-then-remove
+    // felt laggy. Re-add on failure (only if a poll hasn't already restored it)
+    // so a service request is never silently lost.
+    const call = waiterCalls.find(c => c.id === callId);
+    setWaiterCalls(prev => prev.filter(c => c.id !== callId));
     try {
       await service.acknowledgeWaiterCall(callId);
-      setWaiterCalls(prev => prev.filter(c => c.id !== callId));
     } catch {
+      if (call) setWaiterCalls(prev => (prev.some(c => c.id === callId) ? prev : [...prev, call]));
       showFeedback('error', 'Failed to dismiss call');
     }
   };
@@ -236,6 +258,10 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
     const interval = setInterval(() => {
       fetchWaiterCalls();
       fetchTableActivity();
+      // Re-poll staff so a server added/activated mid-shift (from another
+      // device or the Staff tab) appears in the per-table assignment dropdown.
+      // Previously fetchStaff ran only once at mount → stale dropdown options.
+      fetchStaff();
     }, 10000);
     return () => clearInterval(interval);
   }, [fetchTables, fetchStaff, fetchWaiterCalls, fetchTableActivity]);
@@ -365,6 +391,13 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
   const tablesWithQR = tables.filter(t => t.qr_code_url);
   const activeTables = tables.filter(t => t.is_active);
+  // Distinct occupied tables with an active/overdue service call — drives the
+  // mobile "needs service" banner (glanceable urgency without scanning cards).
+  const tablesNeedingService = new Set(
+    waiterCalls
+      .filter(c => (c.status === 'active' || c.status === 'overdue') && c.table_number != null)
+      .map(c => c.table_number)
+  ).size;
 
   if (!restaurantId) {
     return (
@@ -401,8 +434,8 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
         {/* Add Table Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
-            <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
+            <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
               <div className="space-y-4">
                 <div>
@@ -453,16 +486,18 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className={isMobile ? 'flex flex-col gap-3 mb-4' : 'flex items-center justify-between mb-6'}>
         <div>
-          <h3 className="text-lg font-bold text-gray-900">Table Management</h3>
+          {/* Redundant title hidden on mobile (Tables tab already labels this);
+              the count line stays as lightweight glanceable status. */}
+          {!isMobile && <h3 className="text-lg font-bold text-gray-900">Table Management</h3>}
           <p className="text-sm text-gray-500">
             {activeTables.length} active table{activeTables.length !== 1 ? 's' : ''}
             {' '}&middot;{' '}
             {tablesWithQR.length} with QR codes
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className={`flex gap-2 ${isMobile ? 'flex-wrap [&>button]:min-h-[44px]' : ''}`}>
           {tablesWithQR.length > 0 && (
             <button
               onClick={handleDownloadZip}
@@ -584,6 +619,28 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
         </div>
       )}
 
+      {/* Mobile-only "needs service" banner — surfaces call urgency at the top
+          of the tab without the manager scanning every card. Full live alerting
+          (sound/push) stays in Host Station (linked when hostStationHref given). */}
+      {isMobile && tablesNeedingService > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <BellRing className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <span className="text-sm font-semibold text-red-700 truncate">
+              {tablesNeedingService} table{tablesNeedingService !== 1 ? 's' : ''} need{tablesNeedingService === 1 ? 's' : ''} service
+            </span>
+          </div>
+          {hostStationHref && (
+            <a
+              href={hostStationHref}
+              className="flex-shrink-0 text-xs font-semibold text-red-700 underline underline-offset-2 min-h-[44px] flex items-center"
+            >
+              Open Host Station →
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Table Grid — host station style */}
       {(() => {
         const sorted = [...tables]
@@ -601,13 +658,16 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
           });
 
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 ${isMobile ? 'pb-24' : ''}`}>
             {sorted.map(table => {
               const activity = tableActivity?.tables?.find(t => t.table_number === table.table_number) ?? null;
               const isOccupied = activity?.has_active_session === true;
               const borderClass = isOccupied ? 'border-red-400' : 'border-green-400';
-              const activeTab = cardTabState[table.table_number] || 'orders';
               const tableCalls = waiterCalls.filter(c => c.table_number === table.table_number && (c.status === 'active' || c.status === 'overdue'));
+              // Mobile: when a table has active calls and the manager hasn't
+              // explicitly picked a sub-tab, default to Service so the call + the
+              // large "Done" ack show without a tap (desktop keeps the Orders default).
+              const activeTab = cardTabState[table.table_number] ?? ((isMobile && tableCalls.length > 0) ? 'service' : 'orders');
               const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
 
               return (
@@ -625,7 +685,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => setQrModalTable(table)}
-                        className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+                        className={`rounded-md hover:bg-gray-100 transition-colors ${isMobile ? 'min-h-[44px] min-w-[44px] flex items-center justify-center' : 'p-1.5'}`}
                         title="Show QR code"
                       >
                         <QrCode className={`h-4 w-4 ${isOccupied ? 'text-red-400' : 'text-green-500'}`} />
@@ -664,7 +724,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                       <div className="mt-3 flex rounded-lg border border-gray-200 overflow-hidden">
                         <button
                           onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'orders' }))}
-                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                          className={`flex-1 ${isMobile ? 'py-3' : 'py-1.5'} text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'orders' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
                           Orders
                           {activity.placed_orders.length > 0 && (
@@ -675,7 +735,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                         </button>
                         <button
                           onClick={() => setCardTabState(prev => ({ ...prev, [table.table_number]: 'service' }))}
-                          className={`flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'service' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                          className={`flex-1 ${isMobile ? 'py-3' : 'py-1.5'} text-xs font-semibold flex items-center justify-center gap-1 transition-colors ${activeTab === 'service' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
                           Service
                           {tableCalls.length > 0 && (
@@ -740,9 +800,10 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                                 </div>
                                 <button
                                   onClick={() => handleAcknowledgeCall(call.id)}
-                                  className="ml-2 flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0"
+                                  className={`ml-2 flex items-center justify-center gap-1 rounded-md font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0 ${isMobile ? 'min-h-[44px] px-4 text-sm' : 'px-2 py-1 text-[11px]'}`}
+                                  data-testid={`table-ack-call-${table.table_number}`}
                                 >
-                                  <Check className="h-3 w-3" />
+                                  <Check className={isMobile ? 'h-4 w-4' : 'h-3 w-3'} />
                                   Done
                                 </button>
                               </div>
@@ -753,11 +814,32 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                     </>
                   )}
 
-                  {/* Management controls (always visible) */}
+                  {/* Management controls. Mobile: config (server / seats / delete)
+                      collapses behind "Manage" so the card default is glanceable READ;
+                      Reset Table stays visible below (in-shift core). Desktop: always shown. */}
                   <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    {isMobile && (
+                      <button
+                        onClick={() => setExpandedManage(prev => {
+                          const n = new Set(prev);
+                          if (n.has(table.table_number)) n.delete(table.table_number);
+                          else n.add(table.table_number);
+                          return n;
+                        })}
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-semibold text-gray-600 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        data-testid={`table-manage-toggle-${table.table_number}`}
+                        aria-expanded={expandedManage.has(table.table_number)}
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        {expandedManage.has(table.table_number) ? 'Hide manage' : 'Manage'}
+                      </button>
+                    )}
+                    {(!isMobile || expandedManage.has(table.table_number)) && (
+                    <>
                     <Select
                       fullWidth
                       size="sm"
+                      className={isMobile ? '[&>button]:min-h-[44px]' : ''}
                       value={table.assigned_server_id || ''}
                       onChange={e => handleAssignServer(table.id, e.target.value || null)}
                       placeholder="No server assigned"
@@ -773,13 +855,13 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                         min={0}
                         value={capacityEdits[table.id] ?? table.capacity ?? 0}
                         onChange={e => handleCapacityChange(table.id, e.target.value)}
-                        className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 text-center"
+                        className={`px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 text-center ${isMobile ? 'w-20 min-h-[44px]' : 'w-16 py-1'}`}
                       />
                       {capacityEdits[table.id] !== undefined && capacityEdits[table.id] !== (table.capacity ?? 0) && (
                         <button
                           onClick={() => handleSaveCapacity(table.id)}
                           disabled={savingCapacity[table.id]}
-                          className="px-2 py-1 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50"
+                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         >
                           {savingCapacity[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
                         </button>
@@ -788,12 +870,14 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                     {!isOccupied && service.deleteTable && (
                       <button
                         onClick={() => setDeleteConfirm({ tableId: table.id, tableNumber: table.table_number })}
-                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        className={`w-full px-2 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                         data-testid={`table-delete-${table.table_number}`}
                       >
                         <Trash2 className="h-3 w-3" />
                         Delete Table
                       </button>
+                    )}
+                    </>
                     )}
                     {isOccupied && service.closeTableSession && (
                       <button
@@ -815,7 +899,7 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
                             showFeedback('error', `Failed to reset Table #${table.table_number}`);
                           }
                         }}
-                        className="w-full px-2 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                        className={`w-full px-2 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
                       >
                         <Trash2 className="h-3 w-3" />
                         Reset Table
@@ -831,8 +915,8 @@ function TablesTab({ restaurantId, service }: { restaurantId?: string; service: 
 
       {/* Add Table Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
+          <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
             <div className="space-y-4">
               <div>

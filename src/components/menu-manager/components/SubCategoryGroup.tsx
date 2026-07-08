@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { MenuColor } from '../lib/menuUtils';
 import { UNGROUPED_KEY } from '../lib/menuUtils';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 
 /**
  * One raw sub-category group nested inside a CategoryBucket (menu raw
@@ -95,9 +96,15 @@ export function SubCategoryGroup({
   const [draftName, setDraftName] = useState(label);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const isMobile = useIsMobile();
 
-  // Rename/delete are never offered for the Ungrouped sentinel.
-  const canManage = !isUngrouped;
+  // Rename/delete are never offered for the Ungrouped sentinel. On mobile
+  // (STR-858) they're deferred to desktop — sub-category authoring isn't an
+  // in-shift task and the tiny icons crowd the phone header.
+  const canManage = !isUngrouped && !isMobile;
+  // ≥44px tap target for the ▲▼ reorder buttons on mobile (the one structural
+  // control kept on the phone). Empty on desktop → unchanged.
+  const mobileTapClass = isMobile ? 'min-w-11 min-h-11 flex items-center justify-center' : '';
 
   async function submitRename() {
     const next = draftName.trim();
@@ -280,9 +287,9 @@ export function SubCategoryGroup({
                   disabled={!canMoveUp}
                   aria-label={`Move ${display} up`}
                   data-testid={`subcategory-move-up-${category}-${label}`}
-                  className="opacity-60 hover:opacity-100 disabled:opacity-20"
+                  className={`opacity-60 hover:opacity-100 disabled:opacity-20 ${mobileTapClass}`}
                 >
-                  <ChevronUp size={12} />
+                  <ChevronUp size={isMobile ? 18 : 12} />
                 </button>
                 <button
                   type="button"
@@ -290,9 +297,9 @@ export function SubCategoryGroup({
                   disabled={!canMoveDown}
                   aria-label={`Move ${display} down`}
                   data-testid={`subcategory-move-down-${category}-${label}`}
-                  className="opacity-60 hover:opacity-100 disabled:opacity-20"
+                  className={`opacity-60 hover:opacity-100 disabled:opacity-20 ${mobileTapClass}`}
                 >
-                  <ChevronDown size={12} />
+                  <ChevronDown size={isMobile ? 18 : 12} />
                 </button>
               </>
             )}

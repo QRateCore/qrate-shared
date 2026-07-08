@@ -25,7 +25,7 @@ import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import { filterItemsByText } from './filterItemsByText';
-import MenuTabBar from './components/MenuTabBar';
+import MenuTabBar, { getMenuTabStatus } from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
 import { ItemPlacementModal } from './components/ItemPlacementModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
@@ -496,6 +496,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     }
     return initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null;
   });
+  // STR-858 wall-clock-live default (MOBILE only) — the initializer picks the
+  // first ENABLED menu, but on a phone mid-service the owner expects to open on
+  // the menu being SERVED right now. Once (post-hydration, when isMobile
+  // resolves true) and only if the owner didn't deep-link a menu, switch to the
+  // menu whose schedule is live at the current wall-clock time. Client-only
+  // effect → SSR-safe (no hydration mismatch from new Date()); mobile-only →
+  // desktop + E2E (desktop width) behaviour unchanged. Guarded once so it never
+  // fights a manual switch. See [[reference_ssr_ismobile_usestate_default_race]].
+  const liveDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (liveDefaultAppliedRef.current) return;
+    if (!isMobile) return;
+    if (initialMenuId && initialMenus.some((m) => m.id === initialMenuId)) {
+      liveDefaultAppliedRef.current = true;
+      return;
+    }
+    liveDefaultAppliedRef.current = true;
+    const liveNow = menus.find((m) => m.active !== false && getMenuTabStatus(m, new Date()) === 'active');
+    if (liveNow && liveNow.id !== activeMenuId) setActiveMenuId(liveNow.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
   // PDD 2026-05-22 — Menu Builder bulk selection state. Per-active-menu —
   // switching menu tabs clears it (amendment 3). Only surfaces when the
   // consumer wires the bulk-sides adapters.
@@ -548,6 +569,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
      *  ≠ the target course, the apply MOVES (drops the source canonical) — #6a. */
     fromCat: string | null;
   } | null>(null);
+  // STR-858 Phase B — mobile tap-to-place. Native drag can't place a pool item
+  // on a phone; this drives a course-picker ItemPlacementModal so the owner taps
+  // "＋ Add to menu" on a pool card, picks a course (+ optional sub-category),
+  // and the item lands on the ACTIVE menu via the same applyRawCategoryMove
+  // write the drop path uses (which creates the menu association when absent).
+  // fromCat null ⇒ ADD (new placement from the pool); a course ⇒ MOVE an item
+  // already on the menu to a different course (re-file), reusing the same modal.
+  const [placePrompt, setPlacePrompt] = useState<{ item: MenuItemDisplay; fromCat: string | null } | null>(null);
+  const handlePlaceItem = useCallback((item: MenuItemDisplay) => {
+    setMobileDrawerOpen(false);
+    setPlacePrompt({ item, fromCat: null });
+  }, []);
+  const handleMoveItem = useCallback((item: MenuItemDisplay, fromCat: string) => {
+    setPlacePrompt({ item, fromCat });
+  }, []);
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(initialScrollToItemId ?? null);
   // Banner-driven filter — pulls every category bucket down to only the
   // items missing a price within the active menu. Shared across menu tabs
@@ -1954,6 +1990,54 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
 
   // ── Remove item from menu — STR-251 #11 ─────────────────────────────────
+  // STR-858 — 1-tap 86 / restore from the mobile menu row. Toggles the item's
+  // GLOBAL availability (item.active — hidden on EVERY menu, matching the
+  // EditModal Visible/Hidden control; the #1 in-shift action). Optimistic with
+  // rollback + failure toast; tracks the write as in-flight so a refresh-edge
+  // mid-PUT doesn't clobber the optimistic state (STR-409 pattern).
+  const handleToggleItemActive = useCallback(
+    async (itemId: string, nextActive: boolean) => {
+      const prevItems = items;
+      setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, active: nextActive } : i)));
+      pendingWriteItemIdsRef.current.add(itemId);
+      try {
+        await service.toggleMenuItemActive(itemId, nextActive);
+        showToast(nextActive ? 'Item available' : 'Item 86’d — hidden on all menus');
+      } catch {
+        setItems(prevItems); // rollback — flaky in-restaurant wifi must not silently drop a 86
+        showToast('Could not update — check connection and retry');
+      } finally {
+        pendingWriteItemIdsRef.current.delete(itemId);
+      }
+    },
+    [items, service, showToast],
+  );
+
+  // STR-858 Phase B — mobile "86 whole course". Bulk-hide the given items'
+  // GLOBAL availability (a downed station takes the course offline). Optimistic
+  // with all-or-nothing rollback + a single toast; tracks each write in-flight.
+  const handleHideCategoryItems = useCallback(
+    async (itemIds: string[]) => {
+      const ids = items.filter((i) => itemIds.includes(i.id) && i.active).map((i) => i.id);
+      if (ids.length === 0) { showToast('Nothing to hide in this course'); return; }
+      const prevItems = items;
+      setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, active: false } : i)));
+      ids.forEach((id) => pendingWriteItemIdsRef.current.add(id));
+      let failed = 0;
+      await Promise.all(
+        ids.map((id) => service.toggleMenuItemActive(id, false).catch(() => { failed += 1; })),
+      );
+      ids.forEach((id) => pendingWriteItemIdsRef.current.delete(id));
+      if (failed > 0) {
+        setItems(prevItems); // rollback — a partially-applied 86 is worse than none
+        showToast(`Couldn't 86 ${failed} of ${ids.length} — check connection and retry`);
+      } else {
+        showToast(`86’d ${ids.length} item${ids.length === 1 ? '' : 's'} in this course`);
+      }
+    },
+    [items, service, showToast],
+  );
+
   const handleRemoveItemFromMenu = useCallback(
     async (itemId: string, menuId: string) => {
       const item = items.find((i) => i.id === itemId);
@@ -2674,6 +2758,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           itemsCount={items.length}
           drawerOpen={mobileDrawerOpen}
           onDrawerOpenChange={setMobileDrawerOpen}
+          menus={menus}
+          activeMenuId={activeMenuId}
+          onSelectMenu={setActiveMenuId}
           itemPoolProps={{
             items,
             menus,
@@ -2704,6 +2791,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             colorMap,
             showVisibilityFilter,
             showItemTypeFilter,
+            // STR-858 Phase B — mobile tap-to-place (native drag is dead on
+            // touch). ItemPool renders a "＋ Add to menu" button per card on
+            // mobile when this is wired.
+            onPlaceItem: handlePlaceItem,
           }}
           menuBuilderProps={{
             items,
@@ -2743,6 +2834,22 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onEditItem: setEditItemId,
             onUpdateModifiers: handleUpdateModifiers,
             onBringIntoMenu,
+            // STR-858 — mobile-only 1-tap 86/restore in the builder row (desktop
+            // uses EditModal). MenuBuilder renders the control only when this is
+            // present, so desktop is unaffected.
+            onToggleItemActive: handleToggleItemActive,
+            // STR-858 Phase B — mobile "Move to…" (re-file a row's course via
+            // the same tap-driven course picker; native drag is dead on touch).
+            onMoveItemCourse: handleMoveItem,
+            // STR-858 Phase B — mobile "86 whole course" (bulk-hide a downed course).
+            onHideCategory: handleHideCategoryItems,
+            // STR-858 Phase B prop-parity — these were omitted on mobile,
+            // silently disabling sub-category creation + the rec/include drop
+            // prompts on a phone. Match desktop.
+            onCreateSubCategory: subcatV2 ? handleCreateSubCategory : undefined,
+            onConfirmRecommendationDrop,
+            onConfirmIncludeDrop,
+            perMenuSides,
             scrollToItemId,
             onScrollComplete: () => setScrollToItemId(null),
           }}
@@ -3004,6 +3111,28 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           setSubCatPrompt(null);
         }}
         onCancel={() => setSubCatPrompt(null)}
+      />
+
+      {/* STR-858 Phase B — mobile tap-to-place course picker. The owner taps
+          "＋ Add to menu" on a pool card → this modal (course picker, since the
+          course is unknown for a fresh placement) → the item lands on the ACTIVE
+          menu via applyRawCategoryMove (fromCat=null ⇒ ADD, not move). */}
+      <ItemPlacementModal
+        open={placePrompt !== null}
+        categories={CANONICAL_CATEGORIES}
+        itemCount={1}
+        selectionLabel={placePrompt?.item.name ?? ''}
+        labels={[]}
+        defaultLabel={placePrompt?.item.category ?? ''}
+        testid="mobile-place-item-modal"
+        onConfirm={({ category, subLabel }) => {
+          if (placePrompt && activeMenuId && category) {
+            // fromCat set ⇒ MOVE (drops the source course); null ⇒ ADD.
+            applyRawCategoryMove([placePrompt.item], activeMenuId, category, subLabel, placePrompt.fromCat);
+          }
+          setPlacePrompt(null);
+        }}
+        onCancel={() => setPlacePrompt(null)}
       />
     </div>
     </MenuManagerServiceProvider>

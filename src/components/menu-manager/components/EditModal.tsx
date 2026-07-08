@@ -3,7 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
-import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil } from 'lucide-react';
+import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil, ChevronDown } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
@@ -634,6 +634,74 @@ function DietaryMultiSelect({
 // initialized directly from item.food_tags. No synthetic record shape
 // needed — DietaryMultiSelect reads the set via .has(name).
 
+// ── Mobile accordion header (STR-858) ─────────────────────────────────────────
+// Collapsible section header rendered ONLY in the mobile EditModal layout, to
+// replace the horizontal-scroll tab strip + long undifferentiated scroll.
+// Desktop is untouched (it keeps the tab bar + activeTab switching). The header
+// is a ≥52px tap target; the caller gates the body render on `open`, so lazy tab
+// content (and its guarded fetches) only mount once the owner expands a section.
+function MobileAccordionHeader({
+  id,
+  title,
+  subtitle,
+  open,
+  onToggle,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  open: boolean;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`edit-mobile-section-header-${id}`}
+      aria-expanded={open}
+      onClick={() => onToggle(id)}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '14px 2px',
+        minHeight: 52,
+        background: 'transparent',
+        border: 'none',
+        borderTop: '1px solid var(--border)',
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      <ChevronDown
+        size={18}
+        style={{
+          flexShrink: 0,
+          color: 'var(--text3)',
+          transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+          transition: 'transform 0.15s',
+        }}
+      />
+      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+        {subtitle ? (
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--text3)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {subtitle}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
 export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
@@ -1064,6 +1132,26 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
 
   // Tab state — Food Tags | Placements (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
   const [activeTab, setActiveTab] = useState<'food_tags' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
+
+  // Mobile accordion (STR-858) — which sections are expanded on the mobile
+  // layout. Desktop ignores this entirely (it uses the tab bar + activeTab).
+  // "basics" + "image" are open by default; the heavier tab-backed sections
+  // collapse to tame density and eliminate the horizontal-scroll tab strip.
+  // Toggling a tab-backed section
+  // ALSO sets activeTab so the lazy per-tab fetches (performance/dishes) still
+  // fire on expand — the guarded effects key off activeTab.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(['basics', 'image']));
+  const toggleSection = useCallback((id: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (id === 'food_tags' || id === 'placements' || id === 'groupings' || id === 'dishes' || id === 'performance') {
+      setActiveTab(id);
+    }
+  }, []);
 
   // When the Dishes/Add-ons toggle flips, the available tab set changes.
   //   Dishes  → [food_tags, addons, performance, ...]
@@ -2139,7 +2227,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               title is editable — clicking it focuses the input and
               selects all text for fast rename. Errors render below
               the header in the body so the layout stays compact. */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ flex: isMobile ? '1 1 100%' : 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
             <input
               ref={nameInputRef}
               id="edit-name"
@@ -2197,8 +2285,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               }}
               style={{
                 flexShrink: 0,
-                width: 28,
-                height: 28,
+                width: isMobile ? 44 : 28,
+                height: isMobile ? 44 : 28,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2248,6 +2336,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 data-testid="type-toggle-dishes"
                 style={{
                   padding: '4px 14px',
+                  minHeight: isMobile ? 44 : undefined,
                   fontSize: 12,
                   fontWeight: !isAddon ? 700 : 500,
                   color: !isAddon ? 'white' : 'var(--text2)',
@@ -2281,6 +2370,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 data-testid="type-toggle-addons"
                 style={{
                   padding: '4px 14px',
+                  minHeight: isMobile ? 44 : undefined,
                   fontSize: 12,
                   fontWeight: isAddon ? 700 : 500,
                   color: isAddon ? 'white' : 'var(--text2)',
@@ -2313,7 +2403,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             aria-pressed={isActive}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontWeight: 600, padding: '4px 10px',
+              fontSize: 11, fontWeight: 600, padding: isMobile ? '0 12px' : '4px 10px',
+              minHeight: isMobile ? 44 : undefined,
               borderRadius: 4,
               border: isActive ? '1px solid #16a34a' : '1px solid #b91c1c',
               background: isActive ? '#dcfce7' : '#fee2e2',
@@ -2325,11 +2416,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             {isActive ? 'Visible' : 'Hidden'}
           </button>
 
-          {/* Divider */}
-          <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+          {/* Divider — hidden on mobile where the header reflows into rows. */}
+          <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, display: isMobile ? 'none' : undefined }} />
 
-          {/* Delete / confirmation */}
-          {deleteConfirming ? (
+          {/* Delete / confirmation — DESKTOP header only. On mobile (STR-858)
+              the destructive Delete is relocated out of the header to the bottom
+              of the scroll (behind the same 2-step confirm) so it's never a
+              stray thumb-tap next to the everyday controls. */}
+          {!isMobile && deleteConfirming ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                 Delete permanently?
@@ -2339,7 +2433,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
                 data-testid="delete-item-cancel"
                 disabled={deleteLoading}
-                style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -2348,22 +2442,24 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={handleDelete}
                 data-testid="delete-item-confirm"
                 disabled={deleteLoading}
-                style={{ padding: '5px 10px', fontSize: 12, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
               >
                 {deleteLoading ? 'Deleting…' : 'Confirm'}
               </button>
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setDeleteConfirming(true)}
-                disabled={saving}
-                data-testid="delete-item-btn"
-                style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
-              >
-                Delete
-              </button>
+              {!isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirming(true)}
+                  disabled={saving}
+                  data-testid="delete-item-btn"
+                  style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  Delete
+                </button>
+              )}
               {/* Admin-only Enrich button — appears when onEnrichItem prop
                   is wired by the consumer (admin-webapp). Owner-webapp does
                   NOT pass the prop, so owners see no button (their enrich
@@ -2380,7 +2476,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 600, color: '#c2410c',
                     background: '#fff7ed', border: '1px solid #fed7aa',
                     borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px',
+                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || enriching) ? 'not-allowed' : 'pointer',
                     opacity: (saving || enriching) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2406,7 +2502,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 600, color: '#3730A3',
                     background: '#EEF2FF', border: '1px solid #C7D2FE',
                     borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px',
+                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || cloneSaving) ? 'not-allowed' : 'pointer',
                     opacity: (saving || cloneSaving) ? 0.7 : 1,
                     whiteSpace: 'nowrap', flexShrink: 0,
@@ -2426,10 +2522,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 700, color: 'white',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px',
+                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
+                    // Mobile: primary action spans the last row for a clear,
+                    // thumb-friendly commit target.
+                    order: isMobile ? 2 : undefined,
+                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
+                    // so it never conflicts with flexShrink on rerender (React warns
+                    // when shorthand + longhand for the same value are mixed).
+                    flexGrow: isMobile ? 1 : 0,
+                    flexShrink: isMobile ? 1 : 0,
+                    flexBasis: isMobile ? '100%' : 'auto',
+                    justifyContent: isMobile ? 'center' : undefined,
                     cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
                     opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {cloneSaving ? 'Saving…' : 'Save Copy'}
@@ -2445,10 +2551,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 12, fontWeight: 700, color: 'white',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px',
+                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
+                    // Mobile: primary action spans the last row for a clear,
+                    // thumb-friendly commit target.
+                    order: isMobile ? 2 : undefined,
+                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
+                    // so it never conflicts with flexShrink on rerender (React warns
+                    // when shorthand + longhand for the same value are mixed).
+                    flexGrow: isMobile ? 1 : 0,
+                    flexShrink: isMobile ? 1 : 0,
+                    flexBasis: isMobile ? '100%' : 'auto',
+                    justifyContent: isMobile ? 'center' : undefined,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     opacity: saving ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {saving ? 'Saving…' : 'Save Changes'}
@@ -2466,10 +2582,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               color: 'var(--text2)', padding: 4, borderRadius: 4,
-              display: 'flex', alignItems: 'center', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined,
+              // Mobile: sits at the right end of the secondary row (order 1 keeps
+              // it ahead of the full-width Save at order 2).
+              order: isMobile ? 1 : undefined, marginLeft: isMobile ? 'auto' : undefined,
             }}
           >
-            <X size={16} />
+            <X size={isMobile ? 20 : 16} />
           </button>
         </div>
 
@@ -2589,6 +2709,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             style={{
               flex: 1,
               minHeight: 0,
+              // Mobile: the whole dish editor is ONE scroll column (image →
+              // basic info → "Appears in" → tabs). Without this, dish-basic-info
+              // is a fixed, non-scrolling top block; a tall image + fields pushes
+              // "Appears in" off the bottom edge where it's clipped and covered by
+              // the Crisp chat bubble with no way to reach it. paddingBottom keeps
+              // the last content clear of the fixed bottom-corner bubble.
+              ...(isMobile
+                ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 88 }
+                : {}),
               ...(!isAddon && !isMobile
                 ? {
                     display: 'grid',
@@ -2615,17 +2744,28 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             }}
           >
 
+            {/* Mobile (STR-858): the 240px image block is the biggest
+                real-estate hog and lowest in-shift value — collapse it into an
+                accordion section (closed by default). Desktop always shows it. */}
+            {isMobile && (
+              <MobileAccordionHeader
+                id="image"
+                title="Image"
+                open={expandedSections.has('image')}
+                onToggle={toggleSection}
+              />
+            )}
             {/* Image panel — image + buttons + warnings */}
             <div
               data-testid="item-image-panel"
               style={{
                 width: '100%',
-                display: 'flex',
+                display: isMobile && !expandedSections.has('image') ? 'none' : 'flex',
                 flexDirection: 'column',
                 gap: 8,
               }}
             >
-              <SectionLabel>Item Image</SectionLabel>
+              {!isMobile && <SectionLabel>Item Image</SectionLabel>}
               {/* Image display */}
               <div
                 data-testid="edit-thumbnail"
@@ -3142,7 +3282,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
-              flex: 1,
+              // Mobile: natural height so it flows inside the single page-scroll
+              // (the parent column scrolls). Desktop keeps flex:1 to fill its
+              // grid/flex column with the tab content scrolling internally.
+              flex: isMobile ? 'none' : 1,
             }}
           >
           {/* When the owner clicked "Choose from Gallery", the tab bar +
@@ -3163,7 +3306,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               Add-ons mode:  Performance | Dishes                  */}
           <div
             style={{
-              display: 'flex',
+              // Desktop: horizontal tab bar. Mobile (STR-858): hidden — the tabs
+              // become a vertical accordion (a MobileAccordionHeader is rendered
+              // before each tab body below), eliminating the horizontal-scroll
+              // strip the manager flagged as un-mobile.
+              display: isMobile ? 'none' : 'flex',
               alignItems: 'flex-end',
               gap: 0,
               borderBottom: '1px solid var(--border)',
@@ -3216,7 +3363,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   onClick={() => setActiveTab(tab)}
                   data-testid={`tab-${tab}`}
                   style={{
-                    padding: '12px 14px',
+                    padding: isMobile ? '13px 16px' : '12px 14px',
+                    minHeight: isMobile ? 44 : undefined,
+                    flexShrink: 0,
                     fontSize: 14,
                     fontWeight: isActive ? 600 : 500,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
@@ -3236,14 +3385,23 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           </div>
 
           {/* ── Scrollable tab content ── */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
+          <div style={{ flex: isMobile ? 'none' : 1, overflowY: isMobile ? 'visible' : 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
 
           {/* ── Food Tags tab ──
               For dishes: full set of fields (heat/spice, sweetness,
               allergens, dietary, free-text). For add-ons: just allergens
               + dietary — modifiers inherit heat/spice from their parent
               dish and don't need their own free-text tags. */}
-          {activeTab === 'food_tags' && (
+          {isMobile && (
+            <MobileAccordionHeader
+              id="food_tags"
+              title="Food tags"
+              subtitle="Allergens, dietary, heat & sweetness"
+              open={expandedSections.has('food_tags')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('food_tags') : activeTab === 'food_tags') && (
             <section style={{ marginBottom: 4 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
@@ -4085,7 +4243,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               cross-menu diff information lives next to the placements
               that produced it. Other consumers (waiter, admin) don't
               pass the slot and get the bare cards. */}
-          {activeTab === 'placements' && (
+          {isMobile && !isAddon && !isNewItem && (
+            <MobileAccordionHeader
+              id="placements"
+              title="Appears in / Placements"
+              subtitle="Per-menu price & availability"
+              open={expandedSections.has('placements')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('placements') : activeTab === 'placements') && (
             <PlacementsTabPanel
               menus={menus}
               placementsDraft={placementsDraft}
@@ -4466,14 +4633,31 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           )}
 
           {/* ── Groupings tab (BYO dishes — content provided by consumer) */}
-          {activeTab === 'groupings' && groupingsSlot && (
+          {isMobile && !isAddon && !isNewItem && groupingsSlot && (
+            <MobileAccordionHeader
+              id="groupings"
+              title="Groupings"
+              subtitle="Add-ons & recommendations"
+              open={expandedSections.has('groupings')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('groupings') : activeTab === 'groupings') && groupingsSlot && (
             <section style={{ marginBottom: 4 }}>
               {groupingsSlot}
             </section>
           )}
 
           {/* ── Dishes tab (shown when editing an addon item) ─────────── */}
-          {activeTab === 'dishes' && (
+          {isMobile && isAddon && (
+            <MobileAccordionHeader
+              id="dishes"
+              title="Used by dishes"
+              open={expandedSections.has('dishes')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('dishes') : activeTab === 'dishes') && (
             <section style={{ marginBottom: 4 }}>
               {!allItems || allItems.length === 0 ? (
                 <div className="text-caption" style={{ padding: '20px 0', textAlign: 'center' }}>
@@ -4721,7 +4905,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           )}
 
           {/* ── Performance tab ───────────────────────────────────────── */}
-          {activeTab === 'performance' && (
+          {isMobile && !isNewItem && (
+            <MobileAccordionHeader
+              id="performance"
+              title="Performance"
+              subtitle="How this item is selling"
+              open={expandedSections.has('performance')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('performance') : activeTab === 'performance') && (
             <section style={{ marginBottom: 4 }}>
               {/* Period selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -4771,6 +4964,53 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               )}
             </section>
+          )}
+          {/* Mobile (STR-858): destructive Delete relocated here — the very
+              bottom of the scroll, behind the same 2-step confirm — so it is
+              never a stray thumb-tap next to the everyday header controls. */}
+          {isMobile && !isNewItem && !cloneMode && item.id && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
+              {deleteConfirming ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>
+                    Delete this item permanently?
+                  </span>
+                  {deleteError && (
+                    <span style={{ fontSize: 12, color: '#b91c1c' }}>{deleteError}</span>
+                  )}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
+                      data-testid="delete-item-cancel"
+                      disabled={deleteLoading}
+                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      data-testid="delete-item-confirm"
+                      disabled={deleteLoading}
+                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
+                    >
+                      {deleteLoading ? 'Deleting…' : 'Delete permanently'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirming(true)}
+                  disabled={saving}
+                  data-testid="delete-item-btn"
+                  style={{ width: '100%', minHeight: 44, fontSize: 13, fontWeight: 600, color: '#b91c1c', background: 'none', border: '1px solid #fca5a5', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                >
+                  Delete item
+                </button>
+              )}
+            </div>
           )}
           </div>{/* end scrollable tab content */}
           </>)}{/* end gallery / tabs branch */}

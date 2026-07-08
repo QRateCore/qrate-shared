@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Star, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
@@ -87,6 +87,15 @@ interface MenuBuilderProps {
   onCloneMenu?: (sourceMenuId: string, name: string) => Promise<void>;
   onEditMenu: (menuId: string) => void;
   onRemoveItemFromMenu: (itemId: string, menuId: string) => void;
+  /** STR-858 — mobile-only 1-tap 86/restore of an item's GLOBAL availability.
+   *  Wired by MenuManagerClient's mobile branch only; when absent the row 86
+   *  control doesn't render (desktop / other consumers). */
+  onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
+  /** STR-858 — mobile-only "Move to…" (re-file a row to a different course via
+   *  the tap course picker). Wired by MenuManagerClient's mobile branch only. */
+  onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
+  /** STR-858 — mobile-only "86 whole course" (bulk-hide). Mobile branch only. */
+  onHideCategory?: (itemIds: string[]) => void;
   onEditItem: (itemId: string) => void;
   onUpdateModifiers: (parentId: string, payload: ModifierUpdatePayload) => Promise<void>;
   /**
@@ -557,6 +566,18 @@ function RecInactiveChip({
     }, REC_POPOVER_LEAVE_GRACE_MS);
   };
 
+  // STR-858 — tap toggles the popover. Hover is unreachable on touch, which
+  // stranded the "Bring into Menu" action inside this popover on a phone. Tap is
+  // additive (desktop hover still works); stopPropagation keeps the row collapsed.
+  const handleTriggerClick = () => {
+    if (isEmpty) return;
+    cancelTimers();
+    if (open) { setOpen(false); return; }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ top: rect.bottom + 6, left: rect.left });
+    setOpen(true);
+  };
+
   const popoverNode = open && !isEmpty && anchor ? (
     <div
       role="dialog"
@@ -637,6 +658,7 @@ function RecInactiveChip({
       className="relative inline-flex"
       onMouseEnter={handleTriggerEnter}
       onMouseLeave={handleTriggerLeave}
+      onClick={(e) => { e.stopPropagation(); handleTriggerClick(); }}
     >
       <span
         className="text-[10px] font-bold px-1.5 py-px rounded shrink-0 cursor-default"
@@ -682,6 +704,8 @@ function MenuItemRow({
   onDragEnd,
   onRemove,
   onEdit,
+  onToggleActive,
+  onMove,
   disableDrag = false,
 }: {
   item: MenuItemDisplay;
@@ -723,6 +747,12 @@ function MenuItemRow({
   onDragEnd: () => void;
   onRemove: () => void;
   onEdit: () => void;
+  /** STR-858 — mobile-only 1-tap 86/restore. Pre-bound by the caller to toggle
+   *  this item's global availability. Undefined ⇒ control not rendered (desktop
+   *  / consumers that don't wire it). */
+  onToggleActive?: () => void;
+  /** STR-858 — mobile-only "Move to…" (re-file this row's course). Pre-bound. */
+  onMove?: () => void;
   /** PDD 2026-05-22 — when bulk-selection is enabled, drag-to-move-
    *  between-buckets is suppressed so it doesn't fight the bulk
    *  selection UX. */
@@ -1226,15 +1256,48 @@ function MenuItemRow({
         )}
       </button>
 
+      {/* STR-858 — mobile-only 1-tap 86 / restore (the #1 in-shift action).
+          A dedicated tap target outside the expand button, so it never expands
+          the row. Ban = 86 it (hide everywhere); RotateCcw = restore. Desktop
+          uses EditModal's Visible/Hidden, so this renders only when the mobile
+          handler is wired. 44px touch target. */}
+      {onToggleActive && isMobile && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
+          data-testid={`menu-item-86-toggle-${item.id}`}
+          aria-label={item.active ? `86 (hide) ${item.name} on all menus` : `Restore ${item.name}`}
+          title={item.active ? '86 — hide on all menus' : 'Restore'}
+          className={`shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] cursor-pointer flex items-center justify-center ${item.active ? 'text-[var(--text2)] hover:text-[var(--red)]' : 'text-[var(--red)]'}`}
+        >
+          {item.active ? <Ban size={16} /> : <RotateCcw size={16} />}
+        </button>
+      )}
+
+      {/* STR-858 — mobile-only "Move to…" (re-file this row's course via the tap
+          course picker; native drag is dead on touch). 44px target. */}
+      {onMove && isMobile && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onMove(); }}
+          data-testid={`menu-item-move-${item.id}`}
+          aria-label={`Move ${item.name} to another course`}
+          title="Move to another course"
+          className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]"
+        >
+          <FolderInput size={16} />
+        </button>
+      )}
+
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
         data-testid={`edit-menu-item-${item.id}`}
         aria-label={`Edit ${item.name}`}
         title="Edit item"
-        className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]"
+        className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]`}
       >
-        <Pencil size={14} />
+        <Pencil size={isMobile ? 16 : 14} />
       </button>
 
       {(() => {
@@ -1249,9 +1312,9 @@ function MenuItemRow({
             data-testid={`remove-from-menu-${item.id}`}
             aria-label={scoped ? `Remove ${item.name} from sub-category ${subLabel}` : `Remove ${item.name} from menu`}
             title={scoped ? `Remove from “${subLabel}”` : 'Remove from menu'}
-            className="shrink-0 w-8 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]"
+            className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]`}
           >
-            <Trash2 size={14} />
+            <Trash2 size={isMobile ? 16 : 14} />
           </button>
         );
       })()}
@@ -1594,6 +1657,9 @@ function CategoryBucket({
   onDragEnd,
   onRemoveItem,
   onEditItem,
+  onToggleItemActive,
+  onMoveItemCourse,
+  onHideCategory,
   missingPriceFilter = false,
   bulkSelectionEnabled = false,
   bulkSelection,
@@ -1652,6 +1718,13 @@ function CategoryBucket({
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
+  /** STR-858 — mobile 1-tap 86/restore, forwarded to each MenuItemRow. */
+  onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
+  /** STR-858 — mobile "Move to…", forwarded to each MenuItemRow. */
+  onMoveItemCourse?: (item: MenuItemDisplay, fromCat: string) => void;
+  /** STR-858 — mobile "86 whole course" (bulk-hide a downed course). Receives
+   *  the bucket's currently-active item IDs. */
+  onHideCategory?: (itemIds: string[]) => void;
   /** PDD 2026-05-22 — bulk Includes selection (forwarded from MenuBuilder). */
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
@@ -1668,6 +1741,12 @@ function CategoryBucket({
   suppressEmptyAttention?: boolean;
 }) {
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
+
+  // STR-858 — mobile "86 whole course" (bulk-hide a downed course, e.g. fryer
+  // out). 2-tap confirm since it's a bulk action.
+  const isMobile = useIsMobile();
+  const [confirmHideCourse, setConfirmHideCourse] = useState(false);
+  const activeBucketItemIds = allBucketItems.filter((i) => i.active).map((i) => i.id);
 
   // STR-775 — which sub-category label is being drag-reordered (row drag).
   // Tracked here so the drop can compute the new order; kept separate from the
@@ -1757,6 +1836,41 @@ function CategoryBucket({
             />
           </label>
         )}
+      {/* STR-858 — mobile "86 whole course" (bulk-hide a downed course). 2-tap
+          confirm; hidden on desktop and when the course has no active items. */}
+      {isMobile && onHideCategory && activeBucketItemIds.length > 0 && (
+        confirmHideCourse ? (
+          <div className="flex items-stretch shrink-0 border-l border-l-[var(--border)]">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setConfirmHideCourse(false); }}
+              data-testid={`bucket-hide-course-cancel-${category}`}
+              className="px-3 min-h-11 text-xs font-semibold text-[var(--text2)] bg-[var(--bg2)] border-none cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onHideCategory(activeBucketItemIds); setConfirmHideCourse(false); }}
+              data-testid={`bucket-hide-course-confirm-${category}`}
+              className="px-3 min-h-11 text-xs font-bold text-white bg-[var(--red)] border-none cursor-pointer whitespace-nowrap"
+            >
+              86 all ({activeBucketItemIds.length})
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setConfirmHideCourse(true); }}
+            data-testid={`bucket-hide-course-${category}`}
+            aria-label={`86 all items in ${displayLabel ?? category}`}
+            title="86 all items in this course"
+            className="shrink-0 min-w-11 min-h-11 flex items-center justify-center bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] hover:text-[var(--red)] cursor-pointer"
+          >
+            <Ban size={16} />
+          </button>
+        )
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -1786,12 +1900,16 @@ function CategoryBucket({
         </span>
         <span
           data-testid={`bucket-rawcats-${category}`}
-          className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden normal-case"
+          // STR-858 — on mobile the chips WRAP to multiple lines (flex-wrap, no
+          // overflow-hidden) so no sub-category label is cut off; the "+N" chip
+          // still summarises any beyond MAX_RAWCAT_CHIPS. Desktop keeps the
+          // single-line clip + "+N".
+          className={`flex-1 min-w-0 flex items-center gap-1 normal-case ${isMobile ? 'flex-wrap' : 'overflow-hidden'}`}
         >
             {/* One chip per sub-category, each "{label} {item-count}". Each chip
-                is width-bounded (label ellipsis-truncates) and only the first
-                MAX_RAWCAT_CHIPS render inline; the rest collapse into a single
-                "+N" chip so the row stays on one line. */}
+                is width-bounded (label ellipsis-truncates). On desktop only the
+                first MAX_RAWCAT_CHIPS render inline (rest → "+N"); on mobile they
+                wrap so nothing is cut off. */}
             {bucketRawCategories.slice(0, MAX_RAWCAT_CHIPS).map((rc) => (
               <span
                 key={rc.label}
@@ -1969,6 +2087,16 @@ function CategoryBucket({
                     }
                   }}
                   onEdit={() => onEditItem(item.id)}
+                  onToggleActive={
+                    onToggleItemActive
+                      ? () => onToggleItemActive(item.id, !item.active)
+                      : undefined
+                  }
+                  onMove={
+                    onMoveItemCourse
+                      ? () => onMoveItemCourse(item, category)
+                      : undefined
+                  }
                 />
               );
               if (!bulkSelectionEnabled) return row;
@@ -2189,6 +2317,9 @@ export default function MenuBuilder({
   onCloneMenu,
   onEditMenu,
   onRemoveItemFromMenu,
+  onToggleItemActive,
+  onMoveItemCourse,
+  onHideCategory,
   onEditItem,
   onUpdateModifiers,
   onConfirmRecommendationDrop,
@@ -2421,6 +2552,9 @@ export default function MenuBuilder({
                 onDragEnd={onDragEnd}
                 onRemoveItem={handleRemoveItemFromMenuTracked}
                 onEditItem={onEditItem}
+                onToggleItemActive={onToggleItemActive}
+                onMoveItemCourse={onMoveItemCourse}
+                onHideCategory={onHideCategory}
                 missingPriceFilter={missingPriceFilter}
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}
