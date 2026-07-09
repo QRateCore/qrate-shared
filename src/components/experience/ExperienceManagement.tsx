@@ -14,14 +14,16 @@ import {
   Check,
   X,
   Settings2,
+  ChefHat,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
+import KitchenTab from './KitchenTab';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-type Tab = 'staff' | 'tables';
+type Tab = 'staff' | 'tables' | 'kitchen';
 
 interface ExperienceManagementProps {
   initialTab?: Tab;
@@ -62,6 +64,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   const tabs = [
     { id: 'staff' as Tab, label: 'Staff', icon: Users, count: undefined as number | undefined },
     { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
+    { id: 'kitchen' as Tab, label: 'Kitchen', icon: ChefHat, count: undefined as number | undefined },
   ];
 
   return (
@@ -100,6 +103,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         <div className="p-6">
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
           {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
+          {activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} />}
         </div>
       </div>
     </div>

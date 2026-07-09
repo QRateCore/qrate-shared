@@ -151,6 +151,27 @@ export interface BoostItem {
   boost_level: number;
 }
 
+// ─── KDS config (STR-876 stations + STR-880 device tunables) ─────────────────
+
+export interface KdsStationConfig {
+  id: string;
+  label: string;
+  order: number;
+  color?: string;
+}
+
+export interface KdsDeviceSettings {
+  autoCloseMs?: number;
+  ageWarnMs?: number;
+  ageCritMs?: number;
+  readyRetainMs?: number;
+}
+
+export interface KdsConfig {
+  stations: KdsStationConfig[];
+  device: KdsDeviceSettings;
+}
+
 // ─── Service Interface ──────────────────────────────────────────────────────
 
 export interface ExperienceService {
@@ -192,4 +213,9 @@ export interface ExperienceService {
   // Reset — portal only
   purgeSessions?(restaurantId: string): Promise<{ message: string }>;
   closeTableSession?(restaurantId: string, tableNumber: number): Promise<void>;
+
+  // KDS config — owner kitchen stations + device tunables (STR-876/880).
+  // Optional so waiter/admin ExperienceService impls + test factories don't break.
+  getKdsConfig?(restaurantId: string): Promise<KdsConfig>;
+  saveKdsConfig?(restaurantId: string, config: KdsConfig): Promise<KdsConfig>;
 }
