@@ -172,6 +172,18 @@ export interface KdsConfig {
   device: KdsDeviceSettings;
 }
 
+/**
+ * The owner-generated code a kitchen-tablet operator types once to pair the device to this
+ * restaurant (KDS `PairingScreen`). Rotatable: generating a new code invalidates the previous one,
+ * so a lost/stolen tablet can be locked out by rotating (server revokes the old code + any device
+ * paired with it). `code` is the human-typeable value; `rotatedAt` / `expiresAt` are ISO strings.
+ */
+export interface KdsPairingCode {
+  code: string;
+  rotatedAt: string;
+  expiresAt?: string | null;
+}
+
 // ─── Service Interface ──────────────────────────────────────────────────────
 
 export interface ExperienceService {
@@ -218,4 +230,9 @@ export interface ExperienceService {
   // Optional so waiter/admin ExperienceService impls + test factories don't break.
   getKdsConfig?(restaurantId: string): Promise<KdsConfig>;
   saveKdsConfig?(restaurantId: string, config: KdsConfig): Promise<KdsConfig>;
+
+  // KDS device pairing code — the rotatable one-time code an operator types on the kitchen tablet.
+  // Optional (same reason as above); rotating invalidates the previous code server-side.
+  getKdsPairingCode?(restaurantId: string): Promise<KdsPairingCode>;
+  rotateKdsPairingCode?(restaurantId: string): Promise<KdsPairingCode>;
 }
