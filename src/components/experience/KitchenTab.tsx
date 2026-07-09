@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2, ChevronUp, ChevronDown, Save, Info, KeyRound, RefreshCw, Copy, Check } from 'lucide-react';
+import { Loader2, Save, Info, KeyRound, RefreshCw, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ExperienceService, KdsConfig, KdsStationConfig, KdsPairingCode } from '../../types/experience';
+import type { ExperienceService, KdsConfig, KdsPairingCode } from '../../types/experience';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 // Human-typeable pairing code — no ambiguous 0/O/1/I/L. Two groups of four, e.g. "K7F3-9QX2".
@@ -16,9 +16,14 @@ function generatePreviewPairingCode(): string {
   return `${group()}-${group()}`;
 }
 
-// Built-in defaults — MUST mirror qrate-core owner_kds_config.DEFAULT_* and the
-// KDS device's DEFAULT_KDS_CONFIG. Used when the restaurant has no saved config
-// (or the backend endpoint isn't reachable yet).
+// Built-in defaults — device tunables MUST mirror qrate-core owner_kds_config.DEFAULT_* and the
+// KDS device's DEFAULT_KDS_CONFIG. Used when the restaurant has no saved config (or the backend
+// endpoint isn't reachable yet).
+//
+// NOTE: owner-configurable KITCHEN STATIONS were removed — stations aren't real board data, and the
+// KDS now filters by TABLE instead. The default `stations` are still carried in the saved payload so
+// the backend contract (which expects a stations list) stays satisfied, but there is no station
+// editor: this tab configures device behaviour + the device pairing code only.
 const DEFAULT_KDS_CONFIG: KdsConfig = {
   stations: [
     { id: 'grill', label: 'Grill', order: 0, color: '#ef4444' },
@@ -29,20 +34,6 @@ const DEFAULT_KDS_CONFIG: KdsConfig = {
   ],
   device: { autoCloseMs: 10_000, ageWarnMs: 480_000, ageCritMs: 900_000, readyRetainMs: 360_000 },
 };
-
-const STATION_PALETTE = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#38bdf8', '#a855f7', '#ec4899', '#a3a3a3'];
-
-function newStationId(existing: KdsStationConfig[]): string {
-  let n = existing.length + 1;
-  let id = `station-${n}`;
-  const ids = new Set(existing.map((s) => s.id));
-  while (ids.has(id)) id = `station-${++n}`;
-  return id;
-}
-
-function reindex(stations: KdsStationConfig[]): KdsStationConfig[] {
-  return stations.map((s, i) => ({ ...s, order: i }));
-}
 
 export interface KitchenTabProps {
   restaurantId?: string;
@@ -132,41 +123,15 @@ export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── station mutators ──────────────────────────────────────────────
-  const setStations = (stations: KdsStationConfig[]) => setConfig((c) => ({ ...c, stations }));
-
-  const addStation = () => {
-    const id = newStationId(config.stations);
-    setStations(reindex([...config.stations, {
-      id, label: 'New Station', order: config.stations.length,
-      color: STATION_PALETTE[config.stations.length % STATION_PALETTE.length],
-    }]));
-  };
-  const removeStation = (id: string) =>
-    setStations(reindex(config.stations.filter((s) => s.id !== id)));
-  const renameStation = (id: string, label: string) =>
-    setStations(config.stations.map((s) => (s.id === id ? { ...s, label } : s)));
-  const recolorStation = (id: string, color: string) =>
-    setStations(config.stations.map((s) => (s.id === id ? { ...s, color } : s)));
-  const moveStation = (index: number, dir: -1 | 1) => {
-    const j = index + dir;
-    if (j < 0 || j >= config.stations.length) return;
-    const next = [...config.stations];
-    [next[index], next[j]] = [next[j], next[index]];
-    setStations(reindex(next));
-  };
-
   const setDevice = (key: keyof KdsConfig['device'], ms: number) =>
     setConfig((c) => ({ ...c, device: { ...c.device, [key]: ms } }));
 
   // ── save ──────────────────────────────────────────────────────────
   const save = async () => {
-    // client-side guard (backend enforces the same, fail-closed)
-    if (config.stations.length < 1) return toast('Add at least one station.');
+    // client-side guard (backend enforces the same, fail-closed). Stations are no longer editable —
+    // the default list rides along in the payload only to satisfy the backend contract.
     if ((config.device.ageWarnMs ?? 0) >= (config.device.ageCritMs ?? 0))
       return toast('“Warn after” must be less than “Critical after”.');
-    if (config.stations.some((s) => !s.label.trim()))
-      return toast('Every station needs a name.');
 
     if (!restaurantId || !service.saveKdsConfig) {
       toast('Saved locally (preview — the KDS backend endpoint isn’t deployed yet).');
@@ -192,7 +157,6 @@ export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
     );
   }
 
-  const touch = isMobile ? 'min-h-[44px]' : '';
   const dev = config.device;
 
   return (
@@ -247,73 +211,6 @@ export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
             {pairing.expiresAt ? ` · expires ${new Date(pairing.expiresAt).toLocaleString()}` : ''}
           </p>
         )}
-      </section>
-
-      {/* ── Stations ── */}
-      <section>
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold text-gray-900">Kitchen stations</h2>
-          <button
-            type="button"
-            onClick={addStation}
-            data-testid="kitchen-add-station"
-            className={`flex items-center gap-1.5 px-3 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium ${touch || 'h-9'}`}
-          >
-            <Plus className="h-4 w-4" /> Add station
-          </button>
-        </div>
-        <p className="text-sm text-gray-500 mb-4">
-          Define how your kitchen is segmented on the display — e.g. a <em>Tandoor</em>, a wood-fired <em>Oven</em>, a sushi <em>Pass</em>. Each dish is routed to a station.
-        </p>
-
-        <ul className="space-y-2">
-          {config.stations.map((s, i) => (
-            <li
-              key={s.id}
-              data-testid={`kds-station-${s.id}`}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2"
-            >
-              <span
-                className="h-6 w-6 rounded-full shrink-0 border border-black/10"
-                style={{ backgroundColor: s.color || '#a3a3a3' }}
-                aria-hidden
-              />
-              <input
-                value={s.label}
-                onChange={(e) => renameStation(s.id, e.target.value)}
-                data-testid={`kds-station-label-${s.id}`}
-                aria-label={`Station ${i + 1} name`}
-                className={`flex-1 min-w-0 rounded-md border border-gray-200 px-3 text-sm focus:border-orange-400 focus:outline-none ${isMobile ? 'h-11' : 'h-9'}`}
-              />
-              <input
-                type="color"
-                value={s.color || '#a3a3a3'}
-                onChange={(e) => recolorStation(s.id, e.target.value)}
-                aria-label={`Station ${i + 1} colour`}
-                className={`shrink-0 rounded-md border border-gray-200 bg-white p-0.5 cursor-pointer ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
-              />
-              <div className="flex flex-col shrink-0">
-                <button type="button" onClick={() => moveStation(i, -1)} disabled={i === 0}
-                  aria-label="Move up" className="grid place-items-center h-5 w-8 text-gray-400 hover:text-gray-700 disabled:opacity-30">
-                  <ChevronUp className="h-4 w-4" />
-                </button>
-                <button type="button" onClick={() => moveStation(i, 1)} disabled={i === config.stations.length - 1}
-                  aria-label="Move down" className="grid place-items-center h-5 w-8 text-gray-400 hover:text-gray-700 disabled:opacity-30">
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => removeStation(s.id)}
-                aria-label={`Delete ${s.label}`}
-                data-testid={`kds-station-delete-${s.id}`}
-                className={`grid place-items-center shrink-0 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 ${isMobile ? 'h-11 w-11' : 'h-9 w-9'}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
       </section>
 
       {/* ── Device settings ── */}
