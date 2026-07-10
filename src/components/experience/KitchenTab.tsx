@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Save, Info, KeyRound, RefreshCw, Copy, Check } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Loader2, Save, Info, KeyRound, RefreshCw, Copy, Check, ExternalLink, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ExperienceService, KdsConfig, KdsPairingCode } from '../../types/experience';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -38,6 +38,17 @@ const DEFAULT_KDS_CONFIG: KdsConfig = {
 export interface KitchenTabProps {
   restaurantId?: string;
   service: ExperienceService;
+  /**
+   * Base URL of the KDS app (owner env `NEXT_PUBLIC_KDS_URL`). When set alongside a real pairing
+   * code, the tab shows a QR encoding `${kdsUrl}?code=<code>` + an "Open kitchen display" link.
+   * Undefined (e.g. waiter/admin consumers, or unconfigured env) → QR/link simply don't render.
+   */
+  kdsUrl?: string;
+  /**
+   * QR renderer injected by the owner app (keeps the `qrcode.react` dep OUT of the shared package
+   * and its other consumers). Given the full deep-link URL, returns the QR node. Undefined → no QR.
+   */
+  renderPairingQr?: (value: string) => ReactNode;
 }
 
 /**
@@ -46,33 +57,22 @@ export interface KitchenTabProps {
  * ExperienceService.getKdsConfig/saveKdsConfig; falls back to DEFAULT_KDS_CONFIG
  * so the surface always renders (and stays usable before the backend deploys).
  */
-export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
+export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairingQr }: KitchenTabProps) {
   const isMobile = useIsMobile();
   const [config, setConfig] = useState<KdsConfig>(DEFAULT_KDS_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const wired = typeof service.getKdsConfig === 'function';
 
-  // ── device pairing code (rotatable) ───────────────────────────────
-  const pairingWired = typeof service.getKdsPairingCode === 'function';
+  // ── device pairing code (mint / rotate) ───────────────────────────
+  // A code is minted on demand (owner clicks "Generate"), not on load — codes are one-time and
+  // short-lived, so pre-minting on every tab open would spam dead codes. `pairingWired` reflects the
+  // real minting capability (rotateKdsPairingCode). Without it we fall back to a local PREVIEW code
+  // (env with no KDS backend) so the surface still demonstrates the flow.
+  const pairingWired = typeof service.rotateKdsPairingCode === 'function';
   const [pairing, setPairing] = useState<KdsPairingCode | null>(null);
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (restaurantId && service.getKdsPairingCode) {
-        try {
-          const p = await service.getKdsPairingCode(restaurantId);
-          if (alive) setPairing(p);
-          return;
-        } catch { /* fall through to a local preview code */ }
-      }
-      if (alive) setPairing({ code: generatePreviewPairingCode(), rotatedAt: new Date().toISOString() });
-    })();
-    return () => { alive = false; };
-  }, [restaurantId, service]);
 
   const rotate = async () => {
     setCopied(false);
@@ -87,7 +87,7 @@ export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
       setPairing(p);
       toast('New pairing code generated. The previous code no longer works.');
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not rotate the code — try again.');
+      toast(e instanceof Error ? e.message : 'Could not generate the code — try again.');
     } finally {
       setRotating(false);
     }
@@ -168,48 +168,90 @@ export default function KitchenTab({ restaurantId, service }: KitchenTabProps) {
         </div>
       )}
 
-      {/* ── Device pairing (rotatable code) ── */}
+      {/* ── Device pairing (QR + one-time code) ── */}
       <section data-testid="kds-pairing">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-1">
           <KeyRound className="h-5 w-5 text-orange-500" /> Connect your kitchen display
         </h2>
         <p className="text-sm text-gray-500 mb-4">
-          On the kitchen tablet, open the QRate KDS and enter this code to pair it to this restaurant.
-          <strong className="text-gray-700"> Rotating</strong> the code disconnects any tablet paired with the old one — use it if a device is lost or an employee leaves.
+          On the kitchen tablet, <strong className="text-gray-700">scan this QR with the camera</strong> — the
+          QRate KDS opens already paired to this restaurant (no sign-in on the tablet). Off-site? Share the
+          code with a team member to enter it by hand. Generating a new code <strong className="text-gray-700">invalidates
+          the previous one</strong> — use it if a device is lost or an employee leaves.
         </p>
 
-        <div className={`flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 ${isMobile ? 'flex-col items-stretch' : ''}`}>
-          <code
-            data-testid="kds-pairing-code"
-            className="font-mono text-2xl font-bold tracking-[0.25em] text-gray-900 select-all flex-1 text-center sm:text-left"
-          >
-            {pairing?.code ?? '••••-••••'}
-          </code>
-          <button
-            type="button"
-            onClick={copyCode}
-            data-testid="kds-pairing-copy"
-            className={`flex items-center justify-center gap-1.5 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
-          >
-            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-          <button
-            type="button"
-            onClick={rotate}
-            disabled={rotating}
-            data-testid="kds-pairing-rotate"
-            className={`flex items-center justify-center gap-1.5 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
-          >
-            {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {rotating ? 'Rotating…' : 'Rotate code'}
-          </button>
-        </div>
-        {pairing?.rotatedAt && (
-          <p className="mt-2 text-xs text-gray-400" data-testid="kds-pairing-rotated-at">
-            Last generated {new Date(pairing.rotatedAt).toLocaleString()}
-            {pairing.expiresAt ? ` · expires ${new Date(pairing.expiresAt).toLocaleString()}` : ''}
-          </p>
+        {!pairing?.code ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center" data-testid="kds-pairing-empty">
+            <QrCode className="h-8 w-8 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 mb-4">Generate a one-time code to connect a kitchen tablet. It expires in a few minutes.</p>
+            <button
+              type="button"
+              onClick={rotate}
+              disabled={rotating}
+              data-testid="kds-pairing-generate"
+              className={`inline-flex items-center justify-center gap-1.5 px-5 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-medium ${isMobile ? 'h-11 w-full' : 'h-10'}`}
+            >
+              {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+              {rotating ? 'Generating…' : 'Generate pairing code'}
+            </button>
+          </div>
+        ) : (
+          <div className={`flex gap-5 rounded-lg border border-gray-200 bg-gray-50 p-4 ${isMobile ? 'flex-col' : 'items-stretch'}`}>
+            {kdsUrl && renderPairingQr && (
+              <div className="shrink-0 bg-white rounded-lg p-3 border border-gray-200 mx-auto" data-testid="kds-pairing-qr">
+                {renderPairingQr(`${kdsUrl.replace(/\/$/, '')}/?code=${encodeURIComponent(pairing.code)}`)}
+              </div>
+            )}
+            <div className="flex-1 min-w-0 flex flex-col justify-center gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-400 mb-1">Or enter this code on the tablet</p>
+                <code
+                  data-testid="kds-pairing-code"
+                  className="font-mono text-2xl font-bold tracking-[0.25em] text-gray-900 select-all block"
+                >
+                  {pairing.code}
+                </code>
+              </div>
+              <div className={`flex gap-2 ${isMobile ? 'flex-col' : 'flex-wrap'}`}>
+                <button
+                  type="button"
+                  onClick={copyCode}
+                  data-testid="kds-pairing-copy"
+                  className={`flex items-center justify-center gap-1.5 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  onClick={rotate}
+                  disabled={rotating}
+                  data-testid="kds-pairing-rotate"
+                  className={`flex items-center justify-center gap-1.5 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
+                >
+                  {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {rotating ? 'Rotating…' : 'New code'}
+                </button>
+                {kdsUrl && (
+                  <a
+                    href={kdsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="kds-open-link"
+                    className={`flex items-center justify-center gap-1.5 px-4 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
+                  >
+                    <ExternalLink className="h-4 w-4" /> Open kitchen display
+                  </a>
+                )}
+              </div>
+              {pairing.rotatedAt && (
+                <p className="text-xs text-gray-400" data-testid="kds-pairing-rotated-at">
+                  Generated {new Date(pairing.rotatedAt).toLocaleString()}
+                  {pairing.expiresAt ? ` · expires ${new Date(pairing.expiresAt).toLocaleString()}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </section>
 

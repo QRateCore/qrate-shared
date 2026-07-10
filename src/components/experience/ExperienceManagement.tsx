@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   LayoutGrid,
   Users,
@@ -37,9 +37,16 @@ interface ExperienceManagementProps {
    * waiter/admin consumers, so no link renders there.
    */
   hostStationHref?: string;
+  /**
+   * KDS deep-link base (`NEXT_PUBLIC_KDS_URL`) + a QR renderer, threaded to the Kitchen tab so it can
+   * show a scannable pair-QR without pulling the `qrcode.react` dep into this shared package. Both
+   * omitted by waiter/admin consumers → the Kitchen tab shows the typed code only, no QR.
+   */
+  kdsUrl?: string;
+  renderPairingQr?: (value: string) => ReactNode;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
@@ -103,7 +110,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         <div className="p-6">
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
           {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
-          {activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} />}
+          {activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         </div>
       </div>
     </div>
