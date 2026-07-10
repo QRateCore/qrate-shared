@@ -173,15 +173,32 @@ export interface KdsConfig {
 }
 
 /**
- * The owner-generated code a kitchen-tablet operator types once to pair the device to this
- * restaurant (KDS `PairingScreen`). Rotatable: generating a new code invalidates the previous one,
- * so a lost/stolen tablet can be locked out by rotating (server revokes the old code + any device
- * paired with it). `code` is the human-typeable value; `rotatedAt` / `expiresAt` are ISO strings.
+ * The restaurant's ONE reusable pairing code (STR-890). A kitchen-tablet operator scans the QR
+ * (or types the code) to pair a device to this restaurant (KDS `PairingScreen`). The code is
+ * PERSISTENT — it stays valid (until a 24h backstop) and pairs MANY devices, so mid-shift a new
+ * tablet can join without disrupting the ones already connected. The owner regenerates on demand
+ * ("Generate new code"); regenerating SUPERSEDES the prior code but NEVER disconnects paired
+ * devices (that is what per-device Revoke is for). `code` is the human-typeable value;
+ * `generatedAt` (client-stamped on create) / `expiresAt` are ISO strings.
  */
 export interface KdsPairingCode {
   code: string;
-  rotatedAt: string;
+  generatedAt?: string;
   expiresAt?: string | null;
+}
+
+/**
+ * A kitchen display currently paired to the restaurant (STR-890 device list + revoke). The owner
+ * uses `lastSeenAt` to tell a live display from a dead one before revoking (never kill an active
+ * board). Names default to "Kitchen display" when the tablet didn't supply one.
+ */
+export interface KdsDevice {
+  deviceId: string;
+  name: string;
+  /** ISO — when the device first paired. */
+  pairedAt: string | null;
+  /** ISO — last time the device polled the board; drives the "active / offline" cue. */
+  lastSeenAt: string | null;
 }
 
 // ─── Service Interface ──────────────────────────────────────────────────────
@@ -231,8 +248,11 @@ export interface ExperienceService {
   getKdsConfig?(restaurantId: string): Promise<KdsConfig>;
   saveKdsConfig?(restaurantId: string, config: KdsConfig): Promise<KdsConfig>;
 
-  // KDS device pairing code — the rotatable one-time code an operator types on the kitchen tablet.
-  // Optional (same reason as above); rotating invalidates the previous code server-side.
-  getKdsPairingCode?(restaurantId: string): Promise<KdsPairingCode>;
-  rotateKdsPairingCode?(restaurantId: string): Promise<KdsPairingCode>;
+  // KDS device pairing (STR-890) — ONE reusable, persistent code per restaurant. The owner
+  // regenerates on demand; regenerating supersedes the prior code but NEVER disconnects paired
+  // devices. Optional (waiter/admin ExperienceService impls + test factories don't provide these).
+  getKdsCurrentPairingCode?(restaurantId: string): Promise<KdsPairingCode | null>; // null → none yet (generate-first)
+  createKdsPairingCode?(restaurantId: string): Promise<KdsPairingCode>;            // supersede + mint a new code
+  getKdsDevices?(restaurantId: string): Promise<{ devices: KdsDevice[] }>;         // paired displays (identify before revoke)
+  revokeKdsDevice?(restaurantId: string, deviceId: string): Promise<void>;         // disconnect ONE lost/retired device
 }

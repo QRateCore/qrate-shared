@@ -1,19 +1,30 @@
 'use client';
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Loader2, Save, Info, KeyRound, RefreshCw, Copy, Check, ExternalLink, QrCode } from 'lucide-react';
+import { Loader2, Save, Info, KeyRound, RefreshCw, Copy, Check, ExternalLink, QrCode, Monitor, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ExperienceService, KdsConfig, KdsPairingCode } from '../../types/experience';
+import type { ExperienceService, KdsConfig, KdsPairingCode, KdsDevice } from '../../types/experience';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-// Human-typeable pairing code — no ambiguous 0/O/1/I/L. Two groups of four, e.g. "K7F3-9QX2".
-// Used only for the local PREVIEW code before the KDS pairing backend is deployed; the real code
-// is minted + rotated server-side (invalidating the previous) via service.rotateKdsPairingCode.
-const PAIR_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+// 8-digit numeric pairing code — matches the server format (STR-890). Used ONLY for the local
+// PREVIEW code on an environment where the KDS pairing backend isn't wired; the real code is the
+// ONE reusable, persistent code minted server-side via service.createKdsPairingCode.
 function generatePreviewPairingCode(): string {
-  const pick = () => PAIR_ALPHABET[Math.floor(Math.random() * PAIR_ALPHABET.length)];
-  const group = () => Array.from({ length: 4 }, pick).join('');
-  return `${group()}-${group()}`;
+  return String(Math.floor(Math.random() * 100_000_000)).padStart(8, '0');
+}
+
+// "active now / active 5m ago / offline" cue from a device's last poll. The KDS polls the board
+// every few seconds, so a lastSeen inside 2 min means the display is live — the owner uses this to
+// avoid revoking a board that's actually running service.
+function lastActiveLabel(lastSeenAt: string | null): { text: string; live: boolean } {
+  if (!lastSeenAt) return { text: 'not seen yet', live: false };
+  const ms = Date.now() - new Date(lastSeenAt).getTime();
+  if (ms < 2 * 60_000) return { text: 'active now', live: true };
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return { text: `active ${min}m ago`, live: min < 10 };
+  const hr = Math.round(min / 60);
+  if (hr < 24) return { text: `active ${hr}h ago`, live: false };
+  return { text: `active ${Math.round(hr / 24)}d ago`, live: false };
 }
 
 // Built-in defaults — device tunables MUST mirror qrate-core owner_kds_config.DEFAULT_* and the
@@ -40,8 +51,10 @@ export interface KitchenTabProps {
   service: ExperienceService;
   /**
    * Base URL of the KDS app (owner env `NEXT_PUBLIC_KDS_URL`). When set alongside a real pairing
-   * code, the tab shows a QR encoding `${kdsUrl}?code=<code>` + an "Open kitchen display" link.
+   * code, the tab shows a QR encoding `${kdsUrl}/#code=<code>` + an "Open kitchen display" link.
    * Undefined (e.g. waiter/admin consumers, or unconfigured env) → QR/link simply don't render.
+   * NOTE: the code rides in the URL FRAGMENT (#code=), never a query (?code=), so it never lands
+   * in a CloudFront/access log (STR-890).
    */
   kdsUrl?: string;
   /**
@@ -52,10 +65,11 @@ export interface KitchenTabProps {
 }
 
 /**
- * Kitchen setup — owner-defined KDS stations (STR-876) + device tunables (STR-880).
- * Lives as the 3rd tab in Tables & Staff. Reads/writes via the optional
- * ExperienceService.getKdsConfig/saveKdsConfig; falls back to DEFAULT_KDS_CONFIG
- * so the surface always renders (and stays usable before the backend deploys).
+ * Kitchen setup — the reusable KDS pairing code + paired-device list (STR-890) and device tunables
+ * (STR-880). Lives as the 3rd tab in Tables & Staff. Reads/writes via the optional
+ * ExperienceService.getKdsConfig/saveKdsConfig + getKdsCurrentPairingCode/createKdsPairingCode/
+ * getKdsDevices/revokeKdsDevice; falls back to defaults + a local preview code so the surface always
+ * renders (and stays usable before the backend deploys).
  */
 export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairingQr }: KitchenTabProps) {
   const isMobile = useIsMobile();
@@ -64,32 +78,74 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
   const [saving, setSaving] = useState(false);
   const wired = typeof service.getKdsConfig === 'function';
 
-  // ── device pairing code (mint / rotate) ───────────────────────────
-  // A code is minted on demand (owner clicks "Generate"), not on load — codes are one-time and
-  // short-lived, so pre-minting on every tab open would spam dead codes. `pairingWired` reflects the
-  // real minting capability (rotateKdsPairingCode). Without it we fall back to a local PREVIEW code
-  // (env with no KDS backend) so the surface still demonstrates the flow.
-  const pairingWired = typeof service.rotateKdsPairingCode === 'function';
+  // ── device pairing (STR-890 reusable, persistent code) ─────────────
+  // The restaurant has ONE reusable code. It's fetched on load (getKdsCurrentPairingCode) and shown
+  // persistently — it stays put until the owner clicks "Generate new code", so a mid-shift device can
+  // pair without disrupting the ones already connected. `pairingWired` reflects the real capability
+  // (createKdsPairingCode); without it we fall back to a local PREVIEW code so the surface still
+  // demonstrates the flow on an unwired environment.
+  const pairingWired = typeof service.createKdsPairingCode === 'function';
+  const devicesWired = typeof service.getKdsDevices === 'function';
   const [pairing, setPairing] = useState<KdsPairingCode | null>(null);
-  const [rotating, setRotating] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [devices, setDevices] = useState<KdsDevice[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  const rotate = async () => {
+  const loadDevices = useCallback(async () => {
+    if (!restaurantId || !service.getKdsDevices) return;
+    setDevicesLoading(true);
+    try {
+      const { devices: d } = await service.getKdsDevices(restaurantId);
+      setDevices(Array.isArray(d) ? d : []);
+    } catch {
+      // non-fatal — the device list is a convenience; the pairing surface still works.
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, [restaurantId, service]);
+
+  const loadPairing = useCallback(async () => {
+    if (!restaurantId || !service.getKdsCurrentPairingCode) return;
+    try {
+      const current = await service.getKdsCurrentPairingCode(restaurantId);
+      setPairing(current); // null → generate-first empty state (never a dead code)
+    } catch {
+      // non-fatal — owner can still generate a fresh code.
+    }
+  }, [restaurantId, service]);
+
+  const generateNew = async () => {
     setCopied(false);
-    if (!restaurantId || !service.rotateKdsPairingCode) {
-      setPairing({ code: generatePreviewPairingCode(), rotatedAt: new Date().toISOString() });
+    if (!restaurantId || !service.createKdsPairingCode) {
+      setPairing({ code: generatePreviewPairingCode(), generatedAt: new Date().toISOString() });
       toast('New code generated (preview — the KDS pairing backend isn’t deployed yet).');
       return;
     }
-    setRotating(true);
+    setGenerating(true);
     try {
-      const p = await service.rotateKdsPairingCode(restaurantId);
+      const p = await service.createKdsPairingCode(restaurantId);
       setPairing(p);
-      toast('New pairing code generated. The previous code no longer works.');
+      toast('New pairing code generated. Devices already connected stay connected.');
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not generate the code — try again.');
     } finally {
-      setRotating(false);
+      setGenerating(false);
+    }
+  };
+
+  const revokeDevice = async (deviceId: string, name: string) => {
+    if (!restaurantId || !service.revokeKdsDevice) return;
+    setRevokingId(deviceId);
+    try {
+      await service.revokeKdsDevice(restaurantId, deviceId);
+      setDevices((ds) => ds.filter((d) => d.deviceId !== deviceId));
+      toast(`Disconnected “${name}”. It can re-pair with the current code.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not disconnect the device — try again.');
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -122,6 +178,8 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
   }, [restaurantId, service]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadPairing(); }, [loadPairing]);
+  useEffect(() => { loadDevices(); }, [loadDevices]);
 
   const setDevice = (key: keyof KdsConfig['device'], ms: number) =>
     setConfig((c) => ({ ...c, device: { ...c.device, [key]: ms } }));
@@ -164,11 +222,11 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
       {(!wired || !pairingWired) && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm" data-testid="kitchen-preview-note">
           <Info className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>Preview — the KDS backend isn’t wired on this environment yet, so saving settings and rotating the pairing code are local. Stations &amp; device settings render from defaults.</span>
+          <span>Preview — the KDS backend isn’t wired on this environment yet, so saving settings and generating the pairing code are local. Device settings render from defaults.</span>
         </div>
       )}
 
-      {/* ── Device pairing (QR + one-time code) ── */}
+      {/* ── Device pairing (reusable code + QR) ── */}
       <section data-testid="kds-pairing">
         <div className={`flex gap-3 mb-1 ${isMobile ? 'flex-col items-start' : 'items-center justify-between'}`}>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
@@ -189,32 +247,35 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
           )}
         </div>
         <p className="text-sm text-gray-500 mb-4">
-          On the kitchen tablet, <strong className="text-gray-700">scan this QR with the camera</strong> — the
+          On each kitchen tablet, <strong className="text-gray-700">scan this QR with the camera</strong> — the
           QRate KDS opens already paired to this restaurant (no sign-in on the tablet). Off-site? Share the
-          code with a team member to enter it by hand. Generating a new code <strong className="text-gray-700">invalidates
-          the previous one</strong> — use it if a device is lost or an employee leaves.
+          code so a team member can enter it by hand. This is your restaurant’s <strong className="text-gray-700">reusable
+          code</strong> — the same code connects every kitchen display and <strong className="text-gray-700">stays the
+          same</strong>, so you can add a device mid-shift without touching the ones already running. Generating a
+          new code doesn’t disconnect anything — to remove a lost or retired device, use <strong className="text-gray-700">Disconnect</strong> in
+          the list below.
         </p>
 
         {!pairing?.code ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center" data-testid="kds-pairing-empty">
             <QrCode className="h-8 w-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-4">Generate a one-time code to connect a kitchen tablet. It expires in a few minutes.</p>
+            <p className="text-sm text-gray-500 mb-4">Generate your restaurant’s pairing code to connect kitchen tablets. One code connects them all and stays valid until you generate a new one.</p>
             <button
               type="button"
-              onClick={rotate}
-              disabled={rotating}
+              onClick={generateNew}
+              disabled={generating}
               data-testid="kds-pairing-generate"
               className={`inline-flex items-center justify-center gap-1.5 px-5 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-medium ${isMobile ? 'h-11 w-full' : 'h-10'}`}
             >
-              {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-              {rotating ? 'Generating…' : 'Generate pairing code'}
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+              {generating ? 'Generating…' : 'Generate pairing code'}
             </button>
           </div>
         ) : (
           <div className={`flex gap-5 rounded-lg border border-gray-200 bg-gray-50 p-4 ${isMobile ? 'flex-col' : 'items-stretch'}`}>
             {kdsUrl && renderPairingQr && (
               <div className="shrink-0 bg-white rounded-lg p-3 border border-gray-200 mx-auto" data-testid="kds-pairing-qr">
-                {renderPairingQr(`${kdsUrl.replace(/\/$/, '')}/?code=${encodeURIComponent(pairing.code)}`)}
+                {renderPairingQr(`${kdsUrl.replace(/\/$/, '')}/#code=${encodeURIComponent(pairing.code)}`)}
               </div>
             )}
             <div className="flex-1 min-w-0 flex flex-col justify-center gap-3">
@@ -239,22 +300,73 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
                 </button>
                 <button
                   type="button"
-                  onClick={rotate}
-                  disabled={rotating}
-                  data-testid="kds-pairing-rotate"
-                  className={`flex items-center justify-center gap-1.5 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
+                  onClick={generateNew}
+                  disabled={generating}
+                  data-testid="kds-pairing-generate-new"
+                  className={`flex items-center justify-center gap-1.5 px-4 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
                 >
-                  {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  {rotating ? 'Rotating…' : 'New code'}
+                  {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {generating ? 'Generating…' : 'Generate new code'}
                 </button>
               </div>
-              {pairing.rotatedAt && (
-                <p className="text-xs text-gray-400" data-testid="kds-pairing-rotated-at">
-                  Generated {new Date(pairing.rotatedAt).toLocaleString()}
-                  {pairing.expiresAt ? ` · expires ${new Date(pairing.expiresAt).toLocaleString()}` : ''}
-                </p>
-              )}
+              <p className="text-xs text-gray-400" data-testid="kds-pairing-generated-at">
+                {pairing.generatedAt ? `Generated ${new Date(pairing.generatedAt).toLocaleString()}` : 'Reusable code — connects every kitchen display'}
+                {pairing.expiresAt ? ` · auto-expires ${new Date(pairing.expiresAt).toLocaleString()} if unused` : ''}
+              </p>
             </div>
+          </div>
+        )}
+
+        {/* ── Paired displays (identify + disconnect) ── */}
+        {devicesWired && (
+          <div className="mt-5" data-testid="kds-device-list">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                <Monitor className="h-4 w-4 text-gray-400" /> Paired displays{devices.length ? ` (${devices.length})` : ''}
+              </h3>
+              <button
+                type="button"
+                onClick={loadDevices}
+                disabled={devicesLoading}
+                data-testid="kds-device-refresh"
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${devicesLoading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+            {devices.length === 0 ? (
+              <p className="text-sm text-gray-400 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3" data-testid="kds-device-empty">
+                No displays paired yet. Scan the code on a kitchen tablet to connect one.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                {devices.map((d) => {
+                  const active = lastActiveLabel(d.lastSeenAt);
+                  return (
+                    <li key={d.deviceId} data-testid="kds-device-row" className={`flex items-center justify-between gap-3 px-4 py-3 ${isMobile ? 'flex-col items-start' : ''}`}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{d.name || 'Kitchen display'}</p>
+                        <p className="flex items-center gap-1.5 text-xs text-gray-400">
+                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${active.live ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          {active.text}
+                          {d.pairedAt ? ` · paired ${new Date(d.pairedAt).toLocaleDateString()}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => revokeDevice(d.deviceId, d.name || 'Kitchen display')}
+                        disabled={revokingId === d.deviceId}
+                        data-testid="kds-device-revoke"
+                        className={`flex items-center justify-center gap-1.5 px-3 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-600 text-sm font-medium disabled:opacity-60 ${isMobile ? 'h-10 w-full' : 'h-9'}`}
+                      >
+                        {revokingId === d.deviceId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Disconnect
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         )}
       </section>
