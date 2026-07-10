@@ -170,9 +170,24 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
 
       {/* ── Device pairing (QR + one-time code) ── */}
       <section data-testid="kds-pairing">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 mb-1">
-          <KeyRound className="h-5 w-5 text-orange-500" /> Connect your kitchen display
-        </h2>
+        <div className={`flex gap-3 mb-1 ${isMobile ? 'flex-col items-start' : 'items-center justify-between'}`}>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <KeyRound className="h-5 w-5 text-orange-500" /> Connect your kitchen display
+          </h2>
+          {/* Always-visible launcher — the KDS URL is long + unmemorable, so the owner opens it
+              from here (new tab). Only renders when the environment has a KDS URL configured. */}
+          {kdsUrl && (
+            <a
+              href={kdsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="kds-open-link"
+              className={`flex items-center justify-center gap-1.5 px-4 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium ${isMobile ? 'h-11 w-full' : 'h-9'}`}
+            >
+              <ExternalLink className="h-4 w-4" /> Open kitchen display
+            </a>
+          )}
+        </div>
         <p className="text-sm text-gray-500 mb-4">
           On the kitchen tablet, <strong className="text-gray-700">scan this QR with the camera</strong> — the
           QRate KDS opens already paired to this restaurant (no sign-in on the tablet). Off-site? Share the
@@ -232,17 +247,6 @@ export default function KitchenTab({ restaurantId, service, kdsUrl, renderPairin
                   {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   {rotating ? 'Rotating…' : 'New code'}
                 </button>
-                {kdsUrl && (
-                  <a
-                    href={kdsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="kds-open-link"
-                    className={`flex items-center justify-center gap-1.5 px-4 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium ${isMobile ? 'h-11' : 'h-9'}`}
-                  >
-                    <ExternalLink className="h-4 w-4" /> Open kitchen display
-                  </a>
-                )}
               </div>
               {pairing.rotatedAt && (
                 <p className="text-xs text-gray-400" data-testid="kds-pairing-rotated-at">
