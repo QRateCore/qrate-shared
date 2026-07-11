@@ -1,12 +1,12 @@
 /**
- * STR-775 — isSubcategoryV2Enabled must read NEXT_PUBLIC_SUBCATEGORY_V2 directly
- * off process.env so Next.js inlines it at build (the prior globalThis form was
- * NOT inlined → undefined → feature silently OFF in every deployed build).
+ * subcatV2 is PERMANENTLY ON (2026-07-11) — it is no longer a flag. The feature
+ * must be impossible to disable accidentally (via env var, missing turbo env
+ * passthrough, or a pipeline rebuild). These tests assert `isSubcategoryV2Enabled()`
+ * returns true unconditionally, regardless of NEXT_PUBLIC_SUBCATEGORY_V2.
  *
- * NOTE: this unit test CANNOT catch the original bug — vitest runs in Node where
- * `process.env` is a real object, so even the broken globalThis form would read
- * it here. The actual verification is a bundle grep of the built chunk (the flag
- * name must NOT survive un-inlined). This test only guards the read contract.
+ * (Historical: STR-775 — the prior env-based form was silently gated OFF in every
+ * deployed build by an un-inlined process access. Hardcoding true removes that
+ * entire class of bug.)
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { isSubcategoryV2Enabled } from '../feature-flags';
@@ -18,20 +18,17 @@ afterEach(() => {
 });
 
 describe('isSubcategoryV2Enabled', () => {
-  it('is true only when the flag is exactly "true"', () => {
+  it('is permanently true — cannot be turned off by any env value', () => {
     process.env.NEXT_PUBLIC_SUBCATEGORY_V2 = 'true';
+    expect(isSubcategoryV2Enabled()).toBe(true);
+    process.env.NEXT_PUBLIC_SUBCATEGORY_V2 = 'false';
+    expect(isSubcategoryV2Enabled()).toBe(true);
+    process.env.NEXT_PUBLIC_SUBCATEGORY_V2 = '0';
     expect(isSubcategoryV2Enabled()).toBe(true);
   });
 
-  it('is false when unset', () => {
+  it('is true when the env var is unset (no flag dependency)', () => {
     delete process.env.NEXT_PUBLIC_SUBCATEGORY_V2;
-    expect(isSubcategoryV2Enabled()).toBe(false);
-  });
-
-  it('is false for any non-"true" value', () => {
-    process.env.NEXT_PUBLIC_SUBCATEGORY_V2 = 'false';
-    expect(isSubcategoryV2Enabled()).toBe(false);
-    process.env.NEXT_PUBLIC_SUBCATEGORY_V2 = '1';
-    expect(isSubcategoryV2Enabled()).toBe(false);
+    expect(isSubcategoryV2Enabled()).toBe(true);
   });
 });

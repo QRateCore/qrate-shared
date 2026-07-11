@@ -13,32 +13,26 @@
 export const SWEETNESS_VISIBLE = false;
 
 /**
- * Owner menu-builder first-class sub-category cutover — PDD 2026-06-19 Phase 3.
+ * Owner menu-builder first-class sub-category structure — PDD 2026-06-19.
  *
- * When ON, the menu builder reads its grouped view from the new first-class
- * sub-category structure API (GET /owner/menus/{menuId}/structure) and writes
- * via the new sub-category endpoints (create/rename/delete + per-item assign).
- * It performs NO legacy `raw_categories` write and NO `menu_item_subcategories`
- * junction dual-write while ON.
+ * PERMANENTLY ON (2026-07-11). The menu builder ALWAYS reads its grouped view
+ * from the first-class sub-category structure API (GET /owner/menus/{menuId}/structure)
+ * and writes via the sub-category endpoints (create/rename/delete + per-item
+ * assign + reorder). This is the single source of truth shared with the patron
+ * webapp — the patron renders subcategory name/course/membership strictly from
+ * this same structure.
  *
- * When OFF (default — prod-safe), the builder behaves exactly as before:
- * raw_categories grouping (menu_item_menus.raw_categories[]) + best-effort
- * dual-write. dev/staging builds set NEXT_PUBLIC_SUBCATEGORY_V2=true; prod
- * omits it so it stays OFF.
+ * There is NO LONGER a `NEXT_PUBLIC_SUBCATEGORY_V2` flag. The feature cannot be
+ * turned off by an env var, a missing turbo env passthrough, or a pipeline
+ * rebuild — an accidental "off" was a real risk (the prod cutover was reverted
+ * once by exactly this class of bug, STR-775). The env var, if still set by a
+ * build, is now ignored.
  *
- * Read via a function (not a top-level const) so each call sees the value at
- * use time — Next.js inlines NEXT_PUBLIC_* at build, and a function keeps unit
- * tests free to stub process.env per-case.
+ * Kept as a function (not a bare `true` const) so the existing call sites keep
+ * compiling unchanged; it now unconditionally returns true. The legacy
+ * raw_categories read/dual-write branches guarded by this are dead and slated
+ * for removal.
  */
-// Module-local, type-only declaration of `process` so this package typechecks
-// without an @types/node dep (its tsconfig has no `node` lib). It is ERASED at
-// emit, leaving a bare `process.env.NEXT_PUBLIC_SUBCATEGORY_V2` member access —
-// which is the EXACT form Next.js inlines to a literal at build time. The prior
-// `globalThis.process?.env?.…` form was NOT inlined (it survived as a runtime
-// lookup, and `globalThis.process` is undefined in the browser → always false),
-// which silently gated this feature OFF in every deployed build (STR-775).
-declare const process: { env: { NEXT_PUBLIC_SUBCATEGORY_V2?: string } };
-
 export function isSubcategoryV2Enabled(): boolean {
-  return process.env.NEXT_PUBLIC_SUBCATEGORY_V2 === 'true';
+  return true;
 }
