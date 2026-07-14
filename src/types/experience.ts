@@ -26,9 +26,10 @@ export interface CreateStaffRequest {
 // ─── Order Status ────────────────────────────────────────────────────────────
 
 // PDD 2026-05-22 Step 6c: `ready` retired from the order state machine.
-// Backend CHECK constraint forbids new `ready` writes; legacy rows were
-// backfilled to `delivered` by Step 6b.
-export type OrderStatus = 'placed' | 'pending' | 'confirmed' | 'preparing' | 'delivered' | 'completed' | 'cancelled' | 'issue';
+// `ready` was REVIVED by STR-897/STR-901 (2026-07) — the KDS writes
+// `preparing → ready` when the kitchen plates a dish. It is a real persisted
+// status again; the 2026-05-22 retirement no longer holds (STR-903).
+export type OrderStatus = 'placed' | 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'cancelled' | 'issue';
 
 // ─── Table Activity Detail Types ─────────────────────────────────────────────
 
