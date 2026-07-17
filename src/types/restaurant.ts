@@ -542,6 +542,19 @@ export interface MenuItemDisplay {
    * 'included' — orderable by diners AND eligible to be offered free-with-order by the recommendation engine.
    */
   item_type?: 'dish' | 'addon' | 'included';
+  /**
+   * STR-928/929 — which of the owner's modifier types this add-on is filed
+   * under ("Sauce", "Portion", ...). `null` = untyped = the Add-ons bucket,
+   * where every pre-existing add-on lives.
+   *
+   * Present on Display as well as Summary because the Food Items table
+   * renders MenuItemDisplay — a field on Summary alone would arrive
+   * `undefined` on every row (summaryToDisplay must carry it) and silently
+   * empty every modifier type's tab.
+   *
+   * A LABEL over the add-on pool, never a new `item_type` — see ModifierType.
+   */
+  modifier_type_id?: string | null;
   enrichment_status?: string;
   food_tags_source?: string;
   enriched_at?: string | null;
