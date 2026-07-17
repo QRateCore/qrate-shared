@@ -1656,42 +1656,81 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   const handleDeleteSubCategory = useCallback(
     async (menuId: string, label: string) => {
+      // Deleting a sub-category REMOVES its member items from THIS menu (the
+      // items stay in the Food Library and on any other menus they're on —
+      // reversible by re-adding). This replaced the earlier behaviour where
+      // members simply fell to "Ungrouped" and stayed on the menu.
+      const removedCountToast = (n: number) =>
+        n > 0
+          ? `Deleted "${label}" — removed ${n} item${n === 1 ? '' : 's'} from this menu`
+          : `Deleted "${label}"`;
+
       // ── Flag ON: delete the first-class sub-category by id ──────────────────
       if (subcatV2 && service.deleteMenuSubcategory) {
         const found = findSubcategoryByName(menuId, label);
         if (!found) { showToast(`Couldn't find "${label}" — try again`); return; }
+        // Member items sitting under this sub-category on this menu (from the
+        // first-class structure). Empty sub-category → no member removals.
+        const subs = (structureByMenu[menuId]?.courses?.[found.course as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+        const memberIds = subs.find((s) => s.subcategory_id === found.subId)?.item_ids ?? [];
+        const memberSet = new Set(memberIds);
+        const prevItems = items;
+        // Optimistic — drop this menu's placement for every member.
+        if (memberIds.length) {
+          setItems((prev) =>
+            prev.map((i) =>
+              memberSet.has(i.id)
+                ? { ...i, menu_associations: (i.menu_associations ?? []).filter((a) => a.menu_id !== menuId) }
+                : i,
+            ),
+          );
+          memberIds.forEach((id) => pendingWriteItemIdsRef.current.add(id));
+        }
         try {
+          // Remove each member from the menu, THEN delete the (now-empty) sub.
+          await Promise.all(memberIds.map((id) => service.removeItemFromMenu(id, menuId)));
           await service.deleteMenuSubcategory(menuId, found.subId);
-          showToast(`Deleted "${label}"`);
-          setStructureRefreshKey((k) => k + 1);
+          showToast(removedCountToast(memberIds.length));
         } catch {
+          setItems(prevItems);
           showToast(`Couldn't delete "${label}" — try again`);
+        } finally {
+          memberIds.forEach((id) => pendingWriteItemIdsRef.current.delete(id));
+          setStructureRefreshKey((k) => k + 1);
         }
         return;
       }
 
       if (!service.deleteMenuRawCategory) return;
+      // ── Flag OFF (legacy raw_categories): members are items whose association
+      // on this menu carries this label. Remove them from the menu, then strip
+      // the label from any residual associations. ────────────────────────────
+      const memberIds = items
+        .filter((i) =>
+          (i.menu_associations ?? []).some(
+            (a) => a.menu_id === menuId && (a.raw_categories ?? []).includes(label),
+          ),
+        )
+        .map((i) => i.id);
+      const memberSet = new Set(memberIds);
       const prevItems = items;
       setItems((prev) =>
-        prev.map((i) => ({
-          ...i,
-          menu_associations: (i.menu_associations ?? []).map((a) => {
-            if (a.menu_id !== menuId) return a;
-            const labels = a.raw_categories ?? [];
-            if (!labels.includes(label)) return a;
-            return { ...a, raw_categories: labels.filter((l) => l !== label) };
-          }),
-        })),
+        prev.map((i) =>
+          memberSet.has(i.id)
+            ? { ...i, menu_associations: (i.menu_associations ?? []).filter((a) => a.menu_id !== menuId) }
+            : i,
+        ),
       );
       try {
+        await Promise.all(memberIds.map((id) => service.removeItemFromMenu(id, menuId)));
         await service.deleteMenuRawCategory(menuId, label);
-        showToast(`Deleted "${label}"`);
+        showToast(removedCountToast(memberIds.length));
       } catch {
         setItems(prevItems);
         showToast(`Couldn't delete "${label}" — try again`);
       }
     },
-    [items, service, showToast, subcatV2, findSubcategoryByName],
+    [items, service, showToast, subcatV2, findSubcategoryByName, structureByMenu],
   );
 
   // STR-775 — order a course's sub-category labels by the owner's sort_order

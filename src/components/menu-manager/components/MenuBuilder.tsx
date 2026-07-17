@@ -1295,9 +1295,9 @@ function MenuItemRow({
         data-testid={`edit-menu-item-${item.id}`}
         aria-label={`Edit ${item.name}`}
         title="Edit item"
-        className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]`}
+        className={`shrink-0 ${isMobile ? 'w-11' : 'w-10'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]`}
       >
-        <Pencil size={isMobile ? 16 : 14} />
+        <Pencil size={isMobile ? 18 : 17} />
       </button>
 
       {(() => {
@@ -1312,9 +1312,9 @@ function MenuItemRow({
             data-testid={`remove-from-menu-${item.id}`}
             aria-label={scoped ? `Remove ${item.name} from sub-category ${subLabel}` : `Remove ${item.name} from menu`}
             title={scoped ? `Remove from “${subLabel}”` : 'Remove from menu'}
-            className={`shrink-0 ${isMobile ? 'w-11' : 'w-8'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--red)]`}
+            className={`shrink-0 ${isMobile ? 'w-11' : 'w-10'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--red)] cursor-pointer flex items-center justify-center hover:opacity-70`}
           >
-            <Trash2 size={isMobile ? 16 : 14} />
+            <Trash2 size={isMobile ? 18 : 17} />
           </button>
         );
       })()}
@@ -2483,8 +2483,16 @@ export default function MenuBuilder({
         </div>
       )}
 
-      {/* Category buckets */}
-      <div className="flex-1 overflow-y-auto py-2">
+      {/* Category buckets. `scrollbar-gutter: stable` reserves the scrollbar
+          track at all times so expanding/collapsing a course or sub-category
+          (which grows/shrinks the list past the viewport) never toggles the
+          scrollbar on/off — that toggle was shifting every right-aligned
+          control (count badges, edit/delete icons) left and right on each
+          click. */}
+      <div
+        data-testid="menu-builder-scroll"
+        className="flex-1 overflow-y-auto py-2 [scrollbar-gutter:stable]"
+      >
         {searchActive && totalItems === 0 && (
           <div
             data-testid="menu-builder-search-empty"
@@ -2579,4 +2587,7 @@ export default function MenuBuilder({
 export {
   deriveBucketRawCategories as _deriveBucketRawCategories,
   computeRowRemoval as _computeRowRemoval,
+  // Exported for unit tests only (the edit/delete row-control affordances —
+  // size + destructive-red trash). Not part of the public API.
+  MenuItemRow as _MenuItemRow,
 };

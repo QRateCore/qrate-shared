@@ -312,9 +312,9 @@ export function SubCategoryGroup({
                 }}
                 aria-label={`Rename ${display}`}
                 data-testid={`subcategory-rename-${category}-${label}`}
-                className="opacity-60 hover:opacity-100"
+                className="opacity-70 hover:opacity-100"
               >
-                <Pencil size={11} />
+                <Pencil size={15} />
               </button>
             )}
             {canManage && onDelete && !confirmingDelete && (
@@ -323,15 +323,17 @@ export function SubCategoryGroup({
                 onClick={() => setConfirmingDelete(true)}
                 aria-label={`Delete ${display}`}
                 data-testid={`subcategory-delete-${category}-${label}`}
-                className="opacity-60 hover:opacity-100"
+                className="text-[var(--red)] opacity-100 hover:opacity-80"
               >
-                <Trash2 size={11} />
+                <Trash2 size={15} />
               </button>
             )}
             {canManage && onDelete && confirmingDelete && (
               <span className="flex items-center gap-1 normal-case" data-testid={`subcategory-delete-confirm-${category}-${label}`}>
                 <span className="text-[10px]" style={{ color: 'var(--text2)' }}>
-                  Delete? {itemCount} item{itemCount === 1 ? '' : 's'} → Ungrouped
+                  {itemCount === 0
+                    ? 'Delete this sub-category?'
+                    : `Delete + remove ${itemCount} item${itemCount === 1 ? '' : 's'} from this menu?`}
                 </span>
                 <button
                   type="button"
