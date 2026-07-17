@@ -653,6 +653,32 @@ export interface MenuItemDisplay {
  *   "Allergens & dietary" needs-review banner pill)
  * - Spice/sweetness int fallbacks (paired with the labels above)
  */
+/**
+ * STR-928 — one of the owner's own modifier kinds ("Sauce", "Portion", ...).
+ *
+ * A restaurant-scoped LABEL over the owner's add-on pool, surfaced as a row
+ * on the Food Items rail beside Add-ons. Selecting a row filters the table
+ * to the add-ons whose `modifier_type_id` matches.
+ *
+ * Deliberately NOT: a new `item_type` (that enum is CHECK-constrained in 4+
+ * load-bearing places and owner-invented names can never be a DB enum), a
+ * selection rule (min/max/required stay on the dish's grouping, where they
+ * already work), or a template.
+ */
+export interface ModifierType {
+  id: string;
+  /** Unique per restaurant, case- and whitespace-insensitively. */
+  name: string;
+  /** Rail order, ascending. Ties broken by name. */
+  position: number;
+  /**
+   * How many add-ons are filed under this type — the rail renders
+   * "Sauce (4)". Counts only this restaurant's `item_type: 'addon'` rows.
+   * Absent on the create response (a new type always has 0).
+   */
+  option_count?: number;
+}
+
 export interface MenuItemSummary {
   id: string;
   name: string;
@@ -666,6 +692,24 @@ export interface MenuItemSummary {
    */
   canonical_category?: string | null;
   item_type: 'dish' | 'addon' | 'included';
+  /**
+   * STR-928 — which of the owner's modifier types this add-on is filed
+   * under ("Sauce", "Portion", ...). Restaurant-scoped; see the
+   * `modifier_types` table.
+   *
+   * `null` = untyped = the Add-ons bucket, which is where every
+   * pre-existing add-on lives. The Food Items rail filters the table on
+   * this field.
+   *
+   * Always present in the summary payload (never omitted), so the client
+   * can tell "untyped" apart from "not loaded". Only add-ons carry a type;
+   * a dish is always null.
+   *
+   * NOT a new `item_type` — a modifier type is a LABEL over the add-on
+   * pool. That is deliberate: options stay `item_type: 'addon'`, so the
+   * Edit modal's Add-ons picker lists them with no change to that modal.
+   */
+  modifier_type_id?: string | null;
   thumbnail_url?: string | null;
   price?: number | null;
   active: boolean;
