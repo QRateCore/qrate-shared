@@ -44,10 +44,18 @@ interface ExperienceManagementProps {
    */
   kdsUrl?: string;
   renderPairingQr?: (value: string) => ReactNode;
+  /**
+   * Whether to show the Kitchen (KDS pairing) tab. Defaults to `true` so waiter/admin
+   * consumers are unaffected. The owner app passes `false` (STR-950) to hide it — the
+   * tab is dropped from the bar and a `?tab=kitchen` deep-link falls back to Tables.
+   */
+  showKitchenTab?: boolean;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr }: ExperienceManagementProps) {
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true }: ExperienceManagementProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(
+    !showKitchenTab && initialTab === 'kitchen' ? 'tables' : initialTab,
+  );
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
   const fetchTabCounts = useCallback(async () => {
@@ -71,7 +79,9 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   const tabs = [
     { id: 'staff' as Tab, label: 'Staff', icon: Users, count: undefined as number | undefined },
     { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
-    { id: 'kitchen' as Tab, label: 'Kitchen', icon: ChefHat, count: undefined as number | undefined },
+    ...(showKitchenTab
+      ? [{ id: 'kitchen' as Tab, label: 'Kitchen', icon: ChefHat, count: undefined as number | undefined }]
+      : []),
   ];
 
   return (
@@ -110,7 +120,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         <div className="p-6">
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
           {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
-          {activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
+          {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         </div>
       </div>
     </div>
