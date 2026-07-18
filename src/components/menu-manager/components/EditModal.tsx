@@ -3044,8 +3044,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {!isAddon && (
           <div
             data-testid="edit-modal-top-zone"
-            style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
+            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 12, alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
           >
+            {/* Column 1 — Description, Raw Category, Appears-in */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
@@ -3239,6 +3241,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               </div>
             )}
 
+            </div>
+            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
                 {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
                 {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
                   <label style={labelStyle}>Heat / Spice</label>
@@ -3430,6 +3435,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 })()}
 
 
+            </div>
           </div>
           )}
 
