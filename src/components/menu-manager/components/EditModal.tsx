@@ -52,6 +52,11 @@ interface EditModalProps {
   isNewItem?: boolean;
   /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
   forceAddon?: boolean;
+  /** When adding an option UNDER a modifier type (STR-956), the type's name
+   *  (e.g. "Sauce"). Makes the name placeholder type-specific, HIDES the Price
+   *  field (a modifier option's price is optional), and rewords the memo hint.
+   *  Undefined/null for plain add-ons and dishes — their behaviour is unchanged. */
+  modifierTypeName?: string | null;
   /** When true, locks the new item to dish mode and hides the Dish/Add-on toggle.
    *  Used when the owner has already declared dish intent through a chooser
    *  (e.g. food-items page → Add new item → Dish), so a redundant inline
@@ -270,13 +275,15 @@ interface EditModalProps {
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
 
-const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string }[] = [
-  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…' },
-  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…' },
-  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…' },
-  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…' },
-  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…' },
-  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…' },
+// STR-963 P1 — icon + full-width flags drive the Food Tags card grid.
+// The emoji is decorative (rendered aria-hidden inside TagInput's label).
+const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string; icon: string; full?: boolean }[] = [
+  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…', icon: '🥘', full: true },
+  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…', icon: '🔥' },
+  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…', icon: '🎯' },
+  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…', icon: '👅', full: true },
+  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…', icon: '📅' },
+  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…', icon: '🎉' },
 ];
 
 // ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
@@ -350,12 +357,14 @@ function TagInput({
   placeholder,
   onChange,
   fieldKey,
+  icon,
 }: {
   label: string;
   values: string[];
   placeholder: string;
   onChange: (newValues: string[]) => void;
   fieldKey: string;
+  icon?: string;
 }) {
   const [input, setInput] = useState('');
 
@@ -369,7 +378,7 @@ function TagInput({
   return (
     <div>
       <label className="section-header" style={{ display: 'block', marginBottom: 4 }}>
-        {label}
+        {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
       </label>
       <div
         style={{
@@ -704,7 +713,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1034,25 +1043,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   ]);
 
   // Add-on type
-  const [isAddon, setIsAddon]       = useState(forceAddon || item.item_type === 'addon');
+  // Item type is fixed by the calling context — the Food Items tab that opened
+  // the modal (forceAddon / forceDish) or the stored item_type when editing.
+  // The in-modal Dishes/Add-ons toggle was removed (2026-07-18), so isAddon is
+  // derived once and never changes while the modal is open.
+  const isAddon = forceAddon || item.item_type === 'addon';
   // True when the addon has no DB row yet — dish associations must be deferred until save.
   const isDeferredCreation = isNewItem && !!onSaveNewItem;
-  // Confirmation state for dish→addon toggle when item has menu associations
-  const [addonConfirmPending, setAddonConfirmPending] = useState(false);
-
-  // Add-on toggle is disabled when the item already carries sides or recommendations
-  // (those belong to dishes only). Computed once so the header toggle and the
-  // body checkbox share identical disabled state and messaging.
-  const hasSides      = (item.sides?.length ?? 0) > 0;
-  const hasRecs       = (item.recommendations?.length ?? 0) > 0;
-  const addonDisabled = hasSides || hasRecs;
-  const disabledReason = hasSides && hasRecs
-    ? 'Items with sides and recommendations cannot be Add-ons'
-    : hasSides
-      ? 'Items with sides cannot be Add-ons'
-      : hasRecs
-        ? 'Items with recommendations cannot be Add-ons'
-        : null;
 
   // Save state
   const [saving, setSaving]         = useState(false);
@@ -1153,18 +1150,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     }
   }, []);
 
-  // When the Dishes/Add-ons toggle flips, the available tab set changes.
-  //   Dishes  → [food_tags, addons, performance, ...]
-  //   Add-ons → [food_tags, performance, dishes]   (food_tags shows
-  //               only allergens + dietary for add-ons — see the Food
-  //               Tags section render path)
-  // Land on a valid tab for the new mode. Existing add-ons default to
-  // 'performance' (analytics-first); new add-ons default to 'dishes'
-  // (link-to-parent picker first). Users can click into Food Tags for
-  // allergen / dietary capture. Dep list is [isAddon] only — including
-  // activeTab would loop.
+  // Land on a valid tab for the current mode. Available tab sets:
+  //   Dish            → [food_tags, placements, groupings, performance]
+  //   Existing add-on → [food_tags, performance, dishes]
+  //   NEW add-on/mod  → [food_tags] only (Dishes tab removed during creation,
+  //                      2026-07-18 — associations happen later via a dish's
+  //                      Groupings → Add member picker)
+  // Existing add-ons default to 'performance' (analytics-first); everything
+  // else (new add-on, dishes) defaults to 'food_tags'. Dep list is
+  // [isAddon, isNewItem] only — including activeTab would loop.
   useEffect(() => {
-    setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
+    setActiveTab(isAddon && !isNewItem ? 'performance' : 'food_tags');
   }, [isAddon, isNewItem]);
 
   // Placements tab state — local mirror of menu_associations so per-row
@@ -1717,10 +1713,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     let hasError = false;
     if (!name.trim()) { setNameError(true); hasError = true; }
     if (!isAddon && !description.trim()) { setDescError(true); hasError = true; }
-    // Add-on price validation: required when creating a new add-on; optional when editing.
-    // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
+    // Add-on price validation. Required only when creating a plain new add-on;
+    // a modifier-type option (STR-956) has an OPTIONAL price, and editing is
+    // optional too. Whatever price IS entered still gets the sanity checks
+    // (non-negative; ≤ 10,000 — surcharges above that are a data-entry error).
     if (isAddon) {
-      if (isNewItem && price === null) {
+      const priceRequired = isNewItem && !modifierTypeName;
+      if (priceRequired && price === null) {
         setPriceError('Price is required');
         hasError = true;
       } else if (price !== null) {
@@ -2233,9 +2232,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               id="edit-name"
               type="text"
               value={name}
-              placeholder={isAddon
-                ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
-                : (isNewItem ? (item.name || 'Item name') : 'Item name')}
+              placeholder={modifierTypeName
+                ? (item.name || `${modifierTypeName} name`)
+                : isAddon
+                  ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
+                  : (isNewItem ? (item.name || 'Item name') : 'Item name')}
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
               aria-label="Item name"
               aria-required="true"
@@ -2304,88 +2305,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               <Pencil size={14} strokeWidth={2.25} />
             </button>
           </div>
-
-          {/* Dishes / Add-ons pill toggle — visible in BOTH new-item and
-              edit flows so owners can convert an existing item's type inline.
-              (2026-07-02: relaxed the isNewItem gate per owner request.)
-              Still hidden when forceAddon or forceDish pins the type at the
-              call site (e.g. AddonsCheckbox setup-guide surface). The Add-ons
-              button remains disabled (addonDisabled) when the item carries
-              sides or recommendations, and dish→addon with active menu
-              placements still routes through the addonConfirmPending banner. */}
-          {!forceAddon && !forceDish && (
-            <div
-              role="radiogroup"
-              aria-label="Item type"
-              data-testid="type-toggle"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'stretch',
-                border: '1px solid var(--border)',
-                borderRadius: 999,
-                padding: 2,
-                background: '#fafafa',
-                flexShrink: 0,
-              }}
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!isAddon}
-                onClick={() => setIsAddon(false)}
-                data-testid="type-toggle-dishes"
-                style={{
-                  padding: '4px 14px',
-                  minHeight: isMobile ? 44 : undefined,
-                  fontSize: 12,
-                  fontWeight: !isAddon ? 700 : 500,
-                  color: !isAddon ? 'white' : 'var(--text2)',
-                  background: !isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 999,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                Dishes
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={isAddon}
-                aria-disabled={addonDisabled}
-                onClick={() => {
-                  if (addonDisabled) return;
-                  const menuAssocs = item.menu_associations?.filter(
-                    (a) => 'menu_id' in a && a.menu_id,
-                  ) ?? [];
-                  if (menuAssocs.length > 0 && item.item_type !== 'addon') {
-                    setAddonConfirmPending(true);
-                  } else {
-                    setIsAddon(true);
-                  }
-                }}
-                disabled={addonDisabled}
-                title={addonDisabled ? (disabledReason ?? undefined) : undefined}
-                data-testid="type-toggle-addons"
-                style={{
-                  padding: '4px 14px',
-                  minHeight: isMobile ? 44 : undefined,
-                  fontSize: 12,
-                  fontWeight: isAddon ? 700 : 500,
-                  color: isAddon ? 'white' : 'var(--text2)',
-                  background: isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 999,
-                  cursor: addonDisabled ? 'not-allowed' : 'pointer',
-                  opacity: addonDisabled ? 0.5 : 1,
-                  transition: 'all 0.15s',
-                }}
-              >
-                Add-ons
-              </button>
-            </div>
-          )}
 
           {/* Active / visibility toggle */}
           <button
@@ -2648,54 +2567,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             >
               <AlertCircle size={12} />
               {deleteError}
-            </div>
-          )}
-
-          {/* Addon toggle confirmation — shown when a dish with menu placements is being converted to an add-on */}
-          {addonConfirmPending && (
-            <div
-              data-testid="addon-confirm-banner"
-              style={{
-                fontSize: 12,
-                color: '#92400e',
-                background: '#fef3c7',
-                border: '1px solid #fcd34d',
-                borderRadius: 6,
-                padding: '10px 14px',
-                marginBottom: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-                <span>
-                  Changing this item to an add-on will <strong>remove it from{' '}
-                  {(item.menu_associations?.length ?? 0) === 1
-                    ? item.menu_associations![0].menu_name
-                    : `${item.menu_associations?.length} menus`}
-                  </strong> as a menu item. Its add-on associations with other dishes will be kept.
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => setAddonConfirmPending(false)}
-                  data-testid="addon-confirm-cancel"
-                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'white', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setAddonConfirmPending(false); setIsAddon(true); }}
-                  data-testid="addon-confirm-proceed"
-                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 700, color: 'white', background: '#d97706', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Convert to Add-on
-                </button>
-              </div>
             </div>
           )}
 
@@ -3181,11 +3052,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               </div>
             )}
 
-            {/* Price */}
+            {/* Price — shown for every add-on, including modifier-type options.
+                For a modifier option the price is OPTIONAL (no required
+                asterisk, no validation, and it can be cleared); a plain new
+                add-on keeps price required. */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ flex: '0 0 160px' }}>
                 <label style={labelStyle} htmlFor="edit-price-input">
-                  Price{isNewItem && isAddon && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
+                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
                 </label>
                 <div
                   style={{
@@ -3217,7 +3091,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     data-testid="edit-price-input"
                     style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
                   />
-                  {price !== null && !(isNewItem && isAddon) && (
+                  {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
                     <button
                       type="button"
                       aria-label="Clear price"
@@ -3251,7 +3125,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 value={memo}
                 maxLength={500}
                 onChange={(e) => setMemo(e.target.value)}
-                placeholder="Optional note — shown to staff when picking this add-on"
+                placeholder={modifierTypeName
+                  ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
+                  : 'Optional note — shown to staff when picking this add-on'}
                 rows={2}
                 style={{
                   width: '100%',
@@ -3325,7 +3201,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               // diner-side recommender + filter UI honours per-addon
               // restrictions.
               ? (isNewItem
-                ? (['food_tags', 'dishes'] as const)
+                // New add-on / modifier option: Food Tags only. The Dishes tab
+                // (dish-association picker) is removed during creation — the
+                // owner links the add-on to dishes afterwards via a dish's
+                // Groupings → Add member picker (owner request 2026-07-18).
+                ? (['food_tags'] as const)
                 : (['food_tags', 'performance', 'dishes'] as const))
               // PDD 2026-05-10 collapse-addons-recs Phase E Step 13 —
               // Add-ons + Recommendations tabs removed from dish editing.
@@ -4215,16 +4095,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     the dietary/allergen filter relies on those values being
                     visible + editable. Admin staff also need to review the
                     AI-suggested tags on addons. Per Avi 2026-05-19. */}
-                {TAG_FIELDS.map(({ key, label, placeholder }) => (
-                  <TagInput
-                    key={key}
-                    fieldKey={key}
-                    label={label}
-                    values={tags[key] ?? []}
-                    placeholder={placeholder}
-                    onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
-                  />
-                ))}
+                {/* STR-963 P1 — Food Tags card grid. Emoji-titled cards,
+                    2-col desktop / 1-col mobile; Ingredients + Taste span full
+                    width. Scoped strictly to TAG_FIELDS (the beverage profile,
+                    enrichment banner, and dessert sweetness siblings above are
+                    untouched). tag-input-* / remove-tag-* testids unchanged. */}
+                <div
+                  data-testid="food-tags-card-grid"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                    gap: 12,
+                  }}
+                >
+                  {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
+                    <div
+                      key={key}
+                      style={{
+                        gridColumn: full && !isMobile ? '1 / -1' : 'auto',
+                        background: 'white',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        padding: 12,
+                      }}
+                    >
+                      <TagInput
+                        fieldKey={key}
+                        label={label}
+                        icon={icon}
+                        values={tags[key] ?? []}
+                        placeholder={placeholder}
+                        onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           )}
