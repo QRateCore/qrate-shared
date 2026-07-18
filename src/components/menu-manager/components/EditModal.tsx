@@ -377,76 +377,76 @@ function TagInput({
 
   return (
     <div>
-      <label className="section-header" style={{ display: 'block', marginBottom: 4 }}>
+      <label className="section-header" style={{ display: 'block', marginBottom: 12 }}>
         {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
       </label>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
-          minHeight: 36,
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r-xs)',
-          padding: '4px 8px',
-          background: 'white',
-          alignItems: 'center',
-        }}
-      >
-        {values.map((v) => (
-          <span
-            key={v}
-            className="text-xs font-medium"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              background: '#f0f0f0',
-              color: 'var(--text)',
-              borderRadius: 4,
-              padding: '2px 6px',
-            }}
-          >
-            {v}
-            <button
-              type="button"
-              onClick={() => onChange(values.filter((t) => t !== v))}
-              data-testid={`remove-tag-${fieldKey}-${v}`}
-              className="text-xs"
+      {/* Chips float directly on the card (no nested white box). Warm
+          "tag-style" pills per the Seekh mockup: cream bg, brown text,
+          pill-shaped, no border — replaces the old grey box-in-box. */}
+      {values.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {values.map((v) => (
+            <span
+              key={v}
+              className="font-medium"
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                lineHeight: 1,
-                color: 'var(--text2)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#ffecd9',
+                color: '#8b4513',
+                borderRadius: 14,
+                padding: '5px 10px',
+                fontSize: 12,
+                lineHeight: 1.2,
               }}
             >
-              ×
-            </button>
-          </span>
-        ))}
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
-          }}
-          onBlur={addTag}
-          placeholder={values.length === 0 ? placeholder : ''}
-          data-testid={`tag-input-${fieldKey}`}
-          style={{
-            border: 'none',
-            outline: 'none',
-            fontSize: 16,
-            flex: 1,
-            minWidth: 80,
-            background: 'transparent',
-            color: 'var(--text)',
-          }}
-        />
-      </div>
+              {v}
+              <button
+                type="button"
+                onClick={() => onChange(values.filter((t) => t !== v))}
+                data-testid={`remove-tag-${fieldKey}-${v}`}
+                aria-label={`Remove ${v}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  lineHeight: 1,
+                  fontWeight: 700,
+                  opacity: 0.55,
+                  color: '#8b4513',
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Separate clean input field below the chips (mockup .tag-input) */}
+      <input
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
+        }}
+        onBlur={addTag}
+        placeholder={placeholder}
+        data-testid={`tag-input-${fieldKey}`}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+          padding: '8px 12px',
+          fontSize: 16,
+          outline: 'none',
+          background: 'white',
+          color: 'var(--text)',
+        }}
+      />
     </div>
   );
 }
@@ -3044,7 +3044,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {!isAddon && (
           <div
             data-testid="edit-modal-top-zone"
-            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 12, alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
+            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : '12px 24px', alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
           >
             {/* Column 1 — Description, Raw Category, Appears-in */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -4195,7 +4195,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   style={{
                     display: 'grid',
                     gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: 12,
+                    gap: isMobile ? 14 : '16px 20px',
                   }}
                 >
                   {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
@@ -4206,7 +4206,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         background: 'white',
                         border: '1px solid var(--border)',
                         borderRadius: 8,
-                        padding: 12,
+                        padding: 18,
                       }}
                     >
                       <TagInput
