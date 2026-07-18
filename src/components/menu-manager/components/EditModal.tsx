@@ -2894,6 +2894,158 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               </div>
             )}
 
+            {/* Description / Raw Category / Appears-in moved to the top card zone (STR-963 P3). */}
+          </section>
+          )}
+
+          {/* Add-on form — simplified single-column layout (STR-303).
+              Renders instead of the dish two-column section when the header toggle
+              is on Add-ons. No image upload (add-ons never have images), no food tags
+              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
+          {isAddon && (
+          <section
+            data-testid="addon-basic-info"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              marginBottom: 20,
+            }}
+          >
+            <SectionLabel>Basic Info</SectionLabel>
+
+            {/* Name lives in the modal header — see inline-editable
+                title at the top. Surface its error state here so the
+                user sees it adjacent to the rest of Basic Info. */}
+            {nameError && (
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                Name is required
+              </div>
+            )}
+
+            {/* Price — shown for every add-on, including modifier-type options.
+                For a modifier option the price is OPTIONAL (no required
+                asterisk, no validation, and it can be cleared); a plain new
+                add-on keeps price required. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ flex: '0 0 160px' }}>
+                <label style={labelStyle} htmlFor="edit-price-input">
+                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
+                </label>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                    borderRadius: 'var(--r-xs)',
+                    padding: '0 8px',
+                    background: 'var(--white)',
+                    height: 36,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
+                  <input
+                    id="edit-price-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    value={price === null ? '' : price}
+                    onChange={(e) => {
+                      setPriceError(null);
+                      const raw = e.target.value;
+                      if (raw === '') { setPrice(null); return; }
+                      const n = parseFloat(raw);
+                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
+                    }}
+                    data-testid="edit-price-input"
+                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
+                  />
+                  {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
+                    <button
+                      type="button"
+                      aria-label="Clear price"
+                      onClick={() => { setPrice(null); setPriceError(null); }}
+                      data-testid="edit-price-clear"
+                      className="text-xs"
+                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
+                    >
+                      × clear
+                    </button>
+                  )}
+                </div>
+                {priceError && (
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Memo — owner/staff-facing free-text note (≤500 chars).
+                Same field that surfaces as subtext in the Add Member
+                picker and gets edited via blur-to-save on the Setup
+                Guide → Add-ons page. Here it saves with the rest of
+                the form on Save. */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-memo-input">
+                Memo
+              </label>
+              <textarea
+                id="edit-memo-input"
+                data-testid="edit-memo-input"
+                value={memo}
+                maxLength={500}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder={modifierTypeName
+                  ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
+                  : 'Optional note — shown to staff when picking this add-on'}
+                rows={2}
+                style={{
+                  width: '100%',
+                  fontSize: 14,
+                  padding: '8px 10px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-xs)',
+                  background: 'var(--white)',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  minHeight: 36,
+                }}
+              />
+            </div>
+
+          </section>
+          )}
+
+          {/* Tabs section wrapper — groups bar + content as a single
+              flex-column block. In dish + desktop mode the parent
+              layout container lays this out as the right column of a
+              grid; in addon mode (or mobile) it sits as a flex item
+              filling the remaining vertical space below basic-info. */}
+          <div
+            data-testid="edit-modal-tabs-section"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              // Mobile: natural height so it flows inside the single page-scroll
+              // (the parent column scrolls). Desktop keeps flex:1 to fill its
+              // grid/flex column with the tab content scrolling internally.
+              flex: isMobile ? 'none' : 1,
+            }}
+          >
+          {/* STR-963 P3 — Top card zone: always-visible essentials above
+              the tabs (Description, Raw Category, Appears-in, Heat/Spice,
+              Spice Modifier, BYO), relocated from the left rail + Food Tags
+              tab per the redesign. Dish-only — add-ons keep their own
+              single-column basic-info; each moved block keeps its original
+              conditional guard + data-testid (rendered here exactly once). */}
+          {!isAddon && (
+          <div
+            data-testid="edit-modal-top-zone"
+            style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
+          >
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
@@ -3086,146 +3238,201 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               </div>
             )}
-          </section>
-          )}
 
-          {/* Add-on form — simplified single-column layout (STR-303).
-              Renders instead of the dish two-column section when the header toggle
-              is on Add-ons. No image upload (add-ons never have images), no food tags
-              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
-          {isAddon && (
-          <section
-            data-testid="addon-basic-info"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              marginBottom: 20,
-            }}
-          >
-            <SectionLabel>Basic Info</SectionLabel>
+                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
+                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
+                  <label style={labelStyle}>Heat / Spice</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {activeHeatLabels.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        data-testid={`heat-pill-${option.toLowerCase()}`}
+                        aria-pressed={heatSpice === option}
+                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
+                        style={{
+                          padding: '4px 14px',
+                          borderRadius: 20,
+                          border: '1px solid',
+                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
+                          background: heatSpice === option ? '#fff7ed' : 'transparent',
+                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: heatSpice === option ? 600 : 400,
+                          transition: 'all 0.1s',
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
+                </div>}
 
-            {/* Name lives in the modal header — see inline-editable
-                title at the top. Surface its error state here so the
-                user sees it adjacent to the rest of Basic Info. */}
-            {nameError && (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
-                Name is required
-              </div>
-            )}
-
-            {/* Price — shown for every add-on, including modifier-type options.
-                For a modifier option the price is OPTIONAL (no required
-                asterisk, no validation, and it can be cleared); a plain new
-                add-on keeps price required. */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: '0 0 160px' }}>
-                <label style={labelStyle} htmlFor="edit-price-input">
-                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
-                </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '0 8px',
-                    background: 'var(--white)',
-                    height: 36,
-                  }}
-                >
-                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
-                  <input
-                    id="edit-price-input"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="0.01"
-                    value={price === null ? '' : price}
-                    onChange={(e) => {
-                      setPriceError(null);
-                      const raw = e.target.value;
-                      if (raw === '') { setPrice(null); return; }
-                      const n = parseFloat(raw);
-                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
+                {/* Spice Modifier — STR-680 single unified toggle. When ON,
+                    the patron MUST pick a spice level before adding this item
+                    (the former separate "Require spice selection" toggle was
+                    folded in here). Default ON; flip OFF to suppress the picker
+                    for this item. Hidden for add-ons (never reach composition
+                    page) and Desserts (patron auto-hides them regardless). */}
+                {!isAddon && category !== 'Desserts' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: '1px solid',
+                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
+                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
+                      transition: 'all 0.15s',
                     }}
-                    data-testid="edit-price-input"
-                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
-                  />
-                  {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
+                      <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                        Diners must pick a spice level before they can add this item to their order.
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      aria-label="Clear price"
-                      onClick={() => { setPrice(null); setPriceError(null); }}
-                      data-testid="edit-price-clear"
-                      className="text-xs"
-                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
+                      role="switch"
+                      aria-checked={spiceModifierEnabled}
+                      aria-label="Toggle Spice Modifier"
+                      data-testid="spice-modifier-toggle"
+                      onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
+                      style={{
+                        position: 'relative',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        height: 24,
+                        width: 42,
+                        flexShrink: 0,
+                        borderRadius: 999,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
+                        transition: 'background-color 0.15s',
+                        padding: 0,
+                      }}
                     >
-                      × clear
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          height: 18,
+                          width: 18,
+                          borderRadius: '50%',
+                          background: '#fff',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                          transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
+                          transition: 'transform 0.15s',
+                        }}
+                      />
                     </button>
-                  )}
-                </div>
-                {priceError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                  </div>
                 )}
-              </div>
-            </div>
 
-            {/* Memo — owner/staff-facing free-text note (≤500 chars).
-                Same field that surfaces as subtext in the Add Member
-                picker and gets edited via blur-to-save on the Setup
-                Guide → Add-ons page. Here it saves with the rest of
-                the form on Save. */}
-            <div>
-              <label style={labelStyle} htmlFor="edit-memo-input">
-                Memo
-              </label>
-              <textarea
-                id="edit-memo-input"
-                data-testid="edit-memo-input"
-                value={memo}
-                maxLength={500}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder={modifierTypeName
-                  ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
-                  : 'Optional note — shown to staff when picking this add-on'}
-                rows={2}
-                style={{
-                  width: '100%',
-                  fontSize: 14,
-                  padding: '8px 10px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-xs)',
-                  background: 'var(--white)',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  minHeight: 36,
-                }}
-              />
-            </div>
+                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
+                    Disabled when the dish has zero groupings: the API
+                    hard-blocks is_byo=true on items without customization
+                    options, so we mirror that state in the UI. Mobile-
+                    friendly: an inline hint below the toggle (NOT just a
+                    tooltip) per Plan v2 UX-Reviewer tactical condition.
+                    Hidden for add-ons (an add-on cannot be BYO itself). */}
+                {!isAddon && (() => {
+                  const hasGroupings = (groupingsCount ?? 0) > 0;
+                  const toggleDisabled = !hasGroupings;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
+                        background: isByo ? '#e6f7f5' : 'transparent',
+                        opacity: toggleDisabled ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-teal, #00a996)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <line x1="4" y1="6" x2="20" y2="6" />
+                          <line x1="4" y1="12" x2="20" y2="12" />
+                          <line x1="4" y1="18" x2="20" y2="18" />
+                          <circle cx="9" cy="6" r="2" fill="#fff" />
+                          <circle cx="15" cy="12" r="2" fill="#fff" />
+                          <circle cx="11" cy="18" r="2" fill="#fff" />
+                        </svg>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own (BYO)</div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                            When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isByo}
+                          aria-label="Toggle Build Your Own"
+                          aria-disabled={toggleDisabled}
+                          data-testid="byo-toggle"
+                          disabled={toggleDisabled}
+                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
+                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
+                          style={{
+                            position: 'relative',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            height: 24,
+                            width: 42,
+                            flexShrink: 0,
+                            borderRadius: 999,
+                            border: 'none',
+                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
+                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
+                            transition: 'background-color 0.15s',
+                            padding: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              height: 18,
+                              width: 18,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
+                              transition: 'transform 0.15s',
+                            }}
+                          />
+                        </button>
+                      </div>
+                      {toggleDisabled && (
+                        <div
+                          data-testid="byo-disabled-hint"
+                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
+                        >
+                          Add a customization group so diners can build this dish.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-          </section>
+
+          </div>
           )}
 
-          {/* Tabs section wrapper — groups bar + content as a single
-              flex-column block. In dish + desktop mode the parent
-              layout container lays this out as the right column of a
-              grid; in addon mode (or mobile) it sits as a flex item
-              filling the remaining vertical space below basic-info. */}
-          <div
-            data-testid="edit-modal-tabs-section"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-              // Mobile: natural height so it flows inside the single page-scroll
-              // (the parent column scrolls). Desktop keeps flex:1 to fill its
-              // grid/flex column with the tab content scrolling internally.
-              flex: isMobile ? 'none' : 1,
-            }}
-          >
           {/* When the owner clicked "Choose from Gallery", the tab bar +
               content are replaced by the consumer-provided picker. The
               slot owns its own header (back chevron, title) — calling
@@ -3303,6 +3510,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={isActive}
                   data-testid={`tab-${tab}`}
                   style={{
                     padding: isMobile ? '13px 16px' : '12px 14px',
@@ -3876,195 +4084,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   );
                 })()}
 
-                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
-                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
-                  <label style={labelStyle}>Heat / Spice</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {activeHeatLabels.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        data-testid={`heat-pill-${option.toLowerCase()}`}
-                        aria-pressed={heatSpice === option}
-                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
-                        style={{
-                          padding: '4px 14px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
-                          background: heatSpice === option ? '#fff7ed' : 'transparent',
-                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: heatSpice === option ? 600 : 400,
-                          transition: 'all 0.1s',
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
-                </div>}
-
-                {/* Spice Modifier — STR-680 single unified toggle. When ON,
-                    the patron MUST pick a spice level before adding this item
-                    (the former separate "Require spice selection" toggle was
-                    folded in here). Default ON; flip OFF to suppress the picker
-                    for this item. Hidden for add-ons (never reach composition
-                    page) and Desserts (patron auto-hides them regardless). */}
-                {!isAddon && category !== 'Desserts' && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: '1px solid',
-                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
-                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
-                      <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
-                    </svg>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                        Diners must pick a spice level before they can add this item to their order.
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={spiceModifierEnabled}
-                      aria-label="Toggle Spice Modifier"
-                      data-testid="spice-modifier-toggle"
-                      onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
-                      style={{
-                        position: 'relative',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        height: 24,
-                        width: 42,
-                        flexShrink: 0,
-                        borderRadius: 999,
-                        border: 'none',
-                        cursor: 'pointer',
-                        background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
-                        transition: 'background-color 0.15s',
-                        padding: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          height: 18,
-                          width: 18,
-                          borderRadius: '50%',
-                          background: '#fff',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                          transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
-                          transition: 'transform 0.15s',
-                        }}
-                      />
-                    </button>
-                  </div>
-                )}
-
-                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
-                    Disabled when the dish has zero groupings: the API
-                    hard-blocks is_byo=true on items without customization
-                    options, so we mirror that state in the UI. Mobile-
-                    friendly: an inline hint below the toggle (NOT just a
-                    tooltip) per Plan v2 UX-Reviewer tactical condition.
-                    Hidden for add-ons (an add-on cannot be BYO itself). */}
-                {!isAddon && (() => {
-                  const hasGroupings = (groupingsCount ?? 0) > 0;
-                  const toggleDisabled = !hasGroupings;
-                  return (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: '1px solid',
-                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
-                        background: isByo ? '#e6f7f5' : 'transparent',
-                        opacity: toggleDisabled ? 0.6 : 1,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-teal, #00a996)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="4" y1="6" x2="20" y2="6" />
-                          <line x1="4" y1="12" x2="20" y2="12" />
-                          <line x1="4" y1="18" x2="20" y2="18" />
-                          <circle cx="9" cy="6" r="2" fill="#fff" />
-                          <circle cx="15" cy="12" r="2" fill="#fff" />
-                          <circle cx="11" cy="18" r="2" fill="#fff" />
-                        </svg>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own (BYO)</div>
-                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                            When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen.
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={isByo}
-                          aria-label="Toggle Build Your Own"
-                          aria-disabled={toggleDisabled}
-                          data-testid="byo-toggle"
-                          disabled={toggleDisabled}
-                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
-                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
-                          style={{
-                            position: 'relative',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            height: 24,
-                            width: 42,
-                            flexShrink: 0,
-                            borderRadius: 999,
-                            border: 'none',
-                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
-                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
-                            transition: 'background-color 0.15s',
-                            padding: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              height: 18,
-                              width: 18,
-                              borderRadius: '50%',
-                              background: '#fff',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
-                              transition: 'transform 0.15s',
-                            }}
-                          />
-                        </button>
-                      </div>
-                      {toggleDisabled && (
-                        <div
-                          data-testid="byo-disabled-hint"
-                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
-                        >
-                          Add a customization group so diners can build this dish.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* Heat/Spice, Spice Modifier, BYO moved to the top card zone (STR-963 P3). */}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
                     Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
