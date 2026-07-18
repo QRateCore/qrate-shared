@@ -2832,6 +2832,68 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               </div>
             ) : null}
 
+            {/* STR-963 P2 — Dietary Info card (left rail). Dietary + Allergens
+                relocated out of the Food Tags tab into the rail for dishes
+                (redesign). Same DietaryMultiSelect instances / state / testids;
+                add-ons keep these in the Food Tags tab (they have no rail), so
+                exactly one copy renders per mode — no duplicate testids. */}
+            {dietaryTagService && restaurantId && (
+              <div
+                data-testid="dietary-info-card"
+                style={{
+                  background: 'white',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div className="section-header" style={{ display: 'block' }}>
+                  <span aria-hidden="true" style={{ marginRight: 6 }}>🍽️</span>Dietary Info
+                </div>
+                <DietaryMultiSelect
+                  label="Dietary Restrictions"
+                  options={dietaryOptions}
+                  labels={dietaryLabelsMerged}
+                  type="dietary"
+                  selectedSet={dietarySet}
+                  onToggle={(name) => isNewItem
+                    ? setDietarySet((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name); else next.add(name);
+                        return next;
+                      })
+                    : void handleDietaryToggle(name, 'dietary')}
+                  reviewed={isNewItem ? true : dietaryReviewed}
+                  onToggleNa={() => isNewItem
+                    ? setDietarySet(new Set())
+                    : void handleClickNa('dietary')}
+                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
+                />
+                <DietaryMultiSelect
+                  label="Allergens"
+                  options={allergenOptions}
+                  labels={allergenLabelsMerged}
+                  type="allergen"
+                  selectedSet={allergenSet}
+                  onToggle={(name) => isNewItem
+                    ? setAllergenSet((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name); else next.add(name);
+                        return next;
+                      })
+                    : void handleDietaryToggle(name, 'allergen')}
+                  reviewed={isNewItem ? true : allergensReviewed}
+                  onToggleNa={() => isNewItem
+                    ? setAllergenSet(new Set())
+                    : void handleClickNa('allergens')}
+                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
+                />
+              </div>
+            )}
+
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
@@ -4042,7 +4104,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     second. New items: same Set drives the deferred-creation
                     flow, the save handler flushes via setItemTags after the
                     DB row is created. */}
-                {dietaryTagService && restaurantId && (
+                {/* STR-963 P2: dishes show Dietary/Allergens in the left-rail
+                    Dietary Info card; only add-ons (no rail) keep them here. */}
+                {isAddon && dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
                     options={dietaryOptions}
@@ -4064,8 +4128,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   />
                 )}
 
-                {/* Allergens — same pattern. */}
-                {dietaryTagService && restaurantId && (
+                {/* Allergens — same pattern (add-on-only per STR-963 P2). */}
+                {isAddon && dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Allergens"
                     options={allergenOptions}
