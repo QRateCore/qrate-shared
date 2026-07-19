@@ -52,6 +52,11 @@ interface EditModalProps {
   isNewItem?: boolean;
   /** When true, forces addon mode and hides the Dish/Add-on toggle (used when creating addons from the Setup Guide). */
   forceAddon?: boolean;
+  /** When adding an option UNDER a modifier type (STR-956), the type's name
+   *  (e.g. "Sauce"). Makes the name placeholder type-specific, HIDES the Price
+   *  field (a modifier option's price is optional), and rewords the memo hint.
+   *  Undefined/null for plain add-ons and dishes — their behaviour is unchanged. */
+  modifierTypeName?: string | null;
   /** When true, locks the new item to dish mode and hides the Dish/Add-on toggle.
    *  Used when the owner has already declared dish intent through a chooser
    *  (e.g. food-items page → Add new item → Dish), so a redundant inline
@@ -270,13 +275,15 @@ interface EditModalProps {
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
 
-const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string }[] = [
-  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…' },
-  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…' },
-  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…' },
-  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…' },
-  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…' },
-  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…' },
+// STR-963 P1 — icon + full-width flags drive the Food Tags card grid.
+// The emoji is decorative (rendered aria-hidden inside TagInput's label).
+const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string; icon: string; full?: boolean }[] = [
+  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…', icon: '🥘', full: true },
+  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…', icon: '🔥' },
+  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…', icon: '🎯' },
+  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…', icon: '👅', full: true },
+  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…', icon: '📅' },
+  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…', icon: '🎉' },
 ];
 
 // ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
@@ -350,12 +357,14 @@ function TagInput({
   placeholder,
   onChange,
   fieldKey,
+  icon,
 }: {
   label: string;
   values: string[];
   placeholder: string;
   onChange: (newValues: string[]) => void;
   fieldKey: string;
+  icon?: string;
 }) {
   const [input, setInput] = useState('');
 
@@ -368,34 +377,29 @@ function TagInput({
 
   return (
     <div>
-      <label className="section-header" style={{ display: 'block', marginBottom: 4 }}>
-        {label}
+      <label className="section-header" style={{ display: 'block', marginBottom: 8 }}>
+        {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
       </label>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
-          minHeight: 36,
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r-xs)',
-          padding: '4px 8px',
-          background: 'white',
-          alignItems: 'center',
-        }}
-      >
+      {/* Chips + inline input flow together directly on the card — no nested
+          white box, no dedicated input row (compact per owner feedback: the
+          separate input row wasted a whole line per card). Warm "tag-style"
+          cream pills per the Seekh mockup; the input is the cursor position
+          after the last chip, so a card with a few tags is a single line. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         {values.map((v) => (
           <span
             key={v}
-            className="text-xs font-medium"
+            className="font-medium"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 3,
-              background: '#f0f0f0',
-              color: 'var(--text)',
-              borderRadius: 4,
-              padding: '2px 6px',
+              gap: 6,
+              background: '#ffecd9',
+              color: '#8b4513',
+              borderRadius: 14,
+              padding: '4px 10px',
+              fontSize: 12,
+              lineHeight: 1.2,
             }}
           >
             {v}
@@ -403,14 +407,16 @@ function TagInput({
               type="button"
               onClick={() => onChange(values.filter((t) => t !== v))}
               data-testid={`remove-tag-${fieldKey}-${v}`}
-              className="text-xs"
+              aria-label={`Remove ${v}`}
               style={{
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
                 padding: 0,
                 lineHeight: 1,
-                color: 'var(--text2)',
+                fontWeight: 700,
+                opacity: 0.55,
+                color: '#8b4513',
               }}
             >
               ×
@@ -425,15 +431,16 @@ function TagInput({
             if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
           }}
           onBlur={addTag}
-          placeholder={values.length === 0 ? placeholder : ''}
+          placeholder={values.length === 0 ? placeholder : 'Add…'}
           data-testid={`tag-input-${fieldKey}`}
           style={{
+            flex: 1,
+            minWidth: 90,
             border: 'none',
             outline: 'none',
-            fontSize: 16,
-            flex: 1,
-            minWidth: 80,
             background: 'transparent',
+            fontSize: 14,
+            padding: '4px 2px',
             color: 'var(--text)',
           }}
         />
@@ -704,7 +711,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1042,25 +1049,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   ]);
 
   // Add-on type
-  const [isAddon, setIsAddon]       = useState(forceAddon || item.item_type === 'addon');
+  // Item type is fixed by the calling context — the Food Items tab that opened
+  // the modal (forceAddon / forceDish) or the stored item_type when editing.
+  // The in-modal Dishes/Add-ons toggle was removed (2026-07-18), so isAddon is
+  // derived once and never changes while the modal is open.
+  const isAddon = forceAddon || item.item_type === 'addon';
   // True when the addon has no DB row yet — dish associations must be deferred until save.
   const isDeferredCreation = isNewItem && !!onSaveNewItem;
-  // Confirmation state for dish→addon toggle when item has menu associations
-  const [addonConfirmPending, setAddonConfirmPending] = useState(false);
-
-  // Add-on toggle is disabled when the item already carries sides or recommendations
-  // (those belong to dishes only). Computed once so the header toggle and the
-  // body checkbox share identical disabled state and messaging.
-  const hasSides      = (item.sides?.length ?? 0) > 0;
-  const hasRecs       = (item.recommendations?.length ?? 0) > 0;
-  const addonDisabled = hasSides || hasRecs;
-  const disabledReason = hasSides && hasRecs
-    ? 'Items with sides and recommendations cannot be Add-ons'
-    : hasSides
-      ? 'Items with sides cannot be Add-ons'
-      : hasRecs
-        ? 'Items with recommendations cannot be Add-ons'
-        : null;
 
   // Save state
   const [saving, setSaving]         = useState(false);
@@ -1161,18 +1156,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     }
   }, []);
 
-  // When the Dishes/Add-ons toggle flips, the available tab set changes.
-  //   Dishes  → [food_tags, addons, performance, ...]
-  //   Add-ons → [food_tags, performance, dishes]   (food_tags shows
-  //               only allergens + dietary for add-ons — see the Food
-  //               Tags section render path)
-  // Land on a valid tab for the new mode. Existing add-ons default to
-  // 'performance' (analytics-first); new add-ons default to 'dishes'
-  // (link-to-parent picker first). Users can click into Food Tags for
-  // allergen / dietary capture. Dep list is [isAddon] only — including
-  // activeTab would loop.
+  // Land on a valid tab for the current mode. Available tab sets:
+  //   Dish            → [food_tags, placements, groupings, performance]
+  //   Existing add-on → [food_tags, performance, dishes]
+  //   NEW add-on/mod  → [food_tags] only (Dishes tab removed during creation,
+  //                      2026-07-18 — associations happen later via a dish's
+  //                      Groupings → Add member picker)
+  // Existing add-ons default to 'performance' (analytics-first); everything
+  // else (new add-on, dishes) defaults to 'food_tags'. Dep list is
+  // [isAddon, isNewItem] only — including activeTab would loop.
   useEffect(() => {
-    setActiveTab(isAddon ? (isNewItem ? 'dishes' : 'performance') : 'food_tags');
+    setActiveTab(isAddon && !isNewItem ? 'performance' : 'food_tags');
   }, [isAddon, isNewItem]);
 
   // Placements tab state — local mirror of menu_associations so per-row
@@ -1725,10 +1719,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     let hasError = false;
     if (!name.trim()) { setNameError(true); hasError = true; }
     if (!isAddon && !description.trim()) { setDescError(true); hasError = true; }
-    // Add-on price validation: required when creating a new add-on; optional when editing.
-    // Upper bound 10,000 is a sanity cap — surcharges larger than that are a data-entry error.
+    // Add-on price validation. Required only when creating a plain new add-on;
+    // a modifier-type option (STR-956) has an OPTIONAL price, and editing is
+    // optional too. Whatever price IS entered still gets the sanity checks
+    // (non-negative; ≤ 10,000 — surcharges above that are a data-entry error).
     if (isAddon) {
-      if (isNewItem && price === null) {
+      const priceRequired = isNewItem && !modifierTypeName;
+      if (priceRequired && price === null) {
         setPriceError('Price is required');
         hasError = true;
       } else if (price !== null) {
@@ -2243,9 +2240,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               id="edit-name"
               type="text"
               value={name}
-              placeholder={isAddon
-                ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
-                : (isNewItem ? (item.name || 'Item name') : 'Item name')}
+              placeholder={modifierTypeName
+                ? (item.name || `${modifierTypeName} name`)
+                : isAddon
+                  ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
+                  : (isNewItem ? (item.name || 'Item name') : 'Item name')}
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
               aria-label="Item name"
               aria-required="true"
@@ -2314,88 +2313,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               <Pencil size={14} strokeWidth={2.25} />
             </button>
           </div>
-
-          {/* Dishes / Add-ons pill toggle — visible in BOTH new-item and
-              edit flows so owners can convert an existing item's type inline.
-              (2026-07-02: relaxed the isNewItem gate per owner request.)
-              Still hidden when forceAddon or forceDish pins the type at the
-              call site (e.g. AddonsCheckbox setup-guide surface). The Add-ons
-              button remains disabled (addonDisabled) when the item carries
-              sides or recommendations, and dish→addon with active menu
-              placements still routes through the addonConfirmPending banner. */}
-          {!forceAddon && !forceDish && (
-            <div
-              role="radiogroup"
-              aria-label="Item type"
-              data-testid="type-toggle"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'stretch',
-                border: '1px solid var(--border)',
-                borderRadius: 999,
-                padding: 2,
-                background: '#fafafa',
-                flexShrink: 0,
-              }}
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!isAddon}
-                onClick={() => setIsAddon(false)}
-                data-testid="type-toggle-dishes"
-                style={{
-                  padding: '4px 14px',
-                  minHeight: isMobile ? 44 : undefined,
-                  fontSize: 12,
-                  fontWeight: !isAddon ? 700 : 500,
-                  color: !isAddon ? 'white' : 'var(--text2)',
-                  background: !isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 999,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                Dishes
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={isAddon}
-                aria-disabled={addonDisabled}
-                onClick={() => {
-                  if (addonDisabled) return;
-                  const menuAssocs = item.menu_associations?.filter(
-                    (a) => 'menu_id' in a && a.menu_id,
-                  ) ?? [];
-                  if (menuAssocs.length > 0 && item.item_type !== 'addon') {
-                    setAddonConfirmPending(true);
-                  } else {
-                    setIsAddon(true);
-                  }
-                }}
-                disabled={addonDisabled}
-                title={addonDisabled ? (disabledReason ?? undefined) : undefined}
-                data-testid="type-toggle-addons"
-                style={{
-                  padding: '4px 14px',
-                  minHeight: isMobile ? 44 : undefined,
-                  fontSize: 12,
-                  fontWeight: isAddon ? 700 : 500,
-                  color: isAddon ? 'white' : 'var(--text2)',
-                  background: isAddon ? 'var(--brand, #f97316)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 999,
-                  cursor: addonDisabled ? 'not-allowed' : 'pointer',
-                  opacity: addonDisabled ? 0.5 : 1,
-                  transition: 'all 0.15s',
-                }}
-              >
-                Add-ons
-              </button>
-            </div>
-          )}
 
           {/* Active / visibility toggle */}
           <button
@@ -2661,54 +2578,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             </div>
           )}
 
-          {/* Addon toggle confirmation — shown when a dish with menu placements is being converted to an add-on */}
-          {addonConfirmPending && (
-            <div
-              data-testid="addon-confirm-banner"
-              style={{
-                fontSize: 12,
-                color: '#92400e',
-                background: '#fef3c7',
-                border: '1px solid #fcd34d',
-                borderRadius: 6,
-                padding: '10px 14px',
-                marginBottom: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-                <span>
-                  Changing this item to an add-on will <strong>remove it from{' '}
-                  {(item.menu_associations?.length ?? 0) === 1
-                    ? item.menu_associations![0].menu_name
-                    : `${item.menu_associations?.length} menus`}
-                  </strong> as a menu item. Its add-on associations with other dishes will be kept.
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => setAddonConfirmPending(false)}
-                  data-testid="addon-confirm-cancel"
-                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'white', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setAddonConfirmPending(false); setIsAddon(true); }}
-                  data-testid="addon-confirm-proceed"
-                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 700, color: 'white', background: '#d97706', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Convert to Add-on
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Layout container — for dish mode on desktop the basic-info
               column (image + description + category + appears-in) sits
               beside the tabs section in a 280px-1fr grid. Mobile and
@@ -2719,20 +2588,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             style={{
               flex: 1,
               minHeight: 0,
-              // Mobile: the whole dish editor is ONE scroll column (image →
-              // basic info → "Appears in" → tabs). Without this, dish-basic-info
-              // is a fixed, non-scrolling top block; a tall image + fields pushes
-              // "Appears in" off the bottom edge where it's clipped and covered by
-              // the Crisp chat bubble with no way to reach it. paddingBottom keeps
-              // the last content clear of the fixed bottom-corner bubble.
-              ...(isMobile
-                ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 88 }
-                : {}),
+              // STR-963: the WHOLE dish editor is ONE scroll column on every
+              // breakpoint (image → basic info → tabs → tab content), matching
+              // the redesign mockup's single-page scroll. Previously only mobile
+              // did this; desktop boxed the tab content in its own inner scroller
+              // (the cramped Food-Tags scrollbar the owner rejected). Now the
+              // container owns the scroll and every pane flows at natural height.
+              // paddingBottom keeps the last content clear (of the Crisp bubble
+              // on mobile).
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              paddingBottom: isMobile ? 88 : 20,
               ...(!isAddon && !isMobile
                 ? {
                     display: 'grid',
                     gridTemplateColumns: '280px 1fr',
                     columnGap: 20,
+                    // start-align so each column keeps its own height and the
+                    // container scrolls to the taller (right / tabs) column.
+                    alignItems: 'start',
                   }
                 : {
                     display: 'flex',
@@ -2750,7 +2624,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               display: 'flex',
               flexDirection: 'column',
               gap: 14,
-              ...(!isMobile ? { overflowY: 'auto', paddingRight: 4, paddingBottom: 4 } : { marginBottom: 20 }),
+              // STR-963: no inner scroll on the left rail — it flows inside the
+              // single dish-editor scroll owned by the parent layout container.
+              ...(!isMobile ? { paddingRight: 4, paddingBottom: 4 } : { marginBottom: 20 }),
             }}
           >
 
@@ -2971,6 +2847,222 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               </div>
             ) : null}
 
+            {/* STR-963 P2 — Dietary Info card (left rail). Dietary + Allergens
+                relocated out of the Food Tags tab into the rail for dishes
+                (redesign). Same DietaryMultiSelect instances / state / testids;
+                add-ons keep these in the Food Tags tab (they have no rail), so
+                exactly one copy renders per mode — no duplicate testids. */}
+            {dietaryTagService && restaurantId && (
+              <div
+                data-testid="dietary-info-card"
+                style={{
+                  background: 'white',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div className="section-header" style={{ display: 'block' }}>
+                  <span aria-hidden="true" style={{ marginRight: 6 }}>🍽️</span>Dietary Info
+                </div>
+                <DietaryMultiSelect
+                  label="Dietary Restrictions"
+                  options={dietaryOptions}
+                  labels={dietaryLabelsMerged}
+                  type="dietary"
+                  selectedSet={dietarySet}
+                  onToggle={(name) => isNewItem
+                    ? setDietarySet((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name); else next.add(name);
+                        return next;
+                      })
+                    : void handleDietaryToggle(name, 'dietary')}
+                  reviewed={isNewItem ? true : dietaryReviewed}
+                  onToggleNa={() => isNewItem
+                    ? setDietarySet(new Set())
+                    : void handleClickNa('dietary')}
+                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
+                />
+                <DietaryMultiSelect
+                  label="Allergens"
+                  options={allergenOptions}
+                  labels={allergenLabelsMerged}
+                  type="allergen"
+                  selectedSet={allergenSet}
+                  onToggle={(name) => isNewItem
+                    ? setAllergenSet((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name); else next.add(name);
+                        return next;
+                      })
+                    : void handleDietaryToggle(name, 'allergen')}
+                  reviewed={isNewItem ? true : allergensReviewed}
+                  onToggleNa={() => isNewItem
+                    ? setAllergenSet(new Set())
+                    : void handleClickNa('allergens')}
+                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
+                />
+              </div>
+            )}
+
+            {/* Description / Raw Category / Appears-in moved to the top card zone (STR-963 P3). */}
+          </section>
+          )}
+
+          {/* Add-on form — simplified single-column layout (STR-303).
+              Renders instead of the dish two-column section when the header toggle
+              is on Add-ons. No image upload (add-ons never have images), no food tags
+              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
+          {isAddon && (
+          <section
+            data-testid="addon-basic-info"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              marginBottom: 20,
+            }}
+          >
+            <SectionLabel>Basic Info</SectionLabel>
+
+            {/* Name lives in the modal header — see inline-editable
+                title at the top. Surface its error state here so the
+                user sees it adjacent to the rest of Basic Info. */}
+            {nameError && (
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+                Name is required
+              </div>
+            )}
+
+            {/* Price — shown for every add-on, including modifier-type options.
+                For a modifier option the price is OPTIONAL (no required
+                asterisk, no validation, and it can be cleared); a plain new
+                add-on keeps price required. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ flex: '0 0 160px' }}>
+                <label style={labelStyle} htmlFor="edit-price-input">
+                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
+                </label>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                    borderRadius: 'var(--r-xs)',
+                    padding: '0 8px',
+                    background: 'var(--white)',
+                    height: 36,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
+                  <input
+                    id="edit-price-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    value={price === null ? '' : price}
+                    onChange={(e) => {
+                      setPriceError(null);
+                      const raw = e.target.value;
+                      if (raw === '') { setPrice(null); return; }
+                      const n = parseFloat(raw);
+                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
+                    }}
+                    data-testid="edit-price-input"
+                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
+                  />
+                  {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
+                    <button
+                      type="button"
+                      aria-label="Clear price"
+                      onClick={() => { setPrice(null); setPriceError(null); }}
+                      data-testid="edit-price-clear"
+                      className="text-xs"
+                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
+                    >
+                      × clear
+                    </button>
+                  )}
+                </div>
+                {priceError && (
+                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Memo — owner/staff-facing free-text note (≤500 chars).
+                Same field that surfaces as subtext in the Add Member
+                picker and gets edited via blur-to-save on the Setup
+                Guide → Add-ons page. Here it saves with the rest of
+                the form on Save. */}
+            <div>
+              <label style={labelStyle} htmlFor="edit-memo-input">
+                Memo
+              </label>
+              <textarea
+                id="edit-memo-input"
+                data-testid="edit-memo-input"
+                value={memo}
+                maxLength={500}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder={modifierTypeName
+                  ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
+                  : 'Optional note — shown to staff when picking this add-on'}
+                rows={2}
+                style={{
+                  width: '100%',
+                  fontSize: 14,
+                  padding: '8px 10px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-xs)',
+                  background: 'var(--white)',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  minHeight: 36,
+                }}
+              />
+            </div>
+
+          </section>
+          )}
+
+          {/* Tabs section wrapper — groups bar + content as a single
+              flex-column block. In dish + desktop mode the parent
+              layout container lays this out as the right column of a
+              grid; in addon mode (or mobile) it sits as a flex item
+              filling the remaining vertical space below basic-info. */}
+          <div
+            data-testid="edit-modal-tabs-section"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              // STR-963: natural height so it flows inside the single dish-editor
+              // scroll (the parent layout container owns the scroll on every
+              // breakpoint now). No more fill-and-inner-scroll on desktop.
+              flex: 'none',
+            }}
+          >
+          {/* STR-963 P3 — Top card zone: always-visible essentials above
+              the tabs (Description, Raw Category, Appears-in, Heat/Spice,
+              Spice Modifier, BYO), relocated from the left rail + Food Tags
+              tab per the redesign. Dish-only — add-ons keep their own
+              single-column basic-info; each moved block keeps its original
+              conditional guard + data-testid (rendered here exactly once). */}
+          {!isAddon && (
+          <div
+            data-testid="edit-modal-top-zone"
+            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: isMobile ? 12 : '12px 20px', alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
+          >
+            {/* Column 1 — Description, Raw Category, Appears-in */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
@@ -3016,7 +3108,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 style={{
                   ...inputStyle,
                   resize: 'vertical',
-                  minHeight: 88,
+                  minHeight: 60,
                   border: descError
                     ? '1px solid #b91c1c'
                     : descriptionSource === 'ai_generated'
@@ -3107,6 +3199,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               />
             </div>
 
+            </div>
+            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
+                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
+                  <label style={labelStyle}>Heat / Spice</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {activeHeatLabels.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        data-testid={`heat-pill-${option.toLowerCase()}`}
+                        aria-pressed={heatSpice === option}
+                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
+                        style={{
+                          padding: '4px 14px',
+                          borderRadius: 20,
+                          border: '1px solid',
+                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
+                          background: heatSpice === option ? '#fff7ed' : 'transparent',
+                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: heatSpice === option ? 600 : 400,
+                          transition: 'all 0.1s',
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
+                </div>}
+
             {/* ── Appears in menus ──────────────────────────────── */}
             {(item.menu_associations ?? []).length > 0 && (
               <div>
@@ -3163,141 +3289,214 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               </div>
             )}
-          </section>
-          )}
-
-          {/* Add-on form — simplified single-column layout (STR-303).
-              Renders instead of the dish two-column section when the header toggle
-              is on Add-ons. No image upload (add-ons never have images), no food tags
-              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
-          {isAddon && (
-          <section
-            data-testid="addon-basic-info"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              marginBottom: 20,
-            }}
-          >
-            <SectionLabel>Basic Info</SectionLabel>
-
-            {/* Name lives in the modal header — see inline-editable
-                title at the top. Surface its error state here so the
-                user sees it adjacent to the rest of Basic Info. */}
-            {nameError && (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
-                Name is required
-              </div>
-            )}
-
-            {/* Price */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: '0 0 160px' }}>
-                <label style={labelStyle} htmlFor="edit-price-input">
-                  Price{isNewItem && isAddon && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
-                </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '0 8px',
-                    background: 'var(--white)',
-                    height: 36,
-                  }}
-                >
-                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
-                  <input
-                    id="edit-price-input"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="0.01"
-                    value={price === null ? '' : price}
-                    onChange={(e) => {
-                      setPriceError(null);
-                      const raw = e.target.value;
-                      if (raw === '') { setPrice(null); return; }
-                      const n = parseFloat(raw);
-                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
+            </div>
+            {/* Column 3 — Spice Modifier + BYO (compact toggle cards) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                {/* Spice Modifier — two compact toggles (origin a0ef241 split,
+                    kept through the STR-963 relayout): (1) "Show spice picker"
+                    (spice_modifier_enabled) renders the patron spice picker;
+                    (2) "Require a spice selection" (spice_selection_required)
+                    gates "Add to order" and is only meaningful while the picker
+                    is shown — disabled + greyed when visibility is off (the
+                    backend force-reverts it to false in that case). Hidden for
+                    add-ons (never reach composition page) and Desserts. */}
+                {!isAddon && category !== 'Desserts' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: '1px solid',
+                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
+                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
+                      transition: 'all 0.15s',
                     }}
-                    data-testid="edit-price-input"
-                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
-                  />
-                  {price !== null && !(isNewItem && isAddon) && (
-                    <button
-                      type="button"
-                      aria-label="Clear price"
-                      onClick={() => { setPrice(null); setPriceError(null); }}
-                      data-testid="edit-price-clear"
-                      className="text-xs"
-                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
-                    >
-                      × clear
-                    </button>
-                  )}
-                </div>
-                {priceError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                  >
+                    {/* Row 1 — visibility */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Show spice picker</span>
+                        <span title="Show diners a spice-level picker for this item on the composition page." aria-label="Show diners a spice-level picker for this item on the composition page." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={spiceModifierEnabled}
+                        aria-label="Toggle Show spice picker"
+                        data-testid="spice-modifier-toggle"
+                        onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
+                        style={{
+                          position: 'relative',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          height: 24,
+                          width: 42,
+                          flexShrink: 0,
+                          borderRadius: 999,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
+                          transition: 'background-color 0.15s',
+                          padding: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            height: 18,
+                            width: 18,
+                            borderRadius: '50%',
+                            background: '#fff',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                            transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
+                            transition: 'transform 0.15s',
+                          }}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Divider */}
+                    <div style={{ height: 1, background: spiceModifierEnabled ? '#fecdd3' : 'var(--border)' }} />
+
+                    {/* Row 2 — required (disabled + greyed when the picker is hidden) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: spiceModifierEnabled ? 1 : 0.5, transition: 'opacity 0.15s' }}>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require a spice selection</span>
+                        <span title="Diners must pick a spice level before they can add this item to their order." aria-label="Diners must pick a spice level before they can add this item to their order." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={spiceModifierEnabled && spiceSelectionRequired}
+                        aria-label="Toggle Require a spice selection"
+                        aria-disabled={!spiceModifierEnabled}
+                        disabled={!spiceModifierEnabled}
+                        title={!spiceModifierEnabled ? 'Turn on the spice picker to require a selection.' : undefined}
+                        data-testid="spice-required-toggle"
+                        onClick={() => {
+                          if (!spiceModifierEnabled) return;
+                          setSpiceSelectionRequired((v: boolean) => !v);
+                        }}
+                        style={{
+                          position: 'relative',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          height: 24,
+                          width: 42,
+                          flexShrink: 0,
+                          borderRadius: 999,
+                          border: 'none',
+                          cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
+                          background: spiceModifierEnabled && spiceSelectionRequired ? '#e11d48' : '#d1d5db',
+                          transition: 'background-color 0.15s',
+                          padding: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            height: 18,
+                            width: 18,
+                            borderRadius: '50%',
+                            background: '#fff',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                            transform: spiceModifierEnabled && spiceSelectionRequired ? 'translateX(21px)' : 'translateX(3px)',
+                            transition: 'transform 0.15s',
+                          }}
+                        />
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
 
-            {/* Memo — owner/staff-facing free-text note (≤500 chars).
-                Same field that surfaces as subtext in the Add Member
-                picker and gets edited via blur-to-save on the Setup
-                Guide → Add-ons page. Here it saves with the rest of
-                the form on Save. */}
-            <div>
-              <label style={labelStyle} htmlFor="edit-memo-input">
-                Memo
-              </label>
-              <textarea
-                id="edit-memo-input"
-                data-testid="edit-memo-input"
-                value={memo}
-                maxLength={500}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder="Optional note — shown to staff when picking this add-on"
-                rows={2}
-                style={{
-                  width: '100%',
-                  fontSize: 14,
-                  padding: '8px 10px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-xs)',
-                  background: 'var(--white)',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  minHeight: 36,
-                }}
-              />
-            </div>
+                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
+                    Disabled when the dish has zero groupings: the API
+                    hard-blocks is_byo=true on items without customization
+                    options, so we mirror that state in the UI. Mobile-
+                    friendly: an inline hint below the toggle (NOT just a
+                    tooltip) per Plan v2 UX-Reviewer tactical condition.
+                    Hidden for add-ons (an add-on cannot be BYO itself). */}
+                {!isAddon && (() => {
+                  const hasGroupings = (groupingsCount ?? 0) > 0;
+                  const toggleDisabled = !hasGroupings;
+                  return (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
+                        background: isByo ? '#e6f7f5' : 'transparent',
+                        opacity: toggleDisabled ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own</span>
+                          <span title="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." aria-label="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isByo}
+                          aria-label="Toggle Build Your Own"
+                          aria-disabled={toggleDisabled}
+                          data-testid="byo-toggle"
+                          disabled={toggleDisabled}
+                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
+                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
+                          style={{
+                            position: 'relative',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            height: 24,
+                            width: 42,
+                            flexShrink: 0,
+                            borderRadius: 999,
+                            border: 'none',
+                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
+                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
+                            transition: 'background-color 0.15s',
+                            padding: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              height: 18,
+                              width: 18,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
+                              transition: 'transform 0.15s',
+                            }}
+                          />
+                        </button>
+                      </div>
+                      {toggleDisabled && (
+                        <div
+                          data-testid="byo-disabled-hint"
+                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
+                        >
+                          Add a customization group so diners can build this dish.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-          </section>
+
+            </div>
+          </div>
           )}
 
-          {/* Tabs section wrapper — groups bar + content as a single
-              flex-column block. In dish + desktop mode the parent
-              layout container lays this out as the right column of a
-              grid; in addon mode (or mobile) it sits as a flex item
-              filling the remaining vertical space below basic-info. */}
-          <div
-            data-testid="edit-modal-tabs-section"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-              // Mobile: natural height so it flows inside the single page-scroll
-              // (the parent column scrolls). Desktop keeps flex:1 to fill its
-              // grid/flex column with the tab content scrolling internally.
-              flex: isMobile ? 'none' : 1,
-            }}
-          >
           {/* When the owner clicked "Choose from Gallery", the tab bar +
               content are replaced by the consumer-provided picker. The
               slot owns its own header (back chevron, title) — calling
@@ -3335,7 +3534,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               // diner-side recommender + filter UI honours per-addon
               // restrictions.
               ? (isNewItem
-                ? (['food_tags', 'dishes'] as const)
+                // New add-on / modifier option: Food Tags only. The Dishes tab
+                // (dish-association picker) is removed during creation — the
+                // owner links the add-on to dishes afterwards via a dish's
+                // Groupings → Add member picker (owner request 2026-07-18).
+                ? (['food_tags'] as const)
                 : (['food_tags', 'performance', 'dishes'] as const))
               // PDD 2026-05-10 collapse-addons-recs Phase E Step 13 —
               // Add-ons + Recommendations tabs removed from dish editing.
@@ -3371,6 +3574,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={isActive}
                   data-testid={`tab-${tab}`}
                   style={{
                     padding: isMobile ? '13px 16px' : '12px 14px',
@@ -3395,7 +3599,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           </div>
 
           {/* ── Scrollable tab content ── */}
-          <div style={{ flex: isMobile ? 'none' : 1, overflowY: isMobile ? 'visible' : 'auto', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
+          <div style={{ flex: 'none', overflowY: 'visible', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
 
           {/* ── Food Tags tab ──
               For dishes: full set of fields (heat/spice, sweetness,
@@ -3944,269 +4148,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   );
                 })()}
 
-                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
-                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
-                  <label style={labelStyle}>Heat / Spice</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {activeHeatLabels.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        data-testid={`heat-pill-${option.toLowerCase()}`}
-                        aria-pressed={heatSpice === option}
-                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
-                        style={{
-                          padding: '4px 14px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
-                          background: heatSpice === option ? '#fff7ed' : 'transparent',
-                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: heatSpice === option ? 600 : 400,
-                          transition: 'all 0.1s',
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
-                </div>}
-
-                {/* Spice Modifier — PDD 2026-07-17 two independent controls:
-                    (1) "Show spice picker" (spice_modifier_enabled) — does the
-                        patron composition-page spice picker RENDER for this item.
-                    (2) "Require a spice selection" (spice_selection_required) —
-                        must the diner pick a level before adding (gates
-                        "Add to order"). Only meaningful while the picker is
-                        shown; disabled + greyed when visibility is off, and the
-                        backend force-reverts it to false in that case.
-                    Hidden for add-ons (never reach composition page) and
-                    Desserts (patron auto-hides them regardless). */}
-                {!isAddon && category !== 'Desserts' && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: '1px solid',
-                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
-                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {/* Row 1 — visibility */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
-                        <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
-                      </svg>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Show spice picker</div>
-                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                          Show diners a spice-level picker for this item on the composition page.
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={spiceModifierEnabled}
-                        aria-label="Toggle Show spice picker"
-                        data-testid="spice-modifier-toggle"
-                        onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
-                        style={{
-                          position: 'relative',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          height: 24,
-                          width: 42,
-                          flexShrink: 0,
-                          borderRadius: 999,
-                          border: 'none',
-                          cursor: 'pointer',
-                          background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
-                          transition: 'background-color 0.15s',
-                          padding: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            height: 18,
-                            width: 18,
-                            borderRadius: '50%',
-                            background: '#fff',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                            transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
-                            transition: 'transform 0.15s',
-                          }}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Divider */}
-                    <div style={{ height: 1, background: spiceModifierEnabled ? '#fecdd3' : 'var(--border)' }} />
-
-                    {/* Row 2 — required (disabled + greyed when picker hidden) */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        opacity: spiceModifierEnabled ? 1 : 0.5,
-                        transition: 'opacity 0.15s',
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require a spice selection</div>
-                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                          {spiceModifierEnabled
-                            ? 'Diners must pick a spice level before they can add this item to their order.'
-                            : 'Turn on the spice picker to require a selection.'}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={spiceModifierEnabled && spiceSelectionRequired}
-                        aria-label="Toggle Require a spice selection"
-                        aria-disabled={!spiceModifierEnabled}
-                        disabled={!spiceModifierEnabled}
-                        data-testid="spice-required-toggle"
-                        onClick={() => {
-                          if (!spiceModifierEnabled) return;
-                          setSpiceSelectionRequired((v: boolean) => !v);
-                        }}
-                        style={{
-                          position: 'relative',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          height: 24,
-                          width: 42,
-                          flexShrink: 0,
-                          borderRadius: 999,
-                          border: 'none',
-                          cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
-                          background:
-                            spiceModifierEnabled && spiceSelectionRequired ? '#e11d48' : '#d1d5db',
-                          transition: 'background-color 0.15s',
-                          padding: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            height: 18,
-                            width: 18,
-                            borderRadius: '50%',
-                            background: '#fff',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                            transform:
-                              spiceModifierEnabled && spiceSelectionRequired
-                                ? 'translateX(21px)'
-                                : 'translateX(3px)',
-                            transition: 'transform 0.15s',
-                          }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
-                    Disabled when the dish has zero groupings: the API
-                    hard-blocks is_byo=true on items without customization
-                    options, so we mirror that state in the UI. Mobile-
-                    friendly: an inline hint below the toggle (NOT just a
-                    tooltip) per Plan v2 UX-Reviewer tactical condition.
-                    Hidden for add-ons (an add-on cannot be BYO itself). */}
-                {!isAddon && (() => {
-                  const hasGroupings = (groupingsCount ?? 0) > 0;
-                  const toggleDisabled = !hasGroupings;
-                  return (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: '1px solid',
-                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
-                        background: isByo ? '#e6f7f5' : 'transparent',
-                        opacity: toggleDisabled ? 0.6 : 1,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-teal, #00a996)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="4" y1="6" x2="20" y2="6" />
-                          <line x1="4" y1="12" x2="20" y2="12" />
-                          <line x1="4" y1="18" x2="20" y2="18" />
-                          <circle cx="9" cy="6" r="2" fill="#fff" />
-                          <circle cx="15" cy="12" r="2" fill="#fff" />
-                          <circle cx="11" cy="18" r="2" fill="#fff" />
-                        </svg>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own (BYO)</div>
-                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                            When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen.
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={isByo}
-                          aria-label="Toggle Build Your Own"
-                          aria-disabled={toggleDisabled}
-                          data-testid="byo-toggle"
-                          disabled={toggleDisabled}
-                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
-                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
-                          style={{
-                            position: 'relative',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            height: 24,
-                            width: 42,
-                            flexShrink: 0,
-                            borderRadius: 999,
-                            border: 'none',
-                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
-                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
-                            transition: 'background-color 0.15s',
-                            padding: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              height: 18,
-                              width: 18,
-                              borderRadius: '50%',
-                              background: '#fff',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
-                              transition: 'transform 0.15s',
-                            }}
-                          />
-                        </button>
-                      </div>
-                      {toggleDisabled && (
-                        <div
-                          data-testid="byo-disabled-hint"
-                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
-                        >
-                          Add a customization group so diners can build this dish.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* Heat/Spice, Spice Modifier, BYO moved to the top card zone (STR-963 P3). */}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
                     Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
@@ -4246,7 +4188,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     second. New items: same Set drives the deferred-creation
                     flow, the save handler flushes via setItemTags after the
                     DB row is created. */}
-                {dietaryTagService && restaurantId && (
+                {/* STR-963 P2: dishes show Dietary/Allergens in the left-rail
+                    Dietary Info card; only add-ons (no rail) keep them here. */}
+                {isAddon && dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Dietary Restrictions"
                     options={dietaryOptions}
@@ -4268,8 +4212,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   />
                 )}
 
-                {/* Allergens — same pattern. */}
-                {dietaryTagService && restaurantId && (
+                {/* Allergens — same pattern (add-on-only per STR-963 P2). */}
+                {isAddon && dietaryTagService && restaurantId && (
                   <DietaryMultiSelect
                     label="Allergens"
                     options={allergenOptions}
@@ -4299,16 +4243,38 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     the dietary/allergen filter relies on those values being
                     visible + editable. Admin staff also need to review the
                     AI-suggested tags on addons. Per Avi 2026-05-19. */}
-                {TAG_FIELDS.map(({ key, label, placeholder }) => (
-                  <TagInput
-                    key={key}
-                    fieldKey={key}
-                    label={label}
-                    values={tags[key] ?? []}
-                    placeholder={placeholder}
-                    onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
-                  />
-                ))}
+                {/* STR-963 P1 — Food Tags card grid. Emoji-titled cards,
+                    2-col desktop / 1-col mobile; Ingredients + Taste span full
+                    width. Scoped strictly to TAG_FIELDS (the beverage profile,
+                    enrichment banner, and dessert sweetness siblings above are
+                    untouched). tag-input-* / remove-tag-* testids unchanged. */}
+                <div
+                  data-testid="food-tags-card-grid"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                    gap: isMobile ? 10 : '12px 16px',
+                  }}
+                >
+                  {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
+                    <div
+                      key={key}
+                      style={{
+                        ...EDITOR_CARD_STYLE,
+                        gridColumn: full && !isMobile ? '1 / -1' : 'auto',
+                      }}
+                    >
+                      <TagInput
+                        fieldKey={key}
+                        label={label}
+                        icon={icon}
+                        values={tags[key] ?? []}
+                        placeholder={placeholder}
+                        onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           )}
@@ -5325,10 +5291,8 @@ function PerfCard({ testId, label, value, highlight }: { testId?: string; label:
     <div
       data-testid={testId}
       style={{
-        background: highlight ? '#fff7ed' : '#f9f9f9',
-        border: `1px solid ${highlight ? '#fed7aa' : 'var(--border)'}`,
-        borderRadius: 'var(--r)',
-        padding: '14px 16px',
+        ...EDITOR_CARD_STYLE,
+        ...(highlight ? { background: '#fff7ed', border: '1px solid #fed7aa' } : {}),
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
@@ -5366,6 +5330,16 @@ const inputStyle: React.CSSProperties = {
   padding: '7px 10px',
   outline: 'none',
   boxSizing: 'border-box',
+};
+
+// STR-963 — single source of truth for the editor's card container so every
+// tab (Food Tags · Placements · Performance) reads as one design system:
+// white surface, 1px hairline border, radius 8, 14px padding.
+const EDITOR_CARD_STYLE: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  padding: 14,
 };
 
 function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
@@ -5573,10 +5547,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
     <div
       data-testid={`placements-tab-row-${assoc.menu_id}`}
       style={{
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        padding: 12,
-        background: '#fff',
+        ...EDITOR_CARD_STYLE,
         opacity: saving ? 0.7 : 1,
         transition: 'opacity 0.15s',
       }}
