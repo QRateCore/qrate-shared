@@ -252,9 +252,17 @@ export interface MenuItem {
   serving_options?: ServingOption[] | null;
   /**
    * PDD 2026-05-15: owner per-item opt-out for the patron composition page
-   * Spice Level slider. Defaults to TRUE on the wire.
+   * Spice Level slider (VISIBILITY). Defaults to TRUE on the wire.
    */
   spice_modifier_enabled?: boolean;
+  /**
+   * PDD 2026-07-17 (re-split from STR-680): owner "require a spice selection"
+   * flag (REQUIRED). When true — and spice_modifier_enabled is also true —
+   * the patron must pick a spice level before adding the item. The backend
+   * force-reverts this to FALSE whenever spice_modifier_enabled is false.
+   * Defaults to FALSE on the wire.
+   */
+  spice_selection_required?: boolean;
   /**
    * PDD 2026-05-26: Build-Your-Own classification. When true, the recommender
    * bypasses Stage 0 dietary/allergen filtering on the dish's own tags so the

@@ -41,7 +41,7 @@ import { useTrackAction } from './track-action-context';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory' | 'serving';
+export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'spiceRequired' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory' | 'serving';
 
 export interface DragState {
   itemIds: string[];

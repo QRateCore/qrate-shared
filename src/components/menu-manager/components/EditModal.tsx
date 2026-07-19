@@ -768,13 +768,21 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // page Spice Level slider. Defaults to TRUE so legacy items keep the
   // slider; owner flips OFF to suppress for non-dessert items (desserts
   // continue to auto-hide on the patron side regardless of this flag).
-  // STR-680 — the Spice Modifier toggle is now the SINGLE source of truth.
-  // Enabling it makes the patron spice picker MANDATORY (the former separate
-  // "Require spice selection" toggle was folded into this one). On save we
-  // mirror the flag into the legacy spice_selection_required wire field so the
-  // backend stays consistent, but there is no longer a second control.
+  //
+  // PDD 2026-07-17 — VISIBILITY vs REQUIRED are split back into two controls
+  // (reverts STR-680's unification). `spice_modifier_enabled` = does the
+  // patron spice picker RENDER. `spice_selection_required` = must the diner
+  // pick a level before adding (gates "Add to order"). They are now saved
+  // independently; "required" only applies while the picker is visible.
   const [spiceModifierEnabled, setSpiceModifierEnabled] = useState<boolean>(
     item.spice_modifier_enabled ?? true,
+  );
+  // PDD 2026-07-17 — the second, independent control. Default TRUE preserves
+  // pre-split behaviour (modifier-on items were implicitly required). Only
+  // meaningful while spice_modifier_enabled is true; the backend force-reverts
+  // it to FALSE whenever the modifier is off (owner_food_items.py).
+  const [spiceSelectionRequired, setSpiceSelectionRequired] = useState<boolean>(
+    item.spice_selection_required ?? true,
   );
 
   // PDD 2026-05-26 — Build-Your-Own classification. Default FALSE everywhere
@@ -1940,12 +1948,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         // page Spice Level slider. Only meaningful for dishes; add-ons
         // never reach the composition page so the field is harmless there.
         spice_modifier_enabled: spiceModifierEnabled,
-        // STR-680 — unified: "required" now equals "modifier enabled". We keep
-        // sending the legacy spice_selection_required field (wire contract
-        // unchanged) but mirror it directly off the single Spice Modifier flag
-        // so a stored value never contradicts the toggle. Add-ons never reach
-        // the composition page, so omit there.
-        ...(isAddon ? {} : { spice_selection_required: spiceModifierEnabled }),
+        // PDD 2026-07-17 — independent "required" flag (no longer mirrored off
+        // visibility). When the picker is hidden, requirement is meaningless, so
+        // we send false; the backend also force-reverts to false in that case,
+        // so sending the raw value would be safe too — we normalise here for a
+        // consistent stored value. Add-ons never reach the composition page.
+        ...(isAddon
+          ? {}
+          : { spice_selection_required: spiceModifierEnabled ? spiceSelectionRequired : false }),
         // PDD 2026-05-26 — BYO classification. Only sent for dishes;
         // add-ons can never be BYO themselves. API enforces hard-block
         // when is_byo=true and groupings empty (returns 400).
@@ -3965,18 +3975,22 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
                 </div>}
 
-                {/* Spice Modifier — STR-680 single unified toggle. When ON,
-                    the patron MUST pick a spice level before adding this item
-                    (the former separate "Require spice selection" toggle was
-                    folded in here). Default ON; flip OFF to suppress the picker
-                    for this item. Hidden for add-ons (never reach composition
-                    page) and Desserts (patron auto-hides them regardless). */}
+                {/* Spice Modifier — PDD 2026-07-17 two independent controls:
+                    (1) "Show spice picker" (spice_modifier_enabled) — does the
+                        patron composition-page spice picker RENDER for this item.
+                    (2) "Require a spice selection" (spice_selection_required) —
+                        must the diner pick a level before adding (gates
+                        "Add to order"). Only meaningful while the picker is
+                        shown; disabled + greyed when visibility is off, and the
+                        backend force-reverts it to false in that case.
+                    Hidden for add-ons (never reach composition page) and
+                    Desserts (patron auto-hides them regardless). */}
                 {!isAddon && category !== 'Desserts' && (
                   <div
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
+                      flexDirection: 'column',
+                      gap: 10,
                       padding: '10px 12px',
                       borderRadius: 10,
                       border: '1px solid',
@@ -3985,51 +3999,121 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       transition: 'all 0.15s',
                     }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
-                      <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
-                    </svg>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                        Diners must pick a spice level before they can add this item to their order.
+                    {/* Row 1 — visibility */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
+                        <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
+                      </svg>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Show spice picker</div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                          Show diners a spice-level picker for this item on the composition page.
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={spiceModifierEnabled}
+                        aria-label="Toggle Show spice picker"
+                        data-testid="spice-modifier-toggle"
+                        onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
+                        style={{
+                          position: 'relative',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          height: 24,
+                          width: 42,
+                          flexShrink: 0,
+                          borderRadius: 999,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
+                          transition: 'background-color 0.15s',
+                          padding: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            height: 18,
+                            width: 18,
+                            borderRadius: '50%',
+                            background: '#fff',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                            transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
+                            transition: 'transform 0.15s',
+                          }}
+                        />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={spiceModifierEnabled}
-                      aria-label="Toggle Spice Modifier"
-                      data-testid="spice-modifier-toggle"
-                      onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
+
+                    {/* Divider */}
+                    <div style={{ height: 1, background: spiceModifierEnabled ? '#fecdd3' : 'var(--border)' }} />
+
+                    {/* Row 2 — required (disabled + greyed when picker hidden) */}
+                    <div
                       style={{
-                        position: 'relative',
-                        display: 'inline-flex',
+                        display: 'flex',
                         alignItems: 'center',
-                        height: 24,
-                        width: 42,
-                        flexShrink: 0,
-                        borderRadius: 999,
-                        border: 'none',
-                        cursor: 'pointer',
-                        background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
-                        transition: 'background-color 0.15s',
-                        padding: 0,
+                        gap: 12,
+                        opacity: spiceModifierEnabled ? 1 : 0.5,
+                        transition: 'opacity 0.15s',
                       }}
                     >
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          height: 18,
-                          width: 18,
-                          borderRadius: '50%',
-                          background: '#fff',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                          transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
-                          transition: 'transform 0.15s',
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require a spice selection</div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                          {spiceModifierEnabled
+                            ? 'Diners must pick a spice level before they can add this item to their order.'
+                            : 'Turn on the spice picker to require a selection.'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={spiceModifierEnabled && spiceSelectionRequired}
+                        aria-label="Toggle Require a spice selection"
+                        aria-disabled={!spiceModifierEnabled}
+                        disabled={!spiceModifierEnabled}
+                        data-testid="spice-required-toggle"
+                        onClick={() => {
+                          if (!spiceModifierEnabled) return;
+                          setSpiceSelectionRequired((v: boolean) => !v);
                         }}
-                      />
-                    </button>
+                        style={{
+                          position: 'relative',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          height: 24,
+                          width: 42,
+                          flexShrink: 0,
+                          borderRadius: 999,
+                          border: 'none',
+                          cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
+                          background:
+                            spiceModifierEnabled && spiceSelectionRequired ? '#e11d48' : '#d1d5db',
+                          transition: 'background-color 0.15s',
+                          padding: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            height: 18,
+                            width: 18,
+                            borderRadius: '50%',
+                            background: '#fff',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                            transform:
+                              spiceModifierEnabled && spiceSelectionRequired
+                                ? 'translateX(21px)'
+                                : 'translateX(3px)',
+                            transition: 'transform 0.15s',
+                          }}
+                        />
+                      </button>
+                    </div>
                   </div>
                 )}
 

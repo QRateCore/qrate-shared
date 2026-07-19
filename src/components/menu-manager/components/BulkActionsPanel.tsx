@@ -202,6 +202,7 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
   { key: 'availability', label: 'Availability', icon: <Eye size={13} /> },
   { key: 'spice',        label: 'Spice',        icon: <Flame size={13} /> },
   { key: 'spiceModifier', label: 'Spice modifier', icon: <Flame size={13} /> },
+  { key: 'spiceRequired', label: 'Spice requirement', icon: <Flame size={13} /> },
   // Sweetness mode gated behind SWEETNESS_VISIBLE per STR-480.
   ...(SWEETNESS_VISIBLE
     ? [{ key: 'sweetness' as BulkMode, label: 'Sweetness', icon: <Sparkles size={13} /> }]
@@ -351,6 +352,11 @@ export default function BulkActionsPanel({
   // confirm step matches the schema default and an accidental "Apply"
   // doesn't strip the slider from every selected item.
   const [setSpiceModifier, setSetSpiceModifier] = useState<boolean>(true);
+  // PDD 2026-07-17 — bulk "require a spice selection" toggle, independent of
+  // the visibility bulk action above. Default TRUE mirrors the schema-preserved
+  // pre-split behaviour. The backend force-reverts required→false for any
+  // selected item whose spice picker is off, so mixed selections stay safe.
+  const [setSpiceRequired, setSetSpiceRequired] = useState<boolean>(true);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [pickedHeat, setPickedHeat] = useState<string | null>(null);
   const [pickedSweetness, setPickedSweetness] = useState<string | null>(null);
@@ -544,6 +550,34 @@ export default function BulkActionsPanel({
     await executeAllVoid(tasks, () => {
       const updated = items.map((i) =>
         selected.has(i.id) ? { ...i, spice_modifier_enabled: setSpiceModifier } : i,
+      );
+      onComplete(updated, selected);
+    });
+  }
+
+  async function runSpiceRequired() {
+    // PDD 2026-07-17 — per-item updateMenuItem loop, mirrors runSpiceModifier.
+    // Sets only spice_selection_required; the backend AND-gates it with the
+    // item's current spice_modifier_enabled, so a selected item whose picker
+    // is off keeps required=false regardless of the chosen value.
+    const tasks: Array<() => Promise<void>> = selectedItems.map((item) =>
+      async () => {
+        await service.updateMenuItem(item.id, {
+          spice_selection_required: setSpiceRequired,
+        });
+      },
+    );
+    await executeAllVoid(tasks, () => {
+      const updated = items.map((i) =>
+        selected.has(i.id)
+          ? {
+              ...i,
+              // Reflect the backend AND-gate in local state so the grid doesn't
+              // momentarily show "required" on a hidden-picker item.
+              spice_selection_required:
+                (i.spice_modifier_enabled ?? true) ? setSpiceRequired : false,
+            }
+          : i,
       );
       onComplete(updated, selected);
     });
@@ -1089,6 +1123,7 @@ export default function BulkActionsPanel({
         case 'special':      await runSpecial(); break;
         case 'availability': await runAvailability(); break;
         case 'spiceModifier': await runSpiceModifier(); break;
+        case 'spiceRequired': await runSpiceRequired(); break;
         case 'spice':        await runSpice(); break;
         case 'sweetness':    await runSweetness(); break;
         case 'serving':      await runServingSizes(); break;
@@ -1351,6 +1386,9 @@ export default function BulkActionsPanel({
           )}
           {mode === 'spiceModifier' && (
             <SpiceModifierForm value={setSpiceModifier} onChange={setSetSpiceModifier} />
+          )}
+          {mode === 'spiceRequired' && (
+            <SpiceRequiredForm value={setSpiceRequired} onChange={setSetSpiceRequired} />
           )}
           {mode === 'spice' && (
             <SpiceForm heatLabels={activeHeatLabels} pickedHeat={pickedHeat} onChange={setPickedHeat} />
@@ -1969,6 +2007,72 @@ function SpiceModifierForm({
           }}
         >
           Off — hide the spice picker
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SpiceRequiredForm({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+        Spice requirement
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+        Require diners to pick a spice level before adding these items. Only
+        applies to items whose spice picker is on; items with the picker off are
+        left optional.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          data-testid="spice-required-option-on"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 'var(--r-xs)',
+            border: value ? '2px solid #e11d48' : '1px solid var(--border)',
+            background: value ? '#fff1f2' : 'white',
+            color: value ? '#9f1239' : 'var(--text)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <Flame size={13} />
+          Required — diners must pick a spice level
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          data-testid="spice-required-option-off"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 'var(--r-xs)',
+            border: !value ? '2px solid #525b6b' : '1px solid var(--border)',
+            background: !value ? '#f1f5f9' : 'white',
+            color: !value ? '#1f2937' : 'var(--text)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          Optional — diners can add without picking
         </button>
       </div>
     </div>

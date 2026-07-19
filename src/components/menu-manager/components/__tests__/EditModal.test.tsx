@@ -672,30 +672,62 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
 });
 
 // ===========================================================================
-// STR-680 — unified single Spice Modifier toggle (supersedes STR-673)
+// PDD 2026-07-17 — split into TWO independent toggles (reverts STR-680)
 // ===========================================================================
-// The separate "Require spice selection" toggle was folded into Spice Modifier:
-// enabling the modifier now makes the patron spice pick MANDATORY. The second
-// toggle (spice-required-toggle) is gone. On save, the legacy wire field
-// spice_selection_required is mirrored directly off the single flag so a stored
-// value can never contradict the toggle. Patron enforcement derives from
-// spice_modifier_enabled alone (compositionUtils.itemRequiresSpice).
-describe('EditModal — unified Spice Modifier toggle (STR-680)', () => {
-  it('renders the single Spice Modifier toggle on a non-dessert dish', () => {
+// "Show spice picker" (spice-modifier-toggle) controls picker VISIBILITY;
+// "Require a spice selection" (spice-required-toggle) controls whether picking
+// is MANDATORY. The required toggle is disabled/greyed while the picker is off,
+// and the backend force-reverts spice_selection_required to false in that case.
+// On save both fields are sent independently. Patron enforcement: visibility via
+// itemShowsSpicePicker, requirement via itemRequiresSpice.
+describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
+  it('renders the "Show spice picker" (visibility) toggle on a non-dessert dish', () => {
     renderModal({ item: makeDishItem({ category: 'Entrees', canonical_category: 'Entrees' }) });
     expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
   });
 
-  it('no longer renders the separate "Require spice selection" toggle', () => {
+  it('renders the separate "Require a spice selection" toggle when the picker is on', () => {
     renderModal({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       item: makeDishItem({ spice_modifier_enabled: true } as any),
     });
-    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('spice-required-disabled-hint')).not.toBeInTheDocument();
+    const req = screen.getByTestId('spice-required-toggle');
+    expect(req).toBeInTheDocument();
+    expect(req).not.toBeDisabled();
+    expect(req.getAttribute('aria-checked')).toBe('true'); // default preserves prior behaviour
   });
 
-  it('save mirrors spice_selection_required=true when Spice Modifier is ON', async () => {
+  it('disables the required toggle (and reads unchecked) when the picker is off', () => {
+    renderModal({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      item: makeDishItem({ spice_modifier_enabled: false, spice_selection_required: true } as any),
+    });
+    const req = screen.getByTestId('spice-required-toggle');
+    expect(req).toBeDisabled();
+    expect(req.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('save sends spice_selection_required=false for a visible-but-optional item', async () => {
+    const user = userEvent.setup();
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    renderModal({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      item: makeDishItem({ spice_modifier_enabled: true, spice_selection_required: true } as any),
+      service,
+    });
+
+    // Flip requirement off, leaving the picker visible.
+    await user.click(screen.getByTestId('spice-required-toggle'));
+    await user.click(screen.getByTestId('edit-save-btn'));
+
+    await waitFor(() => { expect(service.updateMenuItem).toHaveBeenCalled(); });
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.spice_modifier_enabled).toBe(true);
+    expect(updates.spice_selection_required).toBe(false);
+  });
+
+  it('save sends spice_selection_required=true when required is on and picker is ON', async () => {
     const user = userEvent.setup();
     const saved = makeDishItem();
     const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
