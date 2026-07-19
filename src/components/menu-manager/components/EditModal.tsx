@@ -3044,7 +3044,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {!isAddon && (
           <div
             data-testid="edit-modal-top-zone"
-            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : '12px 24px', alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
+            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: isMobile ? 12 : '12px 20px', alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
           >
             {/* Column 1 — Description, Raw Category, Appears-in */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -3093,7 +3093,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 style={{
                   ...inputStyle,
                   resize: 'vertical',
-                  minHeight: 88,
+                  minHeight: 60,
                   border: descError
                     ? '1px solid #b91c1c'
                     : descriptionSource === 'ai_generated'
@@ -3184,6 +3184,40 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               />
             </div>
 
+            </div>
+            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
+                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
+                  <label style={labelStyle}>Heat / Spice</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {activeHeatLabels.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        data-testid={`heat-pill-${option.toLowerCase()}`}
+                        aria-pressed={heatSpice === option}
+                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
+                        style={{
+                          padding: '4px 14px',
+                          borderRadius: 20,
+                          border: '1px solid',
+                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
+                          background: heatSpice === option ? '#fff7ed' : 'transparent',
+                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: heatSpice === option ? 600 : 400,
+                          transition: 'all 0.1s',
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
+                </div>}
+
             {/* ── Appears in menus ──────────────────────────────── */}
             {(item.menu_associations ?? []).length > 0 && (
               <div>
@@ -3240,41 +3274,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               </div>
             )}
-
             </div>
-            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
+            {/* Column 3 — Spice Modifier + BYO (compact toggle cards) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
-                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
-                  <label style={labelStyle}>Heat / Spice</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {activeHeatLabels.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        data-testid={`heat-pill-${option.toLowerCase()}`}
-                        aria-pressed={heatSpice === option}
-                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
-                        style={{
-                          padding: '4px 14px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
-                          background: heatSpice === option ? '#fff7ed' : 'transparent',
-                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: heatSpice === option ? 600 : 400,
-                          transition: 'all 0.1s',
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
-                </div>}
-
                 {/* Spice Modifier — STR-680 single unified toggle. When ON,
                     the patron MUST pick a spice level before adding this item
                     (the former separate "Require spice selection" toggle was
@@ -3295,15 +3297,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       transition: 'all 0.15s',
                     }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 2c-1.5 3-3 5-3 8a3 3 0 0 0 6 0c0-3-1.5-5-3-8Z"/>
-                      <path d="M9 13c-2 1.5-3 4-3 6a6 6 0 0 0 12 0c0-2-1-4.5-3-6"/>
-                    </svg>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                        Diners must pick a spice level before they can add this item to their order.
-                      </div>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Spice Modifier</span>
+                      <span title="Diners must pick a spice level before they can add this item to their order." aria-label="Diners must pick a spice level before they can add this item to their order." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
                     </div>
                     <button
                       type="button"
@@ -3369,19 +3365,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-teal, #00a996)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="4" y1="6" x2="20" y2="6" />
-                          <line x1="4" y1="12" x2="20" y2="12" />
-                          <line x1="4" y1="18" x2="20" y2="18" />
-                          <circle cx="9" cy="6" r="2" fill="#fff" />
-                          <circle cx="15" cy="12" r="2" fill="#fff" />
-                          <circle cx="11" cy="18" r="2" fill="#fff" />
-                        </svg>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own (BYO)</div>
-                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                            When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen.
-                          </div>
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own</span>
+                          <span title="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." aria-label="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
                         </div>
                         <button
                           type="button"
