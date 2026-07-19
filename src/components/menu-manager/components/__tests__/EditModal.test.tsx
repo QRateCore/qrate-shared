@@ -1320,110 +1320,60 @@ describe('EditModal — deferred dish association for new addons', () => {
     }));
   }
 
-  it('does NOT call updateItemModifiers when "Add Selected" is clicked in deferred-creation mode', async () => {
-    const user = userEvent.setup();
-    const service = makeService();
-
+  it('shows only Food Tags when creating a new add-on — no Dishes tab or dish-selection surface (change H)', () => {
     renderModal({
       item: draftAddon,
       isNewItem: true,
       forceAddon: true,
       allItems: [dishA, dishB],
       onSaveNewItem: makeSaveNewItem(),
-      service,
     });
 
-    // Addon mode + isNewItem → Dishes tab is default
-    const dishesTab = screen.getByTestId('tab-dishes');
-    await user.click(dishesTab);
-
-    // Select dish A
-    const selectA = screen.getByTestId('select-dish-dish-a');
-    await user.click(selectA);
-
-    // Click "Add Selected"
-    const addSelectedBtn = screen.getByTestId('add-selected-dishes');
-    await user.click(addSelectedBtn);
-
-    // updateItemModifiers must NOT have been called — addon doesn't exist yet
-    expect(service.updateItemModifiers).not.toHaveBeenCalled();
-
-    // But the dish should appear in the "Associated Dishes" section (local state)
-    expect(screen.getByTestId('remove-dish-dish-a')).toBeInTheDocument();
+    // Change H (2026-07-18): a new add-on / modifier-option editor is Food-Tags-
+    // only — the Dishes tab and its dish-selection surface are removed DURING
+    // creation. Dishes are linked afterward from a dish's Groupings → Add member
+    // picker, or seeded via preselectedDishIds (flushed on save — next test).
+    expect(screen.queryByTestId('tab-dishes')).toBeNull();
+    expect(screen.queryByTestId('select-dish-dish-a')).toBeNull();
+    expect(screen.queryByTestId('add-selected-dishes')).toBeNull();
   });
 
-  it('does NOT call updateItemModifiers when "Remove" is clicked in deferred-creation mode', async () => {
-    const user = userEvent.setup();
-    const service = makeService();
-
-    renderModal({
-      item: draftAddon,
-      isNewItem: true,
-      forceAddon: true,
-      allItems: [dishA],
-      preselectedDishIds: ['dish-a'],
-      onSaveNewItem: makeSaveNewItem(),
-      service,
-    });
-
-    const dishesTab = screen.getByTestId('tab-dishes');
-    await user.click(dishesTab);
-
-    // Dish A should be pre-associated
-    const removeBtn = screen.getByTestId('remove-dish-dish-a');
-    await user.click(removeBtn);
-
-    // API must NOT be called
-    expect(service.updateItemModifiers).not.toHaveBeenCalled();
-
-    // Dish should be gone from Associated Dishes
-    expect(screen.queryByTestId('remove-dish-dish-a')).not.toBeInTheDocument();
-  });
-
-  it('flushes all dish associations with real ID on save', async () => {
+  it('flushes preselectedDishIds with the real addon ID on save, deferring the API call until the addon exists', async () => {
     const user = userEvent.setup();
     const onSaveNewItem = makeSaveNewItem('real-addon-99');
-    const onDishAddonsChange = vi.fn();
     const service = makeService();
     const onComplete = vi.fn();
 
+    // With H, dishes can no longer be user-selected via a Dishes tab at creation;
+    // they arrive via preselectedDishIds (e.g. creating an add-on from within a
+    // dish's grouping picker). They MUST still defer — no association API call
+    // until the addon is created — then flush with the REAL id.
     renderModal({
       item: draftAddon,
       isNewItem: true,
       forceAddon: true,
       allItems: [dishA, dishB],
+      preselectedDishIds: ['dish-a', 'dish-b'],
       onSaveNewItem,
-      onDishAddonsChange,
       service,
       onComplete,
     });
 
-    // Go to Dishes tab and select both dishes
-    const dishesTab = screen.getByTestId('tab-dishes');
-    await user.click(dishesTab);
-
-    await user.click(screen.getByTestId('select-dish-dish-a'));
-    await user.click(screen.getByTestId('select-dish-dish-b'));
-    await user.click(screen.getByTestId('add-selected-dishes'));
-
-    // No API call yet
+    // Deferred: nothing persisted before save.
     expect(service.updateItemModifiers).not.toHaveBeenCalled();
 
-    // Fill required name and price, then save
-    const nameInput = screen.getByTestId('edit-name-input');
-    await user.type(nameInput, 'Truffle Oil');
-    const priceInput = screen.getByTestId('edit-price-input');
-    await user.type(priceInput, '3');
-
+    // Fill required name + price, then save.
+    await user.type(screen.getByTestId('edit-name-input'), 'Truffle Oil');
+    await user.type(screen.getByTestId('edit-price-input'), '3');
     await user.click(screen.getByTestId('edit-save-btn'));
 
-    // onSaveNewItem should have been called to create the addon
+    // The addon is created first...
     await waitFor(() => {
       expect(onSaveNewItem).toHaveBeenCalledTimes(1);
     });
 
-    // Now updateItemModifiers should have been called for each associated dish,
-    // using the REAL addon ID ('real-addon-99'), not the draft ID
+    // ...then each preselected dish is associated using the REAL addon id
+    // ('real-addon-99'), not the draft id.
     await waitFor(() => {
       expect(service.updateItemModifiers).toHaveBeenCalledTimes(2);
     });
@@ -1431,68 +1381,13 @@ describe('EditModal — deferred dish association for new addons', () => {
     const calls = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls;
     const dishIds = calls.map((c) => c[0]).sort();
     expect(dishIds).toEqual(['dish-a', 'dish-b']);
-
-    // Each call should use the real addon ID
     for (const call of calls) {
       const addons = call[1].addons;
       expect(addons).toHaveLength(1);
       expect(addons[0].menu_item_id).toBe('real-addon-99');
     }
 
-    // onComplete should have been called
     expect(onComplete).toHaveBeenCalledTimes(1);
-  });
-
-  it('flushes preselected + user-selected dishes together on save', async () => {
-    const user = userEvent.setup();
-    const onSaveNewItem = makeSaveNewItem('real-addon-42');
-    const service = makeService();
-
-    renderModal({
-      item: draftAddon,
-      isNewItem: true,
-      forceAddon: true,
-      allItems: [dishA, dishB],
-      preselectedDishIds: ['dish-a'],
-      onSaveNewItem,
-      service,
-    });
-
-    // Dish A is pre-associated. Go to Dishes tab and also select dish B.
-    const dishesTab = screen.getByTestId('tab-dishes');
-    await user.click(dishesTab);
-
-    // Dish A should already be in Associated
-    expect(screen.getByTestId('remove-dish-dish-a')).toBeInTheDocument();
-
-    // Select dish B from pool
-    await user.click(screen.getByTestId('select-dish-dish-b'));
-    await user.click(screen.getByTestId('add-selected-dishes'));
-
-    // Fill required fields and save
-    const nameInput = screen.getByTestId('edit-name-input');
-    await user.type(nameInput, 'Garlic Butter');
-    const priceInput = screen.getByTestId('edit-price-input');
-    await user.type(priceInput, '2');
-
-    await user.click(screen.getByTestId('edit-save-btn'));
-
-    await waitFor(() => {
-      expect(onSaveNewItem).toHaveBeenCalledTimes(1);
-    });
-
-    // Both dishes should have been associated using the real ID
-    await waitFor(() => {
-      expect(service.updateItemModifiers).toHaveBeenCalledTimes(2);
-    });
-
-    const calls = (service.updateItemModifiers as ReturnType<typeof vi.fn>).mock.calls;
-    const dishIds = calls.map((c) => c[0]).sort();
-    expect(dishIds).toEqual(['dish-a', 'dish-b']);
-
-    for (const call of calls) {
-      expect(call[1].addons[0].menu_item_id).toBe('real-addon-42');
-    }
   });
 
   it('does not flush dish associations when saving a new DISH (non-addon)', async () => {
@@ -2228,34 +2123,38 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
   });
 });
 
-// ── Dishes/Add-ons type toggle — edit mode visibility (2026-07-02) ──────────
+// ── Item type is context-driven — the Dishes/Add-ons toggle was REMOVED ──────
 //
-// Historically the pill toggle was gated to isNewItem only. Owner request
-// 2026-07-02 relaxed that so an existing item's type can be flipped inline.
-// forceAddon / forceDish still pin the type (setup-guide surfaces).
+// The in-editor pill toggle (type-toggle*) was removed 2026-07-18 (change D): an
+// item's type is fixed by the rail view it was created from (forceAddon /
+// forceDish) or its stored item_type, and can no longer be flipped inline. These
+// tests pin BOTH that the toggle is gone AND that the type is still derived
+// correctly (an add-on hides the description field; a dish shows it).
 
-describe('EditModal — dish↔addon type toggle in edit mode', () => {
-  it('renders the type toggle for an existing dish item (edit mode)', () => {
+describe('EditModal — item type is context-driven (no type toggle)', () => {
+  it('renders no type toggle for an existing dish item, and shows the dish-only description field', () => {
     renderModal({ item: makeDishItem(), isNewItem: false });
-    expect(screen.getByTestId('type-toggle')).toBeTruthy();
-    expect(screen.getByTestId('type-toggle-dishes')).toBeTruthy();
-    expect(screen.getByTestId('type-toggle-addons')).toBeTruthy();
+    expect(screen.queryByTestId('type-toggle')).toBeNull();
+    expect(screen.queryByTestId('type-toggle-dishes')).toBeNull();
+    expect(screen.queryByTestId('type-toggle-addons')).toBeNull();
+    // Dish → the description field renders (add-ons hide it).
+    expect(screen.getByTestId('edit-description-input')).toBeTruthy();
   });
 
-  it('renders the type toggle for an existing addon item (edit mode)', () => {
+  it('renders no type toggle for an existing addon item, and derives add-on behaviour (no description field)', () => {
     renderModal({ item: makeAddonItem(), isNewItem: false });
-    expect(screen.getByTestId('type-toggle')).toBeTruthy();
-    // Add-ons pill is the active side when the item is an addon
-    expect(screen.getByTestId('type-toggle-addons')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('type-toggle-dishes')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByTestId('type-toggle')).toBeNull();
+    // Add-on → the description field is hidden (proves the type is derived from
+    // item_type, not chosen via the removed toggle).
+    expect(screen.queryByTestId('edit-description-input')).toBeNull();
   });
 
-  it('still renders the type toggle in new-item mode (regression guard)', () => {
+  it('renders no type toggle in new-item mode', () => {
     renderModal({ item: makeDishItem(), isNewItem: true });
-    expect(screen.getByTestId('type-toggle')).toBeTruthy();
+    expect(screen.queryByTestId('type-toggle')).toBeNull();
   });
 
-  it('does NOT render the type toggle when forceAddon pins the type', () => {
+  it('renders no type toggle when forceAddon pins the type', () => {
     renderModal({ item: makeAddonItem(), isNewItem: false, forceAddon: true });
     expect(screen.queryByTestId('type-toggle')).toBeNull();
   });
