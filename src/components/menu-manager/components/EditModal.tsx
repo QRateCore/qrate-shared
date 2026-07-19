@@ -377,76 +377,74 @@ function TagInput({
 
   return (
     <div>
-      <label className="section-header" style={{ display: 'block', marginBottom: 12 }}>
+      <label className="section-header" style={{ display: 'block', marginBottom: 8 }}>
         {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
       </label>
-      {/* Chips float directly on the card (no nested white box). Warm
-          "tag-style" pills per the Seekh mockup: cream bg, brown text,
-          pill-shaped, no border — replaces the old grey box-in-box. */}
-      {values.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          {values.map((v) => (
-            <span
-              key={v}
-              className="font-medium"
+      {/* Chips + inline input flow together directly on the card — no nested
+          white box, no dedicated input row (compact per owner feedback: the
+          separate input row wasted a whole line per card). Warm "tag-style"
+          cream pills per the Seekh mockup; the input is the cursor position
+          after the last chip, so a card with a few tags is a single line. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        {values.map((v) => (
+          <span
+            key={v}
+            className="font-medium"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: '#ffecd9',
+              color: '#8b4513',
+              borderRadius: 14,
+              padding: '4px 10px',
+              fontSize: 12,
+              lineHeight: 1.2,
+            }}
+          >
+            {v}
+            <button
+              type="button"
+              onClick={() => onChange(values.filter((t) => t !== v))}
+              data-testid={`remove-tag-${fieldKey}-${v}`}
+              aria-label={`Remove ${v}`}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                background: '#ffecd9',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                lineHeight: 1,
+                fontWeight: 700,
+                opacity: 0.55,
                 color: '#8b4513',
-                borderRadius: 14,
-                padding: '5px 10px',
-                fontSize: 12,
-                lineHeight: 1.2,
               }}
             >
-              {v}
-              <button
-                type="button"
-                onClick={() => onChange(values.filter((t) => t !== v))}
-                data-testid={`remove-tag-${fieldKey}-${v}`}
-                aria-label={`Remove ${v}`}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  lineHeight: 1,
-                  fontWeight: 700,
-                  opacity: 0.55,
-                  color: '#8b4513',
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      {/* Separate clean input field below the chips (mockup .tag-input) */}
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
-        }}
-        onBlur={addTag}
-        placeholder={placeholder}
-        data-testid={`tag-input-${fieldKey}`}
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          padding: '8px 12px',
-          fontSize: 16,
-          outline: 'none',
-          background: 'white',
-          color: 'var(--text)',
-        }}
-      />
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
+          }}
+          onBlur={addTag}
+          placeholder={values.length === 0 ? placeholder : 'Add…'}
+          data-testid={`tag-input-${fieldKey}`}
+          style={{
+            flex: 1,
+            minWidth: 90,
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            fontSize: 14,
+            padding: '4px 2px',
+            color: 'var(--text)',
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -4188,7 +4186,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   style={{
                     display: 'grid',
                     gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: isMobile ? 14 : '16px 20px',
+                    gap: isMobile ? 10 : '12px 16px',
                   }}
                 >
                   {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
@@ -4199,7 +4197,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         background: 'white',
                         border: '1px solid var(--border)',
                         borderRadius: 8,
-                        padding: 18,
+                        padding: 14,
                       }}
                     >
                       <TagInput
