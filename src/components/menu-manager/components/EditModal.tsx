@@ -4193,11 +4193,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     <div
                       key={key}
                       style={{
+                        ...EDITOR_CARD_STYLE,
                         gridColumn: full && !isMobile ? '1 / -1' : 'auto',
-                        background: 'white',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: 14,
                       }}
                     >
                       <TagInput
@@ -5227,10 +5224,8 @@ function PerfCard({ testId, label, value, highlight }: { testId?: string; label:
     <div
       data-testid={testId}
       style={{
-        background: highlight ? '#fff7ed' : '#f9f9f9',
-        border: `1px solid ${highlight ? '#fed7aa' : 'var(--border)'}`,
-        borderRadius: 'var(--r)',
-        padding: '14px 16px',
+        ...EDITOR_CARD_STYLE,
+        ...(highlight ? { background: '#fff7ed', border: '1px solid #fed7aa' } : {}),
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
@@ -5268,6 +5263,16 @@ const inputStyle: React.CSSProperties = {
   padding: '7px 10px',
   outline: 'none',
   boxSizing: 'border-box',
+};
+
+// STR-963 — single source of truth for the editor's card container so every
+// tab (Food Tags · Placements · Performance) reads as one design system:
+// white surface, 1px hairline border, radius 8, 14px padding.
+const EDITOR_CARD_STYLE: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  padding: 14,
 };
 
 function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
@@ -5475,10 +5480,7 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
     <div
       data-testid={`placements-tab-row-${assoc.menu_id}`}
       style={{
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        padding: 12,
-        background: '#fff',
+        ...EDITOR_CARD_STYLE,
         opacity: saving ? 0.7 : 1,
         transition: 'opacity 0.15s',
       }}
