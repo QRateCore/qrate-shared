@@ -18,7 +18,6 @@ import {
   SERVING_STYLES,
   DRINK_STRENGTHS,
 } from '../../../constants/food-tags';
-import { deriveHeatFromLabel } from '../../../utils/spice-derivation';
 import Select from '../../common/Select';
 import RawCategorySelect from './RawCategorySelect';
 import { processImageForUpload } from '../../../utils/imageProcessing';
@@ -44,6 +43,10 @@ interface EditModalProps {
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
   /** Called when user clicks a menu chip — close modal and navigate to that menu+item */
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
+  /** STR-977 — builds the URL for a menu placement so the compact placement
+   *  tiles can open the menu in a NEW browser tab (preserving the open editor).
+   *  Optional: when absent (waiter/admin) the tiles render as non-link cards. */
+  getMenuHref?: (menuId: string, itemId: string) => string;
   /** True when the modal was opened via "Add Item". Historically gated the
    *  Dishes/Add-ons type toggle to new-item flow only; as of 2026-07-02 the
    *  toggle also shows in edit mode so owners can convert an existing item's
@@ -711,7 +714,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -3202,90 +3205,94 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             </div>
             {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                {/* Heat / Spice — predefined pill selector (hidden for Beverages & Desserts and add-ons) */}
-                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && <div>
-                  <label style={labelStyle}>Heat / Spice</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {activeHeatLabels.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        data-testid={`heat-pill-${option.toLowerCase()}`}
-                        aria-pressed={heatSpice === option}
-                        onClick={() => setHeatSpice(heatSpice === option ? null : option)}
-                        style={{
-                          padding: '4px 14px',
-                          borderRadius: 20,
-                          border: '1px solid',
-                          borderColor: heatSpice === option ? '#f97316' : 'var(--border)',
-                          background: heatSpice === option ? '#fff7ed' : 'transparent',
-                          color: heatSpice === option ? '#c2410c' : 'var(--text2)',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: heatSpice === option ? 600 : 400,
-                          transition: 'all 0.1s',
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                  <HeatSpicePreview heatSpice={heatSpice} scale={activeHeatLabels} />
-                </div>}
+                {/* Heat / Spice relocated to the "Dish Properties" tab as an
+                    N/A-default dropdown (STR-977). */}
 
-            {/* ── Appears in menus ──────────────────────────────── */}
+            {/* ── Placement tiles — menus this item appears on (STR-977) ──
+                Compact read-only tiles showing price / boost / chef's-special.
+                Each opens the menu in a NEW tab (getMenuHref) so the open
+                editor is preserved; falls back to a non-link card when no
+                getMenuHref is passed (waiter / admin). Replaces the old faint
+                navigate-pills; the Placements TAB remains the editing surface. */}
             {(item.menu_associations ?? []).length > 0 && (
               <div>
-                <SectionLabel>Appears in</SectionLabel>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {(item.menu_associations ?? []).map((assoc) => {
-                      const canNavigate = !!onNavigateToMenu;
-                      return (
-                        <button
-                          key={assoc.menu_id}
-                          type="button"
-                          data-testid={`appears-in-menu-${assoc.menu_id}`}
-                          disabled={!canNavigate}
-                          onClick={() => {
-                            trackAction('menu.editModal.navigateToMenu', {
-                              restaurantId,
-                              metadata: { itemId: item.id, menuId: assoc.menu_id },
-                            });
-                            onNavigateToMenu?.(assoc.menu_id, item.id);
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 12px',
-                            borderRadius: 20,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            border: '1px solid var(--border)',
-                            background: canNavigate ? 'var(--white)' : '#f9f9f9',
-                            color: canNavigate ? 'var(--text2)' : 'var(--text3)',
-                            cursor: canNavigate ? 'pointer' : 'default',
-                            transition: 'background 0.1s, color 0.1s',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (canNavigate) {
-                              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,107,43,0.08)';
-                              (e.currentTarget as HTMLButtonElement).style.color = 'var(--brand-s)';
-                              (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--brand-s)';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (canNavigate) {
-                              (e.currentTarget as HTMLButtonElement).style.background = 'var(--white)';
-                              (e.currentTarget as HTMLButtonElement).style.color = 'var(--text2)';
-                              (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
-                            }
-                          }}
-                        >
-                          {assoc.menu_name}
-                        </button>
-                      );
-                    })}
+                <SectionLabel>On menus</SectionLabel>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {(item.menu_associations ?? []).map((assoc) => {
+                    const href = getMenuHref ? getMenuHref(assoc.menu_id, item.id) : null;
+                    const priceLabel = assoc.price != null ? `$${assoc.price.toFixed(2)}` : null;
+                    const hasBoost = !!assoc.boost_level;
+                    const isSpecial = !!assoc.chefs_special;
+                    const tileStyle: React.CSSProperties = {
+                      display: 'inline-flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      gap: 3,
+                      minWidth: 92,
+                      maxWidth: 160,
+                      minHeight: 44,
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      border: '1px solid var(--border)',
+                      background: 'var(--white)',
+                      textDecoration: 'none',
+                      color: 'var(--text)',
+                      cursor: href ? 'pointer' : 'default',
+                      transition: 'background 0.1s, border-color 0.1s',
+                    };
+                    const hover = (e: React.MouseEvent<HTMLElement>, on: boolean) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.background = on ? 'rgba(255,107,43,0.08)' : 'var(--white)';
+                      el.style.borderColor = on ? 'var(--brand-s)' : 'var(--border)';
+                    };
+                    const inner = (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {assoc.menu_name}
+                          </span>
+                          {href && <span aria-hidden style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>↗</span>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text2)' }}>
+                          {priceLabel && <span>{priceLabel}</span>}
+                          {hasBoost && <span title={`Boosted (level ${assoc.boost_level})`} aria-label={`Boosted, level ${assoc.boost_level}`}>⭐</span>}
+                          {isSpecial && (
+                            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#fff7ed', color: '#c2410c' }}>
+                              Special
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    );
+                    return href ? (
+                      <a
+                        key={assoc.menu_id}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid={`placement-tile-${assoc.menu_id}`}
+                        style={tileStyle}
+                        onMouseEnter={(e) => hover(e, true)}
+                        onMouseLeave={(e) => hover(e, false)}
+                        onClick={() => {
+                          trackAction('menu.editModal.navigateToMenu', {
+                            restaurantId,
+                            metadata: { itemId: item.id, menuId: assoc.menu_id },
+                          });
+                        }}
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <div
+                        key={assoc.menu_id}
+                        data-testid={`placement-tile-${assoc.menu_id}`}
+                        style={tileStyle}
+                      >
+                        {inner}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -3318,7 +3325,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Show spice picker</span>
-                        <span title="Show diners a spice-level picker for this item on the composition page." aria-label="Show diners a spice-level picker for this item on the composition page." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
                       </div>
                       <button
                         type="button"
@@ -3364,7 +3370,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: spiceModifierEnabled ? 1 : 0.5, transition: 'opacity 0.15s' }}>
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require a spice selection</span>
-                        <span title="Diners must pick a spice level before they can add this item to their order." aria-label="Diners must pick a spice level before they can add this item to their order." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
                       </div>
                       <button
                         type="button"
@@ -3439,7 +3444,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own</span>
-                          <span title="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." aria-label="When enabled, this dish bypasses dietary/allergen filtering on the base recipe. Diners customize it on the next screen." style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 10, cursor: 'help', flexShrink: 0 }}>?</span>
                         </div>
                         <button
                           type="button"
@@ -3561,7 +3565,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               const placementsCount = item.menu_associations?.length ?? 0;
               const label =
                 tab === 'food_tags'
-                  ? 'Food Tags'
+                  ? (isAddon ? 'Food Tags' : 'Dish Properties')
                   : tab === 'placements'
                     ? `Placements${placementsCount > 0 ? ` (${placementsCount})` : ''}`
                     : tab === 'groupings'
@@ -4248,6 +4252,25 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     width. Scoped strictly to TAG_FIELDS (the beverage profile,
                     enrichment banner, and dessert sweetness siblings above are
                     untouched). tag-input-* / remove-tag-* testids unchanged. */}
+                {/* Spice level — relocated from the top band (STR-977). Dish-only;
+                    hidden for Beverages / Desserts / add-ons. N/A = no spice set. */}
+                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && (
+                  <div style={{ ...EDITOR_CARD_STYLE, marginBottom: isMobile ? 10 : 12 }}>
+                    <label htmlFor="heat-spice-select" style={labelStyle}>Spice level 🌶️</label>
+                    <select
+                      id="heat-spice-select"
+                      data-testid="heat-spice-select"
+                      value={heatSpice ?? ''}
+                      onChange={(e) => setHeatSpice(e.target.value === '' ? null : e.target.value)}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                    >
+                      <option value="">N/A</option>
+                      {activeHeatLabels.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div
                   data-testid="food-tags-card-grid"
                   style={{
@@ -5082,41 +5105,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
-
-// Owner-side preview of how the diner sees this item's heat tag — STR-478.
-// Mirrors the canonical 0..4 scale derived in qrate-core spice_derivation.py.
-// Hidden when no label is selected OR the label is no longer on the active
-// scale (stale label after a cascade-state edit).
-function HeatSpicePreview({
-  heatSpice,
-  scale,
-}: {
-  heatSpice: string | null;
-  scale: readonly string[];
-}) {
-  const heat = heatSpice == null ? null : deriveHeatFromLabel(heatSpice, scale);
-  // aria-live="polite" ensures screen readers announce the bucket change when
-  // the owner selects a different pill, without interrupting other speech.
-  return (
-    <div
-      data-testid="edit-modal-heat-preview"
-      aria-live="polite"
-      style={{
-        marginTop: 8,
-        fontSize: 11,
-        color: 'var(--text2)',
-        minHeight: 14,
-      }}
-    >
-      {heat !== null && heatSpice && (
-        <>
-          <span style={{ fontWeight: 600 }}>Patron sees:</span>{' '}
-          heat {heat} of 4 — {heatSpice}
-        </>
-      )}
-    </div>
-  );
-}
 
 function RecommendationCard({
   rec,
