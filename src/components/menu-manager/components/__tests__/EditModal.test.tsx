@@ -981,7 +981,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
       onComplete,
     });
 
-    await user.click(screen.getByTestId('heat-pill-hot'));
+    await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     const updated = onComplete.mock.calls[0][0];
@@ -1013,7 +1013,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
       </MenuManagerServiceProvider>,
     );
 
-    await user.click(screen.getByTestId('heat-pill-hot'));
+    await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     // The canonical /spice callback fires…
@@ -1100,12 +1100,14 @@ describe('EditModal — active toggle + save', () => {
 });
 
 
-describe('EditModal — heat/spice pill selection', () => {
-  it('renders heat/spice pills when food_tags tab is active', () => {
+describe('EditModal — heat/spice select (Dish Properties, STR-977)', () => {
+  it('renders the heat/spice <select> with an N/A option when the Dish Properties tab is active', () => {
     renderModal({ item: makeDishItem() });
-    // The food_tags tab is active by default — pills should be visible
-    expect(screen.getByTestId('heat-pill-mild')).toBeInTheDocument();
-    expect(screen.getByTestId('heat-pill-hot')).toBeInTheDocument();
+    // The food_tags (Dish Properties) tab is active by default for dishes.
+    const select = screen.getByTestId('heat-spice-select') as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    // N/A (empty value) + the active heat labels are the options.
+    expect(within(select).getByRole('option', { name: 'N/A' })).toBeInTheDocument();
   });
 
   it('includes selected heat_spice value in save payload', async () => {
@@ -1114,8 +1116,8 @@ describe('EditModal — heat/spice pill selection', () => {
     const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
     renderModal({ item: makeDishItem({ food_tags: {} }), service });
 
-    // Click the "Hot" pill
-    await user.click(screen.getByTestId('heat-pill-hot'));
+    // Choose "Hot" from the spice dropdown.
+    await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
 
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => {
@@ -1124,75 +1126,33 @@ describe('EditModal — heat/spice pill selection', () => {
     });
   });
 
-  it('initializes heat/spice pill from item.food_tags.heat_spice string', () => {
-    renderModal({ item: makeDishItem({ food_tags: { heat_spice: 'Mild' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }) });
-    const mildPill = screen.getByTestId('heat-pill-mild');
-    // The selected pill has aria-pressed="true"
-    expect(mildPill.getAttribute('aria-pressed')).toBe('true');
-  });
-});
-
-// STR-478: owner-side "Patron sees" preview row showing the canonical 0..4
-// heat bucket the diner will see for the currently-selected label.
-describe('EditModal — STR-478 heat/spice patron preview', () => {
-  it('renders empty preview container when no heat label is selected', () => {
-    renderModal({ item: makeDishItem({ food_tags: {} }) });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-    expect(preview).toBeInTheDocument();
-    // No "Patron sees" copy when nothing is selected.
-    expect(preview).not.toHaveTextContent(/Patron sees/);
-  });
-
-  it('shows "heat 4 of 4 — Fiery" when Fiery is selected on the default 5-level scale', () => {
-    renderModal({
-      item: makeDishItem({ food_tags: { heat_spice: 'Fiery' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
-    });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-    expect(preview).toHaveTextContent('Patron sees:');
-    expect(preview).toHaveTextContent('heat 4 of 4 — Fiery');
-  });
-
-  it('updates preview when owner switches pills (default scale: Mild → 0, Hot → 3)', async () => {
+  it('selecting N/A clears the heat_spice value', async () => {
     const user = userEvent.setup();
-    renderModal({ item: makeDishItem({ food_tags: {} }) });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-
-    await user.click(screen.getByTestId('heat-pill-mild'));
-    expect(preview).toHaveTextContent('heat 0 of 4 — Mild');
-
-    await user.click(screen.getByTestId('heat-pill-hot'));
-    expect(preview).toHaveTextContent('heat 3 of 4 — Hot');
-  });
-
-  it('compresses heat bucket on a 7-level custom scale (level 5 → heat 3)', () => {
-    // 7-level row: [0, 1, 1, 2, 3, 3, 4] — index 4 (5th label) → heat 3
-    const customScale = ['Plain', 'Mild', 'Warm', 'Medium', 'Hot', 'Spicy', 'Fiery'];
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
     renderModal({
-      item: makeDishItem({ food_tags: { heat_spice: 'Hot' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
-      heatLabels: customScale,
+      item: makeDishItem({ food_tags: { heat_spice: 'Mild' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
+      service,
     });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-    expect(preview).toHaveTextContent('heat 3 of 4 — Hot');
+
+    await user.selectOptions(screen.getByTestId('heat-spice-select'), '');
+    await user.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => {
+      const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect((updates.food_tags as Record<string, string>).heat_spice).toBeUndefined();
+    });
   });
 
-  it('hides preview text when label is stale (not on the active scale)', () => {
-    // Owner removed "Inferno" from the scale via cascade-state edit, but the
-    // saved item still references it. Preview must degrade to no-hint, not crash.
-    renderModal({
-      item: makeDishItem({ food_tags: { heat_spice: 'Inferno' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }),
-      heatLabels: ['Mild', 'Warm', 'Medium', 'Hot', 'Fiery'],
-    });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-    expect(preview).toBeInTheDocument();
-    expect(preview).not.toHaveTextContent(/Patron sees/);
-  });
-
-  it('uses aria-live="polite" for screen-reader announcements', () => {
-    renderModal({ item: makeDishItem({ food_tags: {} }) });
-    const preview = screen.getByTestId('edit-modal-heat-preview');
-    expect(preview.getAttribute('aria-live')).toBe('polite');
+  it('initializes the heat/spice <select> value from item.food_tags.heat_spice', () => {
+    renderModal({ item: makeDishItem({ food_tags: { heat_spice: 'Mild' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }) });
+    const select = screen.getByTestId('heat-spice-select') as HTMLSelectElement;
+    expect(select.value).toBe('Mild');
   });
 });
+
+// STR-977: the owner-side "Patron sees" heat preview (HeatSpicePreview /
+// edit-modal-heat-preview, STR-478) was REMOVED — heat/spice moved to the
+// Dish Properties tab as an N/A-default <select>. Its tests are deleted here.
 
 describe('EditModal — delete two-confirm gate', () => {
   it('shows delete confirmation UI on first click of delete-item-btn', async () => {
