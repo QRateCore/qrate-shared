@@ -602,9 +602,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [poolWidth, setPoolWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('qrate-menu-pool-width');
-      if (saved) return Math.min(Math.max(Number(saved), 200), 520);
+      if (saved) return Math.min(Math.max(Number(saved), 176), 520);
     } catch {}
-    return 272;
+    // 200 (was 272) — give the builder's course rows more width by default
+    // (owner feedback 2026-07-21, widened twice); the divider still lets
+    // owners take it back.
+    return 200;
   });
   const [dividerActive, setDividerActive] = useState(false);
 
@@ -617,7 +620,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       // ItemPool now lives on the LEFT panel — dragging the divider rightwards
       // should GROW the pool (and shrink the menu builder on the right), which
       // means we add the cursor delta to the stored width.
-      const next = Math.min(Math.max(startWidth + (mv.clientX - startX), 200), 520);
+      const next = Math.min(Math.max(startWidth + (mv.clientX - startX), 176), 520);
       setPoolWidth(next);
     };
     const onMouseUp = () => {

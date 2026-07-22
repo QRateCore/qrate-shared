@@ -197,10 +197,16 @@ export function SubCategoryGroup({
         tabIndex={renaming ? -1 : 0}
         aria-expanded={!collapsed}
         aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
+        // Full-width row: opt out of the global press-scale (see the course
+        // header in MenuBuilder.tsx — same owner feedback 2026-07-21).
+        data-no-press
         data-testid={`subcategory-drop-${category}-${label}`}
-        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors"
+        // font-semibold + var(--text) (was font-medium + gray --text2):
+        // high-contrast black sub-category labels per owner feedback
+        // 2026-07-21 — gray read as disabled inside expanded courses.
+        className="flex items-center gap-1 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors"
         style={{
-          color: isDragOver ? '#15803D' : 'var(--text2)',
+          color: isDragOver ? '#15803D' : 'var(--text)',
           background: isDragOver ? '#DCFCE7' : 'transparent',
           // grab cursor when reorder is armed; pointer otherwise (row is clickable)
           cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),

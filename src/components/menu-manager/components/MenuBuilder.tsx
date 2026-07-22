@@ -1885,7 +1885,13 @@ function CategoryBucket({
           }
         }}
         data-testid={`collapse-bucket-${category}`}
-        className="flex-1 flex items-center gap-2 py-1.5 px-3 cursor-pointer text-left transition-colors duration-150"
+        // Opt OUT of the owner app's global [role="button"]:active scale —
+        // a full-width course row visibly "pressing" reads as layout jank,
+        // not affordance (owner feedback 2026-07-21).
+        data-no-press
+        // py-3 (was py-1.5) + text-sm label below — beefier course rows per
+        // owner feedback 2026-07-21.
+        className="flex-1 flex items-center gap-2 py-3 px-3 cursor-pointer text-left transition-colors duration-150"
         style={{
           background: isDragOver ? `${color.tab}cc` : 'var(--bg)',
           border: bucketHasAttention ? '2px solid var(--red)' : 'none',
@@ -1893,9 +1899,9 @@ function CategoryBucket({
         }}
       >
         <span className="text-[var(--text2)] shrink-0">
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
         </span>
-        <span className="text-xs font-bold text-[var(--text)] shrink-0">
+        <span className="text-sm font-bold text-[var(--text)] shrink-0">
           {displayLabel ?? category}
         </span>
         <span
@@ -2445,7 +2451,10 @@ export default function MenuBuilder({
               type="button"
               onClick={() => onCollapseAll(!allCollapsed)}
               data-testid="collapse-expand-all-btn"
-              className="text-xs text-[var(--text2)] bg-transparent border-none cursor-pointer opacity-60 hover:opacity-100 transition-opacity whitespace-nowrap"
+              // Prominent, not ghosted (owner feedback 2026-07-21): full-
+              // opacity BLACK text on a bordered chip so it reads as a real
+              // control, not decoration.
+              className="text-xs font-bold text-[var(--text)] bg-[var(--bg)] border border-[var(--border)] rounded-lg px-2.5 py-1 cursor-pointer hover:bg-[var(--bg2)] transition-colors whitespace-nowrap"
             >
               {allCollapsed ? 'Expand All' : 'Collapse All'}
             </button>
