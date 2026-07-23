@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, MenuAssociation, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory } from '../../types/restaurant';
 import { isSubcategoryV2Enabled } from '../../constants/feature-flags';
 import {
   buildAssignments,
@@ -29,7 +29,7 @@ import MenuTabBar, { getMenuTabStatus } from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
 import { ItemPlacementModal } from './components/ItemPlacementModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
-import BulkActionsPanel from './components/BulkActionsPanel';
+import BulkActionsPanel, { mergeAssociations } from './components/BulkActionsPanel';
 import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
 import BulkModifierPanel from './components/BulkModifierPanel';
 import EditModal, { type DietaryTagService } from './components/EditModal';
@@ -272,6 +272,22 @@ interface Props {
       sides_skipped: number;
     }>;
   }>;
+  /**
+   * Menu Builder bulk "Item info" (price / boost / chef's special / portion) —
+   * opt-in, independent of the sides trio above. When wired, the drawer
+   * (BulkMenuSidesPanel) surfaces a third "Item info" tab. Only the fields the
+   * owner actually touches are sent — a true partial PATCH per selected item
+   * (per-menu settings, mirrors what BulkActionsPanel's separate Boost/Special
+   * tabs already do catalogue-wide, scoped here to the single active menu).
+   * Returns the updated MenuAssociation[] (same shape updateMenuItemInMenu's
+   * own promise resolves to) so the change can be reflected immediately —
+   * see the onItemInfoApplied wiring below.
+   */
+  onBulkItemInfoForMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    patch: Partial<MenuItemJunctionSettings>,
+  ) => Promise<MenuAssociation[]>;
   /** Discovery loader for the Remove-Includes tab — fans out per parent. */
   loadPerMenuSides?: (
     menuId: string,
@@ -406,7 +422,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -524,6 +540,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     !!onBulkAddSidesToMenuItems
     && !!onBulkRemoveSidesFromMenuItems
     && !!loadPerMenuSides;
+  // Item Info (price/boost/special/portion) is independently opt-in — the
+  // drawer's checkbox column + bulk button should surface even when the
+  // sides trio above isn't wired, as long as this one callback is.
+  const bulkMenuActionsEnabled = bulkSidesEnabled || !!onBulkItemInfoForMenuItems;
   const [bulkMenuSelection, setBulkMenuSelection] = useState<Set<string>>(new Set());
   const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
@@ -2990,7 +3010,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showAddGrouping={showAddGrouping}
             perMenuSides={perMenuSides}
             missingPriceFilter={missingPriceFilter}
-            bulkSelectionEnabled={bulkSidesEnabled}
+            bulkSelectionEnabled={bulkMenuActionsEnabled}
             bulkSelection={bulkMenuSelection}
             onToggleBulkSelection={(itemId) =>
               setBulkMenuSelection((prev) => {
@@ -3097,27 +3117,75 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       {/* PDD 2026-05-22 — Menu Builder bulk Includes drawer.
           Drinks have no "Includes" sides — exclude them from the bulk apply and
           tell the owner how many were skipped (PDD 2026-06-12 #9). */}
-      {bulkSidesEnabled
+      {bulkMenuActionsEnabled
         && bulkMenuSidesOpen
         && activeMenuId
         && bulkMenuSelection.size > 0 && (
         <BulkMenuSidesPanel
           menuId={activeMenuId}
           menuName={menus.find((m) => m.id === activeMenuId)?.name}
+          // Full selection, drinks included — the drawer's Item Info tab
+          // applies to every selected item. It internally filters drinks
+          // back out for the Includes/Remove Includes tabs (drinks have no
+          // sides), using skippedDrinkCount below purely as an info note.
           selectedItems={items
-            .filter((i) => bulkMenuSelection.has(i.id) && !isDrinkItem(i))
+            .filter((i) => bulkMenuSelection.has(i.id))
             .map((i) => ({ id: i.id, name: i.name }))}
           skippedDrinkCount={
             items.filter((i) => bulkMenuSelection.has(i.id) && isDrinkItem(i)).length
           }
           pool={items}
-          loadPerMenuSides={(itemId) => loadPerMenuSides!(activeMenuId, itemId)}
-          onBulkAddSides={(itemIds, body) =>
-            onBulkAddSidesToMenuItems!(activeMenuId, itemIds, body)
+          loadPerMenuSides={
+            loadPerMenuSides ? (itemId) => loadPerMenuSides!(activeMenuId, itemId) : undefined
           }
-          onBulkRemoveSides={(itemIds, body) =>
-            onBulkRemoveSidesFromMenuItems!(activeMenuId, itemIds, body)
+          onBulkAddSides={
+            onBulkAddSidesToMenuItems
+              ? (itemIds, body) => onBulkAddSidesToMenuItems!(activeMenuId, itemIds, body)
+              : undefined
           }
+          onBulkRemoveSides={
+            onBulkRemoveSidesFromMenuItems
+              ? (itemIds, body) => onBulkRemoveSidesFromMenuItems!(activeMenuId, itemIds, body)
+              : undefined
+          }
+          onBulkItemInfo={
+            onBulkItemInfoForMenuItems
+              ? (itemIds, patch) => onBulkItemInfoForMenuItems!(activeMenuId, itemIds, patch)
+              : undefined
+          }
+          // Optimistic update, scoped to exactly the items this apply touched:
+          //   1. setItems keeps items[].menu_associations current (also what
+          //      the next drag/edit reads from).
+          //   2. setJunctionSettings ALSO force-updates the same (menuId,
+          //      itemId) keys directly. The generic items→junctionSettings
+          //      sync effect (below) uses a "prev wins" merge for existing
+          //      keys — needed to protect OTHER optimistic per-category
+          //      flows — which would otherwise silently keep the stale
+          //      pre-edit price/boost/portion values here (root cause of
+          //      the active menu section not updating without a hard
+          //      refresh). Setting them directly bypasses that for exactly
+          //      the rows just edited.
+          onItemInfoApplied={(updates) => {
+            setItems((prev) => mergeAssociations(prev, updates));
+            setJunctionSettings((prev) => {
+              const next = { ...prev };
+              for (const { itemId, associations } of updates) {
+                for (const assoc of associations) {
+                  const key = `${assoc.menu_id}:${itemId}`;
+                  next[key] = {
+                    ...next[key],
+                    price: assoc.price ?? null,
+                    boost_level: assoc.boost_level ?? null,
+                    chefs_special: assoc.chefs_special ?? false,
+                    portion_type: assoc.portion_type ?? 'single',
+                    portion_serves: assoc.portion_serves ?? null,
+                    serving_price_overrides: assoc.serving_price_overrides ?? {},
+                  };
+                }
+              }
+              return next;
+            });
+          }}
           onClose={() => setBulkMenuSidesOpen(false)}
           onComplete={() => {
             setBulkMenuSidesOpen(false);

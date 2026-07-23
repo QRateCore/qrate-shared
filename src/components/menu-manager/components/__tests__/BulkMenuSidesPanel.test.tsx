@@ -276,6 +276,240 @@ describe('BulkMenuSidesPanel — Remove Includes tab', () => {
   });
 });
 
+// ── Item Info tab (2026-07-23 — price/boost/special/portion, item-level) ────
+
+function mkFullItem(
+  id: string,
+  name: string,
+  overrides: Partial<MenuItemDisplay> = {},
+): MenuItemDisplay {
+  return {
+    id,
+    name,
+    item_type: 'dish',
+    price: 0,
+    active: true,
+    food_tags: { ingredients: [], dietary: [], textures: [] },
+    boost_level: null,
+    thumbnail_url: null,
+    rating_avg: null,
+    rating_count: 0,
+    menu_associations: [
+      {
+        menu_id: MENU_ID,
+        menu_name: 'Lunch',
+        price: 12,
+        boost_level: null,
+        chefs_special: false,
+        portion_type: 'single',
+        portion_serves: null,
+      },
+    ],
+    ...overrides,
+  } as unknown as MenuItemDisplay;
+}
+
+const FOOD_ITEM = mkFullItem('food-1', 'Burger');
+const BEER_ITEM = mkFullItem('beer-1', 'IPA', {
+  food_tags: { beverage: { beverage_type: 'beer' } },
+});
+const WINE_ITEM = mkFullItem('wine-1', 'Cabernet Sauvignon', {
+  food_tags: { beverage: { beverage_type: 'wine' } },
+  menu_associations: [
+    {
+      menu_id: MENU_ID,
+      menu_name: 'Lunch',
+      price: null,
+      boost_level: null,
+      chefs_special: false,
+      portion_type: 'single',
+      portion_serves: null,
+      serving_price_overrides: { glass: 1200, bottle: 4800 },
+    },
+  ],
+});
+
+function itemInfoProps(overrides: Partial<React.ComponentProps<typeof BulkMenuSidesPanel>> = {}) {
+  return defaultProps({
+    selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }],
+    pool: [FOOD_ITEM, BEER_ITEM, WINE_ITEM],
+    onBulkAddSides: undefined,
+    onBulkRemoveSides: undefined,
+    loadPerMenuSides: undefined,
+    onBulkItemInfo: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  });
+}
+
+describe('BulkMenuSidesPanel — Item Info tab', () => {
+  it('renders as a third tab and is NOT gated behind the sides trio', () => {
+    render(<BulkMenuSidesPanel {...itemInfoProps()} />);
+    // Sides tabs absent — onBulkAddSides/onBulkRemoveSides/loadPerMenuSides
+    // are all undefined in itemInfoProps().
+    expect(screen.queryByTestId('bulk-menu-sides-tab-includes')).toBeNull();
+    expect(screen.queryByTestId('bulk-menu-sides-tab-removeIncludes')).toBeNull();
+    // Item Info is the only tab, and it's selected by default.
+    expect(screen.getByTestId('bulk-menu-sides-tab-itemInfo')).toBeTruthy();
+    expect(screen.getByTestId('bulk-item-info-table')).toBeTruthy();
+  });
+
+  it('drinks are NOT skipped on the Item Info tab (unlike Includes/Remove Includes)', () => {
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [
+            { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
+            { id: BEER_ITEM.id, name: BEER_ITEM.name },
+          ],
+          skippedDrinkCount: 1,
+        })}
+      />,
+    );
+    // Every selected item (food AND beer) gets a row.
+    expect(screen.getByTestId(`bulk-item-info-row-${FOOD_ITEM.id}`)).toBeTruthy();
+    expect(screen.getByTestId(`bulk-item-info-row-${BEER_ITEM.id}`)).toBeTruthy();
+    // The "N drinks skipped" note is scoped to the sides tabs — irrelevant here.
+    expect(screen.queryByTestId('bulk-menu-sides-skipped-drinks')).toBeNull();
+  });
+
+  it('wine rows show By Glass / By Bottle inputs + a Wine badge; other items show a flat price input', () => {
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [
+            { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
+            { id: BEER_ITEM.id, name: BEER_ITEM.name },
+            { id: WINE_ITEM.id, name: WINE_ITEM.name },
+          ],
+        })}
+      />,
+    );
+    // Wine: two serving inputs, pre-filled from serving_price_overrides, + badge.
+    expect(screen.getByTestId(`bulk-item-info-glass-${WINE_ITEM.id}`)).toHaveValue('12');
+    expect(screen.getByTestId(`bulk-item-info-bottle-${WINE_ITEM.id}`)).toHaveValue('48');
+    expect(screen.getByTestId(`bulk-item-info-wine-badge-${WINE_ITEM.id}`)).toHaveTextContent('Wine');
+    // Food + beer: flat price input, no serving inputs, no badge.
+    expect(screen.getByTestId(`bulk-item-info-price-${FOOD_ITEM.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`bulk-item-info-glass-${FOOD_ITEM.id}`)).toBeNull();
+    expect(screen.queryByTestId(`bulk-item-info-wine-badge-${FOOD_ITEM.id}`)).toBeNull();
+    expect(screen.getByTestId(`bulk-item-info-price-${BEER_ITEM.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`bulk-item-info-glass-${BEER_ITEM.id}`)).toBeNull();
+    expect(screen.queryByTestId(`bulk-item-info-wine-badge-${BEER_ITEM.id}`)).toBeNull();
+  });
+
+  it('wine rows are grouped first regardless of selection order', () => {
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [
+            { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
+            { id: WINE_ITEM.id, name: WINE_ITEM.name },
+            { id: BEER_ITEM.id, name: BEER_ITEM.name },
+          ],
+        })}
+      />,
+    );
+    const rowIds = screen.getAllByTestId(/^bulk-item-info-row-/).map((el) => el.getAttribute('data-testid'));
+    expect(rowIds[0]).toBe(`bulk-item-info-row-${WINE_ITEM.id}`);
+  });
+
+  it('Apply is disabled until a field is changed, and disabled again after a no-op edit back to the original value', () => {
+    render(<BulkMenuSidesPanel {...itemInfoProps()} />);
+    const applyBtn = screen.getByTestId('bulk-menu-sides-apply-btn') as HTMLButtonElement;
+    expect(applyBtn.disabled).toBe(true);
+    const priceInput = screen.getByTestId(`bulk-item-info-price-${FOOD_ITEM.id}`);
+    fireEvent.change(priceInput, { target: { value: '15' } });
+    expect(applyBtn.disabled).toBe(false);
+  });
+
+  it('Apply sends ONLY the changed field for the touched item (price untouched → omitted)', async () => {
+    const onBulkItemInfo = vi.fn().mockResolvedValue([]);
+    render(<BulkMenuSidesPanel {...itemInfoProps({ onBulkItemInfo })} />);
+    fireEvent.change(screen.getByTestId(`bulk-item-info-boost-${FOOD_ITEM.id}`), { target: { value: 'High' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkItemInfo).toHaveBeenCalled());
+    expect(onBulkItemInfo).toHaveBeenCalledWith([FOOD_ITEM.id], { boost_level: '3' });
+  });
+
+  it('wine glass/bottle edits fold into the SAME junction patch as serving_price_overrides (cents)', async () => {
+    const onBulkItemInfo = vi.fn().mockResolvedValue([]);
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [{ id: WINE_ITEM.id, name: WINE_ITEM.name }],
+          onBulkItemInfo,
+        })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId(`bulk-item-info-bottle-${WINE_ITEM.id}`), { target: { value: '55' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkItemInfo).toHaveBeenCalled());
+    expect(onBulkItemInfo).toHaveBeenCalledWith(
+      [WINE_ITEM.id],
+      { serving_price_overrides: { glass: 1200, bottle: 5500 } },
+    );
+  });
+
+  it('clearing BOTH glass and bottle on a touched wine row surfaces a friendly error, does not apply', async () => {
+    const onBulkItemInfo = vi.fn().mockResolvedValue([]);
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [{ id: WINE_ITEM.id, name: WINE_ITEM.name }],
+          onBulkItemInfo,
+        })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId(`bulk-item-info-glass-${WINE_ITEM.id}`), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId(`bulk-item-info-bottle-${WINE_ITEM.id}`), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    const err = await screen.findByTestId('bulk-menu-sides-error-banner');
+    expect(err.textContent).toMatch(/at least a glass or bottle price/);
+    expect(onBulkItemInfo).not.toHaveBeenCalled();
+  });
+
+  it('a mixed selection sends independent patches per item (different fields per item)', async () => {
+    const onBulkItemInfo = vi.fn().mockResolvedValue([]);
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({
+          selectedItems: [
+            { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
+            { id: WINE_ITEM.id, name: WINE_ITEM.name },
+          ],
+          onBulkItemInfo,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId(`bulk-item-info-special-${FOOD_ITEM.id}`));
+    fireEvent.change(screen.getByTestId(`bulk-item-info-glass-${WINE_ITEM.id}`), { target: { value: '13' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkItemInfo).toHaveBeenCalledTimes(2));
+    expect(onBulkItemInfo).toHaveBeenCalledWith([FOOD_ITEM.id], { chefs_special: true });
+    expect(onBulkItemInfo).toHaveBeenCalledWith(
+      [WINE_ITEM.id],
+      { serving_price_overrides: { glass: 1300, bottle: 4800 } },
+    );
+  });
+
+  it('calls onItemInfoApplied with the returned associations after a successful apply', async () => {
+    const returnedAssociations = [{ menu_id: MENU_ID, menu_name: 'Lunch', price: 15, boost_level: null, chefs_special: false, portion_type: 'single' as const, portion_serves: null }];
+    const onBulkItemInfo = vi.fn().mockResolvedValue(returnedAssociations);
+    const onItemInfoApplied = vi.fn();
+    render(
+      <BulkMenuSidesPanel
+        {...itemInfoProps({ onBulkItemInfo, onItemInfoApplied })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId(`bulk-item-info-price-${FOOD_ITEM.id}`), { target: { value: '15' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onItemInfoApplied).toHaveBeenCalled());
+    expect(onItemInfoApplied).toHaveBeenCalledWith([
+      { itemId: FOOD_ITEM.id, associations: returnedAssociations },
+    ]);
+  });
+});
+
 describe('BulkMenuSidesPanel — close handlers', () => {
   // PDD 2026-05-22 — close paths route through requestClose which
   // animates slide-out for 250ms before invoking the parent's onClose.

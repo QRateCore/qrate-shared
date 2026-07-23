@@ -24,10 +24,11 @@
  *  - A9: Zone-radio change clears removeSelectedIds (candidate pool changes).
  *  - A13: Side item allowlist enforced server-side (dish + included).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ChevronDown, ChevronRight } from 'lucide-react';
-import type { MenuItemDisplay } from '../../../types/restaurant';
+import type { MenuAssociation, MenuItemDisplay, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { BulkMemberPicker } from './BulkMemberPicker';
+import { BOOST_LABELS, isDrinkItem, type BoostLabel } from '../lib/menuUtils';
 
 export type SideType = 'and' | 'or';
 
@@ -57,9 +58,9 @@ export interface BulkMenuSidesPanelProps {
   /** Discovery fan-out: load each parent's current sides for THIS menu.
    *  Called ONCE on tab entry per amendment 1 — switching zones does NOT
    *  re-fire. Errors → loadErrors row in the UI with retry. */
-  loadPerMenuSides: (itemId: string) => Promise<PerMenuSidesResult>;
+  loadPerMenuSides?: (itemId: string) => Promise<PerMenuSidesResult>;
   /** Throw-only contracts (PDD service layer mirrors this). */
-  onBulkAddSides: (
+  onBulkAddSides?: (
     itemIds: string[],
     body: { side_type: SideType; side_ids: string[] },
   ) => Promise<{
@@ -71,7 +72,7 @@ export interface BulkMenuSidesPanelProps {
       sides_skipped: number;
     }>;
   }>;
-  onBulkRemoveSides: (
+  onBulkRemoveSides?: (
     itemIds: string[],
     body: { side_type: SideType; side_ids: string[] },
   ) => Promise<{
@@ -83,13 +84,40 @@ export interface BulkMenuSidesPanelProps {
       sides_skipped: number;
     }>;
   }>;
+  /**
+   * Item Info tab — price / boost / chef's special / portion, per-menu
+   * settings. Opt-in and independent of the sides callbacks above: only the
+   * fields the owner actually touches are sent (a true partial PATCH per
+   * selected item), so a mixed selection can have some items skip a field
+   * that doesn't apply — the caller (owner-webapp) fans this out as one
+   * updateMenuItemInMenu call per item. For wine items (food_tags.beverage.
+   * beverage_type === 'wine'), the patch's `serving_price_overrides` field
+   * carries the per-menu By Glass / By Bottle prices instead of `price` —
+   * mirrors InlineItemEditor.tsx's single-item save exactly. Returns the
+   * updated MenuAssociation[] for that item (same as updateMenuItemInMenu's
+   * own return value) so the consumer can optimistically update its local
+   * item list without waiting on a refetch — see onItemInfoApplied below.
+   */
+  onBulkItemInfo?: (
+    itemIds: string[],
+    patch: Partial<MenuItemJunctionSettings>,
+  ) => Promise<MenuAssociation[]>;
+  /**
+   * Fired once after a successful Item Info Apply with the updated
+   * per-item associations, BEFORE onComplete/onClose — lets the consumer
+   * merge fresh data into its local item list immediately (mirrors
+   * BulkActionsPanel's onComplete(updatedItems, selected) pattern), instead
+   * of relying solely on a background refetch (which required a hard
+   * refresh to actually show up on the page).
+   */
+  onItemInfoApplied?: (updates: Array<{ itemId: string; associations: MenuAssociation[] }>) => void;
   onClose: () => void;
   /** Called after a successful Apply — consumer typically refetches
    *  the menu's items + closes the drawer. */
   onComplete?: () => void;
 }
 
-type TabKey = 'includes' | 'removeIncludes';
+type TabKey = 'includes' | 'removeIncludes' | 'itemInfo';
 
 // Allowed side item_types (mirrors server-side ALLOWED_SIDE_ITEM_TYPES
 // and the existing per-item PUT endpoint's _reject_addons).
@@ -110,11 +138,26 @@ export default function BulkMenuSidesPanel({
   loadPerMenuSides,
   onBulkAddSides,
   onBulkRemoveSides,
+  onBulkItemInfo,
+  onItemInfoApplied,
   onClose,
   onComplete,
 }: BulkMenuSidesPanelProps) {
+  // ── Tabs — each opt-in on its wired callback, mirrors BulkActionsPanel's
+  // availableModes filter chain. Includes/Remove Includes need the full
+  // sides trio (add + remove + discovery); Item Info only needs its own
+  // callback. First available tab wins the initial selection so a consumer
+  // that wires ONLY onBulkItemInfo doesn't land on a dead "Includes" tab.
+  const sidesWired = !!onBulkAddSides && !!onBulkRemoveSides && !!loadPerMenuSides;
+  const availableTabs = useMemo<TabKey[]>(() => {
+    const tabs: TabKey[] = [];
+    if (sidesWired) tabs.push('includes', 'removeIncludes');
+    if (onBulkItemInfo) tabs.push('itemInfo');
+    return tabs;
+  }, [sidesWired, onBulkItemInfo]);
+
   // ── Tab + shared state ──────────────────────────────────────────────
-  const [tab, setTab] = useState<TabKey>('includes');
+  const [tab, setTab] = useState<TabKey>(availableTabs[0] ?? 'includes');
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [skipNotice, setSkipNotice] = useState<string | null>(null);
@@ -162,6 +205,96 @@ export default function BulkMenuSidesPanel({
     [selectedItems],
   );
 
+  // ── Item Info tab state — ITEM-LEVEL, not one shared value for the whole
+  // selection. Each selected item gets its own editable row, pre-filled from
+  // its CURRENT per-menu settings (menu_associations for `menuId`). Apply
+  // diffs each item's row against its own initial snapshot and sends only
+  // the fields THAT item's row actually changed — a mixed selection can
+  // freely differ item to item, and an untouched item is never touched.
+  interface ItemInfoRowState {
+    price: string;
+    boostLabel: 'none' | BoostLabel;
+    chefsSpecial: boolean;
+    portionType: 'single' | 'shared';
+    portionServes: string;
+    /** Wine only (food_tags.beverage.beverage_type === 'wine') — per-menu
+     *  serving_price_overrides, in dollars. Every other item type/drink uses
+     *  the flat `price` field above instead — mirrors InlineItemEditor.tsx. */
+    glassPrice: string;
+    bottlePrice: string;
+  }
+
+  function currentJunctionFor(item: MenuItemDisplay) {
+    const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
+    return {
+      price: assoc?.price ?? null,
+      boost_level: assoc?.boost_level ?? null,
+      chefs_special: assoc?.chefs_special ?? false,
+      portion_type: assoc?.portion_type ?? ('single' as const),
+      portion_serves: assoc?.portion_serves ?? null,
+      serving_price_overrides: assoc?.serving_price_overrides ?? null,
+    };
+  }
+
+  function buildInitialItemInfoRow(item: MenuItemDisplay): ItemInfoRowState {
+    const cur = currentJunctionFor(item);
+    const boostLabel: 'none' | BoostLabel = cur.boost_level
+      ? (BOOST_LABELS[Number(cur.boost_level) - 1] ?? 'none')
+      : 'none';
+    const overrides = cur.serving_price_overrides ?? {};
+    return {
+      price: cur.price != null ? String(cur.price) : '',
+      boostLabel,
+      chefsSpecial: cur.chefs_special,
+      portionType: cur.portion_type,
+      portionServes: cur.portion_serves != null ? String(cur.portion_serves) : '',
+      glassPrice: overrides.glass != null ? String(overrides.glass / 100) : '',
+      bottlePrice: overrides.bottle != null ? String(overrides.bottle / 100) : '',
+    };
+  }
+
+  /** Wine only — mirrors InlineItemEditor.tsx / MenuBuilder.tsx's exact check. */
+  function isWineItem(item: MenuItemDisplay): boolean {
+    return item.food_tags?.beverage?.beverage_type?.toLowerCase() === 'wine';
+  }
+
+  // Seeded once at mount (the drawer is a fresh mount per open — selection
+  // doesn't change while it's open) — NOT recomputed on every render, so the
+  // owner's in-progress edits aren't clobbered by a pool refresh.
+  const [itemInfoRows, setItemInfoRows] = useState<Record<string, ItemInfoRowState>>(() => {
+    const rows: Record<string, ItemInfoRowState> = {};
+    for (const parent of selectedItems) {
+      const full = pool.find((i) => i.id === parent.id);
+      if (full) rows[parent.id] = buildInitialItemInfoRow(full);
+    }
+    return rows;
+  });
+  const initialItemInfoRowsRef = useRef(itemInfoRows);
+
+  function updateItemInfoRow(itemId: string, patch: Partial<ItemInfoRowState>) {
+    setItemInfoRows((prev) => ({ ...prev, [itemId]: { ...prev[itemId], ...patch } }));
+  }
+
+  const itemInfoHasChanges = useMemo(
+    () => Object.keys(itemInfoRows).some(
+      (id) => JSON.stringify(itemInfoRows[id]) !== JSON.stringify(initialItemInfoRowsRef.current[id]),
+    ),
+    [itemInfoRows],
+  );
+
+  // Wine rows (By Glass / By Bottle) always render first in the table so
+  // they're grouped together, with a small "Wine" badge on the name cell
+  // (see render below) making the group visually distinct at a glance.
+  const itemInfoOrderedItems = useMemo(() => {
+    const wine: BulkMenuSidesParent[] = [];
+    const rest: BulkMenuSidesParent[] = [];
+    for (const parent of selectedItems) {
+      const full = pool.find((i) => i.id === parent.id);
+      (full && isWineItem(full) ? wine : rest).push(parent);
+    }
+    return [...wine, ...rest];
+  }, [selectedItems, pool]);
+
   // Hide Crisp chat widget while the drawer is open — the launcher's
   // fixed bottom-right position collides with the panel's Apply
   // button. Crisp uses max-int z-index so we can't out-rank it; the
@@ -192,9 +325,24 @@ export default function BulkMenuSidesPanel({
     () => pool.filter((i) => i.item_type && ALLOWED_SIDE_ITEM_TYPES.has(i.item_type)),
     [pool],
   );
+  // All currently-selected ids — used for self-reference exclusion in the
+  // sides picker (a selected parent can't be added as its own side) and for
+  // the Item Info tab, which does NOT skip drinks.
   const selectedParentIds = useMemo(
     () => selectedItems.map((p) => p.id),
     [selectedItems],
+  );
+
+  // Sides-eligible subset — drinks have no "Includes" sides, so the
+  // Includes/Remove-Includes tabs operate on this subset only. Item Info
+  // is unaffected and uses the full `selectedItems`/`selectedParentIds` above.
+  const sidesEligibleItems = useMemo(() => {
+    const drinkIds = new Set(pool.filter((i) => isDrinkItem(i)).map((i) => i.id));
+    return selectedItems.filter((p) => !drinkIds.has(p.id));
+  }, [selectedItems, pool]);
+  const sidesParentIds = useMemo(
+    () => sidesEligibleItems.map((p) => p.id),
+    [sidesEligibleItems],
   );
 
   // ── Discovery: fires once on Remove-tab entry; caches BOTH zones ────
@@ -204,12 +352,12 @@ export default function BulkMenuSidesPanel({
     setRemoveLoadErrors([]);
     setError(null);
     const results = await Promise.allSettled(
-      selectedItems.map((p) => loadPerMenuSides(p.id)),
+      sidesEligibleItems.map((p) => loadPerMenuSides!(p.id)),
     );
     const cache: Record<string, PerMenuSidesResult> = {};
     const errs: BulkMenuSidesParent[] = [];
     results.forEach((res, i) => {
-      const parent = selectedItems[i];
+      const parent = sidesEligibleItems[i];
       if (res.status === 'fulfilled') {
         cache[parent.id] = res.value;
       } else {
@@ -232,7 +380,7 @@ export default function BulkMenuSidesPanel({
   // the cache (amendment 1: no refetch on zone toggle).
   const candidates: CandidateSide[] = useMemo(() => {
     const candidateMap = new Map<string, CandidateSide>();
-    for (const parent of selectedItems) {
+    for (const parent of sidesEligibleItems) {
       const sides = removeCache[parent.id];
       if (!sides) continue;
       const zoneSides = removeZone === 'and' ? sides.sides_and : sides.sides_or;
@@ -253,7 +401,7 @@ export default function BulkMenuSidesPanel({
     return Array.from(candidateMap.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [removeCache, removeZone, selectedItems]);
+  }, [removeCache, removeZone, sidesEligibleItems]);
 
   // ── Handlers ────────────────────────────────────────────────────────
   function toggleAddMember(id: string) {
@@ -318,8 +466,8 @@ export default function BulkMenuSidesPanel({
     setError(null);
     setSkipNotice(null);
     try {
-      const result = await onBulkAddSides(
-        selectedParentIds,
+      const result = await onBulkAddSides!(
+        sidesParentIds,
         { side_type: addZone, side_ids: addSelectedIds },
       );
       const totalAdded = result.updated.reduce((s, u) => s + (u.sides_added ?? 0), 0);
@@ -346,8 +494,8 @@ export default function BulkMenuSidesPanel({
     setError(null);
     setSkipNotice(null);
     try {
-      const result = await onBulkRemoveSides(
-        selectedParentIds,
+      const result = await onBulkRemoveSides!(
+        sidesParentIds,
         { side_type: removeZone, side_ids: Array.from(removeSelectedIds) },
       );
       const totalRemoved = result.updated.reduce((s, u) => s + (u.sides_removed ?? 0), 0);
@@ -365,12 +513,116 @@ export default function BulkMenuSidesPanel({
     }
   }
 
+  async function runItemInfo() {
+    if (!itemInfoHasChanges) {
+      setError('Change at least one field before applying');
+      return;
+    }
+    setExecuting(true);
+    setError(null);
+    setSkipNotice(null);
+    try {
+      const initial = initialItemInfoRowsRef.current;
+      const tasks: Array<() => Promise<void>> = [];
+      const touchedIds = new Set<string>();
+      const itemUpdates: Array<{ itemId: string; associations: MenuAssociation[] }> = [];
+
+      for (const parent of selectedItems) {
+        const row = itemInfoRows[parent.id];
+        const base = initial[parent.id];
+        if (!row || !base) continue;
+
+        // Junction fields (price/boost/special/portion) — per item, only the
+        // fields THIS item's row actually changed from its own starting point.
+        const patch: Partial<MenuItemJunctionSettings> = {};
+        if (row.price !== base.price) {
+          const trimmed = row.price.trim();
+          if (trimmed === '') {
+            patch.price = null;
+          } else {
+            const p = parseFloat(trimmed);
+            if (!isFinite(p) || p < 0) throw new Error(`Invalid price for "${parent.name}"`);
+            patch.price = p;
+          }
+        }
+        if (row.boostLabel !== base.boostLabel) {
+          patch.boost_level = row.boostLabel === 'none' ? null : String(BOOST_LABELS.indexOf(row.boostLabel) + 1);
+        }
+        if (row.chefsSpecial !== base.chefsSpecial) {
+          patch.chefs_special = row.chefsSpecial;
+        }
+        if (row.portionType !== base.portionType || row.portionServes !== base.portionServes) {
+          patch.portion_type = row.portionType;
+          if (row.portionType === 'shared') {
+            const serves = parseInt(row.portionServes, 10);
+            patch.portion_serves = isFinite(serves) && serves > 0 ? serves : null;
+          } else {
+            patch.portion_serves = null;
+          }
+        }
+
+        // By Glass / By Bottle (wine only) — folds into the SAME per-menu
+        // junction patch as price/boost/special/portion above, exactly like
+        // InlineItemEditor.tsx's single-item save (one updateMenuItemInMenu
+        // call carries both). Only sent when THIS item's own glass/bottle
+        // price changed; requires at least one of the two to stay populated,
+        // matching InlineItemEditor's validation.
+        if (row.glassPrice !== base.glassPrice || row.bottlePrice !== base.bottlePrice) {
+          const glassTrimmed = row.glassPrice.trim();
+          const bottleTrimmed = row.bottlePrice.trim();
+          const glassDollars = glassTrimmed === '' ? null : parseFloat(glassTrimmed);
+          const bottleDollars = bottleTrimmed === '' ? null : parseFloat(bottleTrimmed);
+          if (glassTrimmed !== '' && (!isFinite(glassDollars!) || glassDollars! < 0)) {
+            throw new Error(`Invalid glass price for "${parent.name}"`);
+          }
+          if (bottleTrimmed !== '' && (!isFinite(bottleDollars!) || bottleDollars! < 0)) {
+            throw new Error(`Invalid bottle price for "${parent.name}"`);
+          }
+          if (glassDollars == null && bottleDollars == null) {
+            throw new Error(`Enter at least a glass or bottle price for "${parent.name}"`);
+          }
+          const overrides: Record<string, number> = {};
+          if (glassDollars != null) overrides.glass = Math.round(glassDollars * 100);
+          if (bottleDollars != null) overrides.bottle = Math.round(bottleDollars * 100);
+          patch.serving_price_overrides = overrides;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          touchedIds.add(parent.id);
+          tasks.push(async () => {
+            const associations = await onBulkItemInfo!([parent.id], patch);
+            itemUpdates.push({ itemId: parent.id, associations });
+          });
+        }
+      }
+
+      if (tasks.length === 0) {
+        setError('Change at least one field before applying');
+        return;
+      }
+      await Promise.all(tasks.map((t) => t()));
+      initialItemInfoRowsRef.current = itemInfoRows; // new baseline post-Apply
+      // Optimistic update — hand the fresh per-item associations back to the
+      // consumer immediately, so the main page reflects the change without
+      // waiting on (or requiring) a hard refresh.
+      onItemInfoApplied?.(itemUpdates);
+      setSkipNotice(`Updated ${touchedIds.size} item${touchedIds.size === 1 ? '' : 's'}`);
+      requestComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk item info update failed');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   function onApply() {
     setError(null);
     if (tab === 'includes') {
       void runAdd();
-    } else {
+    } else if (tab === 'removeIncludes') {
       void runRemove();
+    } else {
+      void runItemInfo();
     }
   }
 
@@ -378,8 +630,9 @@ export default function BulkMenuSidesPanel({
   const itemCount = selectedItems.length;
   const applyDisabled =
     executing
-    || (tab === 'includes' && addSelectedIds.length === 0)
-    || (tab === 'removeIncludes' && removeSelectedIds.size === 0);
+    || (tab === 'includes' && (addSelectedIds.length === 0 || sidesEligibleItems.length === 0))
+    || (tab === 'removeIncludes' && (removeSelectedIds.size === 0 || sidesEligibleItems.length === 0))
+    || (tab === 'itemInfo' && !itemInfoHasChanges);
 
   return (
     <>
@@ -426,7 +679,10 @@ export default function BulkMenuSidesPanel({
               {itemCount} item{itemCount === 1 ? '' : 's'} selected
               {menuName ? ` · ${menuName}` : ''}
             </div>
-            {skippedDrinkCount > 0 && (
+            {/* Drinks are only skipped on the sides tabs (no "Includes" for
+                drinks) — Item Info applies to every selected item, drinks
+                included, so this note is irrelevant there. */}
+            {skippedDrinkCount > 0 && tab !== 'itemInfo' && (
               <div
                 data-testid="bulk-menu-sides-skipped-drinks"
                 role="status"
@@ -499,7 +755,7 @@ export default function BulkMenuSidesPanel({
             flexShrink: 0,
           }}
         >
-          {(['includes', 'removeIncludes'] as TabKey[]).map((k) => (
+          {availableTabs.map((k) => (
             <button
               key={k}
               type="button"
@@ -520,7 +776,7 @@ export default function BulkMenuSidesPanel({
                 whiteSpace: 'nowrap',
               }}
             >
-              {k === 'includes' ? 'Includes' : 'Remove Includes'}
+              {k === 'includes' ? 'Includes' : k === 'removeIncludes' ? 'Remove Includes' : 'Item info'}
             </button>
           ))}
         </div>
@@ -549,9 +805,10 @@ export default function BulkMenuSidesPanel({
                 testidPrefix="bulk-menu-sides-add"
               />
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                Adds the picked sides to the selected zone on each of the {itemCount}{' '}
-                selected item{itemCount === 1 ? '' : 's'}. Sides already present on a
-                particular item are silently skipped.
+                Adds the picked sides to the selected zone on each of the {sidesEligibleItems.length}{' '}
+                eligible item{sidesEligibleItems.length === 1 ? '' : 's'} (drinks don't have sides,
+                so they're skipped here). Sides already present on a particular item are silently
+                skipped.
               </div>
               <BulkMemberPicker
                 pool={sidePool}
@@ -729,6 +986,166 @@ export default function BulkMenuSidesPanel({
               )}
             </div>
           )}
+
+          {tab === 'itemInfo' && (
+            <div
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 8,
+                flex: 1, minHeight: 0,
+              }}
+            >
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Price, boost, and portion are per-menu — each row below is that
+                item's setting on {menuName ?? 'this menu'} only. Wine prices By Glass /
+                By Bottle instead of a flat price. Only the cells you change are applied;
+                untouched cells are left exactly as they are.
+              </div>
+              <div
+                data-testid="bulk-item-info-table"
+                style={{
+                  flex: 1, minHeight: 0, overflow: 'auto',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-xs)',
+                  background: '#fff',
+                }}
+              >
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ position: 'sticky', top: 0, background: '#f9fafb', zIndex: 1 }}>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', minWidth: 140 }}>Item</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 140 }}>Price</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 100 }}>Boost</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 70 }}>Special</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 140 }}>Portion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemInfoOrderedItems.map((parent) => {
+                      const row = itemInfoRows[parent.id];
+                      if (!row) return null;
+                      const full = pool.find((i) => i.id === parent.id);
+                      const isWine = full ? isWineItem(full) : false;
+                      return (
+                        <tr key={parent.id} data-testid={`bulk-item-info-row-${parent.id}`}>
+                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span>{parent.name}</span>
+                              {isWine && (
+                                <span
+                                  data-testid={`bulk-item-info-wine-badge-${parent.id}`}
+                                  style={{
+                                    flexShrink: 0,
+                                    fontSize: 8,
+                                    fontWeight: 700,
+                                    color: '#b91c1c',
+                                    background: '#fee2e2',
+                                    border: '1px solid #fca5a5',
+                                    borderRadius: 8,
+                                    padding: '1px 5px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.03em',
+                                  }}
+                                >
+                                  Wine
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                            {isWine ? (
+                              // Wine prices By Glass / By Bottle instead of a flat
+                              // price (mirrors InlineItemEditor.tsx). Every other
+                              // drink (beer, cocktails, soda, ...) uses the normal
+                              // flat price input below, same as a food item.
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--muted)' }}>
+                                  By Glass
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    data-testid={`bulk-item-info-glass-${parent.id}`}
+                                    value={row.glassPrice}
+                                    onChange={(e) => updateItemInfoRow(parent.id, { glassPrice: e.target.value.replace(/[^0-9.]/g, '') })}
+                                    style={{ width: 56, padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                                  />
+                                </label>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--muted)' }}>
+                                  By Bottle
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    data-testid={`bulk-item-info-bottle-${parent.id}`}
+                                    value={row.bottlePrice}
+                                    onChange={(e) => updateItemInfoRow(parent.id, { bottlePrice: e.target.value.replace(/[^0-9.]/g, '') })}
+                                    style={{ width: 56, padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                                  />
+                                </label>
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                data-testid={`bulk-item-info-price-${parent.id}`}
+                                value={row.price}
+                                onChange={(e) => updateItemInfoRow(parent.id, { price: e.target.value.replace(/[^0-9.]/g, '') })}
+                                style={{ width: '100%', padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                              />
+                            )}
+                          </td>
+                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                            <select
+                              data-testid={`bulk-item-info-boost-${parent.id}`}
+                              value={row.boostLabel}
+                              onChange={(e) => updateItemInfoRow(parent.id, { boostLabel: e.target.value as ItemInfoRowState['boostLabel'] })}
+                              style={{ width: '100%', padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                            >
+                              <option value="none">None</option>
+                              {BOOST_LABELS.map((label) => (
+                                <option key={label} value={label}>{label}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              data-testid={`bulk-item-info-special-${parent.id}`}
+                              checked={row.chefsSpecial}
+                              onChange={(e) => updateItemInfoRow(parent.id, { chefsSpecial: e.target.checked })}
+                              aria-label={`Chef's special for ${parent.name}`}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              <select
+                                data-testid={`bulk-item-info-portion-type-${parent.id}`}
+                                value={row.portionType}
+                                onChange={(e) => updateItemInfoRow(parent.id, { portionType: e.target.value as 'single' | 'shared' })}
+                                style={{ padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                              >
+                                <option value="single">Single</option>
+                                <option value="shared">Shared</option>
+                              </select>
+                              {row.portionType === 'shared' && (
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  data-testid={`bulk-item-info-portion-serves-${parent.id}`}
+                                  value={row.portionServes}
+                                  placeholder="Serves"
+                                  onChange={(e) => updateItemInfoRow(parent.id, { portionServes: e.target.value.replace(/[^0-9]/g, '') })}
+                                  style={{ width: 52, padding: '5px 6px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 12 }}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -805,8 +1222,10 @@ export default function BulkMenuSidesPanel({
               {executing
                 ? 'Applying…'
                 : tab === 'includes'
-                  ? `Add ${addSelectedIds.length} side${addSelectedIds.length === 1 ? '' : 's'} to ${itemCount} item${itemCount === 1 ? '' : 's'}`
-                  : `Remove ${removeSelectedIds.size} side${removeSelectedIds.size === 1 ? '' : 's'} from ${itemCount} item${itemCount === 1 ? '' : 's'}`}
+                  ? `Add ${addSelectedIds.length} side${addSelectedIds.length === 1 ? '' : 's'} to ${sidesEligibleItems.length} item${sidesEligibleItems.length === 1 ? '' : 's'}`
+                  : tab === 'removeIncludes'
+                    ? `Remove ${removeSelectedIds.size} side${removeSelectedIds.size === 1 ? '' : 's'} from ${sidesEligibleItems.length} item${sidesEligibleItems.length === 1 ? '' : 's'}`
+                    : `Apply to ${itemCount} item${itemCount === 1 ? '' : 's'}`}
             </button>
           </div>
         </div>

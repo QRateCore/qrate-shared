@@ -234,7 +234,7 @@ const MODES: { key: BulkMode; label: string; icon: React.ReactNode }[] = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function mergeAssociations(
+export function mergeAssociations(
   items: MenuItemDisplay[],
   updates: Array<{ itemId: string; associations: MenuAssociation[] }>,
 ): MenuItemDisplay[] {
