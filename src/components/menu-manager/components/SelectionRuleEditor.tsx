@@ -2,7 +2,7 @@
 /**
  * SelectionRuleEditor — inline popover for editing a grouping's selection rule.
  *
- * Maps the discriminated union (5 named presets) to/from the DB-flat shape
+ * Maps the discriminated union (named presets) to/from the DB-flat shape
  * (min_select, max_select, default_select). See PDD idea-honing Q4.
  *
  * Presets:
@@ -11,6 +11,7 @@
  *   • At least N    → min=N,        max=NULL,  default_select='none'
  *   • At most N     → min=0,        max=N,     default_select='none'
  *   • Optional      → min=0,        max=NULL,  default_select='none'
+ *   • Optional 1    → min=0,        max=1,     default_select='none'  (pick ≤1, optional — STR-985)
  *   • Range (advanced)→ min=M,      max=N,     default_select='none'
  *
  * The editor is a small button that opens a popover. Caller passes the current
@@ -21,7 +22,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import type { SelectionRule } from '../../../types/restaurant';
 
-export type RulePresetKind = 'all' | 'exactly' | 'at_least' | 'at_most' | 'optional' | 'range';
+export type RulePresetKind = 'all' | 'exactly' | 'at_least' | 'at_most' | 'optional' | 'optional_one' | 'range';
 
 interface Props {
   /** Current rule from the grouping. */
@@ -38,7 +39,9 @@ function describeRule(rule: SelectionRule): string {
   const { min_select, max_select, default_select } = rule;
   if (default_select === 'all') return 'All included';
   if (min_select === 0 && max_select === null) return 'Optional';
-  if (min_select === 0 && max_select === 1) return 'At most 1';
+  // {0,1} = optional single-select ("pick at most one, not required"). Shown as
+  // "Optional 1" — the diner renders it as a single-select radio (STR-985).
+  if (min_select === 0 && max_select === 1) return 'Optional 1';
   if (min_select === 1 && max_select === 1) return 'Exactly 1';
   if (min_select === max_select) return `Exactly ${min_select}`;
   if (min_select > 0 && max_select === null) return `At least ${min_select}`;
@@ -50,6 +53,10 @@ function describeRule(rule: SelectionRule): string {
 function detectPreset(rule: SelectionRule): RulePresetKind {
   if (rule.default_select === 'all') return 'all';
   if (rule.min_select === 0 && rule.max_select === null) return 'optional';
+  // {0,1} must be detected as its dedicated 'optional_one' preset BEFORE the
+  // generic at_most branch below (which also matches max_select > 0). Ordering
+  // is load-bearing — moving this after at_most makes "Optional 1" unreachable.
+  if (rule.min_select === 0 && rule.max_select === 1) return 'optional_one';
   if (rule.min_select === rule.max_select && rule.min_select > 0) return 'exactly';
   if (rule.min_select > 0 && rule.max_select === null) return 'at_least';
   if (rule.min_select === 0 && rule.max_select && rule.max_select > 0) return 'at_most';
@@ -69,6 +76,8 @@ function presetToRule(preset: RulePresetKind, n: number, m: number): SelectionRu
       return { min_select: 0, max_select: n, default_select: 'none' };
     case 'optional':
       return { min_select: 0, max_select: null, default_select: 'none' };
+    case 'optional_one':
+      return { min_select: 0, max_select: 1, default_select: 'none' };
     case 'range':
       return { min_select: n, max_select: m, default_select: 'none' };
   }
@@ -236,6 +245,7 @@ export default function SelectionRuleEditor({
               { value: 'at_least', label: 'At least' },
               { value: 'at_most', label: 'At most' },
               { value: 'optional', label: 'Optional' },
+              { value: 'optional_one', label: 'Optional 1' },
               { value: 'range', label: 'Range (advanced)' },
             ] as const).map(({ value, label }) => (
               <label
