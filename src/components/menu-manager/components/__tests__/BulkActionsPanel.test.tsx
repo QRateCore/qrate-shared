@@ -926,3 +926,40 @@ describe('BulkActionsPanel — Remove from menu (PDD 2026-06-12 #8)', () => {
     expect(screen.getByTestId('remove-from-menu-skipped')).toHaveTextContent(/1 of 2 .*skipped/i);
   });
 });
+
+// STR-985 — the bulk Grouping "Optional 1" preset must translate to {min:0,max:1}.
+// This ruleMap lives in BulkActionsPanel.runGrouping (a SEPARATE copy from
+// SelectionRuleEditor.presetToRule); tsc guards the key/shape but not the literal
+// value, so this pins it.
+describe('BulkActionsPanel — Grouping "Optional 1" preset (STR-985)', () => {
+  it('applies rule {min:0,max:1,none} when the Optional 1 preset is chosen', async () => {
+    const user = userEvent.setup();
+    const service = makeService();
+    const onBulkApplyGrouping = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <BulkActionsPanel
+          selected={new Set(['item-1'])}
+          items={ALL_ITEMS}
+          menus={ALL_MENUS}
+          initialMode="assign"
+          onClose={vi.fn()}
+          onComplete={vi.fn()}
+          onBulkApplyGrouping={onBulkApplyGrouping}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    // Grouping tab is opt-in — rendered because onBulkApplyGrouping is wired.
+    await user.click(screen.getByTestId('bulk-tab-grouping'));
+    await user.type(screen.getByTestId('bulk-grouping-name-input'), 'Sub Choices');
+    await user.click(screen.getByTestId('bulk-grouping-rule-preset-optionalOne'));
+    await user.click(screen.getByTestId('bulk-apply'));
+    expect(onBulkApplyGrouping).toHaveBeenCalledWith(
+      ['item-1'],
+      expect.objectContaining({
+        name: 'Sub Choices',
+        rule: { min_select: 0, max_select: 1, default_select: 'none' },
+      }),
+    );
+  });
+});

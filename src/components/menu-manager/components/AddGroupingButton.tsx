@@ -140,6 +140,7 @@ export default function AddGroupingButton({
             style={{ fontSize: 12, padding: '4px 6px' }}
           >
             <option value="optional">Optional</option>
+            <option value="optional_one">Optional 1</option>
             <option value="exactly">Exactly</option>
             <option value="at_least">At least</option>
             <option value="at_most">At most</option>

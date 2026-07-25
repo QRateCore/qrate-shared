@@ -28,8 +28,11 @@ describe('describeRule', () => {
   it('describes optional', () => {
     expect(describeRule(ANY_RULE())).toBe('Optional');
   });
-  it('describes at-most-1', () => {
-    expect(describeRule(ANY_RULE({ max_select: 1 }))).toBe('At most 1');
+  it('describes optional-1 (STR-985: {0,1} = pick ≤1, not required)', () => {
+    expect(describeRule(ANY_RULE({ max_select: 1 }))).toBe('Optional 1');
+  });
+  it('describes at-most-2 (guard: relabel must NOT bleed into the max>1 branch)', () => {
+    expect(describeRule(ANY_RULE({ max_select: 2 }))).toBe('At most 2');
   });
   it('describes exactly-2', () => {
     expect(describeRule(ANY_RULE({ min_select: 2, max_select: 2 }))).toBe('Exactly 2');
@@ -52,8 +55,14 @@ describe('detectPreset', () => {
   it('detects "at_least"', () => {
     expect(detectPreset(ANY_RULE({ min_select: 2 }))).toBe('at_least');
   });
-  it('detects "at_most"', () => {
+  it('detects "at_most" (max>1)', () => {
     expect(detectPreset(ANY_RULE({ max_select: 3 }))).toBe('at_most');
+  });
+  it('detects "optional_one" for {0,1} (STR-985 — before the at_most branch)', () => {
+    expect(detectPreset(ANY_RULE({ min_select: 0, max_select: 1 }))).toBe('optional_one');
+  });
+  it('detects "at_most" for {0,2} (guard: optional_one must NOT swallow max>1)', () => {
+    expect(detectPreset(ANY_RULE({ min_select: 0, max_select: 2 }))).toBe('at_most');
   });
   it('detects "optional"', () => {
     expect(detectPreset(ANY_RULE())).toBe('optional');
@@ -82,6 +91,11 @@ describe('presetToRule', () => {
   it('at_most N → min=0, max=N', () => {
     expect(presetToRule('at_most', 4, 4)).toEqual({
       min_select: 0, max_select: 4, default_select: 'none',
+    });
+  });
+  it('optional_one → min=0, max=1 (STR-985; ignores n)', () => {
+    expect(presetToRule('optional_one', 7, 7)).toEqual({
+      min_select: 0, max_select: 1, default_select: 'none',
     });
   });
   it('range M..N', () => {

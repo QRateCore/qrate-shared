@@ -376,7 +376,7 @@ export default function BulkActionsPanel({
   // PDD 2026-05-21 — bulk Grouping mode form state.
   // Rule presets translate to {min_select, max_select, default_select} at
   // submit time (mirrors AddGroupingButton's preset map for consistency).
-  type GroupingPreset = 'optional' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
+  type GroupingPreset = 'optional' | 'optionalOne' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
   const [groupingName, setGroupingName] = useState<string>('');
   const [groupingPreset, setGroupingPreset] = useState<GroupingPreset>('optional');
   const [groupingPresetN, setGroupingPresetN] = useState<number>(1);
@@ -707,6 +707,7 @@ export default function BulkActionsPanel({
       min_select: number; max_select: number | null; default_select: 'all' | 'none' | 'first';
     }> = {
       optional: { min_select: 0, max_select: null,                default_select: 'none' },
+      optionalOne: { min_select: 0,            max_select: 1,               default_select: 'none' },
       exactly:  { min_select: groupingPresetN, max_select: groupingPresetN, default_select: 'none' },
       atLeast:  { min_select: groupingPresetN, max_select: null,            default_select: 'none' },
       atMost:   { min_select: 0,               max_select: groupingPresetN, default_select: 'none' },
@@ -2489,10 +2490,11 @@ function DeleteForm({ count, confirmed }: { count: number; confirmed: boolean })
 // name (case-insensitive); the selected parents are excluded so a parent
 // can't be its own member.
 
-type GroupingPresetKind = 'optional' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
+type GroupingPresetKind = 'optional' | 'optionalOne' | 'exactly' | 'atLeast' | 'atMost' | 'between' | 'all';
 
 const GROUPING_PRESETS: { key: GroupingPresetKind; label: string; needsN: boolean; needsMax: boolean }[] = [
   { key: 'optional', label: 'Optional',     needsN: false, needsMax: false },
+  { key: 'optionalOne', label: 'Optional 1', needsN: false, needsMax: false },
   { key: 'exactly',  label: 'Exactly N',    needsN: true,  needsMax: false },
   { key: 'atLeast',  label: 'At least N',   needsN: true,  needsMax: false },
   { key: 'atMost',   label: 'At most N',    needsN: true,  needsMax: false },
