@@ -3176,6 +3176,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 )}
             </div>
 
+            </div>
+            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                {/* Heat / Spice relocated to the "Dish Properties" tab as an
+                    N/A-default dropdown (STR-977). */}
+
+            {/* Raw Category (moved here 2026-07-26, replacing the old
+                "On menus" tiles — the Menus tab is now the menu surface). */}
             {/* Raw Category — edits the item's original scraped category label
                 (menu_items.category_name). Replaces the former "Mapped Course"
                 dropdown; canonical course mapping now lives on the menu, not on
@@ -3201,101 +3209,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 placeholder="— Select category —"
               />
             </div>
-
-            </div>
-            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                {/* Heat / Spice relocated to the "Dish Properties" tab as an
-                    N/A-default dropdown (STR-977). */}
-
-            {/* ── Placement tiles — menus this item appears on (STR-977) ──
-                Compact read-only tiles showing price / boost / chef's-special.
-                Each opens the menu in a NEW tab (getMenuHref) so the open
-                editor is preserved; falls back to a non-link card when no
-                getMenuHref is passed (waiter / admin). Replaces the old faint
-                navigate-pills; the Placements TAB remains the editing surface. */}
-            {(item.menu_associations ?? []).length > 0 && (
-              <div>
-                <SectionLabel>On menus</SectionLabel>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {(item.menu_associations ?? []).map((assoc) => {
-                    const href = getMenuHref ? getMenuHref(assoc.menu_id, item.id) : null;
-                    const priceLabel = assoc.price != null ? `$${assoc.price.toFixed(2)}` : null;
-                    const hasBoost = !!assoc.boost_level;
-                    const isSpecial = !!assoc.chefs_special;
-                    const tileStyle: React.CSSProperties = {
-                      display: 'inline-flex',
-                      flexDirection: 'column',
-                      justifyContent: 'center',
-                      gap: 3,
-                      minWidth: 92,
-                      maxWidth: 160,
-                      minHeight: 44,
-                      padding: '6px 10px',
-                      borderRadius: 10,
-                      border: '1px solid var(--border)',
-                      background: 'var(--white)',
-                      textDecoration: 'none',
-                      color: 'var(--text)',
-                      cursor: href ? 'pointer' : 'default',
-                      transition: 'background 0.1s, border-color 0.1s',
-                    };
-                    const hover = (e: React.MouseEvent<HTMLElement>, on: boolean) => {
-                      const el = e.currentTarget as HTMLElement;
-                      el.style.background = on ? 'rgba(255,107,43,0.08)' : 'var(--white)';
-                      el.style.borderColor = on ? 'var(--brand-s)' : 'var(--border)';
-                    };
-                    const inner = (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {assoc.menu_name}
-                          </span>
-                          {href && <span aria-hidden style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>↗</span>}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text2)' }}>
-                          {priceLabel && <span>{priceLabel}</span>}
-                          {hasBoost && <span title={`Boosted (level ${assoc.boost_level})`} aria-label={`Boosted, level ${assoc.boost_level}`}>⭐</span>}
-                          {isSpecial && (
-                            <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: '#fff7ed', color: '#c2410c' }}>
-                              Special
-                            </span>
-                          )}
-                        </div>
-                      </>
-                    );
-                    return href ? (
-                      <a
-                        key={assoc.menu_id}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-testid={`placement-tile-${assoc.menu_id}`}
-                        style={tileStyle}
-                        onMouseEnter={(e) => hover(e, true)}
-                        onMouseLeave={(e) => hover(e, false)}
-                        onClick={() => {
-                          trackAction('menu.editModal.navigateToMenu', {
-                            restaurantId,
-                            metadata: { itemId: item.id, menuId: assoc.menu_id },
-                          });
-                        }}
-                      >
-                        {inner}
-                      </a>
-                    ) : (
-                      <div
-                        key={assoc.menu_id}
-                        data-testid={`placement-tile-${assoc.menu_id}`}
-                        style={tileStyle}
-                      >
-                        {inner}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
             </div>
             {/* Column 3 — Spice Modifier + BYO (compact toggle cards) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -3567,7 +3480,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 tab === 'food_tags'
                   ? (isAddon ? 'Food Tags' : 'Dish Properties')
                   : tab === 'placements'
-                    ? `Placements${placementsCount > 0 ? ` (${placementsCount})` : ''}`
+                    ? `Menus${placementsCount > 0 ? ` (${placementsCount})` : ''}`
                     : tab === 'groupings'
                       ? 'Groupings'
                       : tab === 'dishes'
@@ -4319,7 +4232,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {isMobile && !isAddon && !isNewItem && (
             <MobileAccordionHeader
               id="placements"
-              title="Appears in / Placements"
+              title="Menus"
               subtitle="Per-menu price & availability"
               open={expandedSections.has('placements')}
               onToggle={toggleSection}
@@ -5375,6 +5288,9 @@ interface PlacementsTabPanelProps {
   placementsSaving: Set<string>;
   setPlacementSaving: (menuId: string, on: boolean) => void;
   itemId: string;
+  /** Owner-webapp menu-page href builder — makes each card's menu name a link
+   *  that opens that menu in a new tab. Absent for waiter/admin (plain text). */
+  getMenuHref?: (menuId: string, itemId: string) => string;
   /** Optional overlap surface rendered above the placement cards.
    *  Owner-webapp wires this with the cross-menu comparison panel +
    *  rationale composer; other consumers leave it undefined and get
@@ -5391,6 +5307,7 @@ function PlacementsTabPanel({
   placementsSaving,
   setPlacementSaving,
   itemId,
+  getMenuHref,
   overlapSlot,
   onUpdate,
   onRemove,
@@ -5464,12 +5381,13 @@ function PlacementsTabPanel({
   return (
     <section data-testid="placements-tab" style={{ marginBottom: 4 }}>
       {overlapSlot}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, alignItems: 'start' }}>
         {placementsDraft.map((assoc) => (
           <MenuPlacementCard
             key={assoc.menu_id}
             assoc={assoc}
             saving={placementsSaving.has(assoc.menu_id)}
+            menuHref={getMenuHref ? getMenuHref(assoc.menu_id, itemId) : null}
             onChange={(patch) => void persist(assoc.menu_id, patch)}
             onRemove={() => void unpublish(assoc.menu_id)}
           />
@@ -5482,11 +5400,13 @@ function PlacementsTabPanel({
 interface MenuPlacementCardProps {
   assoc: MenuAssociation;
   saving: boolean;
+  /** Menu-page URL for this card's menu (opens in a new tab); null → plain text. */
+  menuHref: string | null;
   onChange: (patch: Partial<MenuItemJunctionSettings>) => void;
   onRemove: () => void;
 }
 
-function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementCardProps) {
+function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: MenuPlacementCardProps) {
   // Price + portion_serves use uncontrolled-ish state — local string buffer
   // so the owner can clear the field mid-typing without the parent dropping
   // the value. We commit on blur (or Enter). Selects/toggles commit on
@@ -5542,9 +5462,23 @@ function MenuPlacementCard({ assoc, saving, onChange, onRemove }: MenuPlacementC
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {assoc.menu_name}
-          </div>
+          {menuHref ? (
+            <a
+              href={menuHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`placements-tab-menu-link-${assoc.menu_id}`}
+              title={`Open ${assoc.menu_name} in a new tab`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', fontSize: 14, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assoc.menu_name}</span>
+              <span aria-hidden style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>↗</span>
+            </a>
+          ) : (
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {assoc.menu_name}
+            </div>
+          )}
           {assoc.category_name && (
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
               {assoc.category_name}
