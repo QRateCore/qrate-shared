@@ -111,13 +111,49 @@ export interface BulkMenuSidesPanelProps {
    * refresh to actually show up on the page).
    */
   onItemInfoApplied?: (updates: Array<{ itemId: string; associations: MenuAssociation[] }>) => void;
+  /**
+   * Bulk single-value junction tabs — Price / Boost / Chef's Special /
+   * Portion. Distinct from the "Item info" tab above: each of these applies
+   * ONE shared value to every selected item in a single request (via the
+   * new /owner/bulk/menus/{menuId}/items/* endpoints), rather than each
+   * item keeping its own independently-differing value. Each tab only
+   * appears when its own callback is wired, same opt-in pattern as
+   * onBulkItemInfo. Wine items use serving_price_overrides for the
+   * price tab; everything else uses a flat price.
+   */
+  onBulkSetPrice?: (
+    itemIds: string[],
+    patch: { price: number | null } | { serving_price_overrides: { glass?: number; bottle?: number } },
+  ) => Promise<{ updated: number }>;
+  onBulkSetBoost?: (
+    itemIds: string[],
+    boostLevel: 'Low' | 'Moderate' | 'High' | null,
+  ) => Promise<{ updated: number }>;
+  onBulkSetChefsSpecial?: (itemIds: string[], chefsSpecial: boolean) => Promise<{ updated: number }>;
+  onBulkSetPortion?: (
+    itemIds: string[],
+    portionType: 'single' | 'shared',
+    portionServes: number | null,
+  ) => Promise<{ updated: number }>;
+  /** Fired once per successful bulk single-value Apply with the itemIds
+   *  touched + the shared patch that was applied to all of them — lets the
+   *  consumer force-write junctionSettings directly (same immediate-update
+   *  pattern as onItemInfoApplied), no refetch required. */
+  onBulkJunctionApplied?: (itemIds: string[], patch: Partial<MenuItemJunctionSettings>) => void;
   onClose: () => void;
   /** Called after a successful Apply — consumer typically refetches
    *  the menu's items + closes the drawer. */
   onComplete?: () => void;
 }
 
-type TabKey = 'includes' | 'removeIncludes' | 'itemInfo';
+type TabKey =
+  | 'includes'
+  | 'removeIncludes'
+  | 'itemInfo'
+  | 'bulkPrice'
+  | 'bulkBoost'
+  | 'bulkChefsSpecial'
+  | 'bulkPortion';
 
 // Allowed side item_types (mirrors server-side ALLOWED_SIDE_ITEM_TYPES
 // and the existing per-item PUT endpoint's _reject_addons).
@@ -140,21 +176,34 @@ export default function BulkMenuSidesPanel({
   onBulkRemoveSides,
   onBulkItemInfo,
   onItemInfoApplied,
+  onBulkSetPrice,
+  onBulkSetBoost,
+  onBulkSetChefsSpecial,
+  onBulkSetPortion,
+  onBulkJunctionApplied,
   onClose,
   onComplete,
 }: BulkMenuSidesPanelProps) {
   // ── Tabs — each opt-in on its wired callback, mirrors BulkActionsPanel's
   // availableModes filter chain. Includes/Remove Includes need the full
-  // sides trio (add + remove + discovery); Item Info only needs its own
-  // callback. First available tab wins the initial selection so a consumer
-  // that wires ONLY onBulkItemInfo doesn't land on a dead "Includes" tab.
+  // sides trio (add + remove + discovery); Item Info and the 4 bulk
+  // single-value tabs each only need their own callback. First available
+  // tab wins the initial selection so a consumer that wires only one of
+  // these doesn't land on a dead "Includes" tab.
   const sidesWired = !!onBulkAddSides && !!onBulkRemoveSides && !!loadPerMenuSides;
   const availableTabs = useMemo<TabKey[]>(() => {
     const tabs: TabKey[] = [];
-    if (sidesWired) tabs.push('includes', 'removeIncludes');
+    // Item info leads the tab bar (and is the default landing tab when
+    // wired) — it's the primary per-item editing surface; everything else
+    // (sides + the single-value bulk tabs) follows it.
     if (onBulkItemInfo) tabs.push('itemInfo');
+    if (sidesWired) tabs.push('includes', 'removeIncludes');
+    if (onBulkSetPrice) tabs.push('bulkPrice');
+    if (onBulkSetBoost) tabs.push('bulkBoost');
+    if (onBulkSetChefsSpecial) tabs.push('bulkChefsSpecial');
+    if (onBulkSetPortion) tabs.push('bulkPortion');
     return tabs;
-  }, [sidesWired, onBulkItemInfo]);
+  }, [sidesWired, onBulkItemInfo, onBulkSetPrice, onBulkSetBoost, onBulkSetChefsSpecial, onBulkSetPortion]);
 
   // ── Tab + shared state ──────────────────────────────────────────────
   const [tab, setTab] = useState<TabKey>(availableTabs[0] ?? 'includes');
@@ -294,6 +343,145 @@ export default function BulkMenuSidesPanel({
     }
     return [...wine, ...rest];
   }, [selectedItems, pool]);
+
+  // ── Bulk single-value tabs — Price / Boost / Chef's Special / Portion.
+  // Each applies ONE shared value to every selected item, unlike Item Info's
+  // per-item rows above. Price splits the selection by wine/non-wine
+  // (mirrors Item Info's own per-row branching) since wine uses
+  // serving_price_overrides instead of a flat price.
+  const [bulkPrice, setBulkPrice] = useState('');
+  const [bulkGlassPrice, setBulkGlassPrice] = useState('');
+  const [bulkBottlePrice, setBulkBottlePrice] = useState('');
+  const [bulkBoostLabel, setBulkBoostLabel] = useState<'none' | BoostLabel>('none');
+  // null = neither Mark/Unmark chosen yet — forces an explicit pick before
+  // Apply is enabled, rather than defaulting to a value that could silently
+  // unmark every selected item.
+  const [bulkChefsSpecial, setBulkChefsSpecial] = useState<boolean | null>(null);
+  const [bulkPortionType, setBulkPortionType] = useState<'single' | 'shared'>('single');
+  const [bulkPortionServes, setBulkPortionServes] = useState('');
+
+  const { bulkPriceWineIds, bulkPriceNonWineIds } = useMemo(() => {
+    const wine: string[] = [];
+    const nonWine: string[] = [];
+    for (const parent of selectedItems) {
+      const full = pool.find((i) => i.id === parent.id);
+      (full && isWineItem(full) ? wine : nonWine).push(parent.id);
+    }
+    return { bulkPriceWineIds: wine, bulkPriceNonWineIds: nonWine };
+  }, [selectedItems, pool]);
+
+  const bulkPriceHasInput =
+    (bulkPriceNonWineIds.length > 0 && bulkPrice.trim() !== '')
+    || (bulkPriceWineIds.length > 0 && (bulkGlassPrice.trim() !== '' || bulkBottlePrice.trim() !== ''));
+
+  async function runBulkPrice() {
+    setExecuting(true);
+    setError(null);
+    setSkipNotice(null);
+    try {
+      let totalUpdated = 0;
+      const priceTrimmed = bulkPrice.trim();
+      if (bulkPriceNonWineIds.length > 0 && priceTrimmed !== '') {
+        const p = parseFloat(priceTrimmed);
+        if (!isFinite(p) || p < 0) throw new Error('Invalid price');
+        const { updated } = await onBulkSetPrice!(bulkPriceNonWineIds, { price: p });
+        totalUpdated += updated;
+        onBulkJunctionApplied?.(bulkPriceNonWineIds, { price: p });
+      }
+      const glassTrimmed = bulkGlassPrice.trim();
+      const bottleTrimmed = bulkBottlePrice.trim();
+      if (bulkPriceWineIds.length > 0 && (glassTrimmed !== '' || bottleTrimmed !== '')) {
+        const glassDollars = glassTrimmed === '' ? null : parseFloat(glassTrimmed);
+        const bottleDollars = bottleTrimmed === '' ? null : parseFloat(bottleTrimmed);
+        if (glassTrimmed !== '' && (!isFinite(glassDollars!) || glassDollars! < 0)) {
+          throw new Error('Invalid glass price');
+        }
+        if (bottleTrimmed !== '' && (!isFinite(bottleDollars!) || bottleDollars! < 0)) {
+          throw new Error('Invalid bottle price');
+        }
+        const overrides: { glass?: number; bottle?: number } = {};
+        if (glassDollars != null) overrides.glass = Math.round(glassDollars * 100);
+        if (bottleDollars != null) overrides.bottle = Math.round(bottleDollars * 100);
+        const { updated } = await onBulkSetPrice!(bulkPriceWineIds, { serving_price_overrides: overrides });
+        totalUpdated += updated;
+        onBulkJunctionApplied?.(bulkPriceWineIds, { serving_price_overrides: overrides });
+      }
+      if (totalUpdated === 0) {
+        setError('Change at least one field before applying');
+        return;
+      }
+      setSkipNotice(`Updated ${totalUpdated} item${totalUpdated === 1 ? '' : 's'}`);
+      requestComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk price update failed');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  async function runBulkBoost() {
+    setExecuting(true);
+    setError(null);
+    setSkipNotice(null);
+    try {
+      const ids = selectedItems.map((p) => p.id);
+      const level = bulkBoostLabel === 'none' ? null : bulkBoostLabel;
+      const { updated } = await onBulkSetBoost!(ids, level);
+      onBulkJunctionApplied?.(ids, {
+        boost_level: level ? String(BOOST_LABELS.indexOf(level) + 1) : null,
+      });
+      setSkipNotice(`Updated ${updated} item${updated === 1 ? '' : 's'}`);
+      requestComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk boost update failed');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  async function runBulkChefsSpecial() {
+    if (bulkChefsSpecial === null) {
+      setError('Choose Mark or Unmark before applying');
+      return;
+    }
+    setExecuting(true);
+    setError(null);
+    setSkipNotice(null);
+    try {
+      const ids = selectedItems.map((p) => p.id);
+      const { updated } = await onBulkSetChefsSpecial!(ids, bulkChefsSpecial);
+      onBulkJunctionApplied?.(ids, { chefs_special: bulkChefsSpecial });
+      setSkipNotice(`Updated ${updated} item${updated === 1 ? '' : 's'}`);
+      requestComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk chef's special update failed");
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  async function runBulkPortion() {
+    setExecuting(true);
+    setError(null);
+    setSkipNotice(null);
+    try {
+      let servesNum: number | null = null;
+      if (bulkPortionType === 'shared') {
+        const parsed = parseInt(bulkPortionServes, 10);
+        if (!isFinite(parsed) || parsed <= 0) throw new Error('Enter a valid serves count');
+        servesNum = parsed;
+      }
+      const ids = selectedItems.map((p) => p.id);
+      const { updated } = await onBulkSetPortion!(ids, bulkPortionType, servesNum);
+      onBulkJunctionApplied?.(ids, { portion_type: bulkPortionType, portion_serves: servesNum });
+      setSkipNotice(`Updated ${updated} item${updated === 1 ? '' : 's'}`);
+      requestComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk portion update failed');
+    } finally {
+      setExecuting(false);
+    }
+  }
 
   // Hide Crisp chat widget while the drawer is open — the launcher's
   // fixed bottom-right position collides with the panel's Apply
@@ -621,8 +809,16 @@ export default function BulkMenuSidesPanel({
       void runAdd();
     } else if (tab === 'removeIncludes') {
       void runRemove();
-    } else {
+    } else if (tab === 'itemInfo') {
       void runItemInfo();
+    } else if (tab === 'bulkPrice') {
+      void runBulkPrice();
+    } else if (tab === 'bulkBoost') {
+      void runBulkBoost();
+    } else if (tab === 'bulkChefsSpecial') {
+      void runBulkChefsSpecial();
+    } else {
+      void runBulkPortion();
     }
   }
 
@@ -632,7 +828,10 @@ export default function BulkMenuSidesPanel({
     executing
     || (tab === 'includes' && (addSelectedIds.length === 0 || sidesEligibleItems.length === 0))
     || (tab === 'removeIncludes' && (removeSelectedIds.size === 0 || sidesEligibleItems.length === 0))
-    || (tab === 'itemInfo' && !itemInfoHasChanges);
+    || (tab === 'itemInfo' && !itemInfoHasChanges)
+    || (tab === 'bulkPrice' && !bulkPriceHasInput)
+    || (tab === 'bulkChefsSpecial' && bulkChefsSpecial === null)
+    || (tab === 'bulkPortion' && bulkPortionType === 'shared' && bulkPortionServes.trim() === '');
 
   return (
     <>
@@ -776,7 +975,13 @@ export default function BulkMenuSidesPanel({
                 whiteSpace: 'nowrap',
               }}
             >
-              {k === 'includes' ? 'Includes' : k === 'removeIncludes' ? 'Remove Includes' : 'Item info'}
+              {k === 'includes' ? 'Includes'
+                : k === 'removeIncludes' ? 'Remove Includes'
+                : k === 'itemInfo' ? 'Item info'
+                : k === 'bulkPrice' ? 'Price'
+                : k === 'bulkBoost' ? 'Boost'
+                : k === 'bulkChefsSpecial' ? "Chef's Special"
+                : 'Portion'}
             </button>
           ))}
         </div>
@@ -1143,6 +1348,138 @@ export default function BulkMenuSidesPanel({
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {tab === 'bulkPrice' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflow: 'auto' }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Sets ONE price for every selected item on {menuName ?? 'this menu'}. Wine
+                items price By Glass / By Bottle instead of a flat price.
+              </div>
+              {bulkPriceNonWineIds.length > 0 && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+                  <span><strong>Price</strong> (Applies to {bulkPriceNonWineIds.length} item{bulkPriceNonWineIds.length === 1 ? '' : 's'})</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    data-testid="bulk-price-flat-input"
+                    value={bulkPrice}
+                    onChange={(e) => setBulkPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                    style={{ padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13, width: 140 }}
+                  />
+                </label>
+              )}
+              {bulkPriceWineIds.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 12 }}>
+                    <strong>Price for Wines</strong> (Applies to {bulkPriceWineIds.length} item{bulkPriceWineIds.length === 1 ? '' : 's'})
+                  </span>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+                      By Glass
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        data-testid="bulk-price-glass-input"
+                        value={bulkGlassPrice}
+                        onChange={(e) => setBulkGlassPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                        style={{ padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13, width: 100 }}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+                      By Bottle
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        data-testid="bulk-price-bottle-input"
+                        value={bulkBottlePrice}
+                        onChange={(e) => setBulkBottlePrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                        style={{ padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13, width: 100 }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'bulkBoost' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Sets ONE boost level for all {itemCount} selected item{itemCount === 1 ? '' : 's'} on {menuName ?? 'this menu'}.
+              </div>
+              <select
+                data-testid="bulk-boost-select"
+                value={bulkBoostLabel}
+                onChange={(e) => setBulkBoostLabel(e.target.value as 'none' | BoostLabel)}
+                style={{ padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13, width: 160 }}
+              >
+                <option value="none">None</option>
+                {BOOST_LABELS.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {tab === 'bulkChefsSpecial' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Sets chef&apos;s special for all {itemCount} selected item{itemCount === 1 ? '' : 's'} on {menuName ?? 'this menu'}.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="radio"
+                    name="bulk-chefs-special"
+                    data-testid="bulk-chefs-special-mark"
+                    checked={bulkChefsSpecial === true}
+                    onChange={() => setBulkChefsSpecial(true)}
+                  />
+                  Mark as Chef&apos;s Special
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="radio"
+                    name="bulk-chefs-special"
+                    data-testid="bulk-chefs-special-unmark"
+                    checked={bulkChefsSpecial === false}
+                    onChange={() => setBulkChefsSpecial(false)}
+                  />
+                  Unmark as Chef&apos;s Special
+                </label>
+              </div>
+            </div>
+          )}
+
+          {tab === 'bulkPortion' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Sets ONE portion type for all {itemCount} selected item{itemCount === 1 ? '' : 's'} on {menuName ?? 'this menu'}.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select
+                  data-testid="bulk-portion-type-select"
+                  value={bulkPortionType}
+                  onChange={(e) => setBulkPortionType(e.target.value as 'single' | 'shared')}
+                  style={{ padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+                >
+                  <option value="single">Single</option>
+                  <option value="shared">Shared</option>
+                </select>
+                {bulkPortionType === 'shared' && (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    data-testid="bulk-portion-serves-input"
+                    placeholder="Serves"
+                    value={bulkPortionServes}
+                    onChange={(e) => setBulkPortionServes(e.target.value.replace(/[^0-9]/g, ''))}
+                    style={{ width: 70, padding: '6px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
+                  />
+                )}
               </div>
             </div>
           )}
