@@ -288,6 +288,36 @@ interface Props {
     itemIds: string[],
     patch: Partial<MenuItemJunctionSettings>,
   ) => Promise<MenuAssociation[]>;
+  /**
+   * Bulk single-value junction tabs (Price / Boost / Chef's Special /
+   * Portion) — opt-in, independent of onBulkItemInfoForMenuItems above.
+   * Each applies ONE shared value to N selected items on the active menu in
+   * a single request (new /owner/bulk/menus/{menuId}/items/* endpoints),
+   * rather than each item keeping its own independently-differing value
+   * (that's what the "Item info" tab is for). Each tab only appears when
+   * its own callback is wired.
+   */
+  onBulkSetPriceForMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    patch: { price: number | null } | { serving_price_overrides: { glass?: number; bottle?: number } },
+  ) => Promise<{ updated: number }>;
+  onBulkSetBoostForMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    boostLevel: 'Low' | 'Moderate' | 'High' | null,
+  ) => Promise<{ updated: number }>;
+  onBulkSetChefsSpecialForMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    chefsSpecial: boolean,
+  ) => Promise<{ updated: number }>;
+  onBulkSetPortionForMenuItems?: (
+    menuId: string,
+    itemIds: string[],
+    portionType: 'single' | 'shared',
+    portionServes: number | null,
+  ) => Promise<{ updated: number }>;
   /** Discovery loader for the Remove-Includes tab — fans out per parent. */
   loadPerMenuSides?: (
     menuId: string,
@@ -422,7 +452,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -543,7 +573,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // Item Info (price/boost/special/portion) is independently opt-in — the
   // drawer's checkbox column + bulk button should surface even when the
   // sides trio above isn't wired, as long as this one callback is.
-  const bulkMenuActionsEnabled = bulkSidesEnabled || !!onBulkItemInfoForMenuItems;
+  const bulkMenuActionsEnabled = bulkSidesEnabled || !!onBulkItemInfoForMenuItems
+    || !!onBulkSetPriceForMenuItems || !!onBulkSetBoostForMenuItems
+    || !!onBulkSetChefsSpecialForMenuItems || !!onBulkSetPortionForMenuItems;
   const [bulkMenuSelection, setBulkMenuSelection] = useState<Set<string>>(new Set());
   const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
@@ -3153,6 +3185,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               ? (itemIds, patch) => onBulkItemInfoForMenuItems!(activeMenuId, itemIds, patch)
               : undefined
           }
+          onBulkSetPrice={
+            onBulkSetPriceForMenuItems
+              ? (itemIds, patch) => onBulkSetPriceForMenuItems!(activeMenuId, itemIds, patch)
+              : undefined
+          }
+          onBulkSetBoost={
+            onBulkSetBoostForMenuItems
+              ? (itemIds, boostLevel) => onBulkSetBoostForMenuItems!(activeMenuId, itemIds, boostLevel)
+              : undefined
+          }
+          onBulkSetChefsSpecial={
+            onBulkSetChefsSpecialForMenuItems
+              ? (itemIds, chefsSpecial) => onBulkSetChefsSpecialForMenuItems!(activeMenuId, itemIds, chefsSpecial)
+              : undefined
+          }
+          onBulkSetPortion={
+            onBulkSetPortionForMenuItems
+              ? (itemIds, portionType, portionServes) =>
+                  onBulkSetPortionForMenuItems!(activeMenuId, itemIds, portionType, portionServes)
+              : undefined
+          }
           // Optimistic update, scoped to exactly the items this apply touched:
           //   1. setItems keeps items[].menu_associations current (also what
           //      the next drag/edit reads from).
@@ -3182,6 +3235,20 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                     serving_price_overrides: assoc.serving_price_overrides ?? {},
                   };
                 }
+              }
+              return next;
+            });
+          }}
+          // Same immediate-update mechanism as onItemInfoApplied above, but for
+          // the bulk single-value tabs: one shared patch applied to every
+          // touched itemId's junctionSettings entry directly, bypassing the
+          // "prev wins" sync effect for exactly those rows.
+          onBulkJunctionApplied={(itemIds, patch) => {
+            setJunctionSettings((prev) => {
+              const next = { ...prev };
+              for (const itemId of itemIds) {
+                const key = `${activeMenuId}:${itemId}`;
+                next[key] = { ...next[key], ...patch };
               }
               return next;
             });

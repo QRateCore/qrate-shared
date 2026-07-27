@@ -536,5 +536,181 @@ describe('BulkMenuSidesPanel — close handlers', () => {
   });
 });
 
+// ===========================================================================
+// Bulk single-value junction tabs (Price / Boost / Chef's Special / Portion)
+// ===========================================================================
+
+function bulkTabProps(overrides: Partial<React.ComponentProps<typeof BulkMenuSidesPanel>> = {}) {
+  return defaultProps({
+    selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }],
+    pool: [FOOD_ITEM, BEER_ITEM, WINE_ITEM],
+    onBulkAddSides: undefined,
+    onBulkRemoveSides: undefined,
+    loadPerMenuSides: undefined,
+    onBulkSetPrice: vi.fn().mockResolvedValue({ updated: 1 }),
+    onBulkSetBoost: vi.fn().mockResolvedValue({ updated: 1 }),
+    onBulkSetChefsSpecial: vi.fn().mockResolvedValue({ updated: 1 }),
+    onBulkSetPortion: vi.fn().mockResolvedValue({ updated: 1 }),
+    ...overrides,
+  });
+}
+
+describe('BulkMenuSidesPanel — bulk Price tab', () => {
+  it('renders as its own tab, independent of the sides trio and Item Info', () => {
+    render(<BulkMenuSidesPanel {...bulkTabProps()} />);
+    expect(screen.getByTestId('bulk-menu-sides-tab-bulkPrice')).toBeTruthy();
+    expect(screen.queryByTestId('bulk-menu-sides-tab-includes')).toBeNull();
+    expect(screen.queryByTestId('bulk-menu-sides-tab-itemInfo')).toBeNull();
+  });
+
+  it('shows a flat price input for a non-wine-only selection and applies it', async () => {
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 1 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }],
+      onBulkSetPrice, onBulkJunctionApplied,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    expect(screen.queryByTestId('bulk-price-glass-input')).toBeNull();
+    fireEvent.change(screen.getByTestId('bulk-price-flat-input'), { target: { value: '15' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledWith([FOOD_ITEM.id], { price: 15 }));
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith([FOOD_ITEM.id], { price: 15 });
+  });
+
+  it('shows By Glass / By Bottle for a wine-only selection and applies serving_price_overrides', async () => {
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: WINE_ITEM.id, name: WINE_ITEM.name }],
+      onBulkSetPrice,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    expect(screen.queryByTestId('bulk-price-flat-input')).toBeNull();
+    fireEvent.change(screen.getByTestId('bulk-price-glass-input'), { target: { value: '11' } });
+    fireEvent.change(screen.getByTestId('bulk-price-bottle-input'), { target: { value: '44' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_ITEM.id], { serving_price_overrides: { glass: 1100, bottle: 4400 } },
+    ));
+  });
+
+  it('mixed wine + non-wine selection sends two independent requests', async () => {
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }, { id: WINE_ITEM.id, name: WINE_ITEM.name }],
+      onBulkSetPrice,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    fireEvent.change(screen.getByTestId('bulk-price-flat-input'), { target: { value: '9' } });
+    fireEvent.change(screen.getByTestId('bulk-price-bottle-input'), { target: { value: '50' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledTimes(2));
+    expect(onBulkSetPrice).toHaveBeenCalledWith([FOOD_ITEM.id], { price: 9 });
+    expect(onBulkSetPrice).toHaveBeenCalledWith([WINE_ITEM.id], { serving_price_overrides: { bottle: 5000 } });
+  });
+
+  it('Apply is disabled until a relevant field is filled', () => {
+    render(<BulkMenuSidesPanel {...bulkTabProps()} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('bulk-price-flat-input'), { target: { value: '10' } });
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
+  });
+});
+
+describe('BulkMenuSidesPanel — bulk Boost tab', () => {
+  it('applies the selected label to every selected item, mapping to the junction value', async () => {
+    const onBulkSetBoost = vi.fn().mockResolvedValue({ updated: 2 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }, { id: BEER_ITEM.id, name: BEER_ITEM.name }],
+      onBulkSetBoost, onBulkJunctionApplied,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkBoost'));
+    fireEvent.change(screen.getByTestId('bulk-boost-select'), { target: { value: 'High' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetBoost).toHaveBeenCalledWith([FOOD_ITEM.id, BEER_ITEM.id], 'High'));
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith([FOOD_ITEM.id, BEER_ITEM.id], { boost_level: '3' });
+  });
+
+  it('"None" sends null and is a valid, always-applicable Apply', async () => {
+    const onBulkSetBoost = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({ onBulkSetBoost })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkBoost'));
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetBoost).toHaveBeenCalledWith([FOOD_ITEM.id], null));
+  });
+});
+
+describe('BulkMenuSidesPanel — bulk Chef\'s Special tab', () => {
+  it('Apply is disabled until Mark or Unmark is chosen', () => {
+    render(<BulkMenuSidesPanel {...bulkTabProps()} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkChefsSpecial'));
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).toBeDisabled();
+  });
+
+  it('"Mark as Chef\'s Special" applies true to every selected item', async () => {
+    const onBulkSetChefsSpecial = vi.fn().mockResolvedValue({ updated: 1 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({ onBulkSetChefsSpecial, onBulkJunctionApplied })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkChefsSpecial'));
+    fireEvent.click(screen.getByTestId('bulk-chefs-special-mark'));
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetChefsSpecial).toHaveBeenCalledWith([FOOD_ITEM.id], true));
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith([FOOD_ITEM.id], { chefs_special: true });
+  });
+
+  it('"Unmark as Chef\'s Special" applies false to every selected item', async () => {
+    const onBulkSetChefsSpecial = vi.fn().mockResolvedValue({ updated: 2 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }, { id: BEER_ITEM.id, name: BEER_ITEM.name }],
+      onBulkSetChefsSpecial, onBulkJunctionApplied,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkChefsSpecial'));
+    fireEvent.click(screen.getByTestId('bulk-chefs-special-unmark'));
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetChefsSpecial).toHaveBeenCalledWith([FOOD_ITEM.id, BEER_ITEM.id], false));
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith([FOOD_ITEM.id, BEER_ITEM.id], { chefs_special: false });
+  });
+
+  it('switching from Mark to Unmark before Apply sends the latest choice', async () => {
+    const onBulkSetChefsSpecial = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({ onBulkSetChefsSpecial })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkChefsSpecial'));
+    fireEvent.click(screen.getByTestId('bulk-chefs-special-mark'));
+    fireEvent.click(screen.getByTestId('bulk-chefs-special-unmark'));
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetChefsSpecial).toHaveBeenCalledWith([FOOD_ITEM.id], false));
+  });
+});
+
+describe('BulkMenuSidesPanel — bulk Portion tab', () => {
+  it('applies "single" with no serves input required', async () => {
+    const onBulkSetPortion = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({ onBulkSetPortion })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPortion'));
+    expect(screen.queryByTestId('bulk-portion-serves-input')).toBeNull();
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPortion).toHaveBeenCalledWith([FOOD_ITEM.id], 'single', null));
+  });
+
+  it('"shared" requires a serves count before Apply is enabled', async () => {
+    const onBulkSetPortion = vi.fn().mockResolvedValue({ updated: 1 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({ onBulkSetPortion, onBulkJunctionApplied })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPortion'));
+    fireEvent.change(screen.getByTestId('bulk-portion-type-select'), { target: { value: 'shared' } });
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('bulk-portion-serves-input'), { target: { value: '4' } });
+    expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPortion).toHaveBeenCalledWith([FOOD_ITEM.id], 'shared', 4));
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith([FOOD_ITEM.id], { portion_type: 'shared', portion_serves: 4 });
+  });
+});
+
 // Avoid `act()` unused-import warning when not directly invoked.
 void act;

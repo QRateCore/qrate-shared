@@ -1052,15 +1052,32 @@ function MenuItemRow({
 
   // For multiCat items, show the category-specific price in the collapsed row
   // so each bucket reflects its own price independently.
+  //
+  // Wine items price By Glass / By Bottle instead of a flat price (mirrors
+  // the expanded section's isWine/useWineFallback branching above) — the
+  // collapsed badge must read serving_price_overrides, not settings.price,
+  // or it silently shows the wrong (unrelated) flat price for wine.
+  const wineGlassCents = settings.serving_price_overrides?.['glass'];
+  const wineBottleCents = settings.serving_price_overrides?.['bottle'];
+  const hasWinePriceOverride = wineGlassCents != null || wineBottleCents != null;
   const effectivePrice = multiCat
     ? (settings.category_prices?.[cat] ?? settings.price ?? item.price)
     : (settings.price ?? item.price);
-  const displayPrice = effectivePrice != null
-    ? `$${Number(effectivePrice).toFixed(2)}`
-    : null;
-  const displayPriceIsOverride = multiCat
-    ? settings.category_prices?.[cat] != null
-    : settings.price != null;
+  // Explicit \u00A0 (non-breaking space) around the separator — a plain
+  // ASCII space collapses to a single space in rendered HTML text content,
+  // so extra literal spaces here would have no visual effect.
+  const WINE_PRICE_SEPARATOR = '\u00A0\u00A0·\u00A0\u00A0';
+  const displayPrice = isWine
+    ? (hasWinePriceOverride
+        ? [
+            wineGlassCents != null ? `Glass $${(wineGlassCents / 100).toFixed(2)}` : null,
+            wineBottleCents != null ? `Bottle $${(wineBottleCents / 100).toFixed(2)}` : null,
+          ].filter(Boolean).join(WINE_PRICE_SEPARATOR)
+        : null)
+    : (effectivePrice != null ? `$${Number(effectivePrice).toFixed(2)}` : null);
+  const displayPriceIsOverride = isWine
+    ? hasWinePriceOverride
+    : (multiCat ? settings.category_prices?.[cat] != null : settings.price != null);
 
   const attention = itemHasAttention(item, settings);
   // Approved-only count — AI-suggested addons that the owner hasn't accepted
@@ -1231,12 +1248,12 @@ function MenuItemRow({
               )}
               {displayPrice && (
                 <span
-                  className={`text-xs font-semibold ${settings.price != null ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
+                  className={`text-xs font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                   data-testid={`price-display-${item.id}`}
                 >
                   {displayPrice}
-                  {settings.price != null && <span className="text-[9px] ml-0.5">↑</span>}
+                  {displayPriceIsOverride && <span className="text-[9px] ml-0.5">↑</span>}
                 </span>
               )}
               {!item.active && (
