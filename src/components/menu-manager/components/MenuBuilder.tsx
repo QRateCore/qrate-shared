@@ -1665,6 +1665,7 @@ function CategoryBucket({
   bulkSelection,
   onToggleBulkSelection,
   suppressEmptyAttention = false,
+  scrollToItemId,
 }: {
   category: string;
   /** Optional friendly header label. Defaults to `category` (the canonical).
@@ -1718,6 +1719,8 @@ function CategoryBucket({
   onDragEnd: () => void;
   onRemoveItem: (itemId: string, menuId: string) => void;
   onEditItem: (itemId: string) => void;
+  /** Deep-link target — the item to reveal; forces its sub-category open. */
+  scrollToItemId?: string | null;
   /** STR-858 — mobile 1-tap 86/restore, forwarded to each MenuItemRow. */
   onToggleItemActive?: (itemId: string, nextActive: boolean) => void;
   /** STR-858 — mobile "Move to…", forwarded to each MenuItemRow. */
@@ -2220,6 +2223,7 @@ function CategoryBucket({
                   menuId={menuId}
                   itemCount={groupItems.length}
                   color={color}
+                  containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
                   isDragOver={subCatDragOverLabel === label}
                   onDragEnter={
                     onDragEnterSubCategory
@@ -2376,7 +2380,7 @@ export default function MenuBuilder({
         }
       }
       onScrollComplete?.();
-    }, 150);
+    }, 400);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToItemId, activeMenuId]);
@@ -2411,6 +2415,18 @@ export default function MenuBuilder({
   });
 
   const totalItems = sectionBuckets.reduce((s, b) => s + b.itemIds.length, 0);
+
+  // Deep-link (scrollToItemId): expand the COURSE that contains the target item
+  // so its row renders + scrolls into view; the sub-category self-expands via
+  // SubCategoryGroup's containsScrollTarget prop.
+  useEffect(() => {
+    if (!scrollToItemId || !activeMenu) return;
+    const bucket = sectionBuckets.find((b) => b.itemIds.includes(scrollToItemId));
+    if (!bucket) return;
+    const key = `${activeMenu.id}:${bucket.canonical}`;
+    if (collapsed[key] ?? true) onToggleCollapse(key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToItemId, activeMenu?.id]);
 
   const allCollapsed = activeMenu
     ? sectionBuckets.every((b) => collapsed[`${activeMenu.id}:${b.canonical}`] ?? true)
@@ -2537,6 +2553,7 @@ export default function MenuBuilder({
                 itemsById={itemsById}
                 menus={menus}
                 menuId={activeMenu!.id}
+                scrollToItemId={scrollToItemId}
                 collapsed={searchActive ? false : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}

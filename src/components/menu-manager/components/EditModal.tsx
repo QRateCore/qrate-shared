@@ -5460,31 +5460,55 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
         transition: 'opacity 0.15s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          {menuHref ? (
-            <a
-              href={menuHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid={`placements-tab-menu-link-${assoc.menu_id}`}
-              title={`Open ${assoc.menu_name} in a new tab`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', fontSize: 14, fontWeight: 700, color: 'var(--text)', textDecoration: 'none' }}
-            >
+      {/* Orange-tinged, clickable header: the whole title area links to this
+          item ON this menu in the Menu Builder (new tab), which expands the
+          item's course + sub-category and scrolls to it. The Remove button is
+          carved out as a sibling so it never triggers navigation. */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 8,
+          marginBottom: 10, borderRadius: 8, overflow: 'hidden',
+          background: 'var(--orange-bg, #FFF3EC)',
+          border: '1px solid var(--orange-300, #FFB48A)',
+        }}
+      >
+        {menuHref ? (
+          <a
+            href={menuHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`placements-tab-menu-link-${assoc.menu_id}`}
+            title={`Open ${assoc.menu_name} in the Menu Builder (new tab) — jumps to this item with its course & sub-category expanded`}
+            style={{
+              flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2,
+              padding: '8px 10px', textDecoration: 'none', color: 'var(--orange-text, #B83B00)',
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--orange-100, #FFE3D1)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', fontSize: 14, fontWeight: 700 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assoc.menu_name}</span>
-              <span aria-hidden style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>↗</span>
-            </a>
-          ) : (
+              <span aria-hidden style={{ fontSize: 11, flexShrink: 0 }}>↗</span>
+            </span>
+            {assoc.category_name && (
+              <span style={{ fontSize: 11, color: 'var(--orange-text, #B83B00)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {assoc.category_name}
+              </span>
+            )}
+          </a>
+        ) : (
+          <div style={{ flex: 1, minWidth: 0, padding: '8px 10px' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {assoc.menu_name}
             </div>
-          )}
-          {assoc.category_name && (
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-              {assoc.category_name}
-            </div>
-          )}
-        </div>
+            {assoc.category_name && (
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                {assoc.category_name}
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={onRemove}
@@ -5494,6 +5518,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
           title="Remove from this menu"
           style={{
             ...imgActionStyle('red'),
+            alignSelf: 'center', marginRight: 8, flexShrink: 0,
             cursor: saving ? 'wait' : 'pointer',
           }}
         >

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { MenuColor } from '../lib/menuUtils';
 import { UNGROUPED_KEY } from '../lib/menuUtils';
@@ -59,6 +59,9 @@ export interface SubCategoryGroupProps {
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  /** A deep-link (scrollToItemId) targets an item inside this sub-category —
+   *  force it open so the item is visible. Set by MenuBuilder. */
+  containsScrollTarget?: boolean;
 }
 
 export function SubCategoryGroup({
@@ -86,12 +89,19 @@ export function SubCategoryGroup({
   onMoveDown,
   canMoveUp = false,
   canMoveDown = false,
+  containsScrollTarget = false,
 }: SubCategoryGroupProps) {
   const isUngrouped = label === UNGROUPED_KEY;
   const display = isUngrouped ? 'Ungrouped' : label;
   // Sub-accordions start collapsed when their parent canonical/section bucket
   // is expanded (2026-06-11) — the owner drills in one level at a time.
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(!containsScrollTarget);
+  // Auto-expand when a deep-link (scrollToItemId) targets an item in THIS
+  // sub-category, so "open this item on the menu" lands with its sub-category
+  // open (the course is expanded by MenuBuilder in tandem).
+  useEffect(() => {
+    if (containsScrollTarget) setCollapsed(false);
+  }, [containsScrollTarget]);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(label);
   const [busy, setBusy] = useState(false);
