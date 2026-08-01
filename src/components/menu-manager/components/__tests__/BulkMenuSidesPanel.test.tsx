@@ -606,7 +606,99 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
     fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
     await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledTimes(2));
     expect(onBulkSetPrice).toHaveBeenCalledWith([FOOD_ITEM.id], { price: 9 });
-    expect(onBulkSetPrice).toHaveBeenCalledWith([WINE_ITEM.id], { serving_price_overrides: { bottle: 5000 } });
+    // Empty By Glass box preserves the wine's persisted glass override
+    // (1200 from the fixture) rather than wiping it from the object.
+    expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_ITEM.id], { serving_price_overrides: { glass: 1200, bottle: 5000 } },
+    );
+  });
+
+  it('an empty wine box preserves each item\'s existing persisted price (separate-runs flow)', async () => {
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 1 });
+    const onBulkJunctionApplied = vi.fn();
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: WINE_ITEM.id, name: WINE_ITEM.name }],
+      onBulkSetPrice, onBulkJunctionApplied,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    // Run sets ONLY By Glass — By Bottle left blank must keep bottle: 4800.
+    fireEvent.change(screen.getByTestId('bulk-price-glass-input'), { target: { value: '14' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_ITEM.id], { serving_price_overrides: { glass: 1400, bottle: 4800 } },
+    ));
+    // Local-cache patch carries the same merged object so the UI doesn't
+    // transiently show the bottle price as cleared.
+    expect(onBulkJunctionApplied).toHaveBeenCalledWith(
+      [WINE_ITEM.id], { serving_price_overrides: { glass: 1400, bottle: 4800 } },
+    );
+  });
+
+  it('wines with differing existing overrides are grouped into per-merge bulk calls', async () => {
+    // Second wine with a DIFFERENT persisted glass price + a third with none.
+    const WINE_2 = mkFullItem('wine-2', 'Merlot', {
+      food_tags: { beverage: { beverage_type: 'wine' } },
+      menu_associations: [{
+        menu_id: MENU_ID, menu_name: 'Lunch', price: null, boost_level: null,
+        chefs_special: false, portion_type: 'single', portion_serves: null,
+        serving_price_overrides: { glass: 900 },
+      }],
+    });
+    const WINE_3 = mkFullItem('wine-3', 'House Red', {
+      food_tags: { beverage: { beverage_type: 'wine' } },
+    });
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 1 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [
+        { id: WINE_ITEM.id, name: WINE_ITEM.name },
+        { id: WINE_2.id, name: WINE_2.name },
+        { id: WINE_3.id, name: WINE_3.name },
+      ],
+      pool: [FOOD_ITEM, BEER_ITEM, WINE_ITEM, WINE_2, WINE_3],
+      onBulkSetPrice,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    fireEvent.change(screen.getByTestId('bulk-price-bottle-input'), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledTimes(3));
+    expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_ITEM.id], { serving_price_overrides: { glass: 1200, bottle: 6000 } },
+    );
+    expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_2.id], { serving_price_overrides: { glass: 900, bottle: 6000 } },
+    );
+    // No existing overrides → nothing to preserve; only the filled box goes up.
+    expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_3.id], { serving_price_overrides: { bottle: 6000 } },
+    );
+  });
+
+  it('filling BOTH wine boxes collapses to one call regardless of differing existing values', async () => {
+    const WINE_2 = mkFullItem('wine-2b', 'Merlot', {
+      food_tags: { beverage: { beverage_type: 'wine' } },
+      menu_associations: [{
+        menu_id: MENU_ID, menu_name: 'Lunch', price: null, boost_level: null,
+        chefs_special: false, portion_type: 'single', portion_serves: null,
+        serving_price_overrides: { glass: 900, bottle: 3600 },
+      }],
+    });
+    const onBulkSetPrice = vi.fn().mockResolvedValue({ updated: 2 });
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [
+        { id: WINE_ITEM.id, name: WINE_ITEM.name },
+        { id: WINE_2.id, name: WINE_2.name },
+      ],
+      pool: [FOOD_ITEM, BEER_ITEM, WINE_ITEM, WINE_2],
+      onBulkSetPrice,
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    fireEvent.change(screen.getByTestId('bulk-price-glass-input'), { target: { value: '11' } });
+    fireEvent.change(screen.getByTestId('bulk-price-bottle-input'), { target: { value: '44' } });
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-apply-btn'));
+    await waitFor(() => expect(onBulkSetPrice).toHaveBeenCalledTimes(1));
+    expect(onBulkSetPrice).toHaveBeenCalledWith(
+      [WINE_ITEM.id, WINE_2.id], { serving_price_overrides: { glass: 1100, bottle: 4400 } },
+    );
   });
 
   it('Apply is disabled until a relevant field is filled', () => {

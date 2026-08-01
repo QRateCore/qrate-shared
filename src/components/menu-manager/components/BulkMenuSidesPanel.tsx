@@ -399,12 +399,34 @@ export default function BulkMenuSidesPanel({
         if (bottleTrimmed !== '' && (!isFinite(bottleDollars!) || bottleDollars! < 0)) {
           throw new Error('Invalid bottle price');
         }
-        const overrides: { glass?: number; bottle?: number } = {};
-        if (glassDollars != null) overrides.glass = Math.round(glassDollars * 100);
-        if (bottleDollars != null) overrides.bottle = Math.round(bottleDollars * 100);
-        const { updated } = await onBulkSetPrice!(bulkPriceWineIds, { serving_price_overrides: overrides });
-        totalUpdated += updated;
-        onBulkJunctionApplied?.(bulkPriceWineIds, { serving_price_overrides: overrides });
+        // An EMPTY box means "leave that serving's price alone". The backend
+        // REPLACES the whole serving_price_overrides object, so fold each
+        // item's existing per-menu overrides into the payload — otherwise
+        // setting only By Bottle silently wiped every wine's glass price.
+        // Items whose merged result is identical share one bulk call
+        // (a single group in the common case; both boxes filled always
+        // collapses to one group since existing values no longer matter).
+        const glassCents = glassDollars == null ? null : Math.round(glassDollars * 100);
+        const bottleCents = bottleDollars == null ? null : Math.round(bottleDollars * 100);
+        const groups = new Map<string, { overrides: { glass?: number; bottle?: number }; ids: string[] }>();
+        for (const id of bulkPriceWineIds) {
+          const existing = pool.find((i) => i.id === id)?.menu_associations
+            ?.find((a) => a.menu_id === menuId)?.serving_price_overrides ?? {};
+          const overrides: { glass?: number; bottle?: number } = {};
+          const glass = glassCents ?? existing.glass;
+          const bottle = bottleCents ?? existing.bottle;
+          if (glass != null) overrides.glass = glass;
+          if (bottle != null) overrides.bottle = bottle;
+          const key = `${overrides.glass ?? ''}:${overrides.bottle ?? ''}`;
+          const group = groups.get(key) ?? { overrides, ids: [] };
+          group.ids.push(id);
+          groups.set(key, group);
+        }
+        for (const { overrides, ids } of groups.values()) {
+          const { updated } = await onBulkSetPrice!(ids, { serving_price_overrides: overrides });
+          totalUpdated += updated;
+          onBulkJunctionApplied?.(ids, { serving_price_overrides: overrides });
+        }
       }
       if (totalUpdated === 0) {
         setError('Change at least one field before applying');
@@ -1356,7 +1378,9 @@ export default function BulkMenuSidesPanel({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflow: 'auto' }}>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>
                 Sets ONE price for every selected item on {menuName ?? 'this menu'}. Wine
-                items price By Glass / By Bottle instead of a flat price.
+                items price By Glass / By Bottle instead of a flat price. A box left
+                empty changes nothing — e.g. filling only By Bottle keeps each
+                wine&apos;s existing glass price.
               </div>
               {bulkPriceNonWineIds.length > 0 && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
