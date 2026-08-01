@@ -381,6 +381,8 @@ export interface MenuSummary {
   item_count: number;
   created_at?: string;
   updated_at?: string;
+  /** When true, the patron app treats this menu as drinks-only and routes to the drinks experience. */
+  is_drinks_only?: boolean;
 }
 
 export interface MenuCreate {
@@ -413,6 +415,8 @@ export interface MenuUpdate {
    * Validated server-side: int >= 0 or null. Bools rejected.
    */
   display_precedence?: number | null;
+  /** When true, routes the patron app to the drinks-only experience for this menu. */
+  is_drinks_only?: boolean;
 }
 
 export interface MenuCloneRequest {
