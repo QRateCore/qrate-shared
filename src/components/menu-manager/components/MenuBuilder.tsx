@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
-import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
+import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
@@ -2416,7 +2416,11 @@ export default function MenuBuilder({
   // `itemsById` map (used for id lookups / rec classification) untouched.
   const builderQuery = (builderSearchQuery ?? '').trim();
   const searchActive = builderQuery.length > 0;
-  const sectionBuckets = MENU_SECTIONS.map((sec) => {
+  // Sections depend on the menu: food courses (Drinks/Starters/Mains/Desserts)
+  // for a normal menu, drink types (Beer/Wine/Cocktails/…) for a drinks menu.
+  // buildAssignments keys a drinks menu's buckets by drink_subcategory_key to
+  // match, so `sec.members` resolves the same way in both modes.
+  const sectionBuckets = sectionsForMenu(activeMenu).map((sec) => {
     const ids = activeMenu
       ? [...new Set(sec.members.flatMap((m) => activeAssignments[m] ?? []))]
       : [];

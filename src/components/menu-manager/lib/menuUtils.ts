@@ -37,6 +37,80 @@ export function sectionForCanonical(canonical: string): MenuSection | undefined 
   return MENU_SECTIONS.find((s) => s.canonical === canonical || s.members.includes(canonical));
 }
 
+// ── Drinks-mode sections ────────────────────────────────────────────────────
+// A menu with `drinks_only` is organised by DRINK TYPE rather than the 4 food
+// courses: the sections below become the builder's top-level zones, and the
+// owner's own sub-categories nest underneath each (the same
+// menu_item_subcategories mechanism the food courses use — its `canonical`
+// column is free text, so a drink-type key fits without a schema change).
+//
+// Keys mirror DEFAULT_DRINK_SUBCATEGORIES in
+// qrate-core/backend/lambdas/api/src/drink_defaults.py, which is what seeds
+// each restaurant's editable tree and what /diner/drinks-menu reads back. Keep
+// the two in step — a key here that the backend doesn't know would render a
+// zone whose items never reach the drinks app.
+//
+// `members` is a single-element array (the key itself): drink types have no
+// many-to-one collapsing the way Mains absorbs Soups/Salads/Sides/Breads.
+export const DRINK_TYPE_SECTION_KEYS = [
+  'beer',
+  'wine',
+  'cocktails',
+  'spirits',
+  'cider',
+  'mocktails',
+  'sodas',
+  'juices',
+  'hot',
+  'water',
+  // Reserved system bucket for drinks with no type assigned. Always last.
+  'other',
+] as const;
+
+const DRINK_TYPE_LABELS: Record<string, string> = {
+  beer: 'Beer',
+  wine: 'Wine',
+  cocktails: 'Cocktails',
+  spirits: 'Spirits',
+  cider: 'Cider',
+  mocktails: 'Mocktails',
+  sodas: 'Soft Drinks',
+  juices: 'Juices & Smoothies',
+  hot: 'Hot Drinks',
+  water: 'Water',
+  other: 'Other',
+};
+
+/** Reserved bucket for drinks with no type assigned (mirrors the backend's). */
+export const DRINK_UNCLASSIFIED_KEY = 'other';
+
+export const DRINK_TYPE_SECTIONS: MenuSection[] = DRINK_TYPE_SECTION_KEYS.map((key) => ({
+  label: DRINK_TYPE_LABELS[key] ?? key,
+  canonical: key,
+  members: [key],
+}));
+
+/** True when this menu is built from drink types rather than food courses. */
+export function isDrinksMenu(menu: Pick<MenuSummary, 'drinks_only'> | null | undefined): boolean {
+  return !!menu?.drinks_only;
+}
+
+/**
+ * The builder's top-level sections for a given menu.
+ *
+ * Food menus get the unchanged 4 courses; drinks menus get drink types.
+ * `override` accepts the restaurant's own (possibly customised) tree — pass the
+ * labels/order from /diner/drink-bubbles when available so the builder and the
+ * drinks app cannot disagree. Falls back to the seeded defaults above.
+ */
+export function sectionsForMenu(
+  menu: Pick<MenuSummary, 'drinks_only'> | null | undefined,
+  override?: MenuSection[] | null,
+): MenuSection[] {
+  if (!isDrinksMenu(menu)) return MENU_SECTIONS;
+  return override && override.length > 0 ? override : DRINK_TYPE_SECTIONS;
+}
+
 /** Compute an item's canonical_categories after a drag-drop file/move.
  *  When the drag came from a DIFFERENT section (`fromCat` set and ≠ `targetCat`),
  *  drop the source section's member canonicals so the item LEAVES the old course
@@ -190,17 +264,35 @@ export function buildAssignments(
   menus: MenuSummary[],
 ): Record<string, Record<string, string[]>> {
   const result: Record<string, Record<string, string[]>> = {};
+  // Drinks menus bucket by drink type, not canonical category — seed their
+  // key space accordingly or every placement would be dropped by the
+  // `!== undefined` guard below.
+  const drinksMenuIds = new Set<string>();
   for (const menu of menus) {
-    result[menu.id] = Object.fromEntries(
-      CANONICAL_CATEGORIES.map((c) => [c, [] as string[]]),
-    );
+    if (isDrinksMenu(menu)) {
+      drinksMenuIds.add(menu.id);
+      result[menu.id] = Object.fromEntries(
+        DRINK_TYPE_SECTION_KEYS.map((k) => [k, [] as string[]]),
+      );
+    } else {
+      result[menu.id] = Object.fromEntries(
+        CANONICAL_CATEGORIES.map((c) => [c, [] as string[]]),
+      );
+    }
   }
   for (const item of items) {
     for (const assoc of item.menu_associations ?? []) {
-      const rawCanon = toCanonical(assoc.category_name ?? item.category);
-      const cats = assoc.canonical_categories?.length
-        ? assoc.canonical_categories
-        : rawCanon ? [rawCanon] : [];
+      // On a drinks menu the item's drink type IS its section. An item with no
+      // type assigned falls into the reserved 'other' bucket rather than
+      // disappearing from the builder entirely.
+      const cats = drinksMenuIds.has(assoc.menu_id)
+        ? [item.drink_subcategory_key || DRINK_UNCLASSIFIED_KEY]
+        : (() => {
+            const rawCanon = toCanonical(assoc.category_name ?? item.category);
+            return assoc.canonical_categories?.length
+              ? assoc.canonical_categories
+              : rawCanon ? [rawCanon] : [];
+          })();
       for (const canon of cats) {
         if (result[assoc.menu_id]?.[canon] !== undefined) {
           if (!result[assoc.menu_id][canon].includes(item.id)) {

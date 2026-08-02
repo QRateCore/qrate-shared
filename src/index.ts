@@ -48,7 +48,7 @@ export { TrackActionProvider, useTrackAction } from './components/menu-manager';
 export type { TrackActionFn, TrackActionOptions } from './components/menu-manager';
 export { SelectionRuleEditor } from './components/menu-manager';
 export type { RulePresetKind } from './components/menu-manager';
-export { ItemPool, getMenuColor, CANONICAL_CATEGORIES, toCanonical, UNGROUPED_KEY, ItemPlacementModal, MENU_SECTIONS, sectionForCanonical } from './components/menu-manager';
+export { ItemPool, getMenuColor, CANONICAL_CATEGORIES, toCanonical, UNGROUPED_KEY, ItemPlacementModal, MENU_SECTIONS, sectionForCanonical, DRINK_TYPE_SECTIONS, DRINK_TYPE_SECTION_KEYS, DRINK_UNCLASSIFIED_KEY, isDrinksMenu, sectionsForMenu } from './components/menu-manager';
 export type { MenuColor, MenuColorName, CanonicalCategory, ItemPlacementModalProps, MenuSection } from './components/menu-manager';
 
 // Components — Common
