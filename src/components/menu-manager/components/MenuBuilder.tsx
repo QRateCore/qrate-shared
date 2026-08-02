@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
-import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
+import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
@@ -1668,6 +1668,7 @@ function CategoryBucket({
   onRenameSubCategory,
   onDeleteSubCategory,
   orderSubCategories,
+  showEmptySubCategoryChips,
   onReorderSubCategory,
   onCreateSubCategory,
   onDragStart,
@@ -1728,6 +1729,10 @@ function CategoryBucket({
   /** STR-775 — resolve the display order of a course's sub-category labels
    *  (owner sort_order from the first-class structure; falls back to alphabetical). */
   orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
+  /** Drinks menus only — also chip sub-categories that have no items yet.
+   *  Their items carry no raw_categories, so the item-derived rail would
+   *  otherwise stay blank and hide a just-created sub-category. */
+  showEmptySubCategoryChips?: boolean;
   /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
   onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
   /** Create a new (empty) sub-category in this course from the rail's [+] box. */
@@ -1798,10 +1803,36 @@ function CategoryBucket({
   // Raw sub-categories present in this course — surfaced as a width-bounded
   // chip on the course header so owners see, at a glance, which sub-categories
   // a course contains without expanding it.
-  const bucketRawCategories = deriveBucketRawCategories(
+  const itemDerivedRawCategories = deriveBucketRawCategories(
     allBucketItems,
     (id) => getSettings(menuId, id).raw_categories,
   );
+
+  // The rail is derived from the ITEMS' labels, so a sub-category with no items
+  // yet produces no chip. On a drinks menu that hides it completely: every item
+  // there carries empty raw_categories (its grouping lives in the drink type),
+  // so the rail is always blank and a just-created sub-category gives the owner
+  // no feedback at the very spot they created it from.
+  //
+  // `orderSubCategories` already resolves the full set for this (menu, section)
+  // from the first-class structure, including count-0 rows — reuse it and append
+  // the ones the items didn't surface, as zero-count chips.
+  //
+  // Gated on `showEmptySubCategoryChips` so food menus keep their existing
+  // item-derived rail exactly as-is.
+  const bucketRawCategories = useMemo(() => {
+    if (!showEmptySubCategoryChips || !orderSubCategories) return itemDerivedRawCategories;
+    const present = new Set(itemDerivedRawCategories.map((rc) => normalizeSubcatKey(rc.label)));
+    const extra = orderSubCategories(
+      menuId,
+      category,
+      itemDerivedRawCategories.map((rc) => rc.label),
+    )
+      .filter((l) => l !== UNGROUPED_KEY && !present.has(normalizeSubcatKey(l)))
+      .map((label) => ({ label, count: 0 }));
+    return extra.length ? [...itemDerivedRawCategories, ...extra] : itemDerivedRawCategories;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEmptySubCategoryChips, orderSubCategories, menuId, category, itemDerivedRawCategories]);
 
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
@@ -2601,6 +2632,7 @@ export default function MenuBuilder({
                 onRenameSubCategory={onRenameSubCategory}
                 onDeleteSubCategory={onDeleteSubCategory}
                 orderSubCategories={orderSubCategories}
+                showEmptySubCategoryChips={isDrinksMenu(activeMenu)}
                 onReorderSubCategory={onReorderSubCategory}
                 onCreateSubCategory={onCreateSubCategory}
                 onDragStart={onDragStart}
