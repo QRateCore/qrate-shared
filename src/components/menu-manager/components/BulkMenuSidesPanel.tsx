@@ -374,6 +374,19 @@ export default function BulkMenuSidesPanel({
     (bulkPriceNonWineIds.length > 0 && bulkPrice.trim() !== '')
     || (bulkPriceWineIds.length > 0 && (bulkGlassPrice.trim() !== '' || bulkBottlePrice.trim() !== ''));
 
+  // Hover tooltip on each section's "(Applies to N items)" count — lists the
+  // selected items that fall into that bucket so a mixed selection's
+  // wine/non-wine split is inspectable without closing the drawer. Native
+  // title= matches the panel's existing tooltip pattern; capped so a
+  // max-size selection doesn't produce a screen-height tooltip.
+  function bulkCountTitle(ids: string[]): string {
+    const MAX_TOOLTIP_NAMES = 15;
+    const names = ids.map((id) => parentIdNameMap.get(id)?.name ?? id);
+    return names.length <= MAX_TOOLTIP_NAMES
+      ? names.join('\n')
+      : [...names.slice(0, MAX_TOOLTIP_NAMES), `…and ${names.length - MAX_TOOLTIP_NAMES} more`].join('\n');
+  }
+
   async function runBulkPrice() {
     setExecuting(true);
     setError(null);
@@ -1384,7 +1397,16 @@ export default function BulkMenuSidesPanel({
               </div>
               {bulkPriceNonWineIds.length > 0 && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-                  <span><strong>Price</strong> (Applies to {bulkPriceNonWineIds.length} item{bulkPriceNonWineIds.length === 1 ? '' : 's'})</span>
+                  <span>
+                    <strong>Price</strong>{' '}
+                    <span
+                      data-testid="bulk-price-flat-count"
+                      title={bulkCountTitle(bulkPriceNonWineIds)}
+                      style={{ textDecoration: 'underline dotted', cursor: 'help' }}
+                    >
+                      (Applies to {bulkPriceNonWineIds.length} item{bulkPriceNonWineIds.length === 1 ? '' : 's'})
+                    </span>
+                  </span>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1398,7 +1420,14 @@ export default function BulkMenuSidesPanel({
               {bulkPriceWineIds.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 12 }}>
-                    <strong>Price for Wines</strong> (Applies to {bulkPriceWineIds.length} item{bulkPriceWineIds.length === 1 ? '' : 's'})
+                    <strong>Price for Wines</strong>{' '}
+                    <span
+                      data-testid="bulk-price-wine-count"
+                      title={bulkCountTitle(bulkPriceWineIds)}
+                      style={{ textDecoration: 'underline dotted', cursor: 'help' }}
+                    >
+                      (Applies to {bulkPriceWineIds.length} item{bulkPriceWineIds.length === 1 ? '' : 's'})
+                    </span>
                   </span>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>

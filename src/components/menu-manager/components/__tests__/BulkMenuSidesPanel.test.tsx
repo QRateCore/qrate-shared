@@ -708,6 +708,40 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
     fireEvent.change(screen.getByTestId('bulk-price-flat-input'), { target: { value: '10' } });
     expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
   });
+
+  it('mixed selection: each count carries a hover tooltip listing that bucket\'s item names', () => {
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [
+        { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
+        { id: BEER_ITEM.id, name: BEER_ITEM.name },
+        { id: WINE_ITEM.id, name: WINE_ITEM.name },
+      ],
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    const flatCount = screen.getByTestId('bulk-price-flat-count');
+    expect(flatCount).toHaveTextContent('(Applies to 2 items)');
+    // Beer is non-wine — it belongs to the flat-price bucket, not the wine one.
+    expect(flatCount.getAttribute('title')).toBe('Burger\nIPA');
+    const wineCount = screen.getByTestId('bulk-price-wine-count');
+    expect(wineCount).toHaveTextContent('(Applies to 1 item)');
+    expect(wineCount.getAttribute('title')).toBe('Cabernet Sauvignon');
+  });
+
+  it('count tooltip truncates past 15 names with an "…and N more" line', () => {
+    const manyFoods = Array.from({ length: 18 }, (_, i) =>
+      mkFullItem(`food-many-${i}`, `Dish ${String(i + 1).padStart(2, '0')}`));
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: manyFoods.map((f) => ({ id: f.id, name: f.name })),
+      pool: [...manyFoods, WINE_ITEM],
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    const title = screen.getByTestId('bulk-price-flat-count').getAttribute('title')!;
+    const lines = title.split('\n');
+    expect(lines).toHaveLength(16);
+    expect(lines[0]).toBe('Dish 01');
+    expect(lines[14]).toBe('Dish 15');
+    expect(lines[15]).toBe('…and 3 more');
+  });
 });
 
 describe('BulkMenuSidesPanel — bulk Boost tab', () => {
