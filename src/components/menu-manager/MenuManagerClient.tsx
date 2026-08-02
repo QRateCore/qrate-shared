@@ -14,6 +14,8 @@ import {
   sectionForCanonical,
   dedupeRawCategoryLabels,
   isDrinkItem,
+  isDrinksMenu,
+  sectionsForMenu,
   resolveMoveCanonicals,
   sortedSubCategoryLabels,
   orderSubcategoryLabels,
@@ -1381,6 +1383,121 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       });
 
       if (snap.fromMenuId === null) setMobileDrawerOpen(false);
+
+      // ── Drinks menu placement ──────────────────────────────────────────
+      // A drinks menu's zones ARE drink types, so `cat` is a drink-type key
+      // ('beer', 'wine', …) rather than a canonical category. Filing an item
+      // means setting menu_items.drink_subcategory_key — a different write from
+      // the canonical_categories path below.
+      //
+      // Returns early and never falls through: the food path's raw_categories /
+      // canonical_categories / sub-category dual-writes are meaningless here and
+      // would corrupt the item's food classification.
+      if (isDrinksMenu(menu)) {
+        // Only drinks belong on a drinks menu. Food dropped here would be
+        // invisible to the drinks app anyway (it filters by drink type), so
+        // refuse it up front rather than filing something that never shows.
+        const nonDrinks = toProcess.filter((i) => !isDrinkItem(i));
+        const drinks = toProcess.filter((i) => isDrinkItem(i));
+
+        if (nonDrinks.length > 0) {
+          showToast(
+            nonDrinks.length === 1
+              ? `"${nonDrinks[0].name}" isn't a drink — only drinks can go on a drinks menu`
+              : `${nonDrinks.length} items aren't drinks — only drinks can go on a drinks menu`,
+          );
+        }
+        if (drinks.length === 0) return;
+
+        const typeLabel =
+          sectionsForMenu(menu).find((s) => s.canonical === cat)?.label ?? cat;
+        const drinkIds = new Set(drinks.map((i) => i.id));
+        const prevDrinkItems = items;
+
+        // Optimistic: set the drink type, and add a menu association for any
+        // item arriving from the pool so it renders in the zone immediately.
+        setItems((prev) =>
+          prev.map((i) => {
+            if (!drinkIds.has(i.id)) return i;
+            const assocs = i.menu_associations ?? [];
+            const onMenu = assocs.some((a) => a.menu_id === menuId);
+            return {
+              ...i,
+              drink_subcategory_key: cat,
+              menu_associations: onMenu
+                ? assocs
+                : [...assocs, {
+                    menu_id: menuId,
+                    menu_name: menu.name,
+                    price: i.price ?? null,
+                    category_name: i.category ?? '',
+                    // Drinks are Beverages canonically; the drink TYPE lives on
+                    // drink_subcategory_key above, not in this array.
+                    canonical_categories: ['Beverages'],
+                    raw_categories: [],
+                    boost_level: null,
+                    chefs_special: false,
+                    portion_type: 'single' as const,
+                    portion_serves: null,
+                  }],
+            };
+          }),
+        );
+
+        for (const item of drinks) pendingWriteItemIdsRef.current.add(item.id);
+        const runDrinks = async () => {
+          let failed = 0;
+          let firstError = '';
+          try {
+            // 1. Make sure every item is actually ON the menu. Items dragged
+            //    between zones of the same menu already are.
+            for (const item of drinks) {
+              if (item.menu_associations?.some((a) => a.menu_id === menuId)) continue;
+              try {
+                const associations = await service.addItemToMenu(
+                  item.id, menuId, item.price ?? 0, item.category ?? 'Beverages',
+                  { canonical_categories: ['Beverages'], raw_categories: [] },
+                );
+                setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
+              } catch (e) {
+                failed++;
+                if (!firstError) firstError = e instanceof Error ? e.message : String(e);
+              }
+            }
+
+            // 2. Set the drink type for the whole selection in one call.
+            if (!service.bulkSetDrinkSubcategory) {
+              throw new Error('Drink types are not available — please refresh the page');
+            }
+            await service.bulkSetDrinkSubcategory(restaurantId, [...drinkIds], cat);
+
+            if (failed > 0) {
+              showToast(`Couldn't add ${failed} of ${drinks.length} to the menu${firstError ? ` — ${firstError}` : ''}`);
+            } else {
+              showToast(
+                drinks.length === 1
+                  ? `Filed under ${typeLabel}`
+                  : `Filed ${drinks.length} drinks under ${typeLabel}`,
+              );
+            }
+            if (drinks.length > 1) setSelected(new Set());
+          } catch (e) {
+            // Roll the optimistic drink-type change back — leaving it would show
+            // the item in a zone the backend never agreed to.
+            setItems((prev) =>
+              prev.map((i) => {
+                if (!drinkIds.has(i.id)) return i;
+                return prevDrinkItems.find((o) => o.id === i.id) ?? i;
+              }),
+            );
+            showToast(`Couldn't file under ${typeLabel} — ${e instanceof Error ? e.message : String(e)}`);
+          } finally {
+            for (const item of drinks) pendingWriteItemIdsRef.current.delete(item.id);
+          }
+        };
+        void runDrinks();
+        return;
+      }
 
       // Default sub-category = the most-common raw category (item.category)
       // across the dropped selection, ignoring blank/Uncategorized. The popup's

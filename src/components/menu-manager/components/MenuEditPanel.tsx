@@ -61,6 +61,15 @@ export default function MenuEditPanel({
     menu.is_all_day ? new Set([0, 1, 2, 3, 4, 5, 6]) : scheduleToDaySet(menu.schedule),
   );
 
+  // Drinks mode. Switching wipes the menu's contents, so it is NOT part of the
+  // Save-changes payload — it commits immediately through its own endpoint once
+  // the owner confirms. `drinksOnly` therefore only moves after a successful
+  // call, which is what makes Cancel on the dialog revert the checkbox.
+  const [drinksOnly, setDrinksOnly] = useState(menu.drinks_only ?? false);
+  const [pendingDrinksMode, setPendingDrinksMode] = useState<boolean | null>(null);
+  const [drinksModeSaving, setDrinksModeSaving]   = useState(false);
+  const [drinksModeError, setDrinksModeError]     = useState<string | null>(null);
+
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
@@ -154,6 +163,45 @@ export default function MenuEditPanel({
       setSaveError(err instanceof Error ? err.message : 'Failed to save — please try again');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ── Drinks mode ───────────────────────────────────────────────────────
+
+  async function confirmDrinksMode() {
+    if (pendingDrinksMode === null) return;
+    const next = pendingDrinksMode;
+    const start = Date.now();
+    setDrinksModeSaving(true);
+    setDrinksModeError(null);
+    try {
+      if (!service.setMenuDrinksMode) {
+        throw new Error('Drinks mode is not available — please refresh and try again.');
+      }
+      const updated = await service.setMenuDrinksMode(restaurantId, menu.id, next);
+      trackAction('menu.menuEdit.drinksMode', {
+        restaurantId,
+        metadata: { menuId: menu.id, enabled: next },
+        success: true,
+        durationMs: Date.now() - start,
+      });
+      setDrinksOnly(next);
+      setPendingDrinksMode(null);
+      onUpdate(updated);
+    } catch (err) {
+      trackAction('menu.menuEdit.drinksMode', {
+        restaurantId,
+        metadata: { menuId: menu.id, enabled: next },
+        success: false,
+        durationMs: Date.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      // Stay on the dialog so the owner can read why it was refused — the
+      // 409 (another drinks menu) and 400 (only active menu) cases are both
+      // actionable and the message names what to do.
+      setDrinksModeError(err instanceof Error ? err.message : 'Could not switch this menu — please try again');
+    } finally {
+      setDrinksModeSaving(false);
     }
   }
 
@@ -289,6 +337,35 @@ export default function MenuEditPanel({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Drinks mode */}
+          <div>
+            <div style={labelStyle}>Menu type</div>
+            <label
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: drinksModeSaving ? 'wait' : 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={drinksOnly}
+                disabled={drinksModeSaving}
+                onChange={(e) => {
+                  // Open the confirmation instead of applying — the switch
+                  // clears the menu's contents.
+                  setDrinksModeError(null);
+                  setPendingDrinksMode(e.target.checked);
+                }}
+                data-testid="menu-drinks-only"
+                style={{ accentColor: 'var(--blue)', width: 14, height: 14, marginTop: 1, flexShrink: 0 }}
+              />
+              <span>
+                <span style={{ fontSize: 12, color: 'var(--text)', display: 'block' }}>Drinks only</span>
+                <span style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginTop: 2 }}>
+                  Build this menu from drink types and show it only in the drinks
+                  app. It will not appear on the main menu.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Serving hours */}
@@ -474,6 +551,97 @@ export default function MenuEditPanel({
             >
               Got it
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Drinks-mode confirmation. Mandatory gate — switching wipes the menu's
+          items and sub-categories, and there is no undo. */}
+      {pendingDrinksMode !== null && (
+        <>
+          <div
+            onClick={() => { if (!drinksModeSaving) { setPendingDrinksMode(null); setDrinksModeError(null); } }}
+            style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.4)' }}
+            data-testid="drinks-mode-backdrop"
+          />
+          <div
+            data-testid="drinks-mode-modal"
+            style={{
+              position: 'fixed', top: '50%', left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 420, maxWidth: 'calc(100vw - 32px)',
+              zIndex: 70,
+              background: 'var(--white, #fff)',
+              borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              padding: 24,
+              display: 'flex', flexDirection: 'column', gap: 16,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertCircle size={20} style={{ color: '#b91c1c', flexShrink: 0 }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text, #111)' }}>
+                {pendingDrinksMode ? 'Switch to a drinks menu?' : 'Switch back to a normal menu?'}
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text, #111)', margin: 0 }}>
+              Everything currently on <strong>{menu.name}</strong> — all items and
+              sub-categories — will be <strong>permanently removed</strong>, because
+              {pendingDrinksMode
+                ? ' a drinks menu is organised by drink type instead of food courses.'
+                : ' a normal menu is organised by food courses instead of drink types.'}
+              {' '}You will rebuild it from an empty {pendingDrinksMode ? 'drinks' : 'menu'} structure.
+            </p>
+
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text2, #555)', margin: 0 }}>
+              Your Food Items library is not affected — only this menu&apos;s contents.
+              {pendingDrinksMode && ' This menu will also stop appearing on the main menu.'}
+              {' '}This cannot be undone.
+            </p>
+
+            {drinksModeError && (
+              <div
+                data-testid="drinks-mode-error"
+                style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '8px 10px' }}
+              >
+                {drinksModeError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setPendingDrinksMode(null); setDrinksModeError(null); }}
+                disabled={drinksModeSaving}
+                data-testid="drinks-mode-cancel"
+                style={{
+                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                  color: 'var(--text2)', background: '#f0f0f0',
+                  border: 'none', borderRadius: 'var(--r-xs, 4px)',
+                  cursor: drinksModeSaving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDrinksMode}
+                disabled={drinksModeSaving}
+                data-testid="drinks-mode-confirm"
+                style={{
+                  padding: '8px 16px', fontSize: 13, fontWeight: 700,
+                  color: 'white', background: '#ef4444',
+                  border: 'none', borderRadius: 'var(--r-xs, 4px)',
+                  cursor: drinksModeSaving ? 'not-allowed' : 'pointer',
+                  opacity: drinksModeSaving ? 0.7 : 1,
+                }}
+              >
+                {drinksModeSaving
+                  ? 'Switching…'
+                  : pendingDrinksMode ? 'Wipe and switch to drinks' : 'Wipe and switch back'}
+              </button>
+            </div>
           </div>
         </>
       )}

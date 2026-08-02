@@ -278,3 +278,125 @@ describe('MenuEditPanel — all-menus-inactive warning', () => {
     expect(deleteBtn).toHaveTextContent(/Delete this menu/i);
   });
 });
+
+// ── Drinks mode ───────────────────────────────────────────────────────────────
+
+/**
+ * Drinks mode is DESTRUCTIVE — switching wipes the menu's item placements and
+ * sub-categories server-side. These tests pin the two properties that keep that
+ * safe: the confirmation is mandatory, and the checkbox only moves after the
+ * call actually succeeds.
+ */
+describe('MenuEditPanel — drinks mode', () => {
+  const CONFIRM_TEXT = /permanently removed/i;
+
+  function drinksService(overrides: Partial<MenuManagerService> = {}) {
+    return makeService({
+      setMenuDrinksMode: vi
+        .fn()
+        .mockResolvedValue({ ...makeMenu('menu-a', 'Bar List'), drinks_only: true }),
+      ...overrides,
+    });
+  }
+
+  it('renders unchecked when drinks_only is absent', () => {
+    renderPanel(
+      { menu: makeMenu('menu-a', 'Lunch'), allMenus: [makeMenu('menu-a', 'Lunch'), makeMenu('menu-b', 'Dinner')] },
+      drinksService(),
+    );
+    expect(screen.getByTestId('menu-drinks-only')).not.toBeChecked();
+  });
+
+  it('renders checked for a menu already in drinks mode', () => {
+    const menu = { ...makeMenu('menu-a', 'Bar List'), drinks_only: true } as MenuSummary;
+    renderPanel({ menu, allMenus: [menu, makeMenu('menu-b', 'Dinner')] }, drinksService());
+    expect(screen.getByTestId('menu-drinks-only')).toBeChecked();
+  });
+
+  it('does NOT switch immediately — it opens a confirmation first', async () => {
+    const service = drinksService();
+    renderPanel(
+      { menu: makeMenu('menu-a', 'Lunch'), allMenus: [makeMenu('menu-a', 'Lunch'), makeMenu('menu-b', 'Dinner')] },
+      service,
+    );
+
+    fireEvent.click(screen.getByTestId('menu-drinks-only'));
+
+    expect(await screen.findByTestId('drinks-mode-modal')).toBeInTheDocument();
+    expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
+    expect(service.setMenuDrinksMode).not.toHaveBeenCalled();
+  });
+
+  it('cancelling leaves the menu untouched and the box unchecked', async () => {
+    const service = drinksService();
+    renderPanel(
+      { menu: makeMenu('menu-a', 'Lunch'), allMenus: [makeMenu('menu-a', 'Lunch'), makeMenu('menu-b', 'Dinner')] },
+      service,
+    );
+
+    fireEvent.click(screen.getByTestId('menu-drinks-only'));
+    fireEvent.click(await screen.findByTestId('drinks-mode-cancel'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('drinks-mode-modal')).not.toBeInTheDocument();
+    });
+    expect(service.setMenuDrinksMode).not.toHaveBeenCalled();
+    expect(screen.getByTestId('menu-drinks-only')).not.toBeChecked();
+  });
+
+  it('confirming calls the service and checks the box', async () => {
+    const service = drinksService();
+    const { onUpdate } = renderPanel(
+      { menu: makeMenu('menu-a', 'Lunch'), allMenus: [makeMenu('menu-a', 'Lunch'), makeMenu('menu-b', 'Dinner')] },
+      service,
+    );
+
+    fireEvent.click(screen.getByTestId('menu-drinks-only'));
+    fireEvent.click(await screen.findByTestId('drinks-mode-confirm'));
+
+    await waitFor(() => {
+      expect(service.setMenuDrinksMode).toHaveBeenCalledWith('rest-1', 'menu-a', true);
+    });
+    await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+    expect(screen.getByTestId('menu-drinks-only')).toBeChecked();
+  });
+
+  it('keeps the box unchecked and shows why when the server refuses', async () => {
+    const service = drinksService({
+      setMenuDrinksMode: vi
+        .fn()
+        .mockRejectedValue(new Error('"Bar List" is already this restaurant\'s drinks menu.')),
+    });
+    renderPanel(
+      { menu: makeMenu('menu-a', 'Lunch'), allMenus: [makeMenu('menu-a', 'Lunch'), makeMenu('menu-b', 'Dinner')] },
+      service,
+    );
+
+    fireEvent.click(screen.getByTestId('menu-drinks-only'));
+    fireEvent.click(await screen.findByTestId('drinks-mode-confirm'));
+
+    // Dialog stays open carrying the reason — the 409/400 messages are both
+    // actionable, so dismissing them would strand the owner.
+    expect(await screen.findByTestId('drinks-mode-error')).toHaveTextContent(/already this restaurant/i);
+    expect(screen.getByTestId('drinks-mode-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-drinks-only')).not.toBeChecked();
+  });
+
+  it('turning drinks mode OFF also requires confirmation', async () => {
+    const service = drinksService({
+      setMenuDrinksMode: vi
+        .fn()
+        .mockResolvedValue({ ...makeMenu('menu-a', 'Bar List'), drinks_only: false }),
+    });
+    const menu = { ...makeMenu('menu-a', 'Bar List'), drinks_only: true } as MenuSummary;
+    renderPanel({ menu, allMenus: [menu, makeMenu('menu-b', 'Dinner')] }, service);
+
+    fireEvent.click(screen.getByTestId('menu-drinks-only'));
+    expect(await screen.findByTestId('drinks-mode-modal')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('drinks-mode-confirm'));
+    await waitFor(() => {
+      expect(service.setMenuDrinksMode).toHaveBeenCalledWith('rest-1', 'menu-a', false);
+    });
+  });
+});

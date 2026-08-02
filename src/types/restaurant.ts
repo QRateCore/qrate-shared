@@ -378,6 +378,17 @@ export interface MenuSummary {
    * Phase 1 (Q14).
    */
   display_precedence?: number | null;
+  /**
+   * Drinks menu mode. TRUE = this menu is built from drink-type sections
+   * (Beer / Wine / Cocktails …) instead of the 4 food courses, and is served
+   * ONLY to qrate-drinks-webapp — it never appears on the patron menu.
+   * At most one ACTIVE drinks menu per restaurant.
+   *
+   * NOT settable via updateMenu: switching modes wipes the menu's contents
+   * (the two structures are not interchangeable), so it goes through
+   * setMenuDrinksMode + an owner confirmation.
+   */
+  drinks_only?: boolean;
   item_count: number;
   created_at?: string;
   updated_at?: string;
@@ -538,6 +549,13 @@ export interface MenuItemDisplay {
   /** Pipeline-assigned canonical category (set by the categorize stage, independent of menu assignment) */
   canonical_category?: string | null;
   canonical_categories?: string[];
+  /**
+   * Drink type ('beer' | 'wine' | 'cocktails' | …) from the restaurant's
+   * configurable drink-subcategory tree. On a drinks-mode menu this replaces
+   * canonical_categories as the builder's top-level section key. NULL/absent
+   * groups the item under the reserved 'other' bucket.
+   */
+  drink_subcategory_key?: string | null;
   /** 'single' = serves one person; 'shared' = serves multiple guests */
   portion_type?: 'single' | 'shared';
   /** Number of guests the item serves (only set when portion_type = 'shared') */
@@ -925,6 +943,29 @@ export interface MenuManagerService {
    * route deployed can still type-check.
    */
   cloneMenu?(restaurantId: string, sourceMenuId: string, data: MenuCloneRequest): Promise<MenuSummary>;
+  /**
+   * Switch a menu between normal (food courses) and drinks mode (drink-type
+   * sections). DESTRUCTIVE — clears the menu's item placements and
+   * sub-categories in both directions, because the two structures are not
+   * interchangeable. Callers MUST confirm with the owner first.
+   *
+   * Rejects with 409 when another active drinks menu already exists, and with
+   * 400 when this is the restaurant's only active menu (a drinks menu is hidden
+   * from the patron app, so diners would be left with nothing).
+   *
+   * Optional so consumers without the backend route deployed still type-check.
+   */
+  setMenuDrinksMode?(restaurantId: string, menuId: string, enabled: boolean): Promise<MenuSummary>;
+  /**
+   * Bulk-assign a drink type ('beer' | 'wine' | …) to menu items. This is how a
+   * drinks menu files items: its builder zones are drink types, so dropping an
+   * item into one writes `menu_items.drink_subcategory_key` rather than the
+   * canonical_categories a food menu uses.
+   *
+   * `null` clears the assignment (the item then falls into the reserved
+   * 'other' bucket). Optional so consumers without the route still type-check.
+   */
+  bulkSetDrinkSubcategory?(restaurantId: string, itemIds: string[], key: string | null): Promise<void>;
 
   // Menu item associations
   addItemToMenu(itemId: string, menuId: string, price: number | null | undefined, category?: string, settings?: { canonical_categories?: string[]; raw_categories?: string[] }): Promise<MenuAssociation[]>;
