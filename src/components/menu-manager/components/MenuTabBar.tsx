@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Pencil, Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Copy, Pencil } from 'lucide-react';
 import type { MenuSummary } from '../../../types/restaurant';
 import Button from '../../common/Button';
 
@@ -200,7 +200,10 @@ export interface MenuTabBarProps {
   activeMenuId: string | null;
   onTabChange: (menuId: string) => void;
   onEditMenu: (menuId: string) => void;
-  onCreateMenu: (name: string) => Promise<void>;
+  /** @deprecated Unused since the Add Menu wizard (PDD 2026-08-02) replaced
+   * the inline "+ New menu" tab. Kept in the signature so pinned consumers
+   * keep compiling; safe to drop on the next breaking release. */
+  onCreateMenu?: (name: string) => Promise<void>;
   onCloneMenu?: () => void;
 }
 
@@ -209,14 +212,8 @@ export default function MenuTabBar({
   activeMenuId,
   onTabChange,
   onEditMenu,
-  onCreateMenu,
   onCloneMenu,
 }: MenuTabBarProps) {
-  const [addingMenu, setAddingMenu] = useState(false);
-  const [newMenuName, setNewMenuName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const newMenuInputRef = useRef<HTMLInputElement>(null);
-
   // Clock used by the status pills so ACTIVE↔SCHEDULED flips as time
   // crosses a menu's start/end boundary. Same 60-second cadence as
   // WeeklyScheduleCard — sufficient for human-perceived correctness.
@@ -319,100 +316,11 @@ export default function MenuTabBar({
           );
         })}
 
-        {/* Inline new-menu form — shown in place of the "+ New menu" tab
-            while the owner is typing a name. */}
-        {addingMenu && (
-          <div
-            className="flex items-center gap-1 px-2 py-1.5 shrink-0"
-            style={{ alignSelf: 'center' }}
-          >
-            <input
-              ref={newMenuInputRef}
-              type="text"
-              value={newMenuName}
-              onChange={(e) => setNewMenuName(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key === 'Enter') {
-                  if (!newMenuName.trim()) return;
-                  setCreating(true);
-                  await onCreateMenu(newMenuName.trim());
-                  setNewMenuName('');
-                  setAddingMenu(false);
-                  setCreating(false);
-                }
-                if (e.key === 'Escape') { setAddingMenu(false); setNewMenuName(''); }
-              }}
-              placeholder="Menu name…"
-              autoFocus
-              data-testid="new-menu-name-input"
-              className="text-xs border border-[var(--blue)] rounded-[var(--r-xs)] py-0.5 px-2 outline-none w-[130px]"
-            />
-            <button
-              type="button"
-              disabled={creating || !newMenuName.trim()}
-              onClick={async () => {
-                if (!newMenuName.trim()) return;
-                setCreating(true);
-                await onCreateMenu(newMenuName.trim());
-                setNewMenuName('');
-                setAddingMenu(false);
-                setCreating(false);
-              }}
-              data-testid="confirm-new-menu-btn"
-              className="bg-transparent border-none cursor-pointer text-[var(--blue)] flex items-center p-0.5"
-            >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAddingMenu(false); setNewMenuName(''); }}
-              data-testid="cancel-new-menu-btn"
-              className="bg-transparent border-none cursor-pointer text-[var(--text2)] flex items-center p-0.5"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* Inline "+ New menu" tab affordance — brand-coloured, sits at the
-            end of the strip and shares the same vertical rhythm as the
-            two-line tabs above. */}
-        {!addingMenu && (
-          <button
-            type="button"
-            onClick={() => {
-              setAddingMenu(true);
-              setTimeout(() => newMenuInputRef.current?.focus(), 0);
-            }}
-            data-testid="add-menu-btn"
-            aria-label="Add menu"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '8px 12px 10px',
-              marginBottom: -1,
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '2px solid transparent',
-              color: 'var(--brand-s)',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-            }}
-          >
-            <Plus size={14} aria-hidden />
-            New menu
-          </button>
-        )}
       </div>
 
       {/* Clone Existing — small secondary affordance, frozen to the right
           edge so it stays visible even when the menu list overflows. */}
-      {!addingMenu && onCloneMenu && (
+      {onCloneMenu && (
         <div className="shrink-0 px-2 py-1.5 flex items-center">
           <Button
             variant="secondary"
