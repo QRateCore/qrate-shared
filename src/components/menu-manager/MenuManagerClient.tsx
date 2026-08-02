@@ -865,7 +865,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const legacy = assignments[menuId] ?? {};
       // Start from a blank set of canonical buckets, then fill from structure.
       const next: Record<string, string[]> = {};
-      for (const cat of CANONICAL_CATEGORIES) next[cat] = [];
+      // A drinks-mode menu is bucketed by DRINK TYPE, not canonical category, so
+      // seed from the structure's own section keys. Without this the guard below
+      // (`next[info.course]`) drops every structure-derived drink placement —
+      // including a sub-category the owner just created. Food menus are
+      // unchanged: they seed from CANONICAL_CATEGORIES exactly as before.
+      const seedKeys = isDrinksMenu(menus.find((m) => m.id === menuId))
+        ? Object.keys(structureByMenu[menuId]?.courses ?? {})
+        : CANONICAL_CATEGORIES;
+      for (const cat of seedKeys) next[cat] = [];
       const seen = new Set<string>();
       for (const [itemId, info] of Object.entries(perItem)) {
         if (next[info.course] && !seen.has(`${info.course}:${itemId}`)) {
@@ -884,7 +892,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       out[menuId] = next;
     }
     return out;
-  }, [subcatV2, assignments, structureItemIndex]);
+  }, [subcatV2, assignments, structureItemIndex, menus, structureByMenu]);
 
   const effectiveGetSettings = useCallback(
     (menuId: string, itemId: string): MenuItemJunctionSettings => {
