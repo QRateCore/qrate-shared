@@ -174,10 +174,22 @@ export interface MenuSubcategory {
   count: number;
 }
 
-/** GET /owner/menus/{menuId}/structure response shape. */
+/**
+ * GET /owner/menus/{menuId}/structure response shape.
+ *
+ * Keys are the 4 `StructureCourse` names for a normal menu. A drinks-mode menu
+ * (`menus.drinks_only`) is sectioned by DRINK TYPE instead — keys from the
+ * restaurant's own editable `drink_subcategories` tree, which operators add to
+ * and rename, so they can't be enumerated in a union.
+ *
+ * Hence `Partial<Record<string, …>>` rather than a widened `Record`: the four
+ * course names stay well-known and `StructureCourse` keeps narrowing the food
+ * paths, while an arbitrary drink key is representable and every lookup is
+ * correctly typed as possibly-absent.
+ */
 export interface MenuStructure {
   menu_id: string;
-  courses: Record<StructureCourse, MenuSubcategory[]>;
+  courses: Partial<Record<string, MenuSubcategory[]>>;
 }
 
 /** Per-menu, per-item settings passed to POST/PATCH junction endpoints */
