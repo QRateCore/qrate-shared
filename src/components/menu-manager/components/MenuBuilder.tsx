@@ -1834,6 +1834,23 @@ function CategoryBucket({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showEmptySubCategoryChips, orderSubCategories, menuId, category, itemDerivedRawCategories]);
 
+  // A section can hold sub-categories with NO items yet — created from the [+]
+  // but never filled. The empty-bucket branch below short-circuits before the
+  // grouping logic, so those never rendered and the owner could never file the
+  // FIRST item into one: the section showed "No items in this category yet"
+  // while its own chips listed the sub-categories.
+  //
+  // Acute on a drinks menu, where a brand-new section is empty by definition.
+  // Gated on the same drinks-only flag, so a food menu's empty course keeps its
+  // plain empty-state message unchanged.
+  const pendingEmptySubLabels = useMemo(
+    () =>
+      bucketItems.length === 0 && showEmptySubCategoryChips && orderSubCategories
+        ? orderSubCategories(menuId, category, []).filter((l) => l !== UNGROUPED_KEY)
+        : [],
+    [bucketItems.length, showEmptySubCategoryChips, orderSubCategories, menuId, category],
+  );
+
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
   // when SOME (but not all) are selected.
@@ -2081,7 +2098,7 @@ function CategoryBucket({
                 : `Drop here to add to ${displayLabel}`}
             </div>
           )}
-          {bucketItems.length === 0 ? (
+          {bucketItems.length === 0 && pendingEmptySubLabels.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
               className="px-3 py-2.5 text-xs italic"
