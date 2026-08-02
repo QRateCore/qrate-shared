@@ -376,15 +376,65 @@ export default function BulkMenuSidesPanel({
 
   // Hover tooltip on each section's "(Applies to N items)" count — lists the
   // selected items that fall into that bucket so a mixed selection's
-  // wine/non-wine split is inspectable without closing the drawer. Native
-  // title= matches the panel's existing tooltip pattern; capped so a
-  // max-size selection doesn't produce a screen-height tooltip.
-  function bulkCountTitle(ids: string[]): string {
+  // wine/non-wine split is inspectable without closing the drawer. Rendered
+  // as a real element (not a native title=, whose 1–2s hover delay and
+  // touch/unfocused-window gaps made it look broken); capped so a max-size
+  // selection doesn't produce a screen-height tooltip.
+  const [hoveredPriceCount, setHoveredPriceCount] = useState<'flat' | 'wine' | null>(null);
+  function bulkCountNames(ids: string[]): string[] {
     const MAX_TOOLTIP_NAMES = 15;
     const names = ids.map((id) => parentIdNameMap.get(id)?.name ?? id);
     return names.length <= MAX_TOOLTIP_NAMES
-      ? names.join('\n')
-      : [...names.slice(0, MAX_TOOLTIP_NAMES), `…and ${names.length - MAX_TOOLTIP_NAMES} more`].join('\n');
+      ? names
+      : [...names.slice(0, MAX_TOOLTIP_NAMES), `…and ${names.length - MAX_TOOLTIP_NAMES} more`];
+  }
+  // Shared renderer for the two count spans — hover (or keyboard focus)
+  // reveals the bucket's item names in a dark floating list anchored below
+  // the count.
+  function renderBulkPriceCount(kind: 'flat' | 'wine', ids: string[]) {
+    const open = hoveredPriceCount === kind;
+    return (
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <span
+          data-testid={`bulk-price-${kind}-count`}
+          tabIndex={0}
+          aria-describedby={open ? `bulk-price-${kind}-tooltip` : undefined}
+          onMouseEnter={() => setHoveredPriceCount(kind)}
+          onMouseLeave={() => setHoveredPriceCount((cur) => (cur === kind ? null : cur))}
+          onFocus={() => setHoveredPriceCount(kind)}
+          onBlur={() => setHoveredPriceCount((cur) => (cur === kind ? null : cur))}
+          style={{ textDecoration: 'underline dotted', cursor: 'help' }}
+        >
+          (Applies to {ids.length} item{ids.length === 1 ? '' : 's'})
+        </span>
+        {open && (
+          <div
+            id={`bulk-price-${kind}-tooltip`}
+            data-testid={`bulk-price-${kind}-tooltip`}
+            role="tooltip"
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 4px)',
+              left: 0,
+              zIndex: 10,
+              background: 'var(--text, #1a1a1a)',
+              color: '#fff',
+              borderRadius: 'var(--r-xs, 6px)',
+              padding: '6px 10px',
+              fontSize: 11,
+              lineHeight: 1.6,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+              pointerEvents: 'none',
+            }}
+          >
+            {bulkCountNames(ids).map((name, i) => (
+              <div key={i}>{name}</div>
+            ))}
+          </div>
+        )}
+      </span>
+    );
   }
 
   async function runBulkPrice() {
@@ -1399,13 +1449,7 @@ export default function BulkMenuSidesPanel({
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
                   <span>
                     <strong>Price</strong>{' '}
-                    <span
-                      data-testid="bulk-price-flat-count"
-                      title={bulkCountTitle(bulkPriceNonWineIds)}
-                      style={{ textDecoration: 'underline dotted', cursor: 'help' }}
-                    >
-                      (Applies to {bulkPriceNonWineIds.length} item{bulkPriceNonWineIds.length === 1 ? '' : 's'})
-                    </span>
+                    {renderBulkPriceCount('flat', bulkPriceNonWineIds)}
                   </span>
                   <input
                     type="text"
@@ -1421,13 +1465,7 @@ export default function BulkMenuSidesPanel({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 12 }}>
                     <strong>Price for Wines</strong>{' '}
-                    <span
-                      data-testid="bulk-price-wine-count"
-                      title={bulkCountTitle(bulkPriceWineIds)}
-                      style={{ textDecoration: 'underline dotted', cursor: 'help' }}
-                    >
-                      (Applies to {bulkPriceWineIds.length} item{bulkPriceWineIds.length === 1 ? '' : 's'})
-                    </span>
+                    {renderBulkPriceCount('wine', bulkPriceWineIds)}
                   </span>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>

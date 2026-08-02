@@ -709,7 +709,7 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
     expect(screen.getByTestId('bulk-menu-sides-apply-btn')).not.toBeDisabled();
   });
 
-  it('mixed selection: each count carries a hover tooltip listing that bucket\'s item names', () => {
+  it('mixed selection: hovering each count reveals a rendered tooltip listing that bucket\'s item names', () => {
     render(<BulkMenuSidesPanel {...bulkTabProps({
       selectedItems: [
         { id: FOOD_ITEM.id, name: FOOD_ITEM.name },
@@ -720,11 +720,34 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
     fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
     const flatCount = screen.getByTestId('bulk-price-flat-count');
     expect(flatCount).toHaveTextContent('(Applies to 2 items)');
+    // Tooltip renders only while hovered — not in the base DOM.
+    expect(screen.queryByTestId('bulk-price-flat-tooltip')).toBeNull();
+    fireEvent.mouseEnter(flatCount);
     // Beer is non-wine — it belongs to the flat-price bucket, not the wine one.
-    expect(flatCount.getAttribute('title')).toBe('Burger\nIPA');
+    expect(screen.getByTestId('bulk-price-flat-tooltip')).toHaveTextContent('Burger');
+    expect(screen.getByTestId('bulk-price-flat-tooltip')).toHaveTextContent('IPA');
+    fireEvent.mouseLeave(flatCount);
+    expect(screen.queryByTestId('bulk-price-flat-tooltip')).toBeNull();
+
     const wineCount = screen.getByTestId('bulk-price-wine-count');
     expect(wineCount).toHaveTextContent('(Applies to 1 item)');
-    expect(wineCount.getAttribute('title')).toBe('Cabernet Sauvignon');
+    fireEvent.mouseEnter(wineCount);
+    const wineTip = screen.getByTestId('bulk-price-wine-tooltip');
+    expect(wineTip).toHaveTextContent('Cabernet Sauvignon');
+    expect(wineTip).not.toHaveTextContent('Burger');
+  });
+
+  it('count tooltip opens on keyboard focus and closes on blur', () => {
+    render(<BulkMenuSidesPanel {...bulkTabProps({
+      selectedItems: [{ id: FOOD_ITEM.id, name: FOOD_ITEM.name }],
+    })} />);
+    fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
+    const flatCount = screen.getByTestId('bulk-price-flat-count');
+    fireEvent.focus(flatCount);
+    expect(screen.getByTestId('bulk-price-flat-tooltip')).toHaveTextContent('Burger');
+    expect(flatCount.getAttribute('aria-describedby')).toBe('bulk-price-flat-tooltip');
+    fireEvent.blur(flatCount);
+    expect(screen.queryByTestId('bulk-price-flat-tooltip')).toBeNull();
   });
 
   it('count tooltip truncates past 15 names with an "…and N more" line', () => {
@@ -735,8 +758,10 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
       pool: [...manyFoods, WINE_ITEM],
     })} />);
     fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
-    const title = screen.getByTestId('bulk-price-flat-count').getAttribute('title')!;
-    const lines = title.split('\n');
+    fireEvent.mouseEnter(screen.getByTestId('bulk-price-flat-count'));
+    const lines = Array.from(
+      screen.getByTestId('bulk-price-flat-tooltip').querySelectorAll('div'),
+    ).map((d) => d.textContent);
     expect(lines).toHaveLength(16);
     expect(lines[0]).toBe('Dish 01');
     expect(lines[14]).toBe('Dish 15');
