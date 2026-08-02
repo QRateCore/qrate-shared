@@ -760,7 +760,7 @@ describe('BulkMenuSidesPanel — bulk Price tab', () => {
     fireEvent.click(screen.getByTestId('bulk-menu-sides-tab-bulkPrice'));
     fireEvent.mouseEnter(screen.getByTestId('bulk-price-flat-count'));
     const lines = Array.from(
-      screen.getByTestId('bulk-price-flat-tooltip').querySelectorAll('div'),
+      screen.getByTestId('bulk-price-flat-tooltip-names').querySelectorAll('div'),
     ).map((d) => d.textContent);
     expect(lines).toHaveLength(16);
     expect(lines[0]).toBe('Dish 01');

@@ -408,6 +408,9 @@ export default function BulkMenuSidesPanel({
           (Applies to {ids.length} item{ids.length === 1 ? '' : 's'})
         </span>
         {open && (
+          // White card popover — same look as the Food Items table's hover
+          // popovers (FoodLibraryView popoverStyle): white bg, border,
+          // radius 8, soft shadow, small uppercase header above the list.
           <div
             id={`bulk-price-${kind}-tooltip`}
             data-testid={`bulk-price-${kind}-tooltip`}
@@ -417,20 +420,35 @@ export default function BulkMenuSidesPanel({
               top: 'calc(100% + 4px)',
               left: 0,
               zIndex: 10,
-              background: 'var(--text, #1a1a1a)',
-              color: '#fff',
-              borderRadius: 'var(--r-xs, 6px)',
-              padding: '6px 10px',
-              fontSize: 11,
-              lineHeight: 1.6,
+              minWidth: 180,
+              maxWidth: 320,
+              background: '#fff',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+              padding: '10px 12px',
+              textAlign: 'left',
               whiteSpace: 'nowrap',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
               pointerEvents: 'none',
             }}
           >
-            {bulkCountNames(ids).map((name, i) => (
-              <div key={i}>{name}</div>
-            ))}
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: 'var(--text2)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginBottom: 6,
+              }}
+            >
+              {ids.length === 1 ? '1 item' : `${ids.length} items`}
+            </div>
+            <div data-testid={`bulk-price-${kind}-tooltip-names`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {bulkCountNames(ids).map((name, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{name}</div>
+              ))}
+            </div>
           </div>
         )}
       </span>
