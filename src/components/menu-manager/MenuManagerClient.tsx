@@ -794,12 +794,25 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         if (cancelled) return;
         setStructureByMenu((prev) => ({ ...prev, [activeMenuId]: structure }));
       })
-      .catch(() => {
-        // Non-fatal: leave any cached structure in place. The projection memos
-        // fall back to the legacy assignments for menus with no loaded structure.
+      .catch((err) => {
+        // Non-fatal for a FOOD menu: its items carry real raw_categories, so the
+        // builder still groups them from the legacy assignments.
+        //
+        // FATAL for a drinks menu, and previously silent. A drinks menu's
+        // sections are drink types and its items carry no raw_categories, so the
+        // structure is the ONLY source of its sub-categories — without it the
+        // sections render with no sub-category drop zones at all and the owner
+        // gets no hint why. Always log; tell the owner only on a drinks menu, so
+        // food menus keep their existing silent-degrade behaviour.
+        // eslint-disable-next-line no-console
+        console.warn('[menu-structure] load failed for menu', activeMenuId, err);
+        if (cancelled) return;
+        if (isDrinksMenu(menus.find((m) => m.id === activeMenuId))) {
+          showToast("Couldn't load this menu's sub-categories — refresh to try again");
+        }
       });
     return () => { cancelled = true; };
-  }, [subcatV2, activeMenuId, structureRefreshKey, service]);
+  }, [subcatV2, activeMenuId, structureRefreshKey, service, menus, showToast]);
 
   // Course (canonical) an item is assigned to within a loaded structure, plus
   // the sub-category name it sits under. Used to project into the legacy shapes
