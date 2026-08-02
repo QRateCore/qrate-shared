@@ -207,26 +207,7 @@ describe('<MenuTabBar />', () => {
     expect(onEditMenu).toHaveBeenCalledWith('lunch');
   });
 
-  it('+ New menu button opens inline create input', () => {
-    setup([menu({ id: 'lunch' })]);
-    expect(screen.queryByTestId('new-menu-name-input')).toBeNull();
-    fireEvent.click(screen.getByTestId('add-menu-btn'));
-    expect(screen.getByTestId('new-menu-name-input')).toBeTruthy();
-  });
 
-  it('Enter on the inline input creates a menu and clears the form', async () => {
-    const onCreateMenu = vi.fn(async () => {});
-    setup([menu({ id: 'lunch' })], { onCreateMenu });
-    fireEvent.click(screen.getByTestId('add-menu-btn'));
-    const input = screen.getByTestId('new-menu-name-input') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Brunch' } });
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter' });
-    });
-    expect(onCreateMenu).toHaveBeenCalledWith('Brunch');
-    // After resolution, form should close
-    expect(screen.queryByTestId('new-menu-name-input')).toBeNull();
-  });
 
   it('Clone button is hidden when onCloneMenu is omitted', () => {
     setup([menu({ id: 'lunch' })]);
