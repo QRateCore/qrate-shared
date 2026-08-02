@@ -781,18 +781,39 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     };
   }, []);
 
+  // The menu the BUILDER actually renders. MenuBuilder resolves its active menu
+  // as `menus.find(m => m.id === activeMenuId) ?? menus[0]`, so when
+  // `activeMenuId` is null (nothing selected yet — the initializer reads
+  // `initialMenus`, which can be empty on the first render) or stale (an id no
+  // longer in `menus`), the builder shows a DIFFERENT menu than the structure
+  // was fetched for — or none was fetched at all, since the loader used to bail
+  // on `!activeMenuId`.
+  //
+  // `structureByMenu` is then keyed to a menu that isn't on screen, so
+  // `orderSubCategories` finds nothing and every structure-derived sub-category
+  // silently vanishes. A food menu masks this (its items carry real
+  // raw_categories, so grouping still works); a drinks menu has no other source
+  // and loses all of its sub-category drop zones.
+  //
+  // Resolving the id the same way the builder does keeps the two in lockstep.
+  // When `activeMenuId` is valid this is identical to before.
+  const renderedMenuId = useMemo(
+    () => (menus.find((m) => m.id === activeMenuId) ?? menus[0])?.id ?? null,
+    [menus, activeMenuId],
+  );
+
   // ── Structure loader (flag ON only) ─────────────────────────────────────────
   // Fetch the active menu's first-class structure on tab change + after each
   // structure write (structureRefreshKey bump). Cached per-menu so switching
   // back to a loaded tab is instant; re-fetch keeps it fresh after writes.
   useEffect(() => {
-    if (!subcatV2 || !activeMenuId || !service.getMenuStructure) return;
+    if (!subcatV2 || !renderedMenuId || !service.getMenuStructure) return;
     let cancelled = false;
     service
-      .getMenuStructure(activeMenuId)
+      .getMenuStructure(renderedMenuId)
       .then((structure) => {
         if (cancelled) return;
-        setStructureByMenu((prev) => ({ ...prev, [activeMenuId]: structure }));
+        setStructureByMenu((prev) => ({ ...prev, [renderedMenuId]: structure }));
       })
       .catch((err) => {
         // Non-fatal for a FOOD menu: its items carry real raw_categories, so the
@@ -805,14 +826,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         // gets no hint why. Always log; tell the owner only on a drinks menu, so
         // food menus keep their existing silent-degrade behaviour.
         // eslint-disable-next-line no-console
-        console.warn('[menu-structure] load failed for menu', activeMenuId, err);
+        console.warn('[menu-structure] load failed for menu', renderedMenuId, err);
         if (cancelled) return;
-        if (isDrinksMenu(menus.find((m) => m.id === activeMenuId))) {
+        if (isDrinksMenu(menus.find((m) => m.id === renderedMenuId))) {
           showToast("Couldn't load this menu's sub-categories — refresh to try again");
         }
       });
     return () => { cancelled = true; };
-  }, [subcatV2, activeMenuId, structureRefreshKey, service, menus, showToast]);
+  }, [subcatV2, renderedMenuId, structureRefreshKey, service, menus, showToast]);
 
   // Course (canonical) an item is assigned to within a loaded structure, plus
   // the sub-category name it sits under. Used to project into the legacy shapes
