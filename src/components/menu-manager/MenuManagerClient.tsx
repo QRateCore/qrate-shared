@@ -1538,6 +1538,18 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           }
         };
         void runDrinks();
+        // Then ask which sub-category, exactly as a food-course drop does.
+        //
+        // Without this the drop set the drink type and filed the item onto the
+        // menu but never into a sub-category, so it landed under "Ungrouped" —
+        // which is what made section drops look like they "didn't take". The
+        // chooser's confirm assigns the sub-category (and upserts the placement
+        // itself), so it is safe to open immediately rather than awaiting the
+        // writes above; the two touch different columns.
+        //
+        // No default label: a drinks menu's items carry no raw_categories to
+        // infer one from, so the owner picks or creates.
+        openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
         return;
       }
 
