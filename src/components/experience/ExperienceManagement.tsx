@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutGrid,
-  Users,
   Plus,
   Loader2,
   QrCode,
@@ -14,7 +14,6 @@ import {
   Check,
   X,
   Settings2,
-  ChefHat,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
@@ -57,6 +56,12 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
     !showKitchenTab && initialTab === 'kitchen' ? 'tables' : initialTab,
   );
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
+  const isMobile = useIsMobile();
+  // Desktop only: the active tab portals its primary controls (Add Table /
+  // Add Staff / QR actions) into this node so they sit on the tab row instead
+  // of a second header strip below it. On a phone the row has no space, so the
+  // slot isn't rendered and each tab falls back to its own inline button block.
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 
   const fetchTabCounts = useCallback(async () => {
     if (!restaurantId) return;
@@ -77,57 +82,72 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   }, [fetchTabCounts]);
 
   const tabs = [
-    { id: 'staff' as Tab, label: 'Staff', icon: Users, count: undefined as number | undefined },
-    { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
+    { id: 'staff' as Tab, label: 'Staff', count: undefined as number | undefined },
+    { id: 'tables' as Tab, label: 'Tables', count: tabCounts.tables as number | undefined },
     ...(showKitchenTab
-      ? [{ id: 'kitchen' as Tab, label: 'Kitchen', icon: ChefHat, count: undefined as number | undefined }]
+      ? [{ id: 'kitchen' as Tab, label: 'Kitchen', count: undefined as number | undefined }]
       : []),
   ];
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        {/* Tabs */}
-        <div className="border-b border-gray-100">
-          <div className="flex overflow-x-auto">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-orange-500 text-orange-600 bg-orange-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <tab.icon className="h-5 w-5" />
-                {tab.label}
-                {'count' in tab && tab.count != null && (
-                  <span
-                    className={`px-2 py-0.5 text-xs rounded-full ${
-                      activeTab === tab.id ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+      {/* Underline tab strip — same treatment as Insights / Payments. The page
+          controls for the active tab portal into the right-hand slot so this
+          single row is the surface's top bar. */}
+      <div className="mb-4 flex items-end justify-between gap-3 border-b border-gray-200">
+        <div
+          className="flex gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+          aria-label="Tables and Staff"
+          data-testid="experience-tabs"
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              data-testid={`experience-tab-${tab.id}`}
+              className={`flex items-center gap-2 px-4 py-2.5 text-[13.5px] font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                activeTab === tab.id
+                  ? 'border-orange-500 text-orange-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+              {tab.count != null && (
+                <span
+                  className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                    activeTab === tab.id ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
+        {!isMobile && (
+          <div
+            ref={setActionsSlot}
+            data-testid="experience-tab-actions"
+            className="flex items-center gap-2 pb-2"
+          />
+        )}
+      </div>
 
-        {/* Tab Content */}
-        <div className="p-6">
-          {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
-          {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
-          {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
-        </div>
+      {/* Tab Content */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} />}
+        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} actionsSlot={actionsSlot} />}
+        {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
       </div>
     </div>
   );
 }
 
-function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: string; service: ExperienceService; hostStationHref?: string }) {
+function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { restaurantId?: string; service: ExperienceService; hostStationHref?: string; actionsSlot?: HTMLElement | null }) {
   const isMobile = useIsMobile();
   // Mobile-only: which occupied cards have the config controls ("Manage")
   // expanded. Config is collapsed by default on a phone so the card's
@@ -504,70 +524,78 @@ function TablesTab({ restaurantId, service, hostStationHref }: { restaurantId?: 
     );
   }
 
+  // Primary controls for this tab. On desktop they portal into the tab-row
+  // slot; on mobile (no slot) they stay inline under the count line.
+  const tableActions = (
+    <>
+      {tablesWithQR.length > 0 && (
+        <button
+          onClick={handleDownloadZip}
+          disabled={downloading}
+          className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
+        >
+          {downloading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          Download All
+        </button>
+      )}
+      <button
+        onClick={handleGenerate}
+        disabled={generating || activeTables.length === 0}
+        className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
+      >
+        {generating ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Generating...
+          </>
+        ) : (
+          <>
+            <QrCode className="h-4 w-4" />
+            {tablesWithQR.length > 0 ? 'Regenerate QR' : 'Generate QR'}
+          </>
+        )}
+      </button>
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm flex items-center gap-2"
+      >
+        <Plus className="h-4 w-4" />
+        Add Table
+      </button>
+      {service.purgeSessions && service.purgeOrders && (
+        <button
+          onClick={() => { setResetConfirmText(''); setShowResetModal(true); }}
+          disabled={resetting}
+          className="px-4 py-2 border border-red-200 rounded-lg font-medium text-red-600 hover:bg-red-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
+        >
+          {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          {resetting ? 'Resetting...' : 'Reset Restaurant'}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div>
-      {/* Header */}
+      {/* Header — the title is gone (the tab row labels this surface); only the
+          glanceable count line stays. Controls live on the tab row on desktop. */}
       <div className={isMobile ? 'flex flex-col gap-3 mb-4' : 'flex items-center justify-between mb-6'}>
-        <div>
-          {/* Redundant title hidden on mobile (Tables tab already labels this);
-              the count line stays as lightweight glanceable status. */}
-          {!isMobile && <h3 className="text-lg font-bold text-gray-900">Table Management</h3>}
-          <p className="text-sm text-gray-500">
-            {activeTables.length} active table{activeTables.length !== 1 ? 's' : ''}
-            {' '}&middot;{' '}
-            {tablesWithQR.length} with QR codes
-          </p>
-        </div>
-        <div className={`flex gap-2 ${isMobile ? 'flex-wrap [&>button]:min-h-[44px]' : ''}`}>
-          {tablesWithQR.length > 0 && (
-            <button
-              onClick={handleDownloadZip}
-              disabled={downloading}
-              className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
-            >
-              {downloading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Download All
-            </button>
+        <p className="text-sm text-gray-500">
+          {activeTables.length} active table{activeTables.length !== 1 ? 's' : ''}
+          {' '}&middot;{' '}
+          {tablesWithQR.length} with QR codes
+        </p>
+        {actionsSlot
+          ? createPortal(tableActions, actionsSlot)
+          : (
+            <div className={`flex gap-2 ${isMobile ? 'flex-wrap [&>button]:min-h-[44px]' : ''}`}>
+              {tableActions}
+            </div>
           )}
-          <button
-            onClick={handleGenerate}
-            disabled={generating || activeTables.length === 0}
-            className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <QrCode className="h-4 w-4" />
-                {tablesWithQR.length > 0 ? 'Regenerate QR' : 'Generate QR'}
-              </>
-            )}
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add Table
-          </button>
-          {service.purgeSessions && service.purgeOrders && (
-            <button
-              onClick={() => { setResetConfirmText(''); setShowResetModal(true); }}
-              disabled={resetting}
-              className="px-4 py-2 border border-red-200 rounded-lg font-medium text-red-600 hover:bg-red-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
-            >
-              {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {resetting ? 'Resetting...' : 'Reset Restaurant'}
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Reset Restaurant confirmation modal */}

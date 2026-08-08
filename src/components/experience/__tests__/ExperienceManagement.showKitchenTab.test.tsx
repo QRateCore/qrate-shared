@@ -50,11 +50,12 @@ function makeService(overrides: Partial<ExperienceService> = {}): ExperienceServ
   } as ExperienceService;
 }
 
-// The Tables tab button also renders a count badge once getTables resolves
-// (accessible name becomes e.g. "Tables 0"), so match by name prefix, not exact.
-const kitchenTab = () => screen.queryByRole('button', { name: /^Kitchen/ });
-const tablesTab = () => screen.queryByRole('button', { name: /^Tables/ });
-const staffTab = () => screen.queryByRole('button', { name: /^Staff/ });
+// The tab strip uses role="tab" (tablist semantics, matching Insights/Payments).
+// The Tables tab also renders a count badge once getTables resolves (accessible
+// name becomes e.g. "Tables 0"), so match by name prefix, not exact.
+const kitchenTab = () => screen.queryByRole('tab', { name: /^Kitchen/ });
+const tablesTab = () => screen.queryByRole('tab', { name: /^Tables/ });
+const staffTab = () => screen.queryByRole('tab', { name: /^Staff/ });
 
 describe('ExperienceManagement — showKitchenTab', () => {
   beforeEach(() => { vi.clearAllMocks(); });
