@@ -22,6 +22,8 @@ import {
   buildReorderedSubcategoryIds,
   normalizeSubcatKey,
   type MenuColor,
+  buildStructureItemIndex,
+  projectStructureBuckets,
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
@@ -44,6 +46,8 @@ import { useTrackAction } from './track-action-context';
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type BulkMode = 'assign' | 'remove' | 'removeFromMenu' | 'boost' | 'special' | 'availability' | 'delete' | 'spice' | 'sweetness' | 'dietary' | 'spiceModifier' | 'spiceRequired' | 'enrich' | 'grouping' | 'removeGrouping' | 'rawCategory' | 'serving';
+
+export type { StructurePlacement } from './lib/menuUtils';
 
 export interface DragState {
   itemIds: string[];
@@ -838,23 +842,20 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // Course (canonical) an item is assigned to within a loaded structure, plus
   // the sub-category name it sits under. Used to project into the legacy shapes
   // AND to resolve the source course/sub-category for writes.
-  const structureItemIndex = useMemo(() => {
-    // menuId -> itemId -> { course, subName, subId }
-    const idx: Record<string, Record<string, { course: string; subName: string; subId: string }>> = {};
-    if (!subcatV2) return idx;
-    for (const [menuId, structure] of Object.entries(structureByMenu)) {
-      const perItem: Record<string, { course: string; subName: string; subId: string }> = {};
-      for (const [course, subs] of Object.entries(structure.courses ?? {})) {
-        for (const sub of subs as MenuSubcategory[]) {
-          for (const itemId of sub.item_ids ?? []) {
-            perItem[itemId] = { course, subName: sub.name, subId: sub.subcategory_id };
-          }
-        }
-      }
-      idx[menuId] = perItem;
-    }
-    return idx;
-  }, [subcatV2, structureByMenu]);
+  // An item may be placed in MORE THAN ONE course on the same menu — the same
+  // raw category legitimately spans courses (Avi 2026-08-12), and the schema
+  // agrees: menu_subcategory_items is UNIQUE (menu_id, course, menu_item_id),
+  // so membership is one sub-category PER COURSE, not one per item.
+  //
+  // This used to be `perItem[itemId] = {...}` — a plain overwrite — so an item
+  // in two courses silently kept only whichever course the structure happened to
+  // yield last. Dragging a raw category onto Drinks then rendered the row under
+  // Mains (its stale prior course) until a structure refetch flipped it, which
+  // is exactly the "it landed in the wrong course, then jumped" bug.
+  const structureItemIndex = useMemo(
+    () => (subcatV2 ? buildStructureItemIndex(structureByMenu) : {}),
+    [subcatV2, structureByMenu],
+  );
 
   // Sub-category name -> id within a course, for a given menu (write resolution).
   const findSubcategoryId = useCallback(
@@ -897,8 +898,6 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     const out: Record<string, Record<string, string[]>> = { ...assignments };
     for (const [menuId, perItem] of Object.entries(structureItemIndex)) {
       const legacy = assignments[menuId] ?? {};
-      // Start from a blank set of canonical buckets, then fill from structure.
-      const next: Record<string, string[]> = {};
       // A drinks-mode menu is bucketed by DRINK TYPE, not canonical category, so
       // seed from the structure's own section keys. Without this the guard below
       // (`next[info.course]`) drops every structure-derived drink placement —
@@ -907,23 +906,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       const seedKeys = isDrinksMenu(menus.find((m) => m.id === menuId))
         ? Object.keys(structureByMenu[menuId]?.courses ?? {})
         : CANONICAL_CATEGORIES;
-      for (const cat of seedKeys) next[cat] = [];
-      const seen = new Set<string>();
-      for (const [itemId, info] of Object.entries(perItem)) {
-        if (next[info.course] && !seen.has(`${info.course}:${itemId}`)) {
-          next[info.course].push(itemId);
-          seen.add(`${info.course}:${itemId}`);
-        }
-      }
-      // Merge legacy placements not represented in the structure (items on the
-      // menu but unassigned to any sub-category) so they still render (Ungrouped).
-      for (const [cat, ids] of Object.entries(legacy)) {
-        if (next[cat] === undefined) { next[cat] = [...ids]; continue; }
-        for (const id of ids) {
-          if (!perItem[id] && !next[cat].includes(id)) next[cat].push(id);
-        }
-      }
-      out[menuId] = next;
+      out[menuId] = projectStructureBuckets(legacy, perItem, seedKeys);
     }
     return out;
   }, [subcatV2, assignments, structureItemIndex, menus, structureByMenu]);
@@ -939,14 +922,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         category_name: undefined,
       };
       if (!subcatV2) return base;
-      const info = structureItemIndex[menuId]?.[itemId];
+      const placements = structureItemIndex[menuId]?.[itemId] ?? [];
       if (!structureByMenu[menuId]) return base; // structure not loaded for this menu
-      // Override grouping fields from the structure: single course + single
-      // sub-category label (single-membership). Unassigned → no labels (Ungrouped).
+      // Override grouping fields from the structure. An item may hold one
+      // placement PER COURSE, so both arrays carry every course / label it is
+      // filed under. Unassigned → no labels (Ungrouped).
       return {
         ...base,
-        canonical_categories: info ? [info.course] : (base.canonical_categories ?? []),
-        raw_categories: info && info.subName ? [info.subName] : [],
+        canonical_categories: placements.length
+          ? placements.map((p) => p.course)
+          : (base.canonical_categories ?? []),
+        raw_categories: [...new Set(placements.map((p) => p.subName).filter(Boolean))],
       };
     },
     [subcatV2, junctionSettings, structureItemIndex, structureByMenu],
@@ -2416,8 +2402,18 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       // dual-write. Non-grouping patches (price/boost/special/portion) fall
       // through to the normal updateMenuItemInMenu path below.
       if (subcatV2 && patch.raw_categories !== undefined && service.assignItemToSubcategory) {
-        const resolvedCourse = structureItemIndex[menuId]?.[itemId]?.course;
         const newLabels = (patch.raw_categories ?? []).filter((l) => l !== UNGROUPED_KEY);
+        // An item can now be placed in several courses, so "its course" is no
+        // longer unambiguous. Prefer the course that actually owns the label
+        // being written; fall back to the sole placement. Never guess between
+        // two courses — a wrong guess re-files the item under the wrong course.
+        const placements = structureItemIndex[menuId]?.[itemId] ?? [];
+        const targetName = newLabels[newLabels.length - 1];
+        const resolvedCourse =
+          (targetName
+            ? placements.find((p) => findSubcategoryId(menuId, p.course, targetName))?.course
+            : undefined) ??
+          (placements.length === 1 ? placements[0].course : undefined);
         const runGrouping = async () => {
           if (!resolvedCourse) { showToast('Couldn’t update — refresh and try again'); return; }
           try {
