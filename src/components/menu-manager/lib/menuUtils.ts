@@ -1,4 +1,4 @@
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings } from '../../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, MenuStructure } from '../../../types/restaurant';
 
 export const CANONICAL_CATEGORIES = [
   'Beverages',
@@ -125,6 +125,91 @@ export function resolveMoveCanonicals(
   const fromMembers = isMove ? (sectionForCanonical(fromCat as string)?.members ?? [fromCat as string]) : [];
   const base = isMove ? existing.filter((c) => !fromMembers.includes(c)) : [...existing];
   return base.includes(targetCat) ? base : [...base, targetCat];
+}
+
+// ── Sub-category-v2 structure projection ────────────────────────────────────
+// These two are the read path for the flag-ON builder: the structure API is the
+// source of truth for which course(s) an item sits in, and they project it into
+// the legacy {menuId: {canonical: itemId[]}} shape the builder renders from.
+//
+// Both are pure so the multi-course invariant is unit-testable without mounting
+// MenuManagerClient — it previously lived inline in two useMemos and had no
+// tests at all, which is how the "dropped on Drinks, rendered under Mains" bug
+// reached dev.
+
+/** One course-scoped placement of an item. An item holds one PER COURSE. */
+export interface StructurePlacement {
+  course: string;
+  subName: string;
+  subId: string;
+}
+
+/** menuId -> itemId -> every course-scoped placement that item holds.
+ *
+ *  Multi-course is legitimate and required: `menu_subcategory_items` is
+ *  UNIQUE (menu_id, course, menu_item_id), i.e. one sub-category PER COURSE.
+ *  Collapsing this to a single placement (a plain `perItem[id] = …` overwrite)
+ *  kept only the last course the structure yielded, so an item in Drinks and
+ *  Mains rendered in whichever won the race. */
+export function buildStructureItemIndex(
+  structureByMenu: Record<string, MenuStructure>,
+): Record<string, Record<string, StructurePlacement[]>> {
+  const idx: Record<string, Record<string, StructurePlacement[]>> = {};
+  for (const [menuId, structure] of Object.entries(structureByMenu ?? {})) {
+    const perItem: Record<string, StructurePlacement[]> = {};
+    for (const [course, subs] of Object.entries(structure?.courses ?? {})) {
+      for (const sub of subs ?? []) {
+        for (const itemId of sub.item_ids ?? []) {
+          const list = (perItem[itemId] ??= []);
+          // One sub-category per course is the DB invariant; guard anyway so a
+          // malformed structure can't duplicate a row within one course.
+          if (!list.some((p) => p.course === course)) {
+            list.push({ course, subName: sub.name, subId: sub.subcategory_id });
+          }
+        }
+      }
+    }
+    idx[menuId] = perItem;
+  }
+  return idx;
+}
+
+/** Project one menu's structure placements into canonical buckets, merging any
+ *  legacy placement the structure doesn't cover.
+ *
+ *  `seedKeys` is CANONICAL_CATEGORIES for a food menu, or the structure's own
+ *  drink-type keys for a drinks menu (which buckets by type, not canonical). */
+export function projectStructureBuckets(
+  legacy: Record<string, string[]>,
+  perItem: Record<string, StructurePlacement[]>,
+  seedKeys: readonly string[],
+): Record<string, string[]> {
+  const next: Record<string, string[]> = {};
+  for (const cat of seedKeys) next[cat] = [];
+
+  const seen = new Set<string>();
+  // An item renders once in EVERY course it is placed in.
+  for (const [itemId, placements] of Object.entries(perItem)) {
+    for (const p of placements) {
+      if (next[p.course] && !seen.has(`${p.course}:${itemId}`)) {
+        next[p.course].push(itemId);
+        seen.add(`${p.course}:${itemId}`);
+      }
+    }
+  }
+
+  // Merge legacy placements the structure doesn't represent, so an item on the
+  // menu but not yet in any sub-category still renders (Ungrouped). The guard is
+  // PER COURSE — a blanket "is this item anywhere in the structure?" test is
+  // what erased an item's second course.
+  for (const [cat, ids] of Object.entries(legacy ?? {})) {
+    if (next[cat] === undefined) { next[cat] = [...ids]; continue; }
+    for (const id of ids) {
+      const placedHere = (perItem[id] ?? []).some((p) => p.course === cat);
+      if (!placedHere && !next[cat].includes(id)) next[cat].push(id);
+    }
+  }
+  return next;
 }
 
 /** True when an item is a drink (its primary canonical is Beverages). Used to

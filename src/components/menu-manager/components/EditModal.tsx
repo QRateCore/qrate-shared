@@ -289,6 +289,72 @@ const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string; ico
   { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…', icon: '🎉' },
 ];
 
+// ── Wine identity + facet constants (PLAN 2026-08-04 M5) ──────────────────────
+
+// Old/New-World country maps — MUST mirror the backend's closed maps
+// (qrate-core drink_defaults.derive_old_world). The chip derives locally for
+// instant feedback; the server re-derives authoritatively on PATCH, and a
+// contradicting explicit value is rejected with code=inconsistent_pair — so
+// the modal only SENDS wine_old_world when the country is absent/unknown.
+const OLD_WORLD_COUNTRIES = new Set([
+  'france', 'italy', 'spain', 'portugal', 'germany', 'austria', 'greece',
+  'hungary', 'georgia', 'croatia', 'slovenia', 'switzerland', 'romania',
+  'bulgaria', 'moldova', 'armenia', 'cyprus', 'lebanon', 'turkey', 'england',
+  'united kingdom',
+]);
+const NEW_WORLD_COUNTRIES = new Set([
+  'usa', 'united states', 'united states of america', 'australia',
+  'new zealand', 'argentina', 'chile', 'south africa', 'canada', 'uruguay',
+  'brazil', 'mexico', 'china', 'japan', 'india', 'peru', 'bolivia',
+]);
+
+/** true = Old World, false = New World, null = unknown/absent country. */
+export function deriveOldWorld(country: string | null | undefined): boolean | null {
+  const c = (country ?? '').trim().toLowerCase();
+  if (!c) return null;
+  if (OLD_WORLD_COUNTRIES.has(c)) return true;
+  if (NEW_WORLD_COUNTRIES.has(c)) return false;
+  return null;
+}
+
+// Closed dish-pairing vocab (mirrors the server's WINE_DISH_PAIRINGS
+// whitelist on the PATCH `beverage` sub-object) + human chip labels.
+const WINE_DISH_PAIRING_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'red_meat', label: 'Red meat' },
+  { value: 'poultry', label: 'Poultry' },
+  { value: 'seafood', label: 'Seafood' },
+  { value: 'pasta', label: 'Pasta' },
+  { value: 'cheese', label: 'Cheese' },
+  { value: 'dessert', label: 'Dessert' },
+  { value: 'vegetarian', label: 'Vegetarian' },
+  { value: 'spiced', label: 'Spiced' },
+];
+
+// 0-100 taste scalars rendered as sliders in the wine sub-section. Tannin
+// is color-conditional (red/dessert only) at render time.
+const WINE_TASTE_SCALE_AXES: Array<{
+  key: 'body' | 'sweetness' | 'tannin' | 'acidity' | 'alcohol';
+  label: string;
+}> = [
+  { key: 'body', label: 'Body' },
+  { key: 'sweetness', label: 'Sweetness' },
+  { key: 'tannin', label: 'Tannin' },
+  { key: 'acidity', label: 'Acidity' },
+  { key: 'alcohol', label: 'Alcohol' },
+];
+
+// Server-side merge whitelist for the PATCH `beverage` sub-object — mirrors
+// _BEVERAGE_PATCH_KEYS in qrate-core owner_food_items.py. Keys outside this
+// list 400 with code=unknown_key, so the merge-channel payload is filtered
+// to it (notably `sweetness`, `beer_style` and `base_spirit` still travel
+// via the legacy food_tags channel only).
+const BEVERAGE_MERGE_KEYS = new Set([
+  'beverage_type', 'alcoholic', 'wine_variety', 'wine_color', 'wine_style',
+  'wine_sweetness', 'wine_body', 'wine_pairing', 'flavor_notes',
+  'key_ingredients', 'served', 'strength', 'tannin', 'acidity', 'oak',
+  'taste_scales', 'dish_pairings', 'tasting_note',
+]);
+
 // ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
 
 // Canonical slugs — must match backend FDA_BIG_9 and CANONICAL_DIETARY sets exactly.
@@ -820,6 +886,31 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   useEffect(() => {
     setBevDraft(item.food_tags?.beverage ?? {});
   }, [item.id, item.food_tags?.beverage]);
+
+  // Wine identity/provenance drafts (PLAN 2026-08-04 M5) — top-level
+  // menu_items columns (NOT food_tags.beverage facets). Edited in the wine
+  // sub-section; PATCHed as top-level fields on save. Vintage held as a
+  // string for the input; parsed on save. wineOldWorld is the EXPLICIT
+  // owner choice — it only matters (and is only sent) when the country
+  // doesn't derive to a known world.
+  const [wineVarietal, setWineVarietal] = useState<string>(item.wine_varietal ?? '');
+  const [wineRegion, setWineRegion] = useState<string>(item.wine_region ?? '');
+  const [wineVintage, setWineVintage] = useState<string>(
+    item.wine_vintage != null ? String(item.wine_vintage) : '',
+  );
+  const [wineProducer, setWineProducer] = useState<string>(item.wine_producer ?? '');
+  const [wineCountry, setWineCountry] = useState<string>(item.wine_country ?? '');
+  const [wineOldWorld, setWineOldWorld] = useState<boolean | null>(item.wine_old_world ?? null);
+  useEffect(() => {
+    setWineVarietal(item.wine_varietal ?? '');
+    setWineRegion(item.wine_region ?? '');
+    setWineVintage(item.wine_vintage != null ? String(item.wine_vintage) : '');
+    setWineProducer(item.wine_producer ?? '');
+    setWineCountry(item.wine_country ?? '');
+    setWineOldWorld(item.wine_old_world ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.wine_varietal, item.wine_region, item.wine_vintage,
+    item.wine_producer, item.wine_country, item.wine_old_world]);
 
   // Wine serving sizes (PDD 2026-06-15) — owner-configured glass/bottle options
   // on menu_items.serving_options. Prices held here in DOLLARS for the input;
@@ -1778,38 +1869,122 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     }
 
     // Beverage Profile — owner-editable in the modal for Beverages-category
-    // items. PUT writes food_tags as a full-replace JSONB blob, so only
-    // type-applicable subfields are included (e.g. wine_variety is dropped
-    // when type !== 'wine') to keep the persisted object minimal and
-    // idempotent across type changes.
+    // items. The normalize is KEY-PRESERVING (PLAN 2026-08-04 M5): it spreads
+    // the item's existing beverage blob FIRST so keys this form doesn't own
+    // (pipeline-written facets, future keys) survive the food_tags
+    // full-replace channel, then applies the form-owned keys with the legacy
+    // set-or-drop semantics — a cleared/type-inapplicable form field still
+    // deletes its key exactly as the old allowlist build did, keeping
+    // non-wine saves byte-identical modulo the preserved unknown keys.
     if (category === 'Beverages') {
       const type = bevDraft.beverage_type?.trim() || undefined;
-      const norm: BeverageTags = {};
-      if (type) norm.beverage_type = type;
-      if (typeof bevDraft.alcoholic === 'boolean') norm.alcoholic = bevDraft.alcoholic;
-      if (bevDraft.base_spirit && type === 'cocktail') norm.base_spirit = bevDraft.base_spirit;
-      if (type === 'wine') {
-        if (bevDraft.wine_variety) norm.wine_variety = bevDraft.wine_variety;
-        if (bevDraft.wine_color) norm.wine_color = bevDraft.wine_color;
-        if (bevDraft.wine_body) norm.wine_body = bevDraft.wine_body;
-        if (bevDraft.wine_style) norm.wine_style = bevDraft.wine_style;
-      }
-      if (bevDraft.sweetness && (type === 'wine' || type === 'cocktail')) norm.sweetness = bevDraft.sweetness;
-      if (bevDraft.beer_style && type === 'beer') norm.beer_style = bevDraft.beer_style;
-      if (bevDraft.strength) norm.strength = bevDraft.strength;
-      if (bevDraft.served) norm.served = bevDraft.served;
+      const norm: BeverageTags = { ...((item.food_tags?.beverage ?? {}) as BeverageTags) };
+      const setOrDrop = <K extends keyof BeverageTags>(
+        key: K,
+        value: BeverageTags[K] | null | undefined,
+        applicable = true,
+      ) => {
+        if (applicable && value !== undefined && value !== null && value !== '') {
+          norm[key] = value as BeverageTags[K];
+        } else {
+          delete norm[key];
+        }
+      };
+      setOrDrop('beverage_type', type);
+      setOrDrop('alcoholic', typeof bevDraft.alcoholic === 'boolean' ? bevDraft.alcoholic : undefined);
+      setOrDrop('base_spirit', bevDraft.base_spirit, type === 'cocktail');
+      // 'rosé' → 'rose': the accented value was UI-side drift from the
+      // backend canonical vocabulary — normalized on every save (M5 fix).
+      setOrDrop(
+        'wine_color',
+        bevDraft.wine_color === 'rosé' ? 'rose' : bevDraft.wine_color,
+        type === 'wine',
+      );
+      setOrDrop('wine_variety', bevDraft.wine_variety, type === 'wine');
+      setOrDrop('wine_body', bevDraft.wine_body, type === 'wine');
+      setOrDrop('wine_style', bevDraft.wine_style, type === 'wine');
+      setOrDrop('sweetness', bevDraft.sweetness, type === 'wine' || type === 'cocktail');
+      setOrDrop('beer_style', bevDraft.beer_style, type === 'beer');
+      setOrDrop('strength', bevDraft.strength);
+      setOrDrop('served', bevDraft.served);
       const notes = Array.isArray(bevDraft.flavor_notes)
         ? bevDraft.flavor_notes.filter((s) => typeof s === 'string' && s.trim())
         : [];
-      if (notes.length) norm.flavor_notes = notes;
+      setOrDrop('flavor_notes', notes.length ? notes : undefined);
       const ings = Array.isArray(bevDraft.key_ingredients)
         ? bevDraft.key_ingredients.filter((s) => typeof s === 'string' && s.trim())
         : [];
-      if (ings.length) norm.key_ingredients = ings;
+      setOrDrop('key_ingredients', ings.length ? ings : undefined);
+      // Wine-only structured facets (M5). Form-owned only when the type is
+      // wine — other beverage types keep whatever the pipeline wrote (the
+      // spread above preserves them untouched).
+      if (type === 'wine') {
+        const tsIn = bevDraft.taste_scales ?? {};
+        const cleanTs: NonNullable<BeverageTags['taste_scales']> = {};
+        for (const { key } of WINE_TASTE_SCALE_AXES) {
+          const v = tsIn[key];
+          if (typeof v === 'number' && isFinite(v) && v >= 0 && v <= 100) {
+            cleanTs[key] = Math.round(v);
+          }
+        }
+        setOrDrop('taste_scales', Object.keys(cleanTs).length ? cleanTs : undefined);
+        const pairings = Array.isArray(bevDraft.dish_pairings)
+          ? bevDraft.dish_pairings.filter((p) =>
+            WINE_DISH_PAIRING_OPTIONS.some((o) => o.value === p))
+          : [];
+        setOrDrop('dish_pairings', pairings.length ? pairings : undefined);
+        setOrDrop('tasting_note', bevDraft.tasting_note?.trim().slice(0, 160) || undefined);
+      }
       if (Object.keys(norm).length > 0) {
         foodTags.beverage = norm;
       }
     }
+
+    // Wine identity + merge-channel facets (PLAN 2026-08-04 M5). Identity
+    // rides top-level PATCH fields; the beverage facets ALSO go through the
+    // server-side KEY-ADDITIVE `beverage` merge so lagging EditModal copies
+    // (older shared-submodule consumers) can't be the only writers of the
+    // new keys. Sent as a SEPARATE follow-up PUT: the backend builds a
+    // `food_tags = …` SQL assignment for BOTH the wholesale food_tags
+    // replace and the beverage merge, so one request carrying both would be
+    // an invalid double column assignment. wine_old_world is NOT sent when
+    // the country derives to a known world (the server derives it; sending
+    // both risks code=inconsistent_pair) — only the explicit toggle for
+    // unknown/absent countries travels.
+    const isWineItem = category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine';
+    const buildWinePatch = (): Record<string, unknown> | null => {
+      if (!isWineItem) return null;
+      const country = wineCountry.trim();
+      const derived = deriveOldWorld(country);
+      const vintageNum = parseInt(wineVintage, 10);
+      const normBev = (foodTags.beverage ?? {}) as Record<string, unknown>;
+      const bevMerge: Record<string, unknown> = {};
+      for (const key of Object.keys(normBev)) {
+        if (BEVERAGE_MERGE_KEYS.has(key)) bevMerge[key] = normBev[key];
+      }
+      return {
+        wine_varietal: wineVarietal.trim() || null,
+        wine_region: wineRegion.trim() || null,
+        wine_vintage: isFinite(vintageNum) ? vintageNum : null,
+        wine_producer: wineProducer.trim() || null,
+        wine_country: country || null,
+        ...(derived === null && wineOldWorld !== null ? { wine_old_world: wineOldWorld } : {}),
+        ...(Object.keys(bevMerge).length > 0 ? { beverage: bevMerge } : {}),
+      };
+    };
+    const winePatch = buildWinePatch();
+    // Local-state wine fields for the optimistic `updated` merge — the PUT
+    // response subset doesn't echo the wine columns.
+    const wineLocalOverlay: Partial<MenuItemDisplay> = winePatch
+      ? {
+        wine_varietal: (winePatch.wine_varietal as string | null),
+        wine_region: (winePatch.wine_region as string | null),
+        wine_vintage: (winePatch.wine_vintage as number | null),
+        wine_producer: (winePatch.wine_producer as string | null),
+        wine_country: (winePatch.wine_country as string | null),
+        wine_old_world: deriveOldWorld(wineCountry) ?? wineOldWorld,
+      }
+      : {};
 
     // Wine serving sizes (PDD 2026-06-15). Build the serving_options payload from
     // the editor rows when the item is a wine. Drops rows without a label or a
@@ -1873,7 +2048,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           canonical_category: category.trim() || created.canonical_category,
           active: isActive,
           item_type: isAddon ? 'addon' : 'dish',
+          ...wineLocalOverlay,
         };
+
+        // Flush the wine identity columns + merge-channel facets now that
+        // the item has a real DB id (create doesn't accept them). Fail-soft
+        // like the other post-create flushes — the owner can re-save from
+        // the editor if this follow-up fails.
+        if (winePatch && created.id) {
+          try {
+            await service.updateMenuItem(created.id, winePatch as Partial<MenuItemDisplay>);
+          } catch (err) {
+            console.error('Failed to flush wine fields', err);
+          }
+        }
         // Flush deferred dish associations now that the addon has a real DB ID.
         // associatedDishIds contains both preselectedDishIds and any dishes the user
         // added via "Add Selected" while the modal was open (local-only until now).
@@ -1999,6 +2187,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           : Promise.resolve(),
       ]);
 
+      // Wine dual-channel follow-up (PLAN 2026-08-04 M5) — sequential AFTER
+      // the main PUT so the server-side key-additive `beverage` merge and the
+      // wine identity columns land deterministically on top of the (already
+      // key-preserving) food_tags write. See buildWinePatch for why this
+      // can't ride the main request body.
+      if (winePatch) {
+        await service.updateMenuItem(item.id, winePatch as Partial<MenuItemDisplay>);
+      }
+
       // STR-323: flush pending dish selections from the Dishes tab. Users who tick
       // dish checkboxes and click Save Changes (without first clicking "Add Selected")
       // would otherwise silently lose those selections on modal close.
@@ -2080,6 +2277,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         // may include unsaved selections flushed by handleAddToMultipleDishes.
         addons: itemAddons,
         recommendations: itemRecs,
+        // Wine identity columns (M5): written via the follow-up winePatch PUT
+        // whose response subset doesn't echo them — local state is the
+        // source of truth (wine_old_world uses the locally-derived value,
+        // matching what the server derives from the same closed maps).
+        ...wineLocalOverlay,
         // Clear menu associations in local state when converted to addon.
         ...(wasConvertedToAddon ? { menu_associations: [] } : {}),
       };
@@ -3656,7 +3858,39 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   // Wine subfield options — comments in BeverageTags type
                   // codify the accepted values; defined locally because they
                   // don't have a shared constants entry yet.
-                  const WINE_COLORS = ['red', 'white', 'rosé', 'sparkling'];
+                  // ASCII canonical values — the Select SUBMITS 'rose'; the
+                  // label renders "Rosé". ('rosé' was UI-side drift from the
+                  // backend vocab — fixed PLAN 2026-08-04 M5, which also
+                  // added 'dessert'.)
+                  const WINE_COLORS = ['red', 'white', 'rose', 'sparkling', 'dessert'];
+                  const WINE_COLOR_LABELS: Record<string, string> = { rose: 'Rosé' };
+                  // Legacy rows saved before the drift fix may still carry
+                  // the accented value — normalize for display so the Select
+                  // shows Rosé selected (and the next save persists 'rose').
+                  const wineColorValue = bevDraft.wine_color === 'rosé' ? 'rose' : (bevDraft.wine_color ?? '');
+                  const derivedOldWorld = deriveOldWorld(wineCountry);
+                  const effectiveOldWorld = derivedOldWorld ?? wineOldWorld;
+                  const showTanninScale = wineColorValue === 'red' || wineColorValue === 'dessert';
+                  const tasteScales = bevDraft.taste_scales ?? {};
+                  const dishPairings = Array.isArray(bevDraft.dish_pairings) ? bevDraft.dish_pairings : [];
+                  const tastingNote = bevDraft.tasting_note ?? '';
+                  const setTasteScale = (axis: 'body' | 'sweetness' | 'tannin' | 'acidity' | 'alcohol', v: number) => {
+                    setBevDraft((prev) => ({
+                      ...prev,
+                      taste_scales: { ...(prev.taste_scales ?? {}), [axis]: v },
+                    }));
+                  };
+                  const toggleDishPairing = (value: string) => {
+                    setBevDraft((prev) => {
+                      const cur = Array.isArray(prev.dish_pairings) ? prev.dish_pairings : [];
+                      return {
+                        ...prev,
+                        dish_pairings: cur.includes(value)
+                          ? cur.filter((p) => p !== value)
+                          : [...cur, value],
+                      };
+                    });
+                  };
                   const WINE_BODIES = ['light', 'medium', 'full'];
                   const WINE_STYLES = ['dry', 'off-dry', 'medium-sweet', 'sweet'];
                   const SWEETNESS_LEVELS = ['dry', 'off-dry', 'medium-sweet', 'sweet', 'dessert'];
@@ -3782,12 +4016,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               <Select
                                 fullWidth
                                 data-testid="beverage-input-wine-color"
-                                value={bevDraft.wine_color ?? ''}
+                                value={wineColorValue}
                                 onChange={(e) => updateBev('wine_color', e.target.value || null)}
                                 placeholder="Select color"
                                 options={[
                                   { value: '', label: 'Select color' },
-                                  ...WINE_COLORS.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+                                  ...WINE_COLORS.map((c) => ({
+                                    value: c,
+                                    label: WINE_COLOR_LABELS[c] ?? c.charAt(0).toUpperCase() + c.slice(1),
+                                  })),
                                 ]}
                               />
                             </div>
@@ -3818,6 +4055,202 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   ...WINE_STYLES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
                                 ]}
                               />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Wine identity / provenance (PLAN 2026-08-04 M5) —
+                            top-level menu_items columns (varietal, producer,
+                            region, vintage, country) + the derived Old/New
+                            World chip. PATCHed as top-level fields on save,
+                            never inside food_tags.beverage. */}
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-identity-section">
+                            <label style={fieldLabel}>Wine identity</label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                              <div>
+                                <label style={fieldLabel}>Varietal</label>
+                                <input
+                                  type="text"
+                                  data-testid="beverage-input-varietal"
+                                  value={wineVarietal}
+                                  onChange={(e) => setWineVarietal(e.target.value)}
+                                  placeholder="e.g. Nebbiolo"
+                                  style={{ ...inputStyle, fontSize: 13 }}
+                                />
+                              </div>
+                              <div>
+                                <label style={fieldLabel}>Producer</label>
+                                <input
+                                  type="text"
+                                  data-testid="beverage-input-producer"
+                                  value={wineProducer}
+                                  onChange={(e) => setWineProducer(e.target.value)}
+                                  placeholder="e.g. Gaja"
+                                  style={{ ...inputStyle, fontSize: 13 }}
+                                />
+                              </div>
+                              <div>
+                                <label style={fieldLabel}>Region</label>
+                                <input
+                                  type="text"
+                                  data-testid="beverage-input-region"
+                                  value={wineRegion}
+                                  onChange={(e) => setWineRegion(e.target.value)}
+                                  placeholder="e.g. Barolo DOCG"
+                                  style={{ ...inputStyle, fontSize: 13 }}
+                                />
+                              </div>
+                              <div>
+                                <label style={fieldLabel}>Vintage</label>
+                                <input
+                                  type="number"
+                                  data-testid="beverage-input-vintage"
+                                  value={wineVintage}
+                                  onChange={(e) => setWineVintage(e.target.value)}
+                                  placeholder="e.g. 2019"
+                                  style={{ ...inputStyle, fontSize: 13 }}
+                                />
+                              </div>
+                              <div>
+                                <label style={fieldLabel}>Country</label>
+                                <input
+                                  type="text"
+                                  data-testid="beverage-input-country"
+                                  value={wineCountry}
+                                  onChange={(e) => setWineCountry(e.target.value)}
+                                  placeholder="e.g. Italy"
+                                  style={{ ...inputStyle, fontSize: 13 }}
+                                />
+                              </div>
+                              <div>
+                                <label style={fieldLabel}>Old / New World</label>
+                                {derivedOldWorld !== null ? (
+                                  /* Known country → read-only derived chip; the
+                                     server re-derives from wine_country and an
+                                     explicit contradicting value would 400 with
+                                     code=inconsistent_pair, so no toggle here. */
+                                  <span
+                                    data-testid="beverage-old-world-chip"
+                                    data-derived="true"
+                                    style={{ ...pillStyle(true), display: 'inline-block', cursor: 'default' }}
+                                  >
+                                    {derivedOldWorld ? 'Old World' : 'New World'}
+                                  </span>
+                                ) : (
+                                  /* Unknown/absent country → owner may set the
+                                     world explicitly (the only case the modal
+                                     sends wine_old_world). */
+                                  <div
+                                    data-testid="beverage-old-world-chip"
+                                    data-derived="false"
+                                    style={{ display: 'flex', gap: 6 }}
+                                  >
+                                    {[{ label: 'Old World', value: true }, { label: 'New World', value: false }].map((opt) => {
+                                      const active = effectiveOldWorld === opt.value;
+                                      return (
+                                        <button
+                                          key={opt.label}
+                                          type="button"
+                                          data-testid={`beverage-old-world-${opt.value ? 'old' : 'new'}`}
+                                          aria-pressed={active}
+                                          onClick={() => setWineOldWorld(active ? null : opt.value)}
+                                          style={pillStyle(active)}
+                                        >
+                                          {opt.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Wine taste scales (M5) — 0-100 sliders on the WSET
+                            absolute rubric, persisted to
+                            food_tags.beverage.taste_scales via the server-side
+                            key-additive merge. Tannin renders only for
+                            red/dessert colors. */}
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-taste-scales-section">
+                            <label style={fieldLabel}>Taste profile (0–100)</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {WINE_TASTE_SCALE_AXES
+                                .filter(({ key }) => key !== 'tannin' || showTanninScale)
+                                .map(({ key, label }) => {
+                                  const val = tasteScales[key];
+                                  return (
+                                    <div key={key} style={{ display: 'grid', gridTemplateColumns: '72px 1fr 34px', gap: 8, alignItems: 'center' }}>
+                                      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{label}</span>
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        data-testid={`beverage-scale-${key}`}
+                                        aria-label={`${label} scale`}
+                                        value={typeof val === 'number' ? val : 50}
+                                        onChange={(e) => setTasteScale(key, Number(e.target.value))}
+                                        style={{ width: '100%', accentColor: '#9333ea' }}
+                                      />
+                                      <span
+                                        data-testid={`beverage-scale-${key}-value`}
+                                        style={{ fontSize: 11, color: 'var(--text2)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                                      >
+                                        {typeof val === 'number' ? Math.round(val) : '—'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Wine dish pairings (M5) — closed 8-value vocab,
+                            chip multi-select. */}
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-dish-pairings-section">
+                            <label style={fieldLabel}>Pairs well with</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {WINE_DISH_PAIRING_OPTIONS.map(({ value, label }) => {
+                                const active = dishPairings.includes(value);
+                                return (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    data-testid={`beverage-dish-pairing-${value}`}
+                                    aria-pressed={active}
+                                    onClick={() => toggleDishPairing(value)}
+                                    style={pillStyle(active)}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Wine tasting note (M5) — ≤160 chars, server-enforced. */}
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-tasting-note-section">
+                            <label style={fieldLabel}>Tasting note</label>
+                            <textarea
+                              data-testid="beverage-input-tasting-note"
+                              value={tastingNote}
+                              maxLength={160}
+                              rows={2}
+                              placeholder="One-sentence sommelier note diners see on the wine list…"
+                              onChange={(e) => updateBev('tasting_note', e.target.value)}
+                              style={{ ...inputStyle, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }}
+                            />
+                            <div
+                              data-testid="beverage-tasting-note-counter"
+                              style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'right', marginTop: 2 }}
+                            >
+                              {tastingNote.length}/160
                             </div>
                           </div>
                         )}

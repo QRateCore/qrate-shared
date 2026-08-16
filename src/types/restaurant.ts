@@ -19,7 +19,8 @@ export interface BeverageTags {
   base_spirit?: string | null;
   /** Wine grape variety (cabernet sauvignon, pinot noir, etc.) */
   wine_variety?: string | null;
-  /** Red | white | rose | sparkling — populated by beverage_enrichment for wines. */
+  /** Red | white | rose | sparkling | dessert — populated by beverage_enrichment
+   *  for wines. ASCII canonical values ('rose', never 'rosé' — PLAN 2026-08-04 M5). */
   wine_color?: string | null;
   /** Light | medium | full — populated by beverage_enrichment for wines. */
   wine_body?: string | null;
@@ -33,6 +34,26 @@ export interface BeverageTags {
   served?: string | null;
   strength?: string;
   key_ingredients?: string[];
+  /** Wine tannin level — ordinal facet (wine_intelligence v2, PLAN 2026-08-04). */
+  tannin?: 'low' | 'medium' | 'high';
+  /** Wine acidity level — ordinal facet (wine_intelligence v2, PLAN 2026-08-04). */
+  acidity?: 'low' | 'medium' | 'high';
+  /** Oak influence — ordinal facet (wine_intelligence v2, PLAN 2026-08-04). */
+  oak?: 'low' | 'medium' | 'high';
+  /** 0-100 taste scalars (WSET-rubric absolute scale) served to The Cellar's
+   *  quiz + rendered as sliders in the owner EditModal (PLAN 2026-08-04 M5). */
+  taste_scales?: {
+    body?: number;
+    sweetness?: number;
+    tannin?: number;
+    acidity?: number;
+    alcohol?: number;
+  };
+  /** Closed vocab ⊆ [red_meat, poultry, seafood, pasta, cheese, dessert,
+   *  vegetarian, spiced] — dish-pairing tags for the wine surface. */
+  dish_pairings?: string[];
+  /** Sommelier tasting note, ≤160 chars (server-enforced). */
+  tasting_note?: string;
 }
 
 /** Per-item review state for allergens / dietary restrictions.
@@ -262,6 +283,20 @@ export interface MenuItem {
    * Absent / empty ⇒ single-priced wine (patron skips the serving step).
    */
   serving_options?: ServingOption[] | null;
+  /**
+   * Wine identity/provenance columns (PLAN 2026-08-04 M2/M5). Top-level
+   * menu_items columns (NOT food_tags.beverage facets) — readable on owner
+   * GETs and writable via PUT /owner/menu/items/{itemId}. wine_old_world is
+   * DERIVED server-side from wine_country via the closed Old/New-World maps;
+   * an explicit value is accepted only when the country is absent/unknown
+   * (contradicting pairs are rejected with code=inconsistent_pair).
+   */
+  wine_varietal?: string | null;
+  wine_region?: string | null;
+  wine_vintage?: number | null;
+  wine_producer?: string | null;
+  wine_country?: string | null;
+  wine_old_world?: boolean | null;
   /**
    * PDD 2026-05-15: owner per-item opt-out for the patron composition page
    * Spice Level slider (VISIBILITY). Defaults to TRUE on the wire.
@@ -525,6 +560,18 @@ export interface MenuItemDisplay {
   chefs_special?: boolean;
   /** Wine serving sizes (PDD 2026-06-15) — owner-configured glass/bottle options. */
   serving_options?: ServingOption[] | null;
+  /**
+   * Wine identity/provenance columns (PLAN 2026-08-04 M2/M5) — see MenuItem
+   * for full semantics. Present on Display because the EditModal edits the
+   * hydrated GET /owner/menu/items/{itemId} shape (which projects all ten
+   * wine columns as of core M2).
+   */
+  wine_varietal?: string | null;
+  wine_region?: string | null;
+  wine_vintage?: number | null;
+  wine_producer?: string | null;
+  wine_country?: string | null;
+  wine_old_world?: boolean | null;
   /**
    * PDD 2026-05-15: owner per-item opt-out for the patron composition page
    * Spice Level slider. Defaults to TRUE on the wire (backend column

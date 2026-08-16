@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2 } from 'lucide-react';
 import Select from '../common/Select';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -25,9 +26,16 @@ const ROLE_COLORS: Record<string, string> = {
 interface StaffManagementProps {
   restaurantId: string | null;
   service: ExperienceService;
+  /**
+   * Optional DOM node to portal the Add Staff control into — supplied by
+   * ExperienceManagement so the button sits on the tab row rather than in a
+   * second header strip. When omitted (standalone `/owner/staff` page) the
+   * component keeps its own header + inline button.
+   */
+  actionsSlot?: HTMLElement | null;
 }
 
-export default function StaffManagement({ restaurantId, service }: StaffManagementProps) {
+export default function StaffManagement({ restaurantId, service, actionsSlot }: StaffManagementProps) {
   const isMobile = useIsMobile();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,26 +147,38 @@ export default function StaffManagement({ restaurantId, service }: StaffManageme
     );
   }
 
+  const inTabContext = actionsSlot !== undefined;
+  const addStaffButton = (
+    <button
+      onClick={() => setShowForm(!showForm)}
+      data-testid="add-staff-btn"
+      className={`bg-orange-500 text-white px-4 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center gap-2 ${isMobile ? 'min-h-[44px] w-full justify-center' : 'py-2'}`}
+    >
+      {showForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+      {showForm ? 'Cancel' : 'Add Staff'}
+    </button>
+  );
+
   return (
     <div>
-      <div className={`mb-6 flex ${isMobile ? 'flex-col' : 'items-center justify-between'}`}>
-        {/* Redundant page-title header hidden on mobile (parity with Menu/Food
-            Items + the Tables tab); on a phone the Staff tab bar already labels
-            this. Leaves a clean full-width Add-Staff CTA. Desktop unchanged. */}
-        {!isMobile && (
-          <div>
-            <h1 className="page-title">Staff</h1>
-            <p className="page-sub mt-1">Manage team members and their access</p>
-          </div>
-        )}
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className={`bg-orange-500 text-white px-4 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center gap-2 ${isMobile ? 'min-h-[44px] w-full justify-center' : 'py-2'}`}
-        >
-          {showForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-          {showForm ? 'Cancel' : 'Add Staff'}
-        </button>
-      </div>
+      {/* Desktop tab context: the tab row owns the title AND the Add Staff
+          control, so no header strip renders here at all. */}
+      {actionsSlot ? (
+        createPortal(addStaffButton, actionsSlot)
+      ) : (
+        <div className={`mb-6 flex ${isMobile ? 'flex-col' : 'items-center justify-between'}`}>
+          {/* Redundant page-title header hidden on mobile (parity with Menu/Food
+              Items + the Tables tab) and inside the Tables & Staff tab surface.
+              Shown on the standalone /owner/staff page only. */}
+          {!isMobile && !inTabContext && (
+            <div>
+              <h1 className="page-title">Staff</h1>
+              <p className="page-sub mt-1">Manage team members and their access</p>
+            </div>
+          )}
+          {addStaffButton}
+        </div>
+      )}
 
       {/* Feedback */}
       {feedback && (

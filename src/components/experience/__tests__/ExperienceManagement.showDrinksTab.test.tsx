@@ -57,9 +57,9 @@ function makeService(overrides: Partial<ExperienceService> = {}): ExperienceServ
 
 // The Tables tab button also renders a count badge once getTables resolves
 // (accessible name becomes e.g. "Tables 0"), so match by name prefix, not exact.
-const drinksTab = () => screen.queryByRole('button', { name: /^Drinks/ });
-const tablesTab = () => screen.queryByRole('button', { name: /^Tables/ });
-const staffTab = () => screen.queryByRole('button', { name: /^Staff/ });
+const drinksTab = () => screen.queryByRole('tab', { name: /^Drinks/ });
+const tablesTab = () => screen.queryByRole('tab', { name: /^Tables/ });
+const staffTab = () => screen.queryByRole('tab', { name: /^Staff/ });
 
 describe('ExperienceManagement — showDrinksTab', () => {
   beforeEach(() => { vi.clearAllMocks(); });
@@ -107,7 +107,7 @@ describe('ExperienceManagement — showDrinksTab', () => {
       />,
     );
     await waitFor(() => expect(tablesTab()).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: /^Kitchen/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^Kitchen/ })).toBeInTheDocument();
     expect(drinksTab()).toBeInTheDocument();
   });
 });
