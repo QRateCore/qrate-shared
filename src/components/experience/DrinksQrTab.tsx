@@ -133,6 +133,7 @@ export default function DrinksQrTab({ restaurantId, service }: DrinksQrTabProps)
         <div className={`flex gap-2 ${isMobile ? 'flex-wrap [&>button]:min-h-[44px]' : ''}`}>
           {tablesWithDrinksQR.length > 0 && (
             <button
+              data-testid="download-drinks-qr-btn"
               onClick={handleDownloadZip}
               disabled={downloading}
               className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
@@ -142,6 +143,7 @@ export default function DrinksQrTab({ restaurantId, service }: DrinksQrTabProps)
             </button>
           )}
           <button
+            data-testid="generate-drinks-qr-btn"
             onClick={handleGenerate}
             disabled={generating || activeTables.length === 0}
             className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
