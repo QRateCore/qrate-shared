@@ -11,7 +11,7 @@
  * refactor of that component.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DrinksQrTab from '../DrinksQrTab';
 import type { ExperienceService } from '../../../types/experience';
@@ -154,8 +154,7 @@ describe('DrinksQrTab — seats editing', () => {
     expect(within(card).queryByText('Save')).not.toBeInTheDocument();
 
     const seatsInput = within(card).getByTestId('drinks-table-seats-3') as HTMLInputElement;
-    await user.clear(seatsInput);
-    await user.type(seatsInput, '8');
+    fireEvent.change(seatsInput, { target: { value: '8' } });
 
     const saveBtn = await within(card).findByText('Save');
     await user.click(saveBtn);
