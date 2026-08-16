@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Download, QrCode, X, Wine } from 'lucide-react';
-import type { ExperienceService, RestaurantTable } from '../../types/experience';
+import type { ExperienceService, RestaurantTable, StaffMember } from '../../types/experience';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface DrinksQrTabProps {
@@ -25,6 +25,7 @@ interface DrinksQrTabProps {
 export default function DrinksQrTab({ restaurantId, service }: DrinksQrTabProps) {
   const isMobile = useIsMobile();
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -48,9 +49,20 @@ export default function DrinksQrTab({ restaurantId, service }: DrinksQrTabProps)
     }
   }, [restaurantId, service, showFeedback]);
 
+  const fetchStaff = useCallback(async () => {
+    if (!restaurantId) return;
+    try {
+      const data = await service.getStaff(restaurantId);
+      setStaff(data.staff);
+    } catch {
+      // Server names are a nice-to-have on the card — silently degrade to no name.
+    }
+  }, [restaurantId, service]);
+
   useEffect(() => {
     fetchTables();
-  }, [fetchTables]);
+    fetchStaff();
+  }, [fetchTables, fetchStaff]);
 
   const handleGenerate = async () => {
     if (!restaurantId || !service.generateDrinksQRCodes) return;
@@ -163,25 +175,55 @@ export default function DrinksQrTab({ restaurantId, service }: DrinksQrTabProps)
         </div>
       </div>
 
-      {/* Table list */}
-      <div className="grid gap-2" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-        {activeTables.map(table => (
-          <button
-            key={table.id}
-            onClick={() => setQrModalTable(table)}
-            data-testid={`drinks-qr-table-${table.table_number}`}
-            className="flex items-center justify-between px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-          >
-            <span className="font-medium text-gray-900 text-sm">
-              {table.table_label || `Table ${table.table_number}`}
-            </span>
-            {table.drinks_qr_code_url ? (
-              <QrCode className="h-4 w-4 text-orange-500" />
-            ) : (
-              <span className="text-xs text-gray-400">No QR yet</span>
-            )}
-          </button>
-        ))}
+      {/* Table grid — same card shell as the Tables tab (border-dashed card,
+          table name + server + QR icon row, status badge row) so the two QR
+          surfaces read as one family in the owner UI. */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 ${isMobile ? 'pb-24' : ''}`}>
+        {activeTables.map(table => {
+          const hasQR = Boolean(table.drinks_qr_code_url);
+          const serverName = table.assigned_server_id
+            ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null)
+            : null;
+          const borderClass = hasQR ? 'border-orange-300' : 'border-gray-200';
+
+          return (
+            <div
+              key={table.id}
+              data-testid={`drinks-qr-table-${table.table_number}`}
+              className={`border-2 border-dashed rounded-xl p-3 bg-white ${borderClass}`}
+            >
+              {/* Row 1: Table name + server + QR */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="font-bold text-base text-gray-900 whitespace-nowrap">
+                      {table.table_label || `Table ${table.table_number}`}
+                    </h3>
+                    {serverName && (
+                      <span title={`Server: ${serverName}`} className="text-xs text-gray-400 truncate">Server: {serverName}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQrModalTable(table)}
+                  className={`rounded-md hover:bg-gray-100 transition-colors flex-shrink-0 ${isMobile ? 'min-h-[44px] min-w-[44px] flex items-center justify-center' : 'p-1.5'}`}
+                  title="Show drinks QR code"
+                >
+                  <QrCode className={`h-4 w-4 ${hasQR ? 'text-orange-500' : 'text-gray-400'}`} />
+                </button>
+              </div>
+
+              {/* Row 2: Status badge */}
+              <div className="mt-2">
+                {hasQR ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">QR GENERATED</span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">NOT GENERATED</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* QR Code Modal */}
