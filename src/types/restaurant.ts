@@ -1089,6 +1089,7 @@ export interface RestaurantTable {
   table_number: number;
   table_label?: string;
   qr_code_url?: string;
+  drinks_qr_code_url?: string;
   capacity?: number;
   assigned_server_id?: string | null;
   is_active: boolean;

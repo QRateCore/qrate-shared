@@ -213,6 +213,14 @@ export interface ExperienceService {
   downloadQRCodesZip(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
   deleteTable?(restaurantId: string, tableId: string): Promise<void>;
 
+  // Drinks QR — SEPARATE standalone drinks-ordering QR per table, gated on
+  // the admin-only `drinks_qr_enabled` deluxe flag. Optional: only present
+  // when the consumer wires the Drinks tab (see ExperienceManagement
+  // showDrinksTab prop).
+  isDrinksQrEnabled?(restaurantId: string): Promise<boolean>;
+  generateDrinksQRCodes?(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; drinks_qr_code_url: string }>; message: string }>;
+  downloadDrinksQRCodesZip?(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
+
   // Staff
   getStaff(restaurantId: string): Promise<{ staff: StaffMember[]; count: number }>;
   createStaff(restaurantId: string, data: CreateStaffRequest): Promise<{ staff: StaffMember }>;

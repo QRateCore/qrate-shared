@@ -15,15 +15,17 @@ import {
   X,
   Settings2,
   ChefHat,
+  Wine,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
 import KitchenTab from './KitchenTab';
+import DrinksQrTab from './DrinksQrTab';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
-type Tab = 'staff' | 'tables' | 'kitchen';
+type Tab = 'staff' | 'tables' | 'kitchen' | 'drinks';
 
 interface ExperienceManagementProps {
   initialTab?: Tab;
@@ -50,12 +52,23 @@ interface ExperienceManagementProps {
    * tab is dropped from the bar and a `?tab=kitchen` deep-link falls back to Tables.
    */
   showKitchenTab?: boolean;
+  /**
+   * Whether to show the Drinks QR tab (standalone drinks-ordering QR, gated
+   * on the admin-only `drinks_qr_enabled` deluxe flag). Defaults to `false` —
+   * the OPPOSITE polarity of showKitchenTab — since most restaurants won't
+   * have the flag on; the owner app fetches the flag and passes `true` only
+   * when it's enabled for that restaurant. A `?tab=drinks` deep-link falls
+   * back to Tables when hidden, same coercion as the Kitchen tab.
+   */
+  showDrinksTab?: boolean;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true }: ExperienceManagementProps) {
-  const [activeTab, setActiveTab] = useState<Tab>(
-    !showKitchenTab && initialTab === 'kitchen' ? 'tables' : initialTab,
-  );
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false }: ExperienceManagementProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    if (!showKitchenTab && initialTab === 'kitchen') return 'tables';
+    if (!showDrinksTab && initialTab === 'drinks') return 'tables';
+    return initialTab;
+  });
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
 
   const fetchTabCounts = useCallback(async () => {
@@ -81,6 +94,9 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
     { id: 'tables' as Tab, label: 'Tables', icon: LayoutGrid, count: tabCounts.tables as number | undefined },
     ...(showKitchenTab
       ? [{ id: 'kitchen' as Tab, label: 'Kitchen', icon: ChefHat, count: undefined as number | undefined }]
+      : []),
+    ...(showDrinksTab
+      ? [{ id: 'drinks' as Tab, label: 'Drinks', icon: Wine, count: undefined as number | undefined }]
       : []),
   ];
 
@@ -121,6 +137,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
           {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} />}
           {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} />}
           {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
+          {showDrinksTab && activeTab === 'drinks' && <DrinksQrTab restaurantId={restaurantId || undefined} service={service} />}
         </div>
       </div>
     </div>
