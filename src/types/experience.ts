@@ -116,6 +116,51 @@ export interface TableActivity {
   tables: TableActivityEntry[];
 }
 
+// ─── Drinks-surface Table Activity (standalone drinks-ordering QR) ──────────
+// A separate, independent view from TableActivity above — see
+// owner_waiter.py::get_drinks_table_activity. Deliberately simpler: no
+// coverage/bill-splitting fields (not supported on this surface) and no
+// active_carts (drinks orders are placed directly, no browsing-cart state).
+
+export interface DrinksTableGuest {
+  diner_id: string | null;
+  name: string;
+  connected: boolean | null;
+  idle: boolean | null;
+  order_ids: string[];
+}
+
+export interface DrinksPlacedOrderItem {
+  id: string;
+  name: string | null;
+  quantity: number;
+  price: number;
+  patron_display_name: string | null;
+  item_status: string;
+}
+
+export interface DrinksPlacedOrder {
+  order_id: string;
+  status: string;
+  diner_id: string | null;
+  diner_name: string | null;
+  created_at: string;
+  total_amount: number;
+  active_total: number;
+  items: DrinksPlacedOrderItem[];
+}
+
+export interface DrinksTableActivityEntry {
+  table_number: number;
+  guests: DrinksTableGuest[];
+  placed_orders: DrinksPlacedOrder[];
+  has_active_session: boolean;
+}
+
+export interface DrinksTableActivity {
+  tables: DrinksTableActivityEntry[];
+}
+
 export interface WaiterCall {
   id: string;
   table_number: number | null;
@@ -220,6 +265,12 @@ export interface ExperienceService {
   isDrinksQrEnabled?(restaurantId: string): Promise<boolean>;
   generateDrinksQRCodes?(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; drinks_qr_code_url: string }>; message: string }>;
   downloadDrinksQRCodesZip?(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
+  /**
+   * Live occupancy/guests/orders for the drinks surface only — independent
+   * of getTableActivity (food). Optional: only present when the consumer
+   * wires the Drinks tab.
+   */
+  getDrinksTableActivity?(restaurantId: string): Promise<DrinksTableActivity>;
 
   // Staff
   getStaff(restaurantId: string): Promise<{ staff: StaffMember[]; count: number }>;
