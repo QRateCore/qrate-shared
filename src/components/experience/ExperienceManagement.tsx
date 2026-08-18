@@ -174,6 +174,7 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [importingTables, setImportingTables] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [capacityEdits, setCapacityEdits] = useState<Record<string, number>>({});
@@ -343,6 +344,31 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
     }
   };
 
+  const handleImportPosTables = async () => {
+    if (!restaurantId || !service.importPosTables) return;
+    setImportingTables(true);
+    try {
+      const result = await service.importPosTables(restaurantId);
+      const parts = [`${result.created} added`];
+      if (result.adopted) parts.push(`${result.adopted} matched`);
+      if (result.updated) parts.push(`${result.updated} renamed`);
+      if (result.skipped.length) parts.push(`${result.skipped.length} skipped`);
+      showFeedback('success',
+        `${result.provider_tables} tables in the POS — ${parts.join(', ')}`);
+      // Newly created tables have no QR yet, and a table nobody can scan is
+      // not much use on this page.
+      if (result.created > 0) {
+        await service.generateQRCodes(restaurantId).catch(() => null);
+      }
+      await fetchTables();
+    } catch (err) {
+      console.error('Failed to import POS tables:', err);
+      showFeedback('error', 'Failed to import tables from the POS');
+    } finally {
+      setImportingTables(false);
+    }
+  };
+
   const handleDownloadZip = async () => {
     if (!restaurantId) return;
     setDownloading(true);
@@ -480,13 +506,39 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
           <LayoutGrid className="h-8 w-8 mx-auto mb-3 opacity-40" />
           <p className="font-medium">No tables found</p>
           <p className="text-sm mt-1">Tables will appear here once created</p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="mt-4 bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm inline-flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add Table
-          </button>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {/* Offered HERE too, and deliberately so: a restaurant with no
+                tables is exactly the one that wants to import a floor plan,
+                and the toolbar that normally carries this button only renders
+                once at least one table exists. */}
+            {service.importPosTables && (
+              <button
+                onClick={handleImportPosTables}
+                disabled={importingTables}
+                data-testid="import-pos-tables-empty-btn"
+                className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {importingTables ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Import from POS
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm inline-flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Table
+            </button>
+          </div>
         </div>
 
         {/* Add Table Modal */}
@@ -544,6 +596,27 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
   // slot; on mobile (no slot) they stay inline under the count line.
   const tableActions = (
     <>
+      {service.importPosTables && (
+        <button
+          onClick={handleImportPosTables}
+          disabled={importingTables}
+          data-testid="import-pos-tables-btn"
+          title="Create any table the POS has that QRate does not. Existing tables are matched, never duplicated, and nothing is deleted."
+          className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
+        >
+          {importingTables ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Importing...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Import from POS
+            </>
+          )}
+        </button>
+      )}
       {tablesWithQR.length > 0 && (
         <button
           onClick={handleDownloadZip}

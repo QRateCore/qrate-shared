@@ -257,6 +257,21 @@ export interface ExperienceService {
   generateQRCodes(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; qr_code_url: string }>; message: string }>;
   downloadQRCodesZip(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
   deleteTable?(restaurantId: string, tableId: string): Promise<void>;
+  /**
+   * Pull the floor plan from the restaurant's POS.
+   *
+   * OPTIONAL on purpose: only a caller that supplies it gets the button.
+   * The owner portal does not, so this stays an admin operation — an owner
+   * re-importing a floor plan mid-service could renumber tables under their
+   * own staff.
+   *
+   * Adopts tables QRate already has rather than duplicating them, and never
+   * deletes: a QR code may already be printed and stuck to a table.
+   */
+  importPosTables?(restaurantId: string): Promise<{
+    created: number; adopted: number; updated: number;
+    skipped: string[]; provider_tables: number;
+  }>;
 
   // Drinks QR — SEPARATE standalone drinks-ordering QR per table, gated on
   // the admin-only `drinks_qr_enabled` deluxe flag. Optional: only present
