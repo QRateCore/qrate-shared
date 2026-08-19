@@ -141,6 +141,13 @@ export {
 // for non-UTC restaurants.
 export { isMenuLiveNow, classifyRecMember } from './utils/menuSchedule';
 
+// Utils — Owner-app routing (MK-9). Single source of truth for the
+// micro-kitchen → owner-lite routing decision, shared by owner-app's redirect
+// hook (MK-10) and owner-lite's land-guard (MK-11) so the two apps can never
+// disagree and trap an owner in a redirect loop.
+export { resolveOwnerApp, MICRO_KITCHEN_SERVICE_MODEL } from './utils/resolveOwnerApp';
+export type { OwnerApp, RoutableInstitution } from './utils/resolveOwnerApp';
+
 // Utils — Currency (canonical 16-currency preset + formatMoney helper).
 // Mirrored to qrate-patron-webapp/src/lib/utils/currency.ts via a CI sync
 // guard. PDD: .agents/planning/2026-05-19-currency-configuration/
