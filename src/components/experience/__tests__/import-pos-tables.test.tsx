@@ -140,6 +140,45 @@ describe('Import from POS', () => {
     expect(screen.queryByTestId('import-pos-tables-empty-btn')).toBeNull();
   });
 
+  it('is disabled, not hidden, when no POS is connected', async () => {
+    /*
+     * An absent button reads as "this restaurant cannot import". A greyed one
+     * with a reason reads as "connect a POS first", which is the actionable
+     * truth and the only one an operator can do something about.
+     */
+    const service = makeService({
+      importPosTables: vi.fn().mockResolvedValue(IMPORTED),
+    });
+    render(<ExperienceManagement restaurantId="r1" service={service}
+                                 posConnected={false} />);
+    const btn = await screen.findByTestId('import-pos-tables-btn');
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(btn.getAttribute('title')).toMatch(/Connect a POS/);
+  });
+
+  it('cannot be clicked into an import while disconnected', async () => {
+    const service = makeService({
+      importPosTables: vi.fn().mockResolvedValue(IMPORTED),
+    });
+    render(<ExperienceManagement restaurantId="r1" service={service}
+                                 posConnected={false} />);
+    const btn = await screen.findByTestId('import-pos-tables-btn');
+    // force, because a disabled button ignores a real click — the assertion
+    // is that even a forced one cannot start an import.
+    await userEvent.click(btn, { pointerEventsCheck: 0 }).catch(() => {});
+    await waitFor(() => expect(service.importPosTables).not.toHaveBeenCalled());
+  });
+
+  it('is enabled once a POS is connected', async () => {
+    const service = makeService({
+      importPosTables: vi.fn().mockResolvedValue(IMPORTED),
+    });
+    render(<ExperienceManagement restaurantId="r1" service={service}
+                                 posConnected />);
+    const btn = await screen.findByTestId('import-pos-tables-btn');
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('surfaces a failure instead of looking like it worked', async () => {
     const service = makeService({
       importPosTables: vi.fn().mockRejectedValue(new Error('pos_unreachable')),

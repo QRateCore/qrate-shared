@@ -26,6 +26,15 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 type Tab = 'staff' | 'tables' | 'kitchen' | 'drinks';
 
 interface ExperienceManagementProps {
+  /**
+   * Whether the restaurant's POS is actually connected.
+   *
+   * Only meaningful alongside `service.importPosTables`. When false the
+   * import button is shown DISABLED rather than hidden: an absent button
+   * reads as "this restaurant cannot import", where a greyed one with a
+   * reason reads as "connect a POS first", which is the actionable truth.
+   */
+  posConnected?: boolean;
   initialTab?: Tab;
   restaurantId?: string | null;
   service: ExperienceService;
@@ -61,7 +70,7 @@ interface ExperienceManagementProps {
   showDrinksTab?: boolean;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     if (!showKitchenTab && initialTab === 'kitchen') return 'tables';
     if (!showDrinksTab && initialTab === 'drinks') return 'tables';
@@ -155,7 +164,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
       {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} />}
-        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} hostStationHref={hostStationHref} actionsSlot={actionsSlot} />}
+        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} />}
         {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         {showDrinksTab && activeTab === 'drinks' && <DrinksQrTab restaurantId={restaurantId || undefined} service={service} />}
       </div>
@@ -163,7 +172,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   );
 }
 
-function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { restaurantId?: string; service: ExperienceService; hostStationHref?: string; actionsSlot?: HTMLElement | null }) {
+function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null }) {
   const isMobile = useIsMobile();
   // Mobile-only: which occupied cards have the config controls ("Manage")
   // expanded. Config is collapsed by default on a phone so the card's
@@ -514,7 +523,7 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
             {service.importPosTables && (
               <button
                 onClick={handleImportPosTables}
-                disabled={importingTables}
+                disabled={importingTables || !posConnected}
                 data-testid="import-pos-tables-empty-btn"
                 className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm inline-flex items-center gap-2 disabled:opacity-50"
               >
@@ -599,9 +608,11 @@ function TablesTab({ restaurantId, service, hostStationHref, actionsSlot }: { re
       {service.importPosTables && (
         <button
           onClick={handleImportPosTables}
-          disabled={importingTables}
+          disabled={importingTables || !posConnected}
           data-testid="import-pos-tables-btn"
-          title="Create any table the POS has that QRate does not. Existing tables are matched, never duplicated, and nothing is deleted."
+          title={posConnected
+            ? "Create any table the POS has that QRate does not. Existing tables are matched, never duplicated, and nothing is deleted."
+            : "Connect a POS on the Integrations page first — there is no floor plan to import from."}
           className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
         >
           {importingTables ? (
