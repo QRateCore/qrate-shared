@@ -68,9 +68,25 @@ export default function TableCard({
       )}
 
       {/* Table number + label */}
-      <div className="text-subtitle text-gray-900">Table {table.table_number}</div>
-      {table.table_label && (
-        <div className="text-xs text-gray-500 mt-0.5">{table.table_label}</div>
+      <div className="text-subtitle text-gray-900 flex items-center justify-center gap-1.5">
+        Table {table.table_number}
+        {table.pos_linked && (
+          /* Marks a table whose name and identity belong to the POS. Renaming
+             it here does not rename it there, and the next import puts the POS
+             name back — so an operator should see that before editing. */
+          <span
+            data-testid={`table-pos-badge-${table.table_number}`}
+            title={`From the POS floor plan${table.pos_table_name ? ` — "${table.pos_table_name}"` : ''}. Its name is managed there, not here.`}
+            className="inline-flex items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 ring-1 ring-inset ring-indigo-200"
+          >
+            POS
+          </span>
+        )}
+      </div>
+      {(table.pos_table_name || table.table_label) && (
+        <div className="text-xs text-gray-500 mt-0.5">
+          {table.pos_table_name || table.table_label}
+        </div>
       )}
 
       {/* Guest names */}

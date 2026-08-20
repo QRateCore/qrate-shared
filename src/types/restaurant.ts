@@ -1131,6 +1131,19 @@ export interface MenuManagerService {
 }
 
 export interface RestaurantTable {
+  /**
+   * True when this table came from the restaurant's POS floor plan.
+   *
+   * Not cosmetic. An imported table's NAME belongs to the POS — renaming it
+   * here does not rename it there, and the next import restores the POS name
+   * — and its POS identity is what lets a diner's order join that table's
+   * tab. A manual table has neither, so orders on it can never be seated.
+   */
+  pos_linked?: boolean;
+  /** What the POS calls it. Diverges from `table_label` for non-numeric
+   *  tables, which are stored under a synthetic number ("Bar 1" is not 901). */
+  pos_table_name?: string | null;
+  pos_provider?: string | null;
   id: string;
   restaurant_id: string;
   table_number: number;
