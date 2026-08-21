@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * NOTE: NOT rendered by ExperienceManagement. That page builds its table
+ * cards inline; this component is exported from the barrel for other
+ * consumers. A change made here will NOT appear on the Service page — the
+ * markup to edit is in ExperienceManagement's tables grid.
+ */
 import { Bell, Eye, Star } from 'lucide-react';
 import type { RestaurantTable, TableActivityEntry, WaiterCall } from '../../types/experience';
 import { allergenColor } from './table-utils';

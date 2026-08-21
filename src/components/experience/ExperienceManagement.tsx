@@ -826,6 +826,27 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <h3 className="font-bold text-base text-gray-900 whitespace-nowrap">Table {table.table_number}</h3>
+                        {table.pos_linked && (
+                          /* Came from the POS floor plan. Its NAME is managed
+                             there — renaming it here does not rename it in the
+                             POS, and the next import puts the POS name back —
+                             and its POS identity is what lets a diner's order
+                             join that table's tab, which a manually created
+                             table can never do. */
+                          <span
+                            data-testid={`table-pos-badge-${table.table_number}`}
+                            title={`From the POS floor plan${table.pos_table_name ? ` — "${table.pos_table_name}"` : ''}. Its name is managed there, not here.`}
+                            className="inline-flex items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 ring-1 ring-inset ring-indigo-200 flex-shrink-0"
+                          >
+                            POS
+                          </span>
+                        )}
+                        {table.pos_table_name && table.pos_table_name !== String(table.table_number) && (
+                          /* "Bar 1" lives under a synthetic number, because
+                             table_number is an INTEGER. Showing 901 alone
+                             names a table the restaurant does not have. */
+                          <span className="text-xs text-gray-500 truncate">{table.pos_table_name}</span>
+                        )}
                         {serverName && (
                           <span title={`Server: ${serverName}`} className="text-xs text-gray-400 truncate">Server: {serverName}</span>
                         )}
