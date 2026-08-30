@@ -205,6 +205,21 @@ export interface MenuTabBarProps {
    * keep compiling; safe to drop on the next breaking release. */
   onCreateMenu?: (name: string) => Promise<void>;
   onCloneMenu?: () => void;
+  /**
+   * Render tight enough to sit inside the 56px owner top bar, on the same row
+   * as the search field (PDD 2026-08-30).
+   *
+   * Both text lines are KEPT. The obvious way to fit was to drop the schedule
+   * sublabel, but that line is the only place a tab says WHEN a menu runs —
+   * losing it would trade a layout preference for real information, and
+   * MenuTabBar.test.tsx asserts it by text. So this only tightens padding and
+   * type; the tab is ~35px instead of ~48px, which clears 56px with room for
+   * the bar's own vertical centring.
+   *
+   * Opt-in and defaulted off: waiter and admin vendor this same package and
+   * must be untouched by an owner layout change.
+   */
+  compact?: boolean;
 }
 
 export default function MenuTabBar({
@@ -213,6 +228,7 @@ export default function MenuTabBar({
   onTabChange,
   onEditMenu,
   onCloneMenu,
+  compact = false,
 }: MenuTabBarProps) {
   // Clock used by the status pills so ACTIVE↔SCHEDULED flips as time
   // crosses a menu's start/end boundary. Same 60-second cadence as
@@ -225,15 +241,19 @@ export default function MenuTabBar({
 
   return (
     <div
-      className="flex items-stretch border-b border-[var(--border)] shrink-0"
+      className={compact
+        ? 'flex items-stretch shrink-0 min-w-0'
+        : 'flex items-stretch border-b border-[var(--border)] shrink-0'}
       // Match the food-library tab strip: no white background — sit on the
       // grey page surface so the active-tab brand-orange underline reads
       // crisply against the same canvas as the rest of the chrome.
-      style={{ background: 'var(--bg, #f9fafb)' }}
+      // Compact drops both: the top bar already draws its own bottom border
+      // and white background, and a second border would double the hairline.
+      style={compact ? undefined : { background: 'var(--bg, #f9fafb)' }}
     >
       <div
         className="flex items-stretch overflow-x-auto flex-1 min-w-0"
-        style={{ gap: 4, paddingLeft: 8 }}
+        style={compact ? { gap: 2, paddingLeft: 0 } : { gap: 4, paddingLeft: 8 }}
         data-testid="menu-tab-bar"
       >
         {menus.map((menu) => {
@@ -252,8 +272,8 @@ export default function MenuTabBar({
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
-                gap: 2,
-                padding: '8px 12px 10px',
+                gap: compact ? 0 : 2,
+                padding: compact ? '2px 10px 3px' : '8px 12px 10px',
                 marginBottom: -1,
                 background: 'transparent',
                 border: 'none',
@@ -268,7 +288,7 @@ export default function MenuTabBar({
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <span
                   style={{
-                    fontSize: 13,
+                    fontSize: compact ? 12.5 : 13,
                     fontWeight: isActive ? 700 : 600,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
                     letterSpacing: '-0.005em',
@@ -304,10 +324,10 @@ export default function MenuTabBar({
               <span
                 data-testid={`menu-tab-${menu.id}-sub`}
                 style={{
-                  fontSize: 10,
+                  fontSize: compact ? 9.5 : 10,
                   color: 'var(--text3, #9ca3af)',
                   letterSpacing: '0.02em',
-                  lineHeight: 1.2,
+                  lineHeight: compact ? 1.1 : 1.2,
                 }}
               >
                 {sub}
@@ -321,7 +341,7 @@ export default function MenuTabBar({
       {/* Clone Existing — small secondary affordance, frozen to the right
           edge so it stays visible even when the menu list overflows. */}
       {onCloneMenu && (
-        <div className="shrink-0 px-2 py-1.5 flex items-center">
+        <div className={compact ? 'shrink-0 pl-2 flex items-center' : 'shrink-0 px-2 py-1.5 flex items-center'}>
           <Button
             variant="secondary"
             size="sm"

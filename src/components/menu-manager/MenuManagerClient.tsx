@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, MenuAssociation, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory } from '../../types/restaurant';
 import { isSubcategoryV2Enabled } from '../../constants/feature-flags';
@@ -427,6 +428,15 @@ interface Props {
    * "Search items…" box, which keeps its own `search` state.
    */
   builderSearchQuery?: string;
+  /**
+   * When supplied, the menu tab rail is PORTALED here instead of rendering
+   * above the two panels (PDD 2026-08-30 — owner Menu: tabs share the search
+   * row). The host owns the element; this component only fills it.
+   *
+   * Optional on purpose: waiter and admin vendor this package and keep the
+   * inline rail. Passing null (the default) is exactly today's behaviour.
+   */
+  tabBarPortalTarget?: Element | null;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -458,7 +468,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3131,7 +3141,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             overflow: 'hidden',
           }}
         >
+          {(() => {
+            const tabBar = (
           <MenuTabBar
+            compact={!!tabBarPortalTarget}
             menus={menus}
             activeMenuId={activeMenuId}
             onTabChange={(menuId) => {
@@ -3149,6 +3162,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onCreateMenu={handleCreateMenu}
             onCloneMenu={service.cloneMenu ? () => setCloneOpen(true) : undefined}
           />
+            );
+            // Portal rather than lift state: the rail's selection drives this
+            // component's activeMenuId, so rendering it from the page would
+            // mean hoisting menu state out of here purely for layout.
+            return tabBarPortalTarget ? createPortal(tabBar, tabBarPortalTarget) : tabBar;
+          })()}
 
           <div
             style={{
