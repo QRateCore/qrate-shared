@@ -436,6 +436,16 @@ export interface MenuSummary {
    * setMenuDrinksMode + an owner confirmation.
    */
   drinks_only?: boolean;
+  /**
+   * Set at commit time by the Add Menu wizard's wine-import flow
+   * ('full_service' | 'beverage' | 'wine'). 'wine' drives a single "Wine"
+   * builder section instead of the 4 food courses (see sectionsForMenu in
+   * menuUtils.ts) — distinct from `drinks_only`, which spans ALL drink
+   * types. NOTE: not yet returned by the owner API's menu-list response as
+   * of this writing — confirmed absent from the generated owner-api types;
+   * this field stays optional until that backend gap closes.
+   */
+  menu_type?: string | null;
   item_count: number;
   created_at?: string;
   updated_at?: string;
