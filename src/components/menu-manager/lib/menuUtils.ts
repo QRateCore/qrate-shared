@@ -95,18 +95,41 @@ export function isDrinksMenu(menu: Pick<MenuSummary, 'drinks_only'> | null | und
   return !!menu?.drinks_only;
 }
 
+// ── Wine-menu mode ──────────────────────────────────────────────────────────
+// A menu imported via the Add Menu wizard's wine flow (`menu_type === 'wine'`)
+// gets ONE fixed top-level bucket instead of the 4 food courses OR the full
+// drink-type list — a wine list has no "Starters"/"Mains", and forcing it
+// through the drinks_only path would surface Beer/Cocktails/etc. sections
+// that will always be empty. The owner's own sub-categories (Reds, Reserve
+// Reds, Bubbly, however the source list is organised) nest underneath via the
+// SAME raw_categories mechanism every other bucket already uses — no new
+// nesting logic needed, just a different top-level key.
+//
+// Distinct from `drinks_only` (isDrinksMenu) on purpose: drinks_only is an
+// owner-toggled, destructive mode switch that can apply to any menu and
+// spans every drink type. `menu_type === 'wine'` is set automatically by the
+// wizard for a menu that was imported as a wine list specifically.
+export const WINE_MENU_SECTION: MenuSection = { label: 'Wine', canonical: 'wine_menu', members: ['wine_menu'] };
+
+/** True when this menu was imported as a dedicated wine list. */
+export function isWineMenu(menu: Pick<MenuSummary, 'menu_type'> | null | undefined): boolean {
+  return menu?.menu_type === 'wine';
+}
+
 /**
  * The builder's top-level sections for a given menu.
  *
- * Food menus get the unchanged 4 courses; drinks menus get drink types.
- * `override` accepts the restaurant's own (possibly customised) tree — pass the
- * labels/order from /diner/drink-bubbles when available so the builder and the
- * drinks app cannot disagree. Falls back to the seeded defaults above.
+ * Wine-type menus get the single Wine bucket; food menus get the unchanged 4
+ * courses; drinks_only menus get drink types. `override` accepts the
+ * restaurant's own (possibly customised) drink-type tree — pass the
+ * labels/order from /diner/drink-bubbles when available so the builder and
+ * the drinks app cannot disagree. Falls back to the seeded defaults above.
  */
 export function sectionsForMenu(
-  menu: Pick<MenuSummary, 'drinks_only'> | null | undefined,
+  menu: Pick<MenuSummary, 'drinks_only' | 'menu_type'> | null | undefined,
   override?: MenuSection[] | null,
 ): MenuSection[] {
+  if (isWineMenu(menu)) return [WINE_MENU_SECTION];
   if (!isDrinksMenu(menu)) return MENU_SECTIONS;
   return override && override.length > 0 ? override : DRINK_TYPE_SECTIONS;
 }
@@ -349,12 +372,17 @@ export function buildAssignments(
   menus: MenuSummary[],
 ): Record<string, Record<string, string[]>> {
   const result: Record<string, Record<string, string[]>> = {};
-  // Drinks menus bucket by drink type, not canonical category — seed their
-  // key space accordingly or every placement would be dropped by the
+  // Drinks menus bucket by drink type, not canonical category; wine-type
+  // menus bucket everything under the single Wine key — seed their key
+  // space accordingly or every placement would be dropped by the
   // `!== undefined` guard below.
   const drinksMenuIds = new Set<string>();
+  const wineMenuIds = new Set<string>();
   for (const menu of menus) {
-    if (isDrinksMenu(menu)) {
+    if (isWineMenu(menu)) {
+      wineMenuIds.add(menu.id);
+      result[menu.id] = { [WINE_MENU_SECTION.canonical]: [] };
+    } else if (isDrinksMenu(menu)) {
       drinksMenuIds.add(menu.id);
       result[menu.id] = Object.fromEntries(
         DRINK_TYPE_SECTION_KEYS.map((k) => [k, [] as string[]]),
@@ -367,10 +395,13 @@ export function buildAssignments(
   }
   for (const item of items) {
     for (const assoc of item.menu_associations ?? []) {
-      // On a drinks menu the item's drink type IS its section. An item with no
+      // On a wine-type menu, every item lands in the single Wine bucket. On a
+      // drinks menu the item's drink type IS its section (an item with no
       // type assigned falls into the reserved 'other' bucket rather than
-      // disappearing from the builder entirely.
-      const cats = drinksMenuIds.has(assoc.menu_id)
+      // disappearing from the builder entirely).
+      const cats = wineMenuIds.has(assoc.menu_id)
+        ? [WINE_MENU_SECTION.canonical]
+        : drinksMenuIds.has(assoc.menu_id)
         ? [item.drink_subcategory_key || DRINK_UNCLASSIFIED_KEY]
         : (() => {
             const rawCanon = toCanonical(assoc.category_name ?? item.category);
@@ -410,19 +441,32 @@ export function buildNestedAssignments(
   menus: MenuSummary[],
 ): Record<string, Record<string, Record<string, string[]>>> {
   const result: Record<string, Record<string, Record<string, string[]>>> = {};
+  const wineMenuIds = new Set<string>();
   for (const menu of menus) {
-    result[menu.id] = Object.fromEntries(
-      CANONICAL_CATEGORIES.map((c) => [c, {} as Record<string, string[]>]),
-    );
+    if (isWineMenu(menu)) {
+      wineMenuIds.add(menu.id);
+      result[menu.id] = { [WINE_MENU_SECTION.canonical]: {} as Record<string, string[]> };
+    } else {
+      result[menu.id] = Object.fromEntries(
+        CANONICAL_CATEGORIES.map((c) => [c, {} as Record<string, string[]>]),
+      );
+    }
   }
   for (const item of items) {
     for (const assoc of item.menu_associations ?? []) {
       const menuBuckets = result[assoc.menu_id];
       if (!menuBuckets) continue;
-      const rawCanon = toCanonical(assoc.category_name ?? item.category);
-      const cats = assoc.canonical_categories?.length
-        ? assoc.canonical_categories
-        : rawCanon ? [rawCanon] : [];
+      // Wine-type menus: every item nests under the single Wine key by its
+      // raw sub-category label (below) — same mechanism, different top-level
+      // key. Everything else keeps the existing canonical resolution.
+      const cats = wineMenuIds.has(assoc.menu_id)
+        ? [WINE_MENU_SECTION.canonical]
+        : (() => {
+            const rawCanon = toCanonical(assoc.category_name ?? item.category);
+            return assoc.canonical_categories?.length
+              ? assoc.canonical_categories
+              : rawCanon ? [rawCanon] : [];
+          })();
       const labels = assoc.raw_categories?.length ? assoc.raw_categories : [UNGROUPED_KEY];
       for (const canon of cats) {
         const bucket = menuBuckets[canon];
