@@ -711,6 +711,21 @@ export interface MenuItemDisplay {
    */
   memo?: string | null;
   /**
+   * POS linkage (PDD 2026-08-13). 'confirmed' | 'suggested' | null.
+   *
+   * Only 'confirmed' satisfies the gate — a 'suggested' link is the importer's
+   * unapproved guess and leaves the dish unsellable, so the two must not be
+   * collapsed into a boolean.
+   */
+  pos_link_status?: 'confirmed' | 'suggested' | null;
+  /**
+   * The POS gate's own answer, DERIVED from linkage by
+   * recompute_pos_sellable(). Read-only here: owner intent lives in `active`,
+   * and keeping them separate is what makes un-gating lossless. Absent or true
+   * for every restaurant not on the POS programme.
+   */
+  pos_sellable?: boolean;
+  /**
    * PDD 2026-05-25 overlapping-menu-items — per-menu projections when
    * this dish appears on 2+ concurrently-active menus with differing
    * per-menu attributes (price, Includes, Choose-One). Absent when the
@@ -808,6 +823,14 @@ export interface MenuItemSummary {
    * Edit modal's Add-ons picker lists them with no change to that modal.
    */
   modifier_type_id?: string | null;
+  /**
+   * POS linkage (PDD 2026-08-13), projected by the Food Items summary.
+   * 'confirmed' | 'suggested' | null — only 'confirmed' makes the dish
+   * sellable, so the two link states must not be collapsed to a boolean.
+   */
+  pos_link_status?: 'confirmed' | 'suggested' | null;
+  /** The POS gate's own answer, derived by recompute_pos_sellable(). */
+  pos_sellable?: boolean;
   thumbnail_url?: string | null;
   price?: number | null;
   active: boolean;
