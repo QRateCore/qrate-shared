@@ -65,6 +65,23 @@ interface EditModalProps {
    *  (e.g. food-items page → Add new item → Dish), so a redundant inline
    *  toggle would only invite mistakes. */
   forceDish?: boolean;
+  /**
+   * Opens the POS link picker for this item (PDD 2026-08-31, many-to-one).
+   *
+   * A CALLBACK, not the picker itself: the picker talks to `@qrate/owner-api`,
+   * and this package has no dependency on it — nor should it, since waiter and
+   * admin mount EditModal too and have no business linking POS products. The
+   * owner app owns the modal and hands this down; every other surface passes
+   * nothing and the row simply does not render.
+   */
+  onOpenPosLink?: () => void;
+  /** This item's POS linkage: 'confirmed' | 'suggested' | null. Only a
+   *  CONFIRMED link satisfies the gate — a suggestion is the importer's
+   *  unapproved guess and the dish is still unsellable. */
+  posLinkStatus?: string | null;
+  /** The gate's own answer: whether a diner can actually order this item.
+   *  Can disagree with a confirmed link while the recompute catches up. */
+  posSellable?: boolean;
   /** Dish IDs to pre-select on the Dishes tab (used when creating an addon from a specific dish card). */
   preselectedDishIds?: string[];
   /**
@@ -780,7 +797,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -3810,6 +3827,76 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     {enrichNotice}
                   </div>
                 )}
+
+                {/* POS product link (PDD 2026-08-31). Rendered only when the
+                    host supplies onOpenPosLink — the owner dashboard. Waiter
+                    and admin mount this same modal and pass nothing.
+                    
+                    Placed with the notices above rather than in a tab: on a
+                    POS restaurant an unlinked dish is NOT ORDERABLE AT ALL, so
+                    it belongs where the owner cannot miss it while editing the
+                    dish they think they are publishing. */}
+                {onOpenPosLink && (() => {
+                  const linked = posLinkStatus === 'confirmed';
+                  const suggested = posLinkStatus === 'suggested';
+                  // Three states, not two — a suggestion is the importer's
+                  // unapproved guess and the dish is STILL unsellable.
+                  // Collapsing it into "linked" hides the cheapest fix there is.
+                  const label = linked ? 'Linked' : suggested ? 'Suggested' : 'Not linked';
+                  const tone = linked
+                    ? { fg: '#166534', bg: '#DCFCE7' }
+                    : suggested
+                      ? { fg: '#9A3412', bg: '#FFEDD5' }
+                      : { fg: '#9A3412', bg: '#FFEDD5' };
+                  return (
+                    <div
+                      data-testid="edit-modal-pos-link-row"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px', borderRadius: 6,
+                        background: 'var(--bg2, #f8fafc)',
+                        border: '1px solid var(--border, #e2e8f0)',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+                        POS product
+                      </span>
+                      <span
+                        data-testid="edit-modal-pos-link-status"
+                        data-pos-link={posLinkStatus ?? 'none'}
+                        style={{
+                          fontSize: 11, fontWeight: 700, letterSpacing: '0.02em',
+                          padding: '3px 8px', borderRadius: 999,
+                          color: tone.fg, background: tone.bg, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {label}
+                      </span>
+                      {linked && posSellable === false && (
+                        // Confirmed but still blocked: saying "Linked" alone
+                        // would tell an owner the dish is live when a diner
+                        // cannot order it.
+                        <span style={{ fontSize: 11, color: '#9A3412' }}>
+                          not yet sellable
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onOpenPosLink}
+                        data-testid="edit-modal-pos-link-button"
+                        style={{
+                          marginLeft: 'auto', fontSize: 12, fontWeight: 600,
+                          padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
+                          border: '1px solid var(--border, #e2e8f0)',
+                          background: '#fff', color: 'var(--text)',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {linked || suggested ? 'Change' : 'Link'}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Beverage Profile — owner-editable form for food_tags.beverage.
                     Shows for Beverages-category items only; takes the same
