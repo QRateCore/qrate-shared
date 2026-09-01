@@ -461,6 +461,23 @@ export interface MenuSummary {
   updated_at?: string;
 }
 
+/**
+ * Post-commit background job status for wine short_story/long_story
+ * enrichment — a SEPARATE flow from the Add Menu wizard and the item
+ * editor. Surfaced via WineEnrichmentBanner, polled while `status ===
+ * 'running'`. Absent (null) means no job exists yet for this menu.
+ */
+export type WineEnrichmentStatus = 'running' | 'completed' | 'partial_failure' | 'failed';
+
+export interface WineEnrichmentJob {
+  status: WineEnrichmentStatus;
+  items_total: number;
+  items_enriched: number;
+  items_no_data: number;
+  items_failed: number;
+  last_error: string | null;
+}
+
 export interface MenuCreate {
   name: string;
   is_all_day?: boolean;
