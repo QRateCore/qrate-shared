@@ -79,6 +79,22 @@ interface EditModalProps {
    *  CONFIRMED link satisfies the gate — a suggestion is the importer's
    *  unapproved guess and the dish is still unsellable. */
   posLinkStatus?: string | null;
+  /** WHICH POS product this dish points at, for the row's detail line.
+   *
+   *  The status alone answers "is it linked", never "linked to what" — and a
+   *  dish linked to the WRONG product reads exactly like a correctly-linked
+   *  one, both saying "Linked". An owner reconciling a menu against their till
+   *  cannot spot a mis-link without this.
+   *
+   *  Null when there is no link, and ALSO null when the link points at a
+   *  provider id that has since left the staged catalogue. That second case
+   *  still shows as linked, because it still gates sellability. */
+  posLinkName?: string | null;
+  /** The POS product's price. Already a number — the backend converts the
+   *  NUMERIC column, which would otherwise arrive as a string and throw on
+   *  toFixed. Null is a real state (Clover omits a price for items priced
+   *  entirely by their modifiers) and renders as no price rather than $0.00. */
+  posLinkPrice?: number | null;
   /** The gate's own answer: whether a diner can actually order this item.
    *  Can disagree with a confirmed link while the recompute catches up. */
   posSellable?: boolean;
@@ -797,7 +813,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -3872,6 +3888,45 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       >
                         {label}
                       </span>
+                      {/* WHICH product. Without it "Linked" is unfalsifiable —
+                          a dish pointed at the wrong Clover item renders
+                          identically to a correct one, and the owner can only
+                          find out by opening the picker. Shown for a
+                          SUGGESTION too: that is the name they are being asked
+                          to accept or reject, so hiding it makes the decision
+                          impossible to take from here.
+
+                          The name can be absent while the link exists (the
+                          provider id left the staged catalogue since the last
+                          import). That is worth saying out loud rather than
+                          falling back to the bare badge, because a link to a
+                          product Clover no longer has still blocks the gate. */}
+                      {(linked || suggested) && (
+                        <span
+                          data-testid="edit-modal-pos-link-name"
+                          title={posLinkName ?? undefined}
+                          style={{
+                            fontSize: 12, color: 'var(--text2)', minWidth: 0,
+                            overflow: 'hidden', textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {posLinkName
+                            ? posLinkName
+                            : 'product no longer in the POS catalogue'}
+                          {posLinkName && typeof posLinkPrice === 'number' && (
+                            // Price is what an owner actually reconciles
+                            // against — it is the till's number, and the reason
+                            // to read this line at all.
+                            <span
+                              data-testid="edit-modal-pos-link-price"
+                              style={{ marginLeft: 6, color: 'var(--text3, #94a3b8)' }}
+                            >
+                              ${posLinkPrice.toFixed(2)}
+                            </span>
+                          )}
+                        </span>
+                      )}
                       {linked && posSellable === false && (
                         // Confirmed but still blocked: saying "Linked" alone
                         // would tell an owner the dish is live when a diner

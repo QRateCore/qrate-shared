@@ -729,6 +729,24 @@ export interface MenuItemDisplay {
    */
   pos_link_status?: 'confirmed' | 'suggested' | null;
   /**
+   * WHICH POS product the dish points at, for the editor's "Linked · <name>
+   * ($x.xx)" line. Projected by the SINGLE-item endpoint only — the Food Items
+   * summary carries status alone, because it renders one badge per row across
+   * hundreds of rows and has nowhere to put a name.
+   *
+   * All three are null with no link. `pos_link_name` / `pos_link_price` are
+   * ALSO null when the link points at a provider id that has since left the
+   * staged POS catalogue: the link still exists and still gates sellability,
+   * so the editor says so rather than falling back to a bare badge.
+   *
+   * `pos_link_price` is null for a POS product priced entirely by its
+   * modifiers, which is NOT the same as 0 — Indian Aroma's "Cocktails" really
+   * is $0.00 and must render as such.
+   */
+  pos_link_name?: string | null;
+  pos_link_price?: number | null;
+  pos_link_item_id?: string | null;
+  /**
    * The POS gate's own answer, DERIVED from linkage by
    * recompute_pos_sellable(). Read-only here: owner intent lives in `active`,
    * and keeping them separate is what makes un-gating lossless. Absent or true
@@ -839,6 +857,21 @@ export interface MenuItemSummary {
    * sellable, so the two link states must not be collapsed to a boolean.
    */
   pos_link_status?: 'confirmed' | 'suggested' | null;
+  /**
+   * WHICH POS product the dish points at. Projected by the SINGLE-item
+   * endpoint only, not by the summary: the table renders one badge per row
+   * across hundreds of rows and has nowhere to put a name, while the editor
+   * is where an owner reconciles a dish against their till.
+   *
+   * All three are null with no link. `pos_link_name`/`pos_link_price` are
+   * ALSO null when the link points at a provider id that has since left the
+   * staged catalogue — the link still exists and still gates sellability.
+   * `pos_link_price` is null for a POS product priced entirely by its
+   * modifiers, which is not the same as $0.00.
+   */
+  pos_link_name?: string | null;
+  pos_link_price?: number | null;
+  pos_link_item_id?: string | null;
   /** The POS gate's own answer, derived by recompute_pos_sellable(). */
   pos_sellable?: boolean;
   thumbnail_url?: string | null;
