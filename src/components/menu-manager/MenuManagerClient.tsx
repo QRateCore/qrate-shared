@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRangeSelection } from '../../hooks/useRangeSelection';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, MenuAssociation, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory } from '../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, MenuAssociation, AddonEntry, FoodTags, RawCategorySummary, ServingOption, MenuStructure, MenuSubcategory, WineEnrichmentJob } from '../../types/restaurant';
 import { isSubcategoryV2Enabled } from '../../constants/feature-flags';
 import {
   buildAssignments,
@@ -29,6 +29,7 @@ import {
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
+import WineEnrichmentBanner from './components/WineEnrichmentBanner';
 import { filterItemsByText } from './filterItemsByText';
 import MenuTabBar, { getMenuTabStatus } from './components/MenuTabBar';
 import { CloneMenuModal } from './components/CloneMenuModal';
@@ -437,6 +438,15 @@ interface Props {
    * inline rail. Passing null (the default) is exactly today's behaviour.
    */
   tabBarPortalTarget?: Element | null;
+  /**
+   * Wine-enrichment status/retry — a SEPARATE flow from the wizard and item
+   * editor (PDD: parallelize + batch-commit + status banner, 2026-09-01).
+   * Both optional: owner-webapp wires them to @qrate/owner-api's
+   * ownerWineEnrichmentService; waiter/admin consumers that don't pass them
+   * simply never poll and never render the banner — today's behaviour.
+   */
+  fetchWineEnrichmentStatus?: (menuId: string) => Promise<WineEnrichmentJob | null>;
+  retryWineEnrichment?: (menuId: string) => Promise<void>;
 }
 
 // ── Drag-enter counter ref (prevents flicker on child element crossings) ─────
@@ -468,7 +478,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -558,6 +568,49 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     }
     return initialMenus.find((m) => m.active)?.id ?? initialMenus[0]?.id ?? null;
   });
+
+  // Wine-enrichment status polling — a SEPARATE flow from the wizard and the
+  // item editor. Only polls when the active menu is wine-type AND the
+  // consumer wired the adapter prop (owner-webapp does; waiter/admin don't,
+  // so this is a complete no-op there — same "optional prop, no-op if
+  // absent" pattern as every other injected callback on this component).
+  const [wineEnrichmentJob, setWineEnrichmentJob] = useState<WineEnrichmentJob | null>(null);
+  const activeMenuForEnrichment = menus.find((m) => m.id === activeMenuId) ?? null;
+  useEffect(() => {
+    if (!fetchWineEnrichmentStatus || !activeMenuForEnrichment || activeMenuForEnrichment.menu_type !== 'wine') {
+      setWineEnrichmentJob(null);
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      try {
+        const job = await fetchWineEnrichmentStatus(activeMenuForEnrichment.id);
+        if (cancelled) return;
+        setWineEnrichmentJob(job);
+        if (job && job.status === 'running') {
+          timer = setTimeout(poll, 7000);
+        }
+      } catch {
+        // Transient poll failure — try again next tick rather than getting
+        // stuck; no toast, matching the wizard's own polling posture.
+        if (!cancelled) timer = setTimeout(poll, 7000);
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [fetchWineEnrichmentStatus, activeMenuForEnrichment?.id, activeMenuForEnrichment?.menu_type]);
+
+  const handleRetryWineEnrichment = useCallback(async () => {
+    if (!retryWineEnrichment || !activeMenuForEnrichment) return;
+    await retryWineEnrichment(activeMenuForEnrichment.id);
+    // Optimistic flip to 'running' so the banner doesn't flash the old
+    // failed state between the click and the next poll tick reconciling it.
+    setWineEnrichmentJob((prev) => (prev ? { ...prev, status: 'running' } : prev));
+  }, [retryWineEnrichment, activeMenuForEnrichment]);
   // STR-858 wall-clock-live default (MOBILE only) — the initializer picks the
   // first ENABLED menu, but on a phone mid-service the owner expects to open on
   // the menu being SERVED right now. Once (post-hydration, when isMobile
@@ -3182,6 +3235,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           <MenuBuilder
             items={items}
             menus={menus}
+            wineEnrichmentJob={wineEnrichmentJob}
+            onRetryWineEnrichment={retryWineEnrichment ? handleRetryWineEnrichment : undefined}
             assignments={effectiveAssignments}
             junctionSettings={junctionSettings}
             activeMenuId={activeMenuId}

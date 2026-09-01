@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
+import WineEnrichmentBanner from './WineEnrichmentBanner';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
@@ -165,6 +166,13 @@ interface MenuBuilderProps {
    *  banner pill on the owner /owner/menu page. Empty filtered buckets still
    *  render their header but show "No items missing price". */
   missingPriceFilter?: boolean;
+  /**
+   * Wine-enrichment status/retry — a SEPARATE flow from the wizard and item
+   * editor. Both optional; absent means the banner never renders (today's
+   * behaviour for waiter/admin consumers of this package).
+   */
+  wineEnrichmentJob?: import('../../../types/restaurant').WineEnrichmentJob | null;
+  onRetryWineEnrichment?: () => Promise<void> | void;
 }
 
 // ── GroupingChip ──────────────────────────────────────────────────────────────
@@ -2416,6 +2424,8 @@ export default function MenuBuilder({
   bulkSelection,
   onToggleBulkSelection,
   onOpenBulkPanel,
+  wineEnrichmentJob = null,
+  onRetryWineEnrichment,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -2575,6 +2585,10 @@ export default function MenuBuilder({
             </button>
           )}
         </div>
+      )}
+
+      {onRetryWineEnrichment && (
+        <WineEnrichmentBanner job={wineEnrichmentJob} onRetry={onRetryWineEnrichment} />
       )}
 
       {/* Category buckets. `scrollbar-gutter: stable` reserves the scrollbar
