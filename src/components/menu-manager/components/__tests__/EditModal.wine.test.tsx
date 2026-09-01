@@ -142,6 +142,8 @@ describe('EditModal wine section — rendering', () => {
     expect(screen.getByTestId('beverage-dish-pairing-red_meat')).toBeInTheDocument();
     expect(screen.getByTestId('beverage-dish-pairing-spiced')).toBeInTheDocument();
     expect(screen.getByTestId('beverage-input-tasting-note')).toBeInTheDocument();
+    expect(screen.getByTestId('beverage-input-short-story')).toBeInTheDocument();
+    expect(screen.getByTestId('beverage-input-long-story')).toBeInTheDocument();
   });
 
   it('does not render the wine section for a non-wine beverage', () => {
@@ -153,6 +155,8 @@ describe('EditModal wine section — rendering', () => {
     expect(screen.queryByTestId('beverage-input-producer')).not.toBeInTheDocument();
     expect(screen.queryByTestId('beverage-scale-body')).not.toBeInTheDocument();
     expect(screen.queryByTestId('beverage-input-tasting-note')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('beverage-input-short-story')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('beverage-input-long-story')).not.toBeInTheDocument();
   });
 
   it('hydrates identity inputs from the item wine columns', () => {
@@ -220,6 +224,35 @@ describe('EditModal wine section — rendering', () => {
     expect(screen.getByTestId('beverage-tasting-note-counter').textContent).toBe('0/160');
     await user.type(note, 'Bold and structured');
     expect(screen.getByTestId('beverage-tasting-note-counter').textContent).toBe('19/160');
+  });
+
+  it('shows live character counters on short story (max 300) and long story (max 3000)', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const short = screen.getByTestId('beverage-input-short-story') as HTMLTextAreaElement;
+    const long = screen.getByTestId('beverage-input-long-story') as HTMLTextAreaElement;
+    expect(short.maxLength).toBe(300);
+    expect(long.maxLength).toBe(3000);
+    expect(screen.getByTestId('beverage-short-story-counter').textContent).toBe('0/300');
+    expect(screen.getByTestId('beverage-long-story-counter').textContent).toBe('0/3000');
+    await user.type(short, 'A boutique estate.');
+    expect(screen.getByTestId('beverage-short-story-counter').textContent).toBe('18/300');
+  });
+
+  it('shows a story-source badge when set, hides it when absent', () => {
+    renderModal({
+      item: makeWineItem({
+        food_tags: {
+          beverage: { beverage_type: 'wine', story_source: 'llm_knowledge' },
+        } as FoodTags,
+      }),
+    });
+    expect(screen.getByTestId('wine-story-source-badge').textContent).toBe('Auto-filled');
+  });
+
+  it('renders no story-source badge when story_source is absent', () => {
+    renderModal();
+    expect(screen.queryByTestId('wine-story-source-badge')).not.toBeInTheDocument();
   });
 });
 
@@ -384,6 +417,57 @@ describe('EditModal wine section — save payload shape', () => {
     const calls = await save(service);
     const patchBev = calls[1][1].beverage as Record<string, unknown>;
     expect(patchBev.tasting_note).toBe('Cherry and tar, firm tannin.');
+  });
+
+  it('short_story and long_story ride beverage.{short_story,long_story} on both channels', async () => {
+    const user = userEvent.setup();
+    const { service } = renderModal();
+    await user.type(screen.getByTestId('beverage-input-short-story'), 'A boutique Piedmont estate.');
+    await user.type(screen.getByTestId('beverage-input-long-story'), 'Founded in 1920 by...');
+    const calls = await save(service);
+    const mainBev = (calls[0][1].food_tags as FoodTags).beverage as Record<string, unknown>;
+    expect(mainBev.short_story).toBe('A boutique Piedmont estate.');
+    expect(mainBev.long_story).toBe('Founded in 1920 by...');
+    const patchBev = calls[1][1].beverage as Record<string, unknown>;
+    expect(patchBev.short_story).toBe('A boutique Piedmont estate.');
+    expect(patchBev.long_story).toBe('Founded in 1920 by...');
+  });
+
+  it('clearing short_story/long_story drops the keys rather than sending empty strings', async () => {
+    const { service } = renderModal({
+      item: makeWineItem({
+        food_tags: {
+          beverage: {
+            beverage_type: 'wine',
+            short_story: 'Old story.',
+            long_story: 'Old long story.',
+          },
+        } as FoodTags,
+      }),
+    });
+    fireEvent.change(screen.getByTestId('beverage-input-short-story'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('beverage-input-long-story'), { target: { value: '' } });
+    const calls = await save(service);
+    const mainBev = (calls[0][1].food_tags as FoodTags).beverage as Record<string, unknown>;
+    expect(mainBev).not.toHaveProperty('short_story');
+    expect(mainBev).not.toHaveProperty('long_story');
+  });
+
+  it('does not send story_source from this form — provenance is server-owned', async () => {
+    const user = userEvent.setup();
+    const { service } = renderModal({
+      item: makeWineItem({
+        food_tags: {
+          beverage: { beverage_type: 'wine', story_source: 'menu_source' },
+        } as FoodTags,
+      }),
+    });
+    await user.type(screen.getByTestId('beverage-input-short-story'), 'Edited by owner.');
+    const calls = await save(service);
+    const mainBev = (calls[0][1].food_tags as FoodTags).beverage as Record<string, unknown>;
+    // Preserved via the key-preserving spread, not re-sent as a form-owned
+    // field — editing short_story must not silently flip provenance.
+    expect(mainBev.story_source).toBe('menu_source');
   });
 
   it('non-wine beverages save in a single PUT (no wine follow-up)', async () => {

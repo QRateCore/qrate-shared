@@ -54,6 +54,16 @@ export interface BeverageTags {
   dish_pairings?: string[];
   /** Sommelier tasting note, ≤160 chars (server-enforced). */
   tasting_note?: string;
+  /** Producer/winery backstory, ≤300 chars (server-enforced). Populated
+   *  from the source menu when it prints one, or by the background
+   *  wine-enrichment pass otherwise — see story_source for provenance. */
+  short_story?: string;
+  /** Producer/winery backstory, ≤3000 chars (server-enforced). */
+  long_story?: string;
+  /** Provenance for short_story/long_story: 'menu_source' (transcribed
+   *  from the uploaded menu), 'llm_knowledge' (background enrichment,
+   *  model's own knowledge), or 'web_lookup' (not yet implemented). */
+  story_source?: 'menu_source' | 'llm_knowledge' | 'web_lookup' | null;
 }
 
 /** Per-item review state for allergens / dietary restrictions.
