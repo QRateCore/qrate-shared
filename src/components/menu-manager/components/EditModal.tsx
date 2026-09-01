@@ -353,6 +353,7 @@ const BEVERAGE_MERGE_KEYS = new Set([
   'wine_sweetness', 'wine_body', 'wine_pairing', 'flavor_notes',
   'key_ingredients', 'served', 'strength', 'tannin', 'acidity', 'oak',
   'taste_scales', 'dish_pairings', 'tasting_note',
+  'short_story', 'long_story', 'story_source',
 ]);
 
 // ── Allergen / dietary constants (mirrors owner-dietary-service) ───────────────
@@ -1934,6 +1935,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           : [];
         setOrDrop('dish_pairings', pairings.length ? pairings : undefined);
         setOrDrop('tasting_note', bevDraft.tasting_note?.trim().slice(0, 160) || undefined);
+        setOrDrop('short_story', bevDraft.short_story?.trim().slice(0, 300) || undefined);
+        setOrDrop('long_story', bevDraft.long_story?.trim().slice(0, 3000) || undefined);
+        // story_source is NOT form-owned — no setOrDrop call. It's set by
+        // the backend (menu import / enrichment Lambda), never by this
+        // form, so the key-preserving spread above is what keeps it
+        // intact; editing the story text here doesn't touch provenance.
       }
       if (Object.keys(norm).length > 0) {
         foodTags.beverage = norm;
@@ -3874,6 +3881,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   const tasteScales = bevDraft.taste_scales ?? {};
                   const dishPairings = Array.isArray(bevDraft.dish_pairings) ? bevDraft.dish_pairings : [];
                   const tastingNote = bevDraft.tasting_note ?? '';
+                  const shortStory = bevDraft.short_story ?? '';
+                  const longStory = bevDraft.long_story ?? '';
+                  const storySource = bevDraft.story_source ?? null;
+                  const storySourceLabel = storySource === 'menu_source'
+                    ? 'From menu'
+                    : storySource === 'llm_knowledge'
+                    ? 'Auto-filled'
+                    : storySource === 'web_lookup'
+                    ? 'From web lookup'
+                    : null;
                   const setTasteScale = (axis: 'body' | 'sweetness' | 'tannin' | 'acidity' | 'alcohol', v: number) => {
                     setBevDraft((prev) => ({
                       ...prev,
@@ -4251,6 +4268,68 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'right', marginTop: 2 }}
                             >
                               {tastingNote.length}/160
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Wine producer/winery story — short (≤300 chars) and
+                            long (≤3000 chars) forms, server-enforced. Populated
+                            from the menu itself when printed, or filled in
+                            later by the background wine-enrichment pass;
+                            storySourceLabel surfaces which (read-only — the
+                            owner's own edit always wins on next save, but we
+                            never guess a new provenance value client-side). */}
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-short-story-section">
+                            <label style={fieldLabel}>
+                              Short story
+                              {storySourceLabel && (
+                                <span
+                                  data-testid="wine-story-source-badge"
+                                  style={{
+                                    marginLeft: 6, fontSize: 10, fontWeight: 400,
+                                    color: 'var(--text3)', textTransform: 'uppercase',
+                                  }}
+                                >
+                                  {storySourceLabel}
+                                </span>
+                              )}
+                            </label>
+                            <textarea
+                              data-testid="beverage-input-short-story"
+                              value={shortStory}
+                              maxLength={300}
+                              rows={2}
+                              placeholder="A one-to-two-sentence producer or winery backstory…"
+                              onChange={(e) => updateBev('short_story', e.target.value)}
+                              style={{ ...inputStyle, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }}
+                            />
+                            <div
+                              data-testid="beverage-short-story-counter"
+                              style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'right', marginTop: 2 }}
+                            >
+                              {shortStory.length}/300
+                            </div>
+                          </div>
+                        )}
+
+                        {bevType === 'wine' && (
+                          <div data-testid="wine-long-story-section">
+                            <label style={fieldLabel}>Long story</label>
+                            <textarea
+                              data-testid="beverage-input-long-story"
+                              value={longStory}
+                              maxLength={3000}
+                              rows={6}
+                              placeholder="A longer producer or winery backstory — history, terroir, winemaking philosophy…"
+                              onChange={(e) => updateBev('long_story', e.target.value)}
+                              style={{ ...inputStyle, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }}
+                            />
+                            <div
+                              data-testid="beverage-long-story-counter"
+                              style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'right', marginTop: 2 }}
+                            >
+                              {longStory.length}/3000
                             </div>
                           </div>
                         )}
