@@ -3096,8 +3096,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 relocated out of the Food Tags tab into the rail for dishes
                 (redesign). Same DietaryMultiSelect instances / state / testids;
                 add-ons keep these in the Food Tags tab (they have no rail), so
-                exactly one copy renders per mode — no duplicate testids. */}
-            {dietaryTagService && restaurantId && (
+                exactly one copy renders per mode — no duplicate testids.
+                Hidden for wine items — dietary/allergen info doesn't apply. */}
+            {dietaryTagService && restaurantId && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (
               <div
                 data-testid="dietary-info-card"
                 style={{
@@ -3461,8 +3462,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     gates "Add to order" and is only meaningful while the picker
                     is shown — disabled + greyed when visibility is off (the
                     backend force-reverts it to false in that case). Hidden for
-                    add-ons (never reach composition page) and Desserts. */}
-                {!isAddon && category !== 'Desserts' && (
+                    add-ons (never reach composition page), Desserts, and wine
+                    items (spice doesn't apply). */}
+                {!isAddon && category !== 'Desserts' && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (
                   <div
                     style={{
                       display: 'flex',
@@ -3577,8 +3579,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     options, so we mirror that state in the UI. Mobile-
                     friendly: an inline hint below the toggle (NOT just a
                     tooltip) per Plan v2 UX-Reviewer tactical condition.
-                    Hidden for add-ons (an add-on cannot be BYO itself). */}
-                {!isAddon && (() => {
+                    Hidden for add-ons (an add-on cannot be BYO itself) and
+                    wine items (BYO doesn't apply). */}
+                {!isAddon && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (() => {
                   const hasGroupings = (groupingsCount ?? 0) > 0;
                   const toggleDisabled = !hasGroupings;
                   return (

@@ -29,6 +29,7 @@ import type {
   MenuManagerService,
   FoodTags,
 } from '../../../../types/restaurant';
+import type { DietaryTagService } from '../EditModal';
 
 vi.mock('../../../../utils/imageProcessing', () => ({
   processImageForUpload: vi.fn(async (f: File) => f),
@@ -96,11 +97,13 @@ function renderModal(config: {
   item?: MenuItemDisplay;
   service?: MenuManagerService;
   onComplete?: (u: MenuItemDisplay & { _deleted?: boolean }) => void;
+  dietaryTagService?: DietaryTagService;
 } = {}) {
   const {
     item = makeWineItem(),
     service = makeService(),
     onComplete = vi.fn(),
+    dietaryTagService,
   } = config;
   render(
     <MenuManagerServiceProvider value={service}>
@@ -111,10 +114,19 @@ function renderModal(config: {
         allItems={[]}
         onClose={vi.fn()}
         onComplete={onComplete}
+        dietaryTagService={dietaryTagService}
       />
     </MenuManagerServiceProvider>,
   );
   return { service, onComplete };
+}
+
+function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): DietaryTagService {
+  return {
+    setItemTags: vi.fn().mockResolvedValue(undefined),
+    markReviewed: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
 }
 
 async function save(service: MenuManagerService) {
@@ -253,6 +265,33 @@ describe('EditModal wine section — rendering', () => {
   it('renders no story-source badge when story_source is absent', () => {
     renderModal();
     expect(screen.queryByTestId('wine-story-source-badge')).not.toBeInTheDocument();
+  });
+});
+
+describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
+  it('hides Show spice picker, Require a spice selection, and Build Your Own toggles for a wine item', () => {
+    renderModal();
+    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('byo-toggle')).not.toBeInTheDocument();
+  });
+
+  it('hides the Dietary Info card for a wine item', () => {
+    renderModal({ dietaryTagService: makeDietaryTagService() });
+    expect(screen.queryByTestId('dietary-info-card')).not.toBeInTheDocument();
+  });
+
+  it('still shows the spice, BYO, and dietary info controls for a non-wine beverage', () => {
+    renderModal({
+      item: makeWineItem({
+        food_tags: { beverage: { beverage_type: 'beer', alcoholic: true } } as FoodTags,
+      }),
+      dietaryTagService: makeDietaryTagService(),
+    });
+    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('spice-required-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('byo-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('dietary-info-card')).toBeInTheDocument();
   });
 });
 
