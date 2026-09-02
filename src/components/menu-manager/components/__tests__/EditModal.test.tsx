@@ -159,6 +159,8 @@ interface RenderConfig {
    * EditModal only renders the Groupings tab when this is non-null.
    */
   groupingsSlot?: React.ReactNode;
+  /** 2026-09-02 — Pairings tab content (the recommendations grouping). */
+  pairingsSlot?: React.ReactNode;
   /** PDD 2026-05-26 — drives the BYO toggle's enabled/disabled state. */
   groupingsCount?: number;
 }
@@ -184,6 +186,7 @@ function renderModal(config: RenderConfig = {}) {
     onComplete = vi.fn(),
     heatLabels,
     groupingsSlot,
+    pairingsSlot,
     groupingsCount,
   } = config;
 
@@ -209,6 +212,7 @@ function renderModal(config: RenderConfig = {}) {
         onComplete={onComplete}
         heatLabels={heatLabels}
         groupingsSlot={groupingsSlot}
+        pairingsSlot={pairingsSlot}
         groupingsCount={groupingsCount}
       />
     </MenuManagerServiceProvider>,
@@ -2117,5 +2121,65 @@ describe('EditModal — item type is context-driven (no type toggle)', () => {
   it('renders no type toggle when forceAddon pins the type', () => {
     renderModal({ item: makeAddonItem(), isNewItem: false, forceAddon: true });
     expect(screen.queryByTestId('type-toggle')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Modifiers / Pairings split (2026-09-02)
+// ---------------------------------------------------------------------------
+
+describe('EditModal — Modifiers / Pairings tabs', () => {
+  const groupingsSlot = <div data-testid="test-groupings-slot">modifiers</div>;
+  const pairingsSlot = <div data-testid="test-pairings-slot">pairings</div>;
+
+  it('labels the groupings tab "Modifiers", not "Groupings"', () => {
+    renderModal({ item: makeDishItem({ id: 'd-1' }), groupingsSlot });
+    expect(screen.getByTestId('tab-groupings')).toHaveTextContent('Modifiers');
+    expect(screen.getByTestId('tab-groupings')).not.toHaveTextContent('Groupings');
+  });
+
+  it('keeps the tab ID as "groupings" so existing selectors survive the rename', () => {
+    // The rename is cosmetic on purpose: E2E specs, canaries and the mobile
+    // accordion's expanded-section state all key off `groupings`.
+    renderModal({ item: makeDishItem({ id: 'd-2' }), groupingsSlot });
+    expect(screen.getByTestId('tab-groupings')).toBeInTheDocument();
+    expect(screen.queryByTestId('tab-modifiers')).not.toBeInTheDocument();
+  });
+
+  it('adds a Pairings tab when pairingsSlot is provided', () => {
+    renderModal({ item: makeDishItem({ id: 'd-3' }), groupingsSlot, pairingsSlot });
+    expect(screen.getByTestId('tab-pairings')).toHaveTextContent('Pairings');
+  });
+
+  it('omits the Pairings tab when pairingsSlot is absent', () => {
+    // Consumers that have not split their slots keep the pre-split layout
+    // rather than gaining an empty tab.
+    renderModal({ item: makeDishItem({ id: 'd-4' }), groupingsSlot });
+    expect(screen.queryByTestId('tab-pairings')).not.toBeInTheDocument();
+  });
+
+  it('renders Modifiers content first and swaps to Pairings content on click', async () => {
+    const user = userEvent.setup();
+    renderModal({ item: makeDishItem({ id: 'd-5' }), groupingsSlot, pairingsSlot });
+
+    await user.click(screen.getByTestId('tab-groupings'));
+    expect(screen.getByTestId('test-groupings-slot')).toBeInTheDocument();
+    expect(screen.queryByTestId('test-pairings-slot')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('tab-pairings'));
+    expect(screen.getByTestId('test-pairings-slot')).toBeInTheDocument();
+    // The two surfaces are mutually exclusive — rendering both at once would
+    // mount two GroupingsSections against the same dish and double every
+    // list/reload request.
+    expect(screen.queryByTestId('test-groupings-slot')).not.toBeInTheDocument();
+  });
+
+  it('does not offer Pairings without a Modifiers slot', () => {
+    // Both slots are gated on the same "saved, non-addon dish" condition, so
+    // pairings-without-modifiers should not arise; assert the tab list stays
+    // coherent rather than growing an orphan tab.
+    renderModal({ item: makeDishItem({ id: 'd-6' }), pairingsSlot });
+    expect(screen.queryByTestId('tab-groupings')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-pairings')).not.toBeInTheDocument();
   });
 });

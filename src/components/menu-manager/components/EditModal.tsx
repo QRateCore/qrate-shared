@@ -191,6 +191,21 @@ interface EditModalProps {
    */
   groupingsSlot?: ReactNode;
   /**
+   * Optional render-slot for the Pairings tab. When provided, a "Pairings"
+   * tab is added to the tab bar after "Modifiers" and the slot's content is
+   * rendered inside it.
+   *
+   * Pairings is the dish-to-dish `recommendations` default grouping, split
+   * out of the Modifiers tab (2026-09-02). The two answer different
+   * questions — "what can the diner change about THIS dish" versus "what
+   * other dish goes with it" — and only the first is a modifier. Consumers
+   * pass a GroupingsSection scoped to `surface="pairings"`.
+   *
+   * Optional so a consumer that hasn't split its slot yet keeps the previous
+   * single-tab behaviour rather than losing the recommendations grouping.
+   */
+  pairingsSlot?: ReactNode;
+  /**
    * Optional render-slot for the Placements tab's overlap surface. When
    * supplied, the node is rendered above the per-menu placement cards
    * inside the Placements tab content area. Consumers (owner-webapp)
@@ -814,7 +829,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1262,7 +1277,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
   // Tab state — Food Tags | Placements (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'dishes' | 'performance'>('food_tags');
+  const [activeTab, setActiveTab] = useState<'food_tags' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'pairings' | 'dishes' | 'performance'>('food_tags');
 
   // Mobile accordion (STR-858) — which sections are expanded on the mobile
   // layout. Desktop ignores this entirely (it uses the tab bar + activeTab).
@@ -1279,7 +1294,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       else next.add(id);
       return next;
     });
-    if (id === 'food_tags' || id === 'placements' || id === 'groupings' || id === 'dishes' || id === 'performance') {
+    if (id === 'food_tags' || id === 'placements' || id === 'groupings' || id === 'pairings' || id === 'dishes' || id === 'performance') {
       setActiveTab(id);
     }
   }, []);
@@ -3712,8 +3727,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               // the second variant is the practical-zero edge case.
               : (isNewItem
                 ? (['food_tags'] as const)
+                // 2026-09-02: 'groupings' now renders as "Modifiers" and
+                // carries only the modifier surface; the recommendations
+                // default grouping moved to its own 'pairings' tab. The tab
+                // ID stays 'groupings' so existing testids, mobile accordion
+                // state and canary selectors keep working — only the label
+                // and the slot's contents changed.
                 : (groupingsSlot
-                  ? (['food_tags', 'placements', 'groupings', 'performance'] as const)
+                  ? (pairingsSlot
+                    ? (['food_tags', 'placements', 'groupings', 'pairings', 'performance'] as const)
+                    : (['food_tags', 'placements', 'groupings', 'performance'] as const))
                   : (['food_tags', 'placements', 'performance'] as const)))
             ).map((tab) => {
               const isActive = activeTab === tab;
@@ -3724,10 +3747,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   : tab === 'placements'
                     ? `Menus${placementsCount > 0 ? ` (${placementsCount})` : ''}`
                     : tab === 'groupings'
-                      ? 'Groupings'
-                      : tab === 'dishes'
-                        ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                        : 'Performance';
+                      ? 'Modifiers'
+                      : tab === 'pairings'
+                        ? 'Pairings'
+                        : tab === 'dishes'
+                          ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
+                          : 'Performance';
               return (
                 <button
                   key={tab}
@@ -5272,12 +5297,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             </section>
           )}
 
-          {/* ── Groupings tab (BYO dishes — content provided by consumer) */}
+          {/* ── Modifiers tab (content provided by consumer) ──────────
+              Tab ID remains 'groupings' — see the tab-list comment above. */}
           {isMobile && !isAddon && !isNewItem && groupingsSlot && (
             <MobileAccordionHeader
               id="groupings"
-              title="Groupings"
-              subtitle="Add-ons & recommendations"
+              title="Modifiers"
+              subtitle="Add-ons & choices the diner can make"
               open={expandedSections.has('groupings')}
               onToggle={toggleSection}
             />
@@ -5285,6 +5311,22 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {(isMobile ? expandedSections.has('groupings') : activeTab === 'groupings') && groupingsSlot && (
             <section style={{ marginBottom: 4 }}>
               {groupingsSlot}
+            </section>
+          )}
+
+          {/* ── Pairings tab (dish-to-dish recommendations) ───────────── */}
+          {isMobile && !isAddon && !isNewItem && pairingsSlot && (
+            <MobileAccordionHeader
+              id="pairings"
+              title="Pairings"
+              subtitle="Dishes recommended alongside this one"
+              open={expandedSections.has('pairings')}
+              onToggle={toggleSection}
+            />
+          )}
+          {(isMobile ? expandedSections.has('pairings') : activeTab === 'pairings') && pairingsSlot && (
+            <section style={{ marginBottom: 4 }}>
+              {pairingsSlot}
             </section>
           )}
 

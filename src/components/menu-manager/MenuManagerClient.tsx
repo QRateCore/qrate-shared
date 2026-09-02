@@ -381,6 +381,17 @@ interface Props {
     isNewItem: boolean;
   }) => ReactNode;
   /**
+   * Render-slot for the EditModal's Pairings tab — the dish-to-dish
+   * `recommendations` grouping, split out of Modifiers (2026-09-02).
+   * Same contract as `groupingsSlot`: return `undefined` to suppress the
+   * tab for a given item. Omitting the prop entirely keeps the pre-split
+   * single-tab layout.
+   */
+  pairingsSlot?: (handlers: {
+    item: MenuItemDisplay;
+    isNewItem: boolean;
+  }) => ReactNode;
+  /**
    * When true, the EditModal opens inside the same right-side drawer chrome
    * the Food Item Library uses (`food-library-drawer-overlay` +
    * `food-library-drawer` from owner-webapp globals). EditModal renders in
@@ -490,7 +501,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -2969,6 +2980,14 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             groupingsSlot={
               groupingsSlot
                 ? groupingsSlot({
+                    item: editItem,
+                    isNewItem: newlyCreatedItemIdRef.current === editItemId,
+                  })
+                : undefined
+            }
+            pairingsSlot={
+              pairingsSlot
+                ? pairingsSlot({
                     item: editItem,
                     isNewItem: newlyCreatedItemIdRef.current === editItemId,
                   })
