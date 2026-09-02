@@ -132,6 +132,18 @@ interface MenuBuilderProps {
    * per-menu sides UI (e.g. unit tests, waiter-webapp).
    */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  /**
+   * Per-restaurant `menu_include_zones` feature flag (2026-09-02). When
+   * false, the two per-menu drop zones — "Includes All" (sides_and) and
+   * "Includes one by choice" (sides_or) — are omitted from the expanded
+   * dish row; the row still renders its attributes, and course /
+   * sub-section collapse is unaffected.
+   *
+   * Default TRUE, and that default is load-bearing: this package is
+   * consumed by owner, waiter and admin, so `undefined` must mean
+   * "unchanged" for every consumer that has not wired the flag.
+   */
+  showIncludeZones?: boolean;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
@@ -707,6 +719,7 @@ function MenuItemRow({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  showIncludeZones = true,
   onConfirmIncludeDrop,
   onDragStart,
   onDragEnd,
@@ -750,6 +763,9 @@ function MenuItemRow({
   showAddGrouping?: boolean;
   /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to desktop ItemModifierZones. */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  /** `menu_include_zones` flag — when false the desktop ItemModifierZones
+   *  block is not rendered at all. Default true. */
+  showIncludeZones?: boolean;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
@@ -1546,7 +1562,7 @@ function MenuItemRow({
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
                 showRecommendations={showRecommendations}
               />
-            ) : (
+            ) : showIncludeZones ? (
               <ItemModifierZones
                 parent={item}
                 itemsById={itemsById}
@@ -1554,7 +1570,7 @@ function MenuItemRow({
                 perMenuSides={perMenuSides}
                 onConfirmIncludeDrop={onConfirmIncludeDrop}
               />
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -1663,6 +1679,7 @@ function CategoryBucket({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  showIncludeZones = true,
   onConfirmIncludeDrop,
   isDragOver,
   dragActive = false,
@@ -1720,6 +1737,8 @@ function CategoryBucket({
   showAddGrouping?: boolean;
   /** PDD 2026-05-15 v2 — per-menu sides adapter forwarded to MenuItemRow → desktop ItemModifierZones. */
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
+  /** `menu_include_zones` flag — forwarded to MenuItemRow. Default true. */
+  showIncludeZones?: boolean;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   isDragOver: boolean;
   /** True while a drag is in progress anywhere — drives always-visible drop hints. */
@@ -2143,6 +2162,7 @@ function CategoryBucket({
                   showRecommendations={showRecommendations}
                   showAddGrouping={showAddGrouping}
                   perMenuSides={perMenuSides}
+                  showIncludeZones={showIncludeZones}
                   onConfirmIncludeDrop={onConfirmIncludeDrop}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
@@ -2412,6 +2432,7 @@ export default function MenuBuilder({
   showRecommendations = true,
   showAddGrouping = true,
   perMenuSides,
+  showIncludeZones = true,
   onConfirmIncludeDrop,
   scrollToItemId,
   onScrollComplete,
@@ -2650,6 +2671,7 @@ export default function MenuBuilder({
                 showRecommendations={showRecommendations}
                 showAddGrouping={showAddGrouping}
                 perMenuSides={perMenuSides}
+                showIncludeZones={showIncludeZones}
                 onConfirmIncludeDrop={onConfirmIncludeDrop}
                 isDragOver={isDragOverBucket}
                 dragActive={dragging !== null}

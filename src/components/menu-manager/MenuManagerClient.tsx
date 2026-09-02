@@ -152,6 +152,18 @@ interface Props {
    */
   perMenuSides?: import('./components/ItemModifierZones').PerMenuSidesAdapter;
   /**
+   * Per-restaurant `menu_include_zones` feature flag (2026-09-02). When
+   * false, the two per-menu drop zones — "Includes All" (sides_and) and
+   * "Includes one by choice" (sides_or) — are omitted from the expanded
+   * dish row. Nothing else in the row changes: attributes still render,
+   * and course / sub-section collapse is untouched.
+   *
+   * Default TRUE, deliberately: this package is a submodule shared by
+   * owner, waiter and admin, so an unwired consumer (`undefined`) must
+   * keep its existing behaviour.
+   */
+  showIncludeZones?: boolean;
+  /**
    * Off-menu drop gate for Includes (sides_and) / Choose-One (sides_or)
    * zones. PDD 2026-05-20 v2 — when the dropped item is not on the
    * current menu, the consumer pops the same category-selection modal
@@ -478,7 +490,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3174,6 +3186,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onConfirmRecommendationDrop,
             onConfirmIncludeDrop,
             perMenuSides,
+            showIncludeZones,
             scrollToItemId,
             onScrollComplete: () => setScrollToItemId(null),
           }}
@@ -3282,6 +3295,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showRecommendations={showRecommendations}
             showAddGrouping={showAddGrouping}
             perMenuSides={perMenuSides}
+            showIncludeZones={showIncludeZones}
             missingPriceFilter={missingPriceFilter}
             bulkSelectionEnabled={bulkMenuActionsEnabled}
             bulkSelection={bulkMenuSelection}
