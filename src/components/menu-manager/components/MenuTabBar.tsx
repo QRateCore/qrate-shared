@@ -241,8 +241,21 @@ export default function MenuTabBar({
 
   return (
     <div
+      // `shrink-0` here (compact mode) was forcing this wrapper to its
+      // max-content width -- the sum of every tab button -- inside
+      // .owner-topbar-rail (flex: 1 1 auto; overflow: hidden). Since the
+      // wrapper refused to shrink, the inner overflow-x-auto region below
+      // never actually became narrower than its content, so it never had
+      // anything to scroll: the rail's own overflow:hidden silently clipped
+      // the excess instead. Dropping shrink-0 lets this wrapper compress to
+      // whatever width the rail actually allocates it, so the inner
+      // `flex-1 min-w-0 overflow-x-auto` div (line below) becomes the real
+      // scrollable viewport, matching book-keeping/page.tsx's tab-strip
+      // pattern. Non-compact mode is a different layout context (its own
+      // page, not squeezed into a shared top-bar rail) and isn't affected
+      // by this bug, so it's left as-is.
       className={compact
-        ? 'flex items-stretch shrink-0 min-w-0'
+        ? 'flex items-stretch min-w-0'
         : 'flex items-stretch border-b border-[var(--border)] shrink-0'}
       // Match the food-library tab strip: no white background — sit on the
       // grey page surface so the active-tab brand-orange underline reads
@@ -252,7 +265,7 @@ export default function MenuTabBar({
       style={compact ? undefined : { background: 'var(--bg, #f9fafb)' }}
     >
       <div
-        className="flex items-stretch overflow-x-auto flex-1 min-w-0"
+        className="flex items-stretch overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={compact ? { gap: 2, paddingLeft: 0 } : { gap: 4, paddingLeft: 8 }}
         data-testid="menu-tab-bar"
       >

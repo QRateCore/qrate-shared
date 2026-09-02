@@ -138,12 +138,13 @@ describe('<MenuTabBar />', () => {
     onEditMenu: (id: string) => void;
     onCreateMenu: (name: string) => Promise<void>;
     onCloneMenu: (() => void) | undefined;
+    compact: boolean;
   }> = {}) {
     const onTabChange = overrides.onTabChange ?? vi.fn();
     const onEditMenu = overrides.onEditMenu ?? vi.fn();
     const onCreateMenu = overrides.onCreateMenu ?? vi.fn(async () => {});
     const onCloneMenu = overrides.onCloneMenu;
-    render(
+    const { container } = render(
       <MenuTabBar
         menus={menus}
         activeMenuId={overrides.activeMenuId ?? menus[0]?.id ?? null}
@@ -151,9 +152,10 @@ describe('<MenuTabBar />', () => {
         onEditMenu={onEditMenu}
         onCreateMenu={onCreateMenu}
         onCloneMenu={onCloneMenu}
+        compact={overrides.compact}
       />,
     );
-    return { onTabChange, onEditMenu, onCreateMenu, onCloneMenu };
+    return { onTabChange, onEditMenu, onCreateMenu, onCloneMenu, container };
   }
 
   it('renders one tab per menu with name + sublabel', () => {
@@ -165,6 +167,34 @@ describe('<MenuTabBar />', () => {
     expect(screen.getByTestId('menu-tab-dinner')).toBeTruthy();
     expect(screen.getByTestId('menu-tab-lunch-sub').textContent).toContain('11am–3pm');
     expect(screen.getByTestId('menu-tab-dinner-sub').textContent).toContain('5–10pm');
+  });
+
+  it('compact mode: outer wrapper can shrink so the inner tab strip is the actual scroll region (STR: menu tabs unscrollable in the top-bar rail)', () => {
+    // Regression for a real bug: the outer wrapper had `shrink-0`, which
+    // pins it to its content's max-content width inside
+    // .owner-topbar-rail (flex: 1 1 auto; overflow: hidden). Since the
+    // wrapper never shrank, the inner overflow-x-auto div never became
+    // narrower than its content either, so there was nothing to scroll --
+    // the rail's own overflow:hidden just clipped the excess tabs instead.
+    const { container } = setup(
+      [menu({ id: 'lunch' }), menu({ id: 'dinner', name: 'Dinner' })],
+      { compact: true },
+    );
+    const inner = screen.getByTestId('menu-tab-bar');
+    const outer = inner.parentElement as HTMLElement;
+    expect(outer).toBe(container.firstChild);
+    expect(outer.className).not.toContain('shrink-0');
+    expect(outer.className).toContain('min-w-0');
+    expect(inner.className).toContain('overflow-x-auto');
+    expect(inner.className).toContain('flex-1');
+    expect(inner.className).toContain('min-w-0');
+  });
+
+  it('non-compact mode keeps its own layout (own page, not squeezed into a shared rail) unchanged', () => {
+    const { container } = setup([menu({ id: 'lunch' })], { compact: false });
+    const outer = container.firstChild as HTMLElement;
+    expect(outer.className).toContain('shrink-0');
+    expect(outer.className).toContain('border-b');
   });
 
   it('renders ACTIVE pill for the menu running right now', () => {
