@@ -2471,7 +2471,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   gap: 8,
                 }}
               >
-                {!isMobile && <SectionLabel>Item Image</SectionLabel>}
                 {/* Image display */}
                 <div
                   data-testid="edit-thumbnail"
@@ -2711,7 +2710,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 // and clone drafts get an explicit red border whenever
                 // the rename rules aren't satisfied yet. Existing-item
                 // edits stay transparent unless a save attempt failed.
-                background: (cloneMode && _nameUnchangedFromSource) ? '#FEF3C7' : 'transparent',
+                // The title IS a text box, so it gets the input surface like
+                // every other field — it was `transparent`, which meant it
+                // showed the ground behind it and did not read as editable.
+                // The amber clone-draft tint still wins.
+                background: (cloneMode && _nameUnchangedFromSource) ? '#FEF3C7' : EDITOR_INPUT,
                 border: (nameError || showNameInvalid) ? '2px solid #b91c1c' : '1px solid transparent',
                 borderRadius: 6,
                 padding: '4px 8px',
@@ -5929,6 +5932,31 @@ function PerfCard({ testId, label, value, highlight }: { testId?: string; label:
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div className="section-header">{children}</div>;
 }
+// The editor's three-level surface hierarchy (2026-09-02).
+//
+// It used to be flat: the modal shell, every card, and every input were all
+// pure white, so nothing read as sitting on anything and the whole editor
+// looked like one undifferentiated sheet.
+//
+//   GROUND  (modal shell)   — deepest, warm off-white
+//   PANEL   (cards below)   — lighter off-white, hairline border + soft lift
+//   INPUT   (inputStyle)    — pure white, so a text box is unmistakably a
+//                             text box against the panel behind it
+//
+// Neutral greys (2026-09-02, owner call — the first cut used warm off-whites
+// and read washed out). The separation between the three levels is what does
+// the work here, not the hue.
+//
+// Every value is a token with a literal fallback. packages/shared is consumed
+// by owner, waiter and admin — a consumer that has not defined the token still
+// gets the intended colour, and one that has can retheme without forking this
+// file.
+const EDITOR_GROUND = 'var(--editor-ground, #eceef1)';
+const EDITOR_PANEL = 'var(--editor-panel, #f6f7f9)';
+const EDITOR_INPUT = 'var(--editor-input, #ffffff)';
+const EDITOR_PANEL_SHADOW =
+  'var(--shadow-subtle, 0 1px 3px 0 rgba(0,0,0,.06), 0 1px 2px -1px rgba(0,0,0,.04))';
+
 
 const labelStyle: React.CSSProperties = {
   fontSize: 11,
@@ -5945,7 +5973,7 @@ const inputStyle: React.CSSProperties = {
   // Deliberately pure white against the off-white panel behind it — that
   // contrast is what makes an editable field look editable. Do not move this
   // to a panel token; it would flatten the editor again.
-  background: 'var(--editor-input, #ffffff)',
+  background: EDITOR_INPUT,
   border: '1px solid var(--border)',
   borderRadius: 'var(--r-xs)',
   padding: '7px 10px',
@@ -5953,28 +5981,6 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
-// The editor's three-level surface hierarchy (2026-09-02).
-//
-// It used to be flat: the modal shell, every card, and every input were all
-// pure white, so nothing read as sitting on anything and the whole editor
-// looked like one undifferentiated sheet.
-//
-//   GROUND  (modal shell)   — deepest, warm off-white
-//   PANEL   (cards below)   — lighter off-white, hairline border + soft lift
-//   INPUT   (inputStyle)    — pure white, so a text box is unmistakably a
-//                             text box against the panel behind it
-//
-// Warm rather than grey off-whites: the brand accent is ember orange, and a
-// cool grey ground reads muddy next to it.
-//
-// Every value is a token with a literal fallback. packages/shared is consumed
-// by owner, waiter and admin — a consumer that has not defined the token still
-// gets the intended colour, and one that has can retheme without forking this
-// file.
-const EDITOR_GROUND = 'var(--editor-ground, #f4f2ef)';
-const EDITOR_PANEL = 'var(--editor-panel, #fbfaf8)';
-const EDITOR_PANEL_SHADOW =
-  'var(--shadow-subtle, 0 1px 3px 0 rgba(0,0,0,.06), 0 1px 2px -1px rgba(0,0,0,.04))';
 
 // STR-963 — single source of truth for the editor's card container so every
 // tab (Food Tags · Placements · Performance) reads as one design system:
