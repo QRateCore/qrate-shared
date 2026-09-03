@@ -2454,6 +2454,197 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           overflow: 'hidden',
         };
 
+  // Item image panel — extracted 2026-09-02 so ADD-ONS can have pictures too.
+  //
+  // It used to live inline inside the `!isAddon` two-column "dish-basic-info"
+  // section, which is why a modifier member could never be given an image:
+  // add-ons render a different single-column layout that simply had no image
+  // UI at all. Extracting it — rather than duplicating ~180 lines — keeps ONE
+  // implementation of upload / enhance / remove so the two layouts cannot drift.
+  const imagePanel = (
+              <div
+                data-testid="item-image-panel"
+                style={{
+                  width: '100%',
+                  display: isMobile && !expandedSections.has('image') ? 'none' : 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                {!isMobile && <SectionLabel>Item Image</SectionLabel>}
+                {/* Image display */}
+                <div
+                  data-testid="edit-thumbnail"
+                  style={{
+                    width: '100%',
+                    height: 240,
+                    borderRadius: 'var(--r)',
+                    background: thumbnail ? undefined : '#f6f6f6',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: thumbnail ? 'none' : '2px dashed var(--border)',
+                    position: 'relative',
+                  }}
+                >
+                  {imgBusy ? (
+                    <span className="text-caption" style={{ textAlign: 'center', padding: 12 }}>
+                      {imgBusyLabel[imgBusy]}
+                    </span>
+                  ) : thumbnail ? (
+                    <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ textAlign: 'center', color: 'var(--text2)' }}>
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>🍽</div>
+                      <div className="text-caption">Add an image</div>
+                    </div>
+                  )}
+                </div>
+  
+                {/* Image action buttons */}
+                {/* "Upload photo" — pure file picker (no capture attribute).
+                    On mobile this opens the device photo library; the
+                    separate "Take Photo" button below opens the camera. */}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUpload}
+                  style={{ display: 'none' }}
+                  data-testid="edit-image-file-input"
+                />
+                {/* Mobile-only: separate file input pinned to the rear camera. */}
+                {isMobile && (
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleUpload}
+                    style={{ display: 'none' }}
+                    data-testid="edit-image-camera-input"
+                  />
+                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {isMobile && (
+                    <button
+                      type="button"
+                      onClick={() => cameraRef.current?.click()}
+                      disabled={!!imgBusy}
+                      data-testid="edit-take-photo-btn"
+                      style={imgActionStyle('blue')}
+                    >
+                      <Camera size={12} />
+                      {imgBusy === 'uploading' ? 'Uploading…' : 'Take Photo'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={!!imgBusy}
+                    data-testid="edit-upload-btn"
+                    style={imgActionStyle()}
+                  >
+                    <Upload size={12} />
+                    {imgBusy === 'uploading' ? 'Uploading…' : 'Upload'}
+                  </button>
+                  {!thumbnail && imageLibrarySlot && imageLibrarySlot({
+                    itemId: item.id,
+                    itemName: name,
+                    onPicked: (url) => setThumbnail(url),
+                  })}
+                  {thumbnail && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        disabled={!!imgBusy}
+                        data-testid="edit-remove-image-btn"
+                        style={imgActionStyle('red')}
+                      >
+                        <Trash2 size={12} />
+                        {imgBusy === 'removing' ? 'Removing…' : 'Remove'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewOpen(true)}
+                        disabled={!!imgBusy}
+                        data-testid="preview-button"
+                        style={imgActionStyle()}
+                      >
+                        <ScanEye size={12} />
+                        Preview
+                      </button>
+                    </>
+                  )}
+                </div>
+  
+                {/* Choose from Gallery — opens an in-place picker that
+                    takes over the right-side tab content. Distinct from
+                    imageLibrarySlot (external modal): this is a sibling
+                    of Upload that swaps the right pane with a gallery
+                    view (Yelp / Google / Drive tabs). */}
+                {galleryPanelSlot && (
+                  <button
+                    type="button"
+                    data-testid="edit-choose-from-gallery-btn"
+                    onClick={() => setGalleryOpen(true)}
+                    disabled={!!imgBusy}
+                    style={{
+                      width: '100%',
+                      height: 38,
+                      border: '1px solid var(--border)',
+                      background: '#fff',
+                      color: 'var(--text)',
+                      borderRadius: 'var(--r-xs)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: imgBusy ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      transition: 'background 0.15s, border-color 0.15s',
+                    }}
+                  >
+                    <Eye size={13} />
+                    Choose from Gallery
+                  </button>
+                )}
+  
+                {/* Image error */}
+                {imgError && (
+                  <div className="text-caption" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <AlertCircle size={11} />
+                    {imgError}
+                  </div>
+                )}
+  
+                {/* Soft warning when no image */}
+                {!thumbnail && !imgBusy && (
+                  <div
+                    data-testid="no-image-warning"
+                    className="text-caption"
+                    style={{
+                      color: '#92400e',
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: 6,
+                      padding: '6px 8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <AlertCircle size={11} />
+                    Add an image to complete this item
+                  </div>
+                )}
+              </div>
+  );
+
   return (
     <>
       {/* Backdrop — modal mode only */}
@@ -2902,187 +3093,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               />
             )}
             {/* Image panel — image + buttons + warnings */}
-            <div
-              data-testid="item-image-panel"
-              style={{
-                width: '100%',
-                display: isMobile && !expandedSections.has('image') ? 'none' : 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}
-            >
-              {!isMobile && <SectionLabel>Item Image</SectionLabel>}
-              {/* Image display */}
-              <div
-                data-testid="edit-thumbnail"
-                style={{
-                  width: '100%',
-                  height: 240,
-                  borderRadius: 'var(--r)',
-                  background: thumbnail ? undefined : '#f6f6f6',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: thumbnail ? 'none' : '2px dashed var(--border)',
-                  position: 'relative',
-                }}
-              >
-                {imgBusy ? (
-                  <span className="text-caption" style={{ textAlign: 'center', padding: 12 }}>
-                    {imgBusyLabel[imgBusy]}
-                  </span>
-                ) : thumbnail ? (
-                  <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ textAlign: 'center', color: 'var(--text2)' }}>
-                    <div style={{ fontSize: 28, marginBottom: 6 }}>🍽</div>
-                    <div className="text-caption">Add an image</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Image action buttons */}
-              {/* "Upload photo" — pure file picker (no capture attribute).
-                  On mobile this opens the device photo library; the
-                  separate "Take Photo" button below opens the camera. */}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleUpload}
-                style={{ display: 'none' }}
-                data-testid="edit-image-file-input"
-              />
-              {/* Mobile-only: separate file input pinned to the rear camera. */}
-              {isMobile && (
-                <input
-                  ref={cameraRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleUpload}
-                  style={{ display: 'none' }}
-                  data-testid="edit-image-camera-input"
-                />
-              )}
-              <div style={{ display: 'flex', gap: 6 }}>
-                {isMobile && (
-                  <button
-                    type="button"
-                    onClick={() => cameraRef.current?.click()}
-                    disabled={!!imgBusy}
-                    data-testid="edit-take-photo-btn"
-                    style={imgActionStyle('blue')}
-                  >
-                    <Camera size={12} />
-                    {imgBusy === 'uploading' ? 'Uploading…' : 'Take Photo'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={!!imgBusy}
-                  data-testid="edit-upload-btn"
-                  style={imgActionStyle()}
-                >
-                  <Upload size={12} />
-                  {imgBusy === 'uploading' ? 'Uploading…' : 'Upload'}
-                </button>
-                {!thumbnail && imageLibrarySlot && imageLibrarySlot({
-                  itemId: item.id,
-                  itemName: name,
-                  onPicked: (url) => setThumbnail(url),
-                })}
-                {thumbnail && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      disabled={!!imgBusy}
-                      data-testid="edit-remove-image-btn"
-                      style={imgActionStyle('red')}
-                    >
-                      <Trash2 size={12} />
-                      {imgBusy === 'removing' ? 'Removing…' : 'Remove'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewOpen(true)}
-                      disabled={!!imgBusy}
-                      data-testid="preview-button"
-                      style={imgActionStyle()}
-                    >
-                      <ScanEye size={12} />
-                      Preview
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {/* Choose from Gallery — opens an in-place picker that
-                  takes over the right-side tab content. Distinct from
-                  imageLibrarySlot (external modal): this is a sibling
-                  of Upload that swaps the right pane with a gallery
-                  view (Yelp / Google / Drive tabs). */}
-              {galleryPanelSlot && (
-                <button
-                  type="button"
-                  data-testid="edit-choose-from-gallery-btn"
-                  onClick={() => setGalleryOpen(true)}
-                  disabled={!!imgBusy}
-                  style={{
-                    width: '100%',
-                    height: 38,
-                    border: '1px solid var(--border)',
-                    background: '#fff',
-                    color: 'var(--text)',
-                    borderRadius: 'var(--r-xs)',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: imgBusy ? 'not-allowed' : 'pointer',
-                    fontFamily: 'inherit',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    transition: 'background 0.15s, border-color 0.15s',
-                  }}
-                >
-                  <Eye size={13} />
-                  Choose from Gallery
-                </button>
-              )}
-
-              {/* Image error */}
-              {imgError && (
-                <div className="text-caption" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <AlertCircle size={11} />
-                  {imgError}
-                </div>
-              )}
-
-              {/* Soft warning when no image */}
-              {!thumbnail && !imgBusy && (
-                <div
-                  data-testid="no-image-warning"
-                  className="text-caption"
-                  style={{
-                    color: '#92400e',
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    borderRadius: 6,
-                    padding: '6px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <AlertCircle size={11} />
-                  Add an image to complete this item
-                </div>
-              )}
-            </div>
+            {imagePanel}
 
             {/* Name field moved to the modal header — see the
                 inline-editable title at the top of EditModal. The
@@ -3189,6 +3200,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               marginBottom: 20,
             }}
           >
+            {/* Modifier members can carry a picture too (2026-09-02). The same
+                panel the dish layout uses — a beer recommended alongside a
+                curry is shown to the diner as a card, and a card with no
+                image is a worse pairing than one with. */}
+            {imagePanel}
+
             <SectionLabel>Basic Info</SectionLabel>
 
             {/* Name lives in the modal header — see inline-editable

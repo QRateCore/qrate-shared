@@ -2183,3 +2183,41 @@ describe('EditModal — Modifiers / Pairings tabs', () => {
     expect(screen.queryByTestId('tab-pairings')).not.toBeInTheDocument();
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Modifier members can have pictures (2026-09-02)
+// ---------------------------------------------------------------------------
+
+describe('EditModal — add-on image panel', () => {
+  it('renders the image panel for a DISH (unchanged behaviour)', () => {
+    renderModal({ item: makeDishItem({ id: 'img-dish' }) });
+    expect(screen.getByTestId('item-image-panel')).toBeInTheDocument();
+  });
+
+  it('renders the image panel for an ADD-ON', () => {
+    // The panel used to live inside the `!isAddon` two-column section, so a
+    // modifier member had no image UI at all — which is why a recommended
+    // beer rendered as a card with no picture on the patron composition page.
+    renderModal({ item: makeAddonItem({ id: 'img-addon' }) });
+    expect(
+      screen.getByTestId('item-image-panel'),
+      'An add-on must be able to carry a picture — it is shown to diners as a ' +
+      'recommendation card just like a dish.',
+    ).toBeInTheDocument();
+  });
+
+  it('renders exactly ONE image panel in add-on mode', () => {
+    // The panel is extracted to a single `imagePanel` value used by both
+    // layouts. If a future edit re-inlines it into one branch while leaving
+    // the shared reference in the other, both would mount and the second
+    // upload control would silently fight the first.
+    renderModal({ item: makeAddonItem({ id: 'img-addon-2' }) });
+    expect(screen.getAllByTestId('item-image-panel')).toHaveLength(1);
+  });
+
+  it('renders exactly ONE image panel in dish mode', () => {
+    renderModal({ item: makeDishItem({ id: 'img-dish-2' }) });
+    expect(screen.getAllByTestId('item-image-panel')).toHaveLength(1);
+  });
+});
