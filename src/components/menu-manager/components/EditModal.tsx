@@ -2413,7 +2413,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         position: 'relative',
         width: '100%',
         height: '100%',
-        background: 'var(--white)',
+        background: EDITOR_GROUND,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -2429,7 +2429,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           maxWidth: '100dvw',
           height: '100dvh',
           maxHeight: '100dvh',
-          background: 'var(--white)',
+          background: EDITOR_GROUND,
           borderRadius: 0,
           boxShadow: 'none',
           display: 'flex',
@@ -2446,7 +2446,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           maxWidth: 'calc(100vw - 32px)',
           height: '90vh',
           maxHeight: '90vh',
-          background: 'var(--white)',
+          background: EDITOR_GROUND,
           borderRadius: 'var(--r)',
           boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
           display: 'flex',
@@ -3117,7 +3117,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               <div
                 data-testid="dietary-info-card"
                 style={{
-                  background: 'white',
+                  background: EDITOR_PANEL,
+                  boxShadow: EDITOR_PANEL_SHADOW,
                   border: '1px solid var(--border)',
                   borderRadius: 8,
                   padding: 12,
@@ -5924,7 +5925,10 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   fontSize: 16,
   color: 'var(--text)',
-  background: 'white',
+  // Deliberately pure white against the off-white panel behind it — that
+  // contrast is what makes an editable field look editable. Do not move this
+  // to a panel token; it would flatten the editor again.
+  background: 'var(--editor-input, #ffffff)',
   border: '1px solid var(--border)',
   borderRadius: 'var(--r-xs)',
   padding: '7px 10px',
@@ -5932,14 +5936,38 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
+// The editor's three-level surface hierarchy (2026-09-02).
+//
+// It used to be flat: the modal shell, every card, and every input were all
+// pure white, so nothing read as sitting on anything and the whole editor
+// looked like one undifferentiated sheet.
+//
+//   GROUND  (modal shell)   — deepest, warm off-white
+//   PANEL   (cards below)   — lighter off-white, hairline border + soft lift
+//   INPUT   (inputStyle)    — pure white, so a text box is unmistakably a
+//                             text box against the panel behind it
+//
+// Warm rather than grey off-whites: the brand accent is ember orange, and a
+// cool grey ground reads muddy next to it.
+//
+// Every value is a token with a literal fallback. packages/shared is consumed
+// by owner, waiter and admin — a consumer that has not defined the token still
+// gets the intended colour, and one that has can retheme without forking this
+// file.
+const EDITOR_GROUND = 'var(--editor-ground, #f4f2ef)';
+const EDITOR_PANEL = 'var(--editor-panel, #fbfaf8)';
+const EDITOR_PANEL_SHADOW =
+  'var(--shadow-subtle, 0 1px 3px 0 rgba(0,0,0,.06), 0 1px 2px -1px rgba(0,0,0,.04))';
+
 // STR-963 — single source of truth for the editor's card container so every
 // tab (Food Tags · Placements · Performance) reads as one design system:
-// white surface, 1px hairline border, radius 8, 14px padding.
+// panel surface, 1px hairline border, radius 8, 14px padding.
 const EDITOR_CARD_STYLE: React.CSSProperties = {
-  background: '#fff',
+  background: EDITOR_PANEL,
   border: '1px solid var(--border)',
   borderRadius: 8,
   padding: 14,
+  boxShadow: EDITOR_PANEL_SHADOW,
 };
 
 function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
