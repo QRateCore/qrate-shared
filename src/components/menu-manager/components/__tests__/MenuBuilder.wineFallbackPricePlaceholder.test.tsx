@@ -1,17 +1,16 @@
 // @vitest-environment jsdom
 /**
- * MenuItemRow's expanded Glass/Bottle inline price inputs for a bottle-only
- * wine (no serving_options at all — a single flat item.price), 2026-09-04.
+ * MenuItemRow's expanded Glass/Bottle inline price inputs, 2026-09-05.
  *
- * Regression guard: with no per-menu serving_price_overrides, the Bottle
- * input's placeholder was a hardcoded "—", even though the item genuinely
- * has a price (menu_items.price) and the row's own COLLAPSED badge, right
- * next to this field, already shows that exact number (see
- * MenuBuilder.priceDisplay.test.tsx's 2026-09-04 fallback fix). Looked like
- * the price never made it onto the item. Fixed: the Bottle placeholder now
- * shows item.price, matching the collapsed badge and the same
- * "placeholder = item-level default" pattern already used for wines that
- * DO have serving_options.
+ * Regression guard (round 2): a wine's real glass/bottle price — whether
+ * from serving_options.price_cents or, for a bottle-only wine, the flat
+ * item.price — must appear as the input's actual VALUE, not merely a
+ * `placeholder` hint (a placeholder disappears the instant the owner clicks
+ * into the field and is never part of the saved form state; the owner
+ * reported this looked like the price was missing even though it was right
+ * there in the collapsed badge). Also guards the no-op save: seeing the
+ * real value pre-filled and blurring without editing it must NOT write a
+ * redundant serving_price_overrides entry.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -43,6 +42,7 @@ function makeItem(overrides: Partial<MenuItemDisplay> = {}): MenuItemDisplay {
 }
 
 function renderExpandedRow(props: Partial<React.ComponentProps<typeof MenuItemRow>> = {}) {
+  const onUpdateSettings = vi.fn().mockResolvedValue(undefined);
   render(
     <MenuItemRow
       item={makeItem()}
@@ -50,7 +50,7 @@ function renderExpandedRow(props: Partial<React.ComponentProps<typeof MenuItemRo
       cat="Beverages"
       settings={{ price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null }}
       itemsById={new Map()}
-      onUpdateSettings={vi.fn().mockResolvedValue(undefined)}
+      onUpdateSettings={onUpdateSettings}
       onUpdateModifiers={vi.fn().mockResolvedValue(undefined)}
       onDragStart={vi.fn()}
       onDragEnd={vi.fn()}
@@ -60,23 +60,24 @@ function renderExpandedRow(props: Partial<React.ComponentProps<typeof MenuItemRo
     />,
   );
   fireEvent.click(screen.getByTestId('menu-item-expand-wine-1'));
+  return { onUpdateSettings };
 }
 
-describe('MenuItemRow — bottle-only wine Glass/Bottle placeholder fallback', () => {
-  it('shows the item price as the Bottle placeholder, not a bare dash', () => {
+describe('MenuItemRow — bottle-only wine Glass/Bottle real value', () => {
+  it('shows the item price as the Bottle field VALUE, not just a placeholder', () => {
     renderExpandedRow();
     const bottleInput = screen.getByTestId('serving-price-input-wine-1-bottle') as HTMLInputElement;
-    expect(bottleInput.placeholder).toBe('135');
-    expect(bottleInput.value).toBe(''); // still an override field, not pre-filled
+    expect(bottleInput.value).toBe('135');
   });
 
-  it('leaves the Glass placeholder as a dash — no item-level glass price exists for a bottle-only wine', () => {
+  it('leaves the Glass field empty — no item-level glass price exists for a bottle-only wine', () => {
     renderExpandedRow();
     const glassInput = screen.getByTestId('serving-price-input-wine-1-glass') as HTMLInputElement;
+    expect(glassInput.value).toBe('');
     expect(glassInput.placeholder).toBe('—');
   });
 
-  it('an explicit per-menu override still shows in the input value, unaffected by the placeholder fallback', () => {
+  it('an explicit per-menu override still wins over the item-level default', () => {
     renderExpandedRow({
       settings: {
         price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null,
@@ -87,7 +88,26 @@ describe('MenuItemRow — bottle-only wine Glass/Bottle placeholder fallback', (
     expect(bottleInput.value).toBe('145');
   });
 
-  it('a wine with real serving_options is unaffected (still uses its own per-serving placeholder)', () => {
+  it('blurring the unedited default value does not write a redundant override', () => {
+    const { onUpdateSettings } = renderExpandedRow();
+    const bottleInput = screen.getByTestId('serving-price-input-wine-1-bottle') as HTMLInputElement;
+    fireEvent.blur(bottleInput);
+    expect(onUpdateSettings).not.toHaveBeenCalled();
+  });
+
+  it('editing the value to something else DOES save a real override', async () => {
+    const { onUpdateSettings } = renderExpandedRow();
+    const bottleInput = screen.getByTestId('serving-price-input-wine-1-bottle') as HTMLInputElement;
+    fireEvent.change(bottleInput, { target: { value: '150' } });
+    fireEvent.blur(bottleInput);
+    expect(onUpdateSettings).toHaveBeenCalledWith('menu-1', 'wine-1', {
+      serving_price_overrides: { bottle: 15000 },
+    });
+  });
+});
+
+describe('MenuItemRow — wine with real serving_options shows real values too', () => {
+  it('shows both Glass and Bottle prices as real VALUES, not placeholders', () => {
     renderExpandedRow({
       item: makeItem({
         serving_options: [
@@ -97,7 +117,23 @@ describe('MenuItemRow — bottle-only wine Glass/Bottle placeholder fallback', (
       }),
     });
     expect(screen.queryByTestId('wine-prices-wine-1')).not.toBeInTheDocument();
+    const glassInput = screen.getByTestId('serving-price-input-wine-1-glass') as HTMLInputElement;
     const bottleInput = screen.getByTestId('serving-price-input-wine-1-bottle') as HTMLInputElement;
-    expect(bottleInput.placeholder).toBe('78');
+    expect(glassInput.value).toBe('22');
+    expect(bottleInput.value).toBe('78');
+  });
+
+  it('blurring an unedited real serving_options value does not write a redundant override', () => {
+    const { onUpdateSettings } = renderExpandedRow({
+      item: makeItem({
+        serving_options: [
+          { id: 'glass', label: 'Glass', price_cents: 2200, is_default: true },
+          { id: 'bottle', label: 'Bottle', price_cents: 7800, is_default: false },
+        ],
+      }),
+    });
+    fireEvent.blur(screen.getByTestId('serving-price-input-wine-1-glass'));
+    fireEvent.blur(screen.getByTestId('serving-price-input-wine-1-bottle'));
+    expect(onUpdateSettings).not.toHaveBeenCalled();
   });
 });

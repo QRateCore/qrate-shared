@@ -845,16 +845,30 @@ function MenuItemRow({
   const hasServingOptions = servingOptions.length > 0;
   const isWine = item.food_tags?.beverage?.beverage_type?.toLowerCase() === 'wine';
   const useWineFallback = isWine && !hasServingOptions;
+  // The item's own default price for a serving id, with no override applied
+  // -- serving_options.price_cents when it has one, or (bottle-only wine
+  // convention, see the wine-prices fallback below) the flat item.price for
+  // 'bottle'. null when there is genuinely nothing to default to (e.g.
+  // 'glass' on a wine with no serving_options at all).
+  const defaultCentsFor = (sid: string): number | null => {
+    const opt = servingOptions.find((s) => s.id === sid);
+    if (opt) return opt.price_cents ?? null;
+    if (useWineFallback && sid === 'bottle' && item.price != null) return Math.round(item.price * 100);
+    return null;
+  };
   const buildServingStrs = (): Record<string, string> => {
     const o: Record<string, string> = {};
     for (const s of servingOptions) {
       const override = settings.serving_price_overrides?.[s.id];
-      o[s.id] = override != null ? String(override / 100) : '';
+      const cents = override != null ? override : defaultCentsFor(s.id);
+      o[s.id] = cents != null ? String(cents / 100) : '';
     }
     if (useWineFallback) {
       const spo = settings.serving_price_overrides ?? {};
-      o['glass'] = spo['glass'] != null ? String(spo['glass'] / 100) : '';
-      o['bottle'] = spo['bottle'] != null ? String(spo['bottle'] / 100) : '';
+      const glassCents = spo['glass'] != null ? spo['glass'] : defaultCentsFor('glass');
+      const bottleCents = spo['bottle'] != null ? spo['bottle'] : defaultCentsFor('bottle');
+      o['glass'] = glassCents != null ? String(glassCents / 100) : '';
+      o['bottle'] = bottleCents != null ? String(bottleCents / 100) : '';
     }
     return o;
   };
@@ -961,12 +975,18 @@ function MenuItemRow({
     const dollars = raw.trim() === '' ? null : parseFloat(raw);
     if (raw.trim() !== '' && (dollars === null || isNaN(dollars) || dollars < 0)) {
       const saved = settings.serving_price_overrides?.[servingId];
-      setServingPriceStrs((prev) => ({ ...prev, [servingId]: saved != null ? String(saved / 100) : '' }));
+      const fallbackCents = saved != null ? saved : defaultCentsFor(servingId);
+      setServingPriceStrs((prev) => ({ ...prev, [servingId]: fallbackCents != null ? String(fallbackCents / 100) : '' }));
       return;
     }
     const cents = dollars != null ? Math.round(dollars * 100) : null;
     const current = settings.serving_price_overrides ?? {};
-    if (cents === (current[servingId] ?? null)) return; // no-op
+    const existingOverride = current[servingId] ?? null;
+    // No-op guard: the field now shows the item's real default price (not a
+    // placeholder hint) as soon as it's rendered -- tabbing/clicking through
+    // it without changing anything must not write a redundant override.
+    if (existingOverride === null && cents === defaultCentsFor(servingId)) return;
+    if (cents === existingOverride) return; // already matches saved override -- no-op
     const next: Record<string, number> = { ...current };
     if (cents != null) next[servingId] = cents;
     else delete next[servingId];
@@ -1388,7 +1408,14 @@ function MenuItemRow({
                 only the price for the category they are looking at, not all. */}
             {/* Wine serving prices (PDD 2026-06-15): one $ field per serving
                 (Glass/Bottle …), overriding the item-level serving price for
-                THIS menu. Placeholder shows the item-level default. */}
+                THIS menu. The field's VALUE is the item's real default price
+                (serving_options.price_cents, or the flat item.price for a
+                bottle-only wine — see defaultCentsFor above) whenever no
+                per-menu override exists yet — not a placeholder hint, since
+                that left the field reading a bare "$—" right next to a
+                collapsed badge already showing the real number (2026-09-04).
+                Editing it writes a real override; leaving it alone writes
+                nothing (see the no-op guard in handleServingPriceBlur). */}
             {hasServingOptions ? (
               <div className="flex items-center gap-2 flex-wrap" data-testid={`serving-prices-${item.id}`}>
                 {servingOptions.map((s) => (
@@ -1406,7 +1433,7 @@ function MenuItemRow({
                         value={servingPriceStrs[s.id] ?? ''}
                         onChange={(e) => setServingPriceStrs((prev) => ({ ...prev, [s.id]: e.target.value }))}
                         onBlur={() => handleServingPriceBlur(s.id)}
-                        placeholder={String((s.price_cents ?? 0) / 100)}
+                        placeholder="—"
                         data-testid={`serving-price-input-${item.id}-${s.id}`}
                         className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
@@ -1431,16 +1458,7 @@ function MenuItemRow({
                         value={servingPriceStrs[sid] ?? ''}
                         onChange={(e) => setServingPriceStrs((prev) => ({ ...prev, [sid]: e.target.value }))}
                         onBlur={() => handleServingPriceBlur(sid)}
-                        /* No serving_options at all means this wine has a
-                         * single price with no glass/bottle split -- that
-                         * single price is the item's flat `price` column,
-                         * and by the same import-time convention used
-                         * everywhere else in this file (glass wins when
-                         * present, else bottle), it represents the BOTTLE
-                         * price. Show it as the placeholder so the field
-                         * isn't a bare "$—" next to a collapsed badge that
-                         * already displays the real number (2026-09-04). */
-                        placeholder={sid === 'bottle' && item.price != null ? String(item.price) : '—'}
+                        placeholder="—"
                         data-testid={`serving-price-input-${item.id}-${sid}`}
                         className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
