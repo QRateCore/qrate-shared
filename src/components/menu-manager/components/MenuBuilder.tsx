@@ -1081,9 +1081,24 @@ function MenuItemRow({
   // the expanded section's isWine/useWineFallback branching above) — the
   // collapsed badge must read serving_price_overrides, not settings.price,
   // or it silently shows the wrong (unrelated) flat price for wine.
-  const wineGlassCents = settings.serving_price_overrides?.['glass'];
-  const wineBottleCents = settings.serving_price_overrides?.['bottle'];
-  const hasWinePriceOverride = wineGlassCents != null || wineBottleCents != null;
+  const wineGlassOverrideCents = settings.serving_price_overrides?.['glass'];
+  const wineBottleOverrideCents = settings.serving_price_overrides?.['bottle'];
+  const hasWinePriceOverride = wineGlassOverrideCents != null || wineBottleOverrideCents != null;
+  // 2026-09-04: no per-menu override yet is the NORMAL state for a freshly
+  // imported/committed wine — fall back to the item's own price (same
+  // "falls back to the item-level price" contract handleServingPriceBlur
+  // already documents for the expanded editor) instead of showing nothing.
+  // serving_options carries a glass/bottle split; a bottle-only wine (no
+  // serving_options at all) carries its single price on the flat
+  // menu_items.price column instead.
+  const itemServingOptions = item.serving_options ?? [];
+  const itemGlassCents = itemServingOptions.find((s) => s.id === 'glass')?.price_cents;
+  const itemBottleCents = itemServingOptions.find((s) => s.id === 'bottle')?.price_cents;
+  const fallbackBottleCents = itemServingOptions.length === 0 && item.price != null
+    ? Math.round(item.price * 100)
+    : undefined;
+  const wineGlassCents = wineGlassOverrideCents ?? itemGlassCents;
+  const wineBottleCents = wineBottleOverrideCents ?? itemBottleCents ?? fallbackBottleCents;
   const effectivePrice = multiCat
     ? (settings.category_prices?.[cat] ?? settings.price ?? item.price)
     : (settings.price ?? item.price);
@@ -1092,12 +1107,10 @@ function MenuItemRow({
   // so extra literal spaces here would have no visual effect.
   const WINE_PRICE_SEPARATOR = '\u00A0\u00A0·\u00A0\u00A0';
   const displayPrice = isWine
-    ? (hasWinePriceOverride
-        ? [
-            wineGlassCents != null ? `Glass $${(wineGlassCents / 100).toFixed(2)}` : null,
-            wineBottleCents != null ? `Bottle $${(wineBottleCents / 100).toFixed(2)}` : null,
-          ].filter(Boolean).join(WINE_PRICE_SEPARATOR)
-        : null)
+    ? ([
+        wineGlassCents != null ? `Glass $${(wineGlassCents / 100).toFixed(2)}` : null,
+        wineBottleCents != null ? `Bottle $${(wineBottleCents / 100).toFixed(2)}` : null,
+      ].filter(Boolean).join(WINE_PRICE_SEPARATOR) || null)
     : (effectivePrice != null ? `$${Number(effectivePrice).toFixed(2)}` : null);
   const displayPriceIsOverride = isWine
     ? hasWinePriceOverride
