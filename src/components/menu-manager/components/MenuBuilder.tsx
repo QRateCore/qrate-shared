@@ -1431,7 +1431,16 @@ function MenuItemRow({
                         value={servingPriceStrs[sid] ?? ''}
                         onChange={(e) => setServingPriceStrs((prev) => ({ ...prev, [sid]: e.target.value }))}
                         onBlur={() => handleServingPriceBlur(sid)}
-                        placeholder="—"
+                        /* No serving_options at all means this wine has a
+                         * single price with no glass/bottle split -- that
+                         * single price is the item's flat `price` column,
+                         * and by the same import-time convention used
+                         * everywhere else in this file (glass wins when
+                         * present, else bottle), it represents the BOTTLE
+                         * price. Show it as the placeholder so the field
+                         * isn't a bare "$—" next to a collapsed badge that
+                         * already displays the real number (2026-09-04). */
+                        placeholder={sid === 'bottle' && item.price != null ? String(item.price) : '—'}
                         data-testid={`serving-price-input-${item.id}-${sid}`}
                         className="border-none outline-none text-xs w-[56px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
