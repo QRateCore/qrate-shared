@@ -11,6 +11,13 @@
  * $20.00) in the collapsed badge — misleading at a glance. Fixed: the badge
  * now reads serving_price_overrides for wine items and shows "Glass $X" /
  * "Bottle $Y" instead.
+ *
+ * 2026-09-04: that fix over-corrected — with no per-menu override, the badge
+ * showed NOTHING at all, even for a freshly imported/committed wine whose
+ * own menu_items.price / serving_options already carry a correct price. Now
+ * falls back to the item's own price per serving when there's no override,
+ * matching the "falls back to the item-level price" contract the expanded
+ * editor's handleServingPriceBlur already documents.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -99,7 +106,10 @@ describe('MenuItemRow — collapsed-row price badge', () => {
     expect(badge.textContent).toContain('  ·  ');
   });
 
-  it('wine item with only a glass override shows just Glass', () => {
+  it('wine item with only a glass override shows Glass from the override and Bottle from the item fallback', () => {
+    // WINE_ITEM has no serving_options, so its flat price ($20) is the
+    // item's own bottle price (2026-09-04 fallback) — a glass-only override
+    // adds a glass option alongside it, it doesn't replace the bottle.
     renderRow({
       item: WINE_ITEM,
       settings: {
@@ -109,14 +119,62 @@ describe('MenuItemRow — collapsed-row price badge', () => {
     });
     const badge = screen.getByTestId('price-display-wine-1');
     expect(badge).toHaveTextContent('Glass $11.00');
-    expect(badge).not.toHaveTextContent('Bottle');
+    expect(badge).toHaveTextContent('Bottle $20.00');
   });
 
-  it('wine item with no serving_price_overrides at all shows no badge (never falls back to item.price)', () => {
+  // 2026-09-04: a freshly imported/committed wine has NO per-menu override
+  // yet — that's the normal state, not an edge case — but its own
+  // menu_items.price / serving_options are already correct from import.
+  // The badge used to show nothing at all until the owner set a redundant
+  // per-menu override; it now falls back to the item's own price, mirroring
+  // the "falls back to the item-level price" contract the expanded editor's
+  // handleServingPriceBlur already documents.
+  it('bottle-only wine (no serving_options) with no override falls back to the flat item price as Bottle', () => {
     renderRow({
-      item: WINE_ITEM,
+      item: WINE_ITEM, // price: 20, no serving_options — single-priced, bottle-only
       settings: { price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null },
     });
-    expect(screen.queryByTestId('price-display-wine-1')).toBeNull();
+    const badge = screen.getByTestId('price-display-wine-1');
+    expect(badge).toHaveTextContent('Bottle $20.00');
+    expect(badge).not.toHaveTextContent('Glass');
+  });
+
+  it('wine with glass+bottle serving_options and no override falls back to both from the item', () => {
+    renderRow({
+      item: makeItem({
+        id: 'wine-2',
+        price: 22,
+        food_tags: { allergens: [], dietary: [], beverage: { beverage_type: 'wine' } },
+        serving_options: [
+          { id: 'glass', label: 'Glass', price_cents: 2200, is_default: true },
+          { id: 'bottle', label: 'Bottle', price_cents: 7800, is_default: false },
+        ],
+      }),
+      settings: { price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null },
+    });
+    const badge = screen.getByTestId('price-display-wine-2');
+    expect(badge).toHaveTextContent('Glass $22.00');
+    expect(badge).toHaveTextContent('Bottle $78.00');
+  });
+
+  it('an explicit per-menu override still wins over the item-level fallback for that serving', () => {
+    renderRow({
+      item: makeItem({
+        id: 'wine-3',
+        price: 22,
+        food_tags: { allergens: [], dietary: [], beverage: { beverage_type: 'wine' } },
+        serving_options: [
+          { id: 'glass', label: 'Glass', price_cents: 2200, is_default: true },
+          { id: 'bottle', label: 'Bottle', price_cents: 7800, is_default: false },
+        ],
+      }),
+      settings: {
+        price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null,
+        serving_price_overrides: { bottle: 8500 }, // this menu charges more for the bottle
+      },
+    });
+    const badge = screen.getByTestId('price-display-wine-3');
+    expect(badge).toHaveTextContent('Glass $22.00'); // unoverridden — falls back to the item
+    expect(badge).toHaveTextContent('Bottle $85.00'); // overridden — wins over the item's $78
   });
 });
