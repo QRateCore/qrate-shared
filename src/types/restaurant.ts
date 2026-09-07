@@ -1245,6 +1245,8 @@ export interface RestaurantTable {
   drinks_qr_code_url?: string;
   capacity?: number;
   assigned_server_id?: string | null;
+  /** Physical area/zone label set by the owner (e.g. "Main Floor", "Patio", "Bar"). */
+  table_section?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -1260,4 +1262,5 @@ export interface UpdateTableRequest {
   is_active?: boolean;
   capacity?: number;
   assigned_server_id?: string | null;
+  table_section?: string | null;
 }
