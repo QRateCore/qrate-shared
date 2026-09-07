@@ -188,6 +188,8 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [capacityEdits, setCapacityEdits] = useState<Record<string, number>>({});
   const [savingCapacity, setSavingCapacity] = useState<Record<string, boolean>>({});
+  const [sectionEdits, setSectionEdits] = useState<Record<string, string>>({});
+  const [savingSection, setSavingSection] = useState<Record<string, boolean>>({});
 
   // Add table modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -421,6 +423,29 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
       showFeedback('error', 'Failed to update capacity');
     } finally {
       setSavingCapacity(prev => ({ ...prev, [tableId]: false }));
+    }
+  };
+
+  const handleSaveSection = async (tableId: string) => {
+    if (!restaurantId || sectionEdits[tableId] === undefined) return;
+    setSavingSection(prev => ({ ...prev, [tableId]: true }));
+    try {
+      const section = sectionEdits[tableId].trim() || null;
+      await service.updateTable(restaurantId, tableId, { table_section: section });
+      setTables(prev =>
+        prev.map(t => t.id === tableId ? { ...t, table_section: section } : t)
+      );
+      setSectionEdits(prev => {
+        const next = { ...prev };
+        delete next[tableId];
+        return next;
+      });
+      showFeedback('success', 'Section updated');
+    } catch (err) {
+      console.error('Failed to update section:', err);
+      showFeedback('error', 'Failed to update section');
+    } finally {
+      setSavingSection(prev => ({ ...prev, [tableId]: false }));
     }
   };
 
@@ -861,6 +886,9 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         <QrCode className={`h-4 w-4 ${isOccupied ? 'text-red-400' : 'text-green-500'}`} />
                       </button>
                       <span className="text-xs text-gray-500">{table.capacity || '?'} seats</span>
+                      {table.table_section && (
+                        <span className="text-xs text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 leading-none">{table.table_section}</span>
+                      )}
                     </div>
                   </div>
 
@@ -1034,6 +1062,33 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                           className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         >
                           {savingCapacity[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">Section:</span>
+                      <input
+                        type="text"
+                        list={`section-suggestions-${table.id}`}
+                        placeholder="e.g. Patio, Bar, Upstairs"
+                        value={sectionEdits[table.id] ?? (table.table_section || '')}
+                        onChange={e => setSectionEdits(prev => ({ ...prev, [table.id]: e.target.value }))}
+                        className={`flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                        data-testid={`table-section-input-${table.table_number}`}
+                      />
+                      <datalist id={`section-suggestions-${table.id}`}>
+                        {Array.from(new Set(tables.map(t => t.table_section).filter(Boolean))).map(s => (
+                          <option key={s} value={s!} />
+                        ))}
+                      </datalist>
+                      {sectionEdits[table.id] !== undefined && sectionEdits[table.id] !== (table.table_section || '') && (
+                        <button
+                          onClick={() => handleSaveSection(table.id)}
+                          disabled={savingSection[table.id]}
+                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                          data-testid={`table-section-save-${table.table_number}`}
+                        >
+                          {savingSection[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
                         </button>
                       )}
                     </div>
