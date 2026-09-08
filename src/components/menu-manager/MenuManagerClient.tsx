@@ -381,6 +381,39 @@ interface Props {
     isNewItem: boolean;
   }) => ReactNode;
   /**
+   * POS product linkage for the item editor (2026-09-08).
+   *
+   * The Food Items drawer has offered "POS product · Link" inside EditModal
+   * since 2026-08-31; the Menu Builder mounts the SAME EditModal and simply
+   * never passed the props, so an owner who created a dish here had no way to
+   * point it at a POS product and no way to see that it was unlinked — on a
+   * POS restaurant an unlinked dish is not orderable at all. Reported on
+   * Indian Aroma dev, 2026-09-07.
+   *
+   * Host-owned rather than fetched here on purpose: the picker, its transport
+   * and the owner-only `pos_item_links` endpoints all live in owner-webapp,
+   * and waiter/admin mount this same client with no POS surface at all.
+   *
+   * The Menu Builder's list projection (`/all-items`) carries no POS columns,
+   * so `state` cannot come off the item — the host loads it when the editor
+   * opens (`onEditorOpen`) and keeps it fresh after a link change.
+   */
+  posLink?: {
+    /** Editor opened on this item — the host's cue to load its linkage. */
+    onEditorOpen?: (item: MenuItemDisplay) => void;
+    /** Linkage for the item being edited. Undefined while it loads: the row
+     *  still renders (the Link button is the point), it just cannot claim a
+     *  status it has not read yet. */
+    state?: {
+      status: 'confirmed' | 'suggested' | null;
+      name: string | null;
+      price: number | null;
+      sellable: boolean;
+    };
+    /** Open the host's POS picker for this item. */
+    onOpen: (item: MenuItemDisplay) => void;
+  };
+  /**
    * Render-slot for the EditModal's Pairings tab — the dish-to-dish
    * `recommendations` grouping, split out of Modifiers (2026-09-02).
    * Same contract as `groupingsSlot`: return `undefined` to suppress the
@@ -501,7 +534,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -681,6 +714,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     selectAll: _selectAll,
   } = useRangeSelection();
   const [editItemId, setEditItemId] = useState<string | null>(null);
+  // Tell the host which item's editor is open, so it can load that item's POS
+  // linkage. The Menu Builder's list projection has no POS columns, so the
+  // editor cannot read the status off the item the way the Food Items drawer
+  // does — it has to be fetched per item, and only for a POS restaurant (the
+  // host supplies `posLink` at all only in that case).
+  const posLinkOnEditorOpen = posLink?.onEditorOpen;
+  useEffect(() => {
+    if (!posLinkOnEditorOpen || !editItemId) return;
+    const openItem = items.find((i) => i.id === editItemId);
+    if (openItem) posLinkOnEditorOpen(openItem);
+    // Keyed on the ITEM, not on `items`: the list re-renders on every write in
+    // the builder, and re-firing the load on each one would put a request
+    // behind every keystroke-driven save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editItemId, posLinkOnEditorOpen]);
   // Clone-draft source — when set, the second EditModal below renders in
   // cloneMode pre-seeded with this item's fields. Set by EditModal's
   // Duplicate button (closes the current edit modal first), cleared on
@@ -2967,6 +3015,26 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDishAddonsChange={handleDishAddonsChanged}
             isNewItem={newlyCreatedItemIdRef.current === editItemId}
             onSaveNewItem={handleSaveNewItem}
+            // POS product row — the same one the Food Items drawer shows, from
+            // the same EditModal.
+            //
+            // Held back until the host has READ the linkage, because the row
+            // has three states and none of them is "unknown": rendering it
+            // early would tell the owner "Not linked" about a dish that is
+            // linked, on the one screen where they came to check. A row that
+            // appears a moment late is honest; a wrong badge is not.
+            //
+            // Also suppressed for an unsaved draft: the picker writes against
+            // a menu_item_id that does not exist yet.
+            onOpenPosLink={
+              posLink?.state && newlyCreatedItemIdRef.current !== editItemId
+                ? () => posLink.onOpen(editItem)
+                : undefined
+            }
+            posLinkStatus={posLink?.state?.status ?? null}
+            posLinkName={posLink?.state?.name ?? null}
+            posLinkPrice={posLink?.state?.price ?? null}
+            posSellable={posLink?.state?.sellable !== false}
             dietaryTagService={dietaryTagService}
             customAllergens={customAllergens}
             customDietary={customDietary}
