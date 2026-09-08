@@ -22,6 +22,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { MenuItemDisplay } from '../../../../types/restaurant';
 import { _MenuItemRow as MenuItemRow } from '../MenuBuilder';
+import { getAddonsFromGroupings } from '../../../../lib/groupings/useGroupingAddons';
+import { countApprovedAddons } from '../../lib/addonHelpers';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 
@@ -118,5 +120,38 @@ describe('MenuItemRow — double-encoded JSONB array fields', () => {
     fireEvent.click(screen.getByTestId(`menu-item-expand-${ITEM_ID}`));
     expect(screen.getByTestId(`serving-prices-${ITEM_ID}`)).toBeTruthy();
     expect(screen.queryByTestId(`wine-prices-${ITEM_ID}`)).toBeNull();
+  });
+});
+
+describe('grouping readers — double-encoded groupings', () => {
+  /** The row-level tests above never reach getAddonsFromGroupings (the
+   *  asArray() length check short-circuits first), so exercise it directly —
+   *  it is a separate entry point, reached by every consumer that reads addons
+   *  off an item without going through the row. */
+  const malformed = { groupings: '[]' } as unknown as Parameters<typeof getAddonsFromGroupings>[0];
+
+  it('getAddonsFromGroupings returns empty for a string groupings value', () => {
+    expect(getAddonsFromGroupings(malformed)).toHaveLength(0);
+  });
+
+  it('getAddonsFromGroupings survives a string grouping.items value', () => {
+    const item = { groupings: [{ id: 'g1', kind: 'addons', items: '[]' }] } as unknown as
+      Parameters<typeof getAddonsFromGroupings>[0];
+    expect(getAddonsFromGroupings(item)).toHaveLength(0);
+  });
+
+  it('countApprovedAddons returns 0 for a string groupings value', () => {
+    expect(countApprovedAddons({ groupings: '[]', addons: '[]' } as unknown as
+      Parameters<typeof countApprovedAddons>[0])).toBe(0);
+  });
+
+  it('getAddonsFromGroupings still reads a real addons grouping', () => {
+    const item = {
+      groupings: [{
+        id: 'g1', kind: 'addons',
+        items: [{ menu_item_id: 'a1', name: 'Extra cheese', status: 'approved' }],
+      }],
+    } as unknown as Parameters<typeof getAddonsFromGroupings>[0];
+    expect(getAddonsFromGroupings(item)).toHaveLength(1);
   });
 });
