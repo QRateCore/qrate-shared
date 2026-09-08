@@ -659,3 +659,24 @@ export const FOOD_TAG_FIELD_MAP: Record<string, string> = {
   seasonal: 'seasons',
   festivity: 'festivity',
 };
+
+// ── JSONB array fields arriving as something other than an array ─────────────
+// `serving_options`, `groupings` and `addons` are JSONB columns surfaced
+// straight from the API. A bad write can land a JSON *string* in the column
+// (jsonb_typeof = 'string') whose content is the real JSON — a `?? []` guard
+// does not catch it, because the value is neither null nor undefined.
+//
+// The failure is nastier than it sounds: a string has `.length`, so a length
+// check passes and the code proceeds to `.map()`, which strings do not have.
+// On 2026-09-07 a dev→prod copy double-encoded every JSONB value for three
+// restaurants; `serving_options` read as the string "[]" (length 2), and the
+// owner menu page threw `.map is not a function` — a full section crash — the
+// moment any wine row was expanded. Prices rendered fine while collapsed, so
+// the damage was invisible until an owner clicked.
+//
+// Coerce at the read site: a malformed value degrades to "no options" instead
+// of taking the page down. The DATA is still wrong and still needs repairing;
+// this only keeps one bad row from blanking the whole surface.
+export function asArray<T>(value: T[] | null | undefined | unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}

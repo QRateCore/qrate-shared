@@ -5,8 +5,8 @@ import { useTrackAction } from '../track-action-context';
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil, ChevronDown } from 'lucide-react';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
-import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings} from '../../../types/restaurant';
-import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, type BoostLabel } from '../lib/menuUtils';
+import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings, ServingOption} from '../../../types/restaurant';
+import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, type BoostLabel } from '../lib/menuUtils';
 import {
   DEFAULT_HEAT_LABELS,
   DEFAULT_SWEETNESS_LABELS,
@@ -966,7 +966,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // converted to price_cents on Save. Resyncs when the item prop changes.
   type ServingRow = { id: string; label: string; volume_ml: string; price: string; is_default: boolean };
   const itemServingRows = (it: MenuItemDisplay): ServingRow[] =>
-    (it.serving_options ?? []).map((o, i) => ({
+    asArray<ServingOption>(it.serving_options).map((o, i) => ({
       id: o.id || `opt-${i}`,
       label: o.label ?? '',
       volume_ml: o.volume_ml != null ? String(o.volume_ml) : '',

@@ -1,8 +1,9 @@
 // Pure helpers for the addon ↔ dish association logic.
 // Extracted so they can be tested without the React tree.
 
-import type { MenuItemDisplay } from '../../../types/restaurant';
+import type { MenuItemDisplay, AddonEntry } from '../../../types/restaurant';
 import { getAddonsFromGroupings } from '../../../lib/groupings/useGroupingAddons';
+import { asArray } from './menuUtils';
 
 /**
  * Count of addons on a dish that the owner has accepted ("approved"). AI-
@@ -21,8 +22,10 @@ export function countApprovedAddons(
   // Prefer groupings (post-cutover source of truth). If the item has
   // no groupings array at all, fall back to legacy field; if both are
   // empty, return 0.
-  if (item.groupings && item.groupings.length > 0) {
+  // asArray, not a truthiness + length check: a double-encoded JSONB value
+  // arrives as the JSON *text* of the array, and a string passes both.
+  if (asArray<NonNullable<MenuItemDisplay['groupings']>[number]>(item.groupings).length > 0) {
     return getAddonsFromGroupings(item).filter((a) => a.status === 'approved').length;
   }
-  return (item.addons ?? []).filter((a) => a.status === 'approved').length;
+  return asArray<AddonEntry>(item.addons).filter((a) => a.status === 'approved').length;
 }

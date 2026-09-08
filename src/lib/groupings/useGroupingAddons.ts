@@ -92,10 +92,14 @@ const EMPTY: readonly AddonView[] = Object.freeze([]) as readonly AddonView[];
 export function getAddonsFromGroupings(
   item: ItemWithGroupingsAndItems | null | undefined,
 ): readonly AddonView[] {
-  if (!item || !item.groupings || item.groupings.length === 0) return EMPTY;
+  // Array.isArray, not a truthiness check: a double-encoded JSONB column
+  // arrives as the JSON *text* of the array, and a string is truthy and has
+  // .length — it would walk straight into .find() and throw. See asArray() in
+  // components/menu-manager/lib/menuUtils.ts for the incident this guards.
+  if (!item || !Array.isArray(item.groupings) || item.groupings.length === 0) return EMPTY;
 
   const addonsGrouping = item.groupings.find((g) => g.kind === 'addons');
-  if (!addonsGrouping || !addonsGrouping.items || addonsGrouping.items.length === 0) {
+  if (!addonsGrouping || !Array.isArray(addonsGrouping.items) || addonsGrouping.items.length === 0) {
     return EMPTY;
   }
 

@@ -3,9 +3,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
-import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping } from '../../../types/restaurant';
+import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping, ServingOption } from '../../../types/restaurant';
 import WineEnrichmentBanner from './WineEnrichmentBanner';
-import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel } from '../lib/menuUtils';
+import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel, asArray } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
@@ -841,7 +841,7 @@ function MenuItemRow({
   // Bottle …) come from the item-level menu_items.serving_options; this row lets
   // the owner override each serving's PRICE for THIS menu. One $ field per
   // serving; held in DOLLARS, persisted as cents in serving_price_overrides.
-  const servingOptions = item.serving_options ?? [];
+  const servingOptions = asArray<ServingOption>(item.serving_options);
   const hasServingOptions = servingOptions.length > 0;
   const isWine = item.food_tags?.beverage?.beverage_type?.toLowerCase() === 'wine';
   const useWineFallback = isWine && !hasServingOptions;
@@ -1111,7 +1111,7 @@ function MenuItemRow({
   // serving_options carries a glass/bottle split; a bottle-only wine (no
   // serving_options at all) carries its single price on the flat
   // menu_items.price column instead.
-  const itemServingOptions = item.serving_options ?? [];
+  const itemServingOptions = asArray<ServingOption>(item.serving_options);
   const itemGlassCents = itemServingOptions.find((s) => s.id === 'glass')?.price_cents;
   const itemBottleCents = itemServingOptions.find((s) => s.id === 'bottle')?.price_cents;
   const fallbackBottleCents = itemServingOptions.length === 0 && item.price != null
@@ -1144,7 +1144,7 @@ function MenuItemRow({
   // counters. Each non-empty grouping renders as its own chip with a hover
   // popover listing members. Empty groupings (count === 0) are filtered out
   // by GroupingChip itself.
-  const groupings = item.groupings ?? [];
+  const groupings = asArray<Grouping>(item.groupings);
   const hasAnyGroupingChip = groupings.some((g) => visibleItems(g).length > 0);
 
   const borderLeftColor = attention ? 'var(--red)' : 'transparent';
