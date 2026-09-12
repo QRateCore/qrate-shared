@@ -3,6 +3,7 @@
 import type { MenuItemDisplay } from '../../types/restaurant';
 import { PhoneFrame } from './PhoneFrame';
 import { getAddonsFromGroupings } from '../../lib/groupings/useGroupingAddons';
+import { useCurrencySymbol } from '../../context/CurrencyContext';
 
 export interface CompositionPreviewPhoneProps {
   item: MenuItemDisplay;
@@ -31,12 +32,15 @@ const MOCK_ADDONS: MockAddon[] = [
   { id: 'mock-a2', name: 'Cheese', price_override: 2.0 },
 ];
 
-function formatPrice(price: number | null): string {
+// STR-1275: module-level helper, so the symbol is threaded in rather than
+// read from a hook (hooks are illegal outside a component).
+function formatPrice(price: number | null, currencySymbol: string): string {
   if (price === null) return 'Included';
-  return `+$${price.toFixed(2)}`;
+  return `+${currencySymbol}${price.toFixed(2)}`;
 }
 
 export function CompositionPreviewPhone({ item }: CompositionPreviewPhoneProps) {
+  const currencySymbol = useCurrencySymbol();
   const realSides = (item.sides_or?.length || 0) + (item.sides_and?.length || 0);
   // PDD 2026-05-10 Phase D Step 11 — addons via groupings.
   const groupingAddons = getAddonsFromGroupings(item);
@@ -164,7 +168,7 @@ export function CompositionPreviewPhone({ item }: CompositionPreviewPhoneProps) 
               >
                 {side.name}
                 {side.price_override !== null && (
-                  <span style={{ marginLeft: 4, opacity: 0.7 }}>{formatPrice(side.price_override)}</span>
+                  <span style={{ marginLeft: 4, opacity: 0.7 }}>{formatPrice(side.price_override, currencySymbol)}</span>
                 )}
               </div>
             ))}
@@ -200,7 +204,7 @@ export function CompositionPreviewPhone({ item }: CompositionPreviewPhoneProps) 
                 <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)' }}>{addon.name}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
-                    {formatPrice(addon.price_override)}
+                    {formatPrice(addon.price_override, currencySymbol)}
                   </span>
                   <div
                     style={{

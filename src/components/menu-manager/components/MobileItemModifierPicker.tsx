@@ -27,6 +27,7 @@ import { Plus, Search, X } from 'lucide-react';
 import Select from '../../common/Select';
 import type { MenuItemDisplay } from '../../../types/restaurant';
 import type { ModifierEntry, ModifierUpdatePayload } from './ItemModifierZones';
+import { useCurrencySymbol } from '../../../context/CurrencyContext';
 
 interface Props {
   parent: MenuItemDisplay;
@@ -59,6 +60,7 @@ export default function MobileItemModifierPicker({
   onConfirmRecommendationDrop,
   showRecommendations = true,
 }: Props) {
+  const currencySymbol = useCurrencySymbol();
   // Sides authoring was removed from the row UI in 2026-05; only the
   // Recommendations section remains. The sides arrays + selection mode +
   // related candidate filters/handlers were pruned at the same time.
@@ -171,7 +173,7 @@ export default function MobileItemModifierPicker({
                 <div className="modifier-card-body">
                   <div className="modifier-card-name">{rec.name}</div>
                   <div className="modifier-card-price-row">
-                    <span className="modifier-card-price-symbol">$</span>
+                    <span className="modifier-card-price-symbol">{currencySymbol}</span>
                     <input
                       className="modifier-card-price-input"
                       type="number"

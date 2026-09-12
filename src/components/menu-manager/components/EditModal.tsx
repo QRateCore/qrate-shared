@@ -8,6 +8,7 @@ import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings, ServingOption} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, type BoostLabel } from '../lib/menuUtils';
 import { parsePriceInput } from '../../../utils/price';
+import { useCurrencySymbol } from '../../../context/CurrencyContext';
 import {
   DEFAULT_HEAT_LABELS,
   DEFAULT_SWEETNESS_LABELS,
@@ -869,6 +870,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // STR-303: add-ons are ingredient-level surcharges with a single base price.
   const [price, setPrice]           = useState<number | null>(item.price ?? null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  // STR-1275: the restaurant's currency symbol. Falls back to '$' with no
+  // CurrencyProvider mounted (qrate-admin-webapp) — today's behaviour.
+  const currencySymbol = useCurrencySymbol();
   // Addon-only owner/staff memo (≤500 chars). Surfaced as subtext in the
   // Add Member picker (ItemSearchPicker) and on the Setup Guide → Add-ons
   // page; the EditModal is the third write surface. Dishes do not use it.
@@ -3242,7 +3246,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     height: 36,
                   }}
                 >
-                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>$</span>
+                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>{currencySymbol}</span>
                   <input
                     id="edit-price-input"
                     type="number"
@@ -3979,7 +3983,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               data-testid="edit-modal-pos-link-price"
                               style={{ marginLeft: 6, color: 'var(--text3, #94a3b8)' }}
                             >
-                              ${posLinkPrice.toFixed(2)}
+                              {currencySymbol}{posLinkPrice.toFixed(2)}
                             </span>
                           )}
                         </span>
@@ -4561,7 +4565,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   data-testid={`serving-option-price-${idx}`}
                                   value={row.price}
                                   inputMode="decimal"
-                                  placeholder="$"
+                                  placeholder={currencySymbol}
                                   onChange={(e) => updateServingRow(idx, { price: e.target.value.replace(/[^0-9.]/g, '') })}
                                   style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
                                 />
@@ -5112,7 +5116,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 </div>
                                 {poolItem.price != null && (
                                   <div style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
-                                    ${poolItem.price.toFixed(2)}
+                                    {currencySymbol}{poolItem.price.toFixed(2)}
                                   </div>
                                 )}
                               </div>
@@ -5243,7 +5247,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   {d.name}
                                 </div>
                                 {d.price != null && (
-                                  <div className="text-caption">${Number(d.price).toFixed(2)}</div>
+                                  <div className="text-caption">{currencySymbol}{Number(d.price).toFixed(2)}</div>
                                 )}
                               </div>
                               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-s)' }}>+ Add</span>
@@ -5411,7 +5415,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   {dish.name}
                                 </div>
                                 {dish.price != null && (
-                                  <div className="text-caption">${Number(dish.price).toFixed(2)}</div>
+                                  <div className="text-caption">{currencySymbol}{Number(dish.price).toFixed(2)}</div>
                                 )}
                               </div>
                               <button
@@ -5586,7 +5590,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                         {dish.name}
                                       </div>
                                       {dish.price != null && (
-                                        <div className="text-caption">${Number(dish.price).toFixed(2)}</div>
+                                        <div className="text-caption">{currencySymbol}{Number(dish.price).toFixed(2)}</div>
                                       )}
                                     </div>
                                     <button
@@ -5810,6 +5814,7 @@ function AddonCard({
   onApprove?: (price: number) => void;
   onRemove: () => void;
 }) {
+  const currencySymbol = useCurrencySymbol();
   const isSuggested = addon.status === 'suggested' && !!onApprove;
   const [priceInput, setPriceInput] = useState(
     basePrice != null && basePrice > 0 ? basePrice.toFixed(2) : ''
@@ -5844,7 +5849,7 @@ function AddonCard({
               style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}
               data-testid={`addon-price-${addon.menu_item_id}`}
             >
-              {basePrice != null ? `$${basePrice.toFixed(2)}` : ''}
+              {basePrice != null ? `${currencySymbol}${basePrice.toFixed(2)}` : ''}
             </div>
           )}
         </div>
@@ -5852,7 +5857,7 @@ function AddonCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
             <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>Price:</span>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <span style={{ position: 'absolute', left: 6, fontSize: 11, color: 'var(--text-secondary)', pointerEvents: 'none' }}>$</span>
+              <span style={{ position: 'absolute', left: 6, fontSize: 11, color: 'var(--text-secondary)', pointerEvents: 'none' }}>{currencySymbol}</span>
               <input
                 type="number"
                 min="0.01"

@@ -19,6 +19,7 @@ import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
 import { parsePriceInput } from '../../../utils/price';
+import { useCurrencySymbol } from '../../../context/CurrencyContext';
 
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
@@ -828,6 +829,9 @@ function MenuItemRow({
   }
 
   // Local controlled state for inline form
+  // STR-1275: the restaurant's currency symbol. Falls back to '$' when no
+  // CurrencyProvider is mounted (qrate-admin-webapp), i.e. today's behaviour.
+  const currencySymbol = useCurrencySymbol();
   // STR-1274: the parse error for the inline price cells. The cell is ~60px
   // so there is no room for a message element; the field goes red and carries
   // the reason in title/aria-invalid, and crucially we DO NOT save.
@@ -1143,10 +1147,10 @@ function MenuItemRow({
   const WINE_PRICE_SEPARATOR = '\u00A0\u00A0·\u00A0\u00A0';
   const displayPrice = isWine
     ? ([
-        wineGlassCents != null ? `Glass $${(wineGlassCents / 100).toFixed(2)}` : null,
-        wineBottleCents != null ? `Bottle $${(wineBottleCents / 100).toFixed(2)}` : null,
+        wineGlassCents != null ? `Glass ${currencySymbol}${(wineGlassCents / 100).toFixed(2)}` : null,
+        wineBottleCents != null ? `Bottle ${currencySymbol}${(wineBottleCents / 100).toFixed(2)}` : null,
       ].filter(Boolean).join(WINE_PRICE_SEPARATOR) || null)
-    : (effectivePrice != null ? `$${Number(effectivePrice).toFixed(2)}` : null);
+    : (effectivePrice != null ? `${currencySymbol}${Number(effectivePrice).toFixed(2)}` : null);
   const displayPriceIsOverride = isWine
     ? hasWinePriceOverride
     : (multiCat ? settings.category_prices?.[cat] != null : settings.price != null);
@@ -1439,7 +1443,7 @@ function MenuItemRow({
                       {s.label}
                     </label>
                     <div className="flex items-center gap-0.5 rounded-[var(--r-xs)] bg-white px-2 py-1 border border-[var(--border)]">
-                      <span className="text-xs text-[var(--text2)]">$</span>
+                      <span className="text-xs text-[var(--text2)]">{currencySymbol}</span>
                       <input
                         id={`serving-${menuId}-${item.id}-${s.id}`}
                         type="number"
@@ -1464,7 +1468,7 @@ function MenuItemRow({
                       {sid === 'glass' ? 'Glass' : 'Bottle'}
                     </label>
                     <div className={`flex items-center gap-0.5 rounded-[var(--r-xs)] bg-white px-2 py-1 ${attention ? 'border-2 border-[var(--red)]' : 'border border-[var(--border)]'}`}>
-                      <span className="text-xs text-[var(--text2)]">$</span>
+                      <span className="text-xs text-[var(--text2)]">{currencySymbol}</span>
                       <input
                         id={`serving-${menuId}-${item.id}-${sid}`}
                         type="number"
@@ -1491,7 +1495,7 @@ function MenuItemRow({
                 data-testid={`price-input-wrapper-${item.id}`}
                 data-attention={attention ? 'true' : undefined}
               >
-                <span className="text-xs text-[var(--text2)]">$</span>
+                <span className="text-xs text-[var(--text2)]">{currencySymbol}</span>
                 {multiCat ? (
                   <input
                     id={`price-${menuId}-${item.id}`}

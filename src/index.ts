@@ -170,3 +170,13 @@ export {
   PRICE_REQUIRED_ERROR,
 } from './utils/price';
 export type { PriceParse } from './utils/price';
+
+// Currency context for shared components (STR-1275). Consumers mount
+// <CurrencyProvider> with the restaurant's currency_code/currency_locale;
+// absent a provider everything falls back to USD, which is today's behaviour.
+export {
+  CurrencyProvider,
+  useCurrencySymbol,
+  useFormatMoney,
+  useCurrency,
+} from './context/CurrencyContext';
