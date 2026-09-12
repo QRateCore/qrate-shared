@@ -23,6 +23,7 @@ import {
   DEFAULT_SWEETNESS_COLOR,
 } from '../../../constants/food-tags';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
+import { useCurrencySymbol } from '../../../context/CurrencyContext';
 
 // ── Dietary & Spice constants ─────────────────────────────────────────────────
 //
@@ -2243,6 +2244,7 @@ function ServingSizesForm({
   onChange: (rows: ServingBulkRow[]) => void;
   count: number;
 }) {
+  const currencySymbol = useCurrencySymbol();
   const update = (i: number, patch: Partial<ServingBulkRow>) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const setDefault = (i: number) => onChange(rows.map((r, idx) => ({ ...r, is_default: idx === i })));
@@ -2287,7 +2289,7 @@ function ServingSizesForm({
               data-testid={`bulk-serving-price-${i}`}
               value={row.price}
               inputMode="decimal"
-              placeholder="$"
+              placeholder={currencySymbol}
               onChange={(e) => update(i, { price: e.target.value.replace(/[^0-9.]/g, '') })}
               style={{ padding: '7px 8px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', fontSize: 13 }}
             />
