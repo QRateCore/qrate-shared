@@ -159,3 +159,14 @@ export {
   formatMoney,
 } from './utils/currency';
 export type { CurrencyCode, CurrencyConfig, FormatMoneyOptions } from './utils/currency';
+
+// Utils — Price input parsing (STR-1274). Deliberately a SEPARATE file from
+// currency.ts: that file is mirrored verbatim into qrate-patron-webapp and a
+// CI guard fails patron's build on any divergence.
+export {
+  parsePriceInput,
+  PRICE_FORMAT_ERROR,
+  PRICE_NEGATIVE_ERROR,
+  PRICE_REQUIRED_ERROR,
+} from './utils/price';
+export type { PriceParse } from './utils/price';
