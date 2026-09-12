@@ -7,6 +7,7 @@ import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil, C
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings, ServingOption} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, type BoostLabel } from '../lib/menuUtils';
+import { parsePriceInput } from '../../../utils/price';
 import {
   DEFAULT_HEAT_LABELS,
   DEFAULT_SWEETNESS_LABELS,
@@ -6168,6 +6169,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
     setPriceText(assoc.price == null ? '' : String(assoc.price));
   }, [assoc.price]);
 
+  const [priceError, setPriceError] = useState<string | null>(null);
   const [servesText, setServesText] = useState<string>(
     assoc.portion_serves == null ? '' : String(assoc.portion_serves),
   );
@@ -6176,13 +6178,23 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
   }, [assoc.portion_serves]);
 
   const commitPrice = () => {
-    const trimmed = priceText.trim();
-    const nextPrice: number | null = trimmed === '' ? null : Number(trimmed);
-    if (nextPrice !== null && !Number.isFinite(nextPrice)) {
-      // Invalid input — snap back to the saved value.
-      setPriceText(assoc.price == null ? '' : String(assoc.price));
+    // STR-1274: `Number(priceText)` read "1,200" as NaN, and the old branch
+    // below then snapped the field back to the saved value with NO message —
+    // so a grouped price looked like it simply refused to type. Worse, on the
+    // sibling surfaces the NaN was coerced to null and PATCHed, wiping the
+    // price while the UI reported success. Parse properly and SHOW the error.
+    // An empty field stays meaningful here: null means "charge the dish's own
+    // price", so this field is deliberately NOT `required`.
+    const parsed = parsePriceInput(priceText);
+    if (!parsed.ok) {
+      setPriceError(parsed.error);
       return;
     }
+    setPriceError(null);
+    const nextPrice = parsed.value;
+    // Re-render the normalized form so the owner sees what was stored
+    // ("1,200" becomes 1200) rather than being left with ambiguous text.
+    setPriceText(nextPrice == null ? '' : String(nextPrice));
     if (nextPrice === assoc.price) return;
     onChange({ price: nextPrice });
   };
@@ -6283,13 +6295,15 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
           <input
             id={`menus-price-${assoc.menu_id}`}
             data-testid={`placements-tab-price-${assoc.menu_id}`}
-            type="number"
+            // STR-1274: type="text", not "number". A number input applies the
+            // HTML value-sanitization algorithm, so "1,200" never reaches
+            // state at all — it arrives as '' and reads as "cleared". step/min
+            // are inert on a text input; parsePriceInput enforces both.
+            type="text"
             inputMode="decimal"
-            step="0.01"
-            min="0"
             value={priceText}
             disabled={saving}
-            onChange={(e) => setPriceText(e.target.value)}
+            onChange={(e) => { setPriceError(null); setPriceText(e.target.value); }}
             onBlur={commitPrice}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -6297,8 +6311,21 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            style={inputStyle}
+            style={{
+              ...inputStyle,
+              ...(priceError ? { border: '1px solid #b91c1c' } : null),
+            }}
           />
+          {priceError && (
+            <div
+              role="alert"
+              data-testid={`placements-tab-price-error-${assoc.menu_id}`}
+              className="text-caption"
+              style={{ color: '#b91c1c', marginTop: 3 }}
+            >
+              {priceError}
+            </div>
+          )}
         </div>
         <div>
           <label style={labelStyle} htmlFor={`menus-boost-${assoc.menu_id}`}>Boost level</label>

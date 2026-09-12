@@ -18,6 +18,7 @@ import MobileItemModifierPicker from './MobileItemModifierPicker';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useTrackAction } from '../track-action-context';
 import { SWEETNESS_VISIBLE } from '../../../constants/feature-flags';
+import { parsePriceInput } from '../../../utils/price';
 
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
@@ -827,6 +828,10 @@ function MenuItemRow({
   }
 
   // Local controlled state for inline form
+  // STR-1274: the parse error for the inline price cells. The cell is ~60px
+  // so there is no room for a message element; the field goes red and carries
+  // the reason in title/aria-invalid, and crucially we DO NOT save.
+  const [priceInvalid, setPriceInvalid] = useState<string | null>(null);
   const [priceStr, setPriceStr] = useState(
     settings.price != null ? String(settings.price) : '',
   );
@@ -917,12 +922,20 @@ function MenuItemRow({
   }
 
   function handlePriceBlur() {
-    const val = priceStr.trim() === '' ? null : parseFloat(priceStr);
-    if (val === settings.price) return;
-    if (priceStr.trim() !== '' && isNaN(val!)) {
-      setPriceStr(settings.price != null ? String(settings.price) : '');
+    // STR-1274: this used parseFloat, which reads "1,200" as **1** — not NaN,
+    // so the old isNaN guard never fired and the dish was saved at one rupee.
+    // Keep what the owner typed and mark the field invalid rather than
+    // snapping back silently; an empty field still legitimately means "no
+    // per-menu override, charge the base price".
+    const parsed = parsePriceInput(priceStr);
+    if (!parsed.ok) {
+      setPriceInvalid(parsed.error);
       return;
     }
+    setPriceInvalid(null);
+    const val = parsed.value;
+    setPriceStr(val == null ? '' : String(val));
+    if (val === settings.price) return;
     trackAction('menu.menuBuilder.inlineEditPrice', {
       metadata: { itemId: item.id, menuId, newPrice: val },
     });
@@ -935,16 +948,18 @@ function MenuItemRow({
   // replace-semantics so we always send the full map.
   function handleCategoryPriceBlur(cat: string) {
     const raw = categoryPriceStrs[cat] ?? '';
-    const val = raw.trim() === '' ? null : parseFloat(raw);
-    if (raw.trim() !== '' && isNaN(val!)) {
-      // Invalid input — reset to last saved value for this category.
-      const saved = settings.category_prices?.[cat];
-      setCategoryPriceStrs((prevState) => ({
-        ...prevState,
-        [cat]: saved != null ? String(saved) : '',
-      }));
+    // STR-1274: see handlePriceBlur — parseFloat("1,200") is 1, not NaN.
+    const parsedCat = parsePriceInput(raw);
+    if (!parsedCat.ok) {
+      setPriceInvalid(parsedCat.error);
       return;
     }
+    setPriceInvalid(null);
+    const val = parsedCat.value;
+    setCategoryPriceStrs((prevState) => ({
+      ...prevState,
+      [cat]: val == null ? '' : String(val),
+    }));
     // Patch only this category; preserve all other saved overrides unchanged.
     const currentOverrides = settings.category_prices ?? {};
     if (val === (currentOverrides[cat] ?? null)) return; // no-op
@@ -1480,28 +1495,30 @@ function MenuItemRow({
                 {multiCat ? (
                   <input
                     id={`price-${menuId}-${item.id}`}
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    aria-invalid={priceInvalid ? true : undefined}
+                    title={priceInvalid ?? undefined}
                     value={categoryPriceStrs[cat] ?? ''}
-                    onChange={(e) => setCategoryPriceStrs((prev) => ({ ...prev, [cat]: e.target.value }))}
+                    onChange={(e) => { setPriceInvalid(null); setCategoryPriceStrs((prev) => ({ ...prev, [cat]: e.target.value })); }}
                     onBlur={() => handleCategoryPriceBlur(cat)}
                     placeholder={settings.price != null ? String(settings.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[#b91c1c] rounded-sm' : 'border-none'}`}
                   />
                 ) : (
                   <input
                     id={`price-${menuId}-${item.id}`}
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    aria-invalid={priceInvalid ? true : undefined}
+                    title={priceInvalid ?? undefined}
                     value={priceStr}
-                    onChange={(e) => setPriceStr(e.target.value)}
+                    onChange={(e) => { setPriceInvalid(null); setPriceStr(e.target.value); }}
                     onBlur={handlePriceBlur}
                     placeholder={item.price != null ? String(item.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className="border-none outline-none text-xs w-[60px] bg-transparent text-[var(--text)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[#b91c1c] rounded-sm' : 'border-none'}`}
                   />
                 )}
               </div>
