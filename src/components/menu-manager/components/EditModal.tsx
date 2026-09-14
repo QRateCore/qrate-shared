@@ -502,9 +502,12 @@ function TagInput({
       </label>
       {/* Chips + inline input flow together directly on the card — no nested
           white box, no dedicated input row (compact per owner feedback: the
-          separate input row wasted a whole line per card). Warm "tag-style"
-          cream pills per the Seekh mockup; the input is the cursor position
-          after the last chip, so a card with a few tags is a single line. */}
+          separate input row wasted a whole line per card). Neutral chip pills
+          (2026-09-14): free text carries no meaning of its own, so it takes the
+          editor's grey chrome rather than the cream of an older mockup — the
+          coloured families are reserved for tags that MEAN something. The input
+          is the cursor position after the last chip, so a card with a few tags
+          is a single line. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         {values.map((v) => (
           <span
@@ -514,8 +517,8 @@ function TagInput({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              background: '#ffecd9',
-              color: '#8b4513',
+              background: 'var(--editor-chip-bg, #f3f4f6)',
+              color: 'var(--editor-chip-ink, #374151)',
               borderRadius: 14,
               padding: '4px 10px',
               fontSize: 12,
@@ -536,7 +539,7 @@ function TagInput({
                 lineHeight: 1,
                 fontWeight: 700,
                 opacity: 0.55,
-                color: '#8b4513',
+                color: 'var(--editor-chip-ink, #374151)',
               }}
             >
               ×
@@ -602,8 +605,13 @@ function DietaryMultiSelect({
   onAcceptAi?: () => void;
 }) {
   const [busyTag, setBusyTag] = useState<string | null>(null);
-  const selectedBg     = type === 'allergen' ? '#6366f1' : '#d97706';
-  const selectedBorder = type === 'allergen' ? '#6366f1' : '#d97706';
+  // Allergens read red, dietary reads green — the food-tag category colours
+  // the design system already documents (DESIGN.md §2). Solids are darkened
+  // from the #ef4444 / #10b981 tokens so the white pill labels clear 4.5:1.
+  const selectedBg = type === 'allergen'
+    ? 'var(--editor-allergen-solid, #b91c1c)'
+    : 'var(--editor-affirm-solid, #1B7A4A)';
+  const selectedBorder = selectedBg;
 
   const handleClick = async (tagName: string) => {
     if (busyTag) return;
@@ -621,12 +629,14 @@ function DietaryMultiSelect({
   // Mixing N/A active with selected tag chips would read as contradictory.
   const naActive = reviewed && selectedSet.size === 0;
 
-  // Yellow tint = "AI suggested, not yet reviewed". Disappears the
+  // Amber tint = "AI suggested, not yet reviewed". Disappears the
   // moment the owner takes any action (toggle a chip or click N/A).
+  // ONE amber across the editor — this section, the description field and the
+  // enrichment banners all mean the same thing and now look it.
   const sectionStyle: React.CSSProperties = !reviewed
     ? {
-        background: '#fef9c3',
-        border: '1px solid #fde047',
+        background: 'var(--editor-ai-surface, #FFFBF5)',
+        border: '1px solid var(--editor-ai-border, #FFE8CC)',
         borderRadius: 8,
         padding: 10,
         transition: 'background 0.18s ease, border-color 0.18s ease',
@@ -658,7 +668,7 @@ function DietaryMultiSelect({
                 marginLeft: 8,
                 fontSize: 10,
                 fontWeight: 700,
-                color: '#a16207',
+                color: 'var(--editor-ai-ink, #A05A00)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
               }}
@@ -677,8 +687,8 @@ function DietaryMultiSelect({
               fontSize: 11,
               fontWeight: 700,
               color: '#fff',
-              background: '#15803d',
-              border: '1px solid #15803d',
+              background: 'var(--editor-affirm-solid, #1B7A4A)',
+              border: '1px solid var(--editor-affirm-solid, #1B7A4A)',
               borderRadius: 6,
               padding: '3px 10px',
               cursor: 'pointer',
@@ -738,9 +748,11 @@ function DietaryMultiSelect({
               borderRadius: 4,
               fontSize: 12,
               fontWeight: naActive ? 600 : 500,
-              border: `1.5px dashed ${naActive ? '#15803d' : 'rgba(0,0,0,0.25)'}`,
-              background: naActive ? '#ecfdf5' : 'transparent',
-              color: naActive ? '#15803d' : 'var(--text3)',
+              border: `1.5px dashed ${naActive
+                ? 'var(--editor-affirm-ink, #1B7A4A)'
+                : 'rgba(0,0,0,0.25)'}`,
+              background: naActive ? 'var(--editor-affirm-surface, #E8F5EE)' : 'transparent',
+              color: naActive ? 'var(--editor-affirm-ink, #1B7A4A)' : 'var(--text3)',
               cursor: 'pointer',
               transition: 'all 0.12s ease',
               whiteSpace: 'nowrap',
@@ -2409,6 +2421,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     removing:   'Removing…',
   };
 
+  // Desktop enter transition. Same mechanic BulkMenuSidesPanel and
+  // BulkActionsPanel use: mount off-screen, then flip to translateX(0) on the
+  // first frame after mount so the browser has something to animate FROM.
+  // Enter only — close is left exactly as it was, so nothing that waits on the
+  // modal disappearing has to learn a new timing.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setDrawerOpen(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   // Container styles vary by displayMode. Inline mode fills its parent —
   // no fixed position, no backdrop, no shadow — so the same body renders
   // as the right panel of the Food Items page without changing any of the
@@ -2442,18 +2465,24 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           overflow: 'hidden',
         }
       : {
+          // Desktop: a RIGHT-SIDE DRAWER, not a centred box. It is reached from
+          // the Food Items list and should read as one — same geometry as the
+          // Pairings and bulk-action drawers (DESIGN.md §4). Full height and
+          // flush right means the list stays visible beside it, which a
+          // centred 90vh box sitting over the middle of the page did not.
           position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
+          top: 0,
+          right: 0,
+          bottom: 0,
           zIndex: 70,
           width: 960,
-          maxWidth: 'calc(100vw - 32px)',
-          height: '90vh',
-          maxHeight: '90vh',
+          maxWidth: 'calc(100vw - 48px)',
           background: EDITOR_GROUND,
-          borderRadius: 'var(--r)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          borderRadius: 0,
+          boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+          transform: drawerOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)',
+          willChange: 'transform',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -2719,8 +2748,17 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 // every other field — it was `transparent`, which meant it
                 // showed the ground behind it and did not read as editable.
                 // The amber clone-draft tint still wins.
-                background: (cloneMode && _nameUnchangedFromSource) ? '#FEF3C7' : EDITOR_INPUT,
-                border: (nameError || showNameInvalid) ? '2px solid #b91c1c' : '1px solid transparent',
+                background: (cloneMode && _nameUnchangedFromSource)
+                  ? 'var(--editor-ai-surface, #FFFBF5)'
+                  : EDITOR_INPUT,
+                // 1.5px solid, not transparent: on the white drawer shell a
+                // transparent border made the canonical Name INPUT read as a
+                // heading. The outline plus the inset shadow is what says
+                // "you can type here".
+                border: (nameError || showNameInvalid)
+                  ? '2px solid #b91c1c'
+                  : '1.5px solid var(--border)',
+                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.04)',
                 borderRadius: 6,
                 padding: '4px 8px',
                 margin: '-4px 0 -4px -8px',
@@ -2732,12 +2770,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               }}
               onFocus={(e) => {
                 if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'var(--border)';
-                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.background = EDITOR_INPUT;
               }}
               onBlur={(e) => {
-                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'transparent';
+                // Restore the RESTING style, not `transparent`. Blurring used to
+                // strip both the border and the surface, so the field lost its
+                // box after the very first focus and went back to looking like a
+                // heading — a pre-existing bug the white shell makes obvious.
+                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'var(--border)';
                 if (!(cloneMode && _nameUnchangedFromSource)) {
-                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.background = EDITOR_INPUT;
                 }
               }}
             />
@@ -2792,9 +2834,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               fontSize: 11, fontWeight: 600, padding: isMobile ? '0 12px' : '4px 10px',
               minHeight: isMobile ? 44 : undefined,
               borderRadius: 4,
-              border: isActive ? '1px solid #16a34a' : '1px solid #b91c1c',
-              background: isActive ? '#dcfce7' : '#fee2e2',
-              color: isActive ? '#15803d' : '#b91c1c',
+              border: `1px solid ${isActive
+                ? 'var(--editor-affirm-border, #b6ecd2)'
+                : '#fca5a5'}`,
+              background: isActive
+                ? 'var(--editor-affirm-surface, #E8F5EE)'
+                : '#fee2e2',
+              color: isActive
+                ? 'var(--editor-affirm-ink, #1B7A4A)'
+                : 'var(--editor-allergen-ink, #b91c1c)',
               cursor: 'pointer', flexShrink: 0,
             }}
           >
@@ -2885,8 +2933,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   disabled={saving || cloneSaving}
                   data-testid="edit-clone-btn"
                   style={{
-                    fontSize: 12, fontWeight: 600, color: '#3730A3',
-                    background: '#EEF2FF', border: '1px solid #C7D2FE',
+                    fontSize: 12, fontWeight: 600,
+                    color: 'var(--editor-secondary-ink, #374151)',
+                    background: 'var(--editor-secondary-bg, #f3f4f6)',
+                    border: '1px solid var(--editor-secondary-border, #e5e7eb)',
                     borderRadius: 'var(--r-xs)',
                     padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || cloneSaving) ? 'not-allowed' : 'pointer',
@@ -2990,9 +3040,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <div
               data-testid="edit-clone-banner"
               style={{
-                background: '#EEF2FF',
-                border: '1px solid #C7D2FE',
-                color: '#3730A3',
+                background: 'var(--editor-ai-surface, #FFFBF5)',
+                border: '1px solid var(--editor-ai-border, #FFE8CC)',
+                color: 'var(--editor-ai-ink, #A05A00)',
                 borderRadius: 6,
                 padding: '8px 12px',
                 marginBottom: 16,
@@ -3379,7 +3429,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       fontWeight: 700,
                       letterSpacing: '0.12em',
                       textTransform: 'uppercase',
-                      color: '#B45309',
+                      color: 'var(--editor-ai-ink, #A05A00)',
                     }}
                   >
                     🤖 AI suggested
@@ -3401,7 +3451,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     : descriptionSource === 'ai_generated'
                       && descriptionReviewed === false
                       && description === (item.description ?? '')
-                      ? '1px solid #F59E0B'
+                      ? '1px solid var(--editor-ai-border, #FFE8CC)'
                       : '1px solid var(--border)',
                   // Amber tint when this is an unreviewed AI suggestion AND
                   // the owner hasn't started typing their own. Matches the
@@ -3412,7 +3462,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     descriptionSource === 'ai_generated'
                       && descriptionReviewed === false
                       && description === (item.description ?? '')
-                      ? '#FEF3C7'
+                      ? 'var(--editor-ai-surface, #FFFBF5)'
                       : (inputStyle as { background?: string }).background ?? '#fff',
                 }}
               />
@@ -3443,7 +3493,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         }
                       }}
                       style={{
-                        background: '#3730A3',
+                        // Affirmative, exactly like the dietary Accept pill —
+                        // same action, same colour.
+                        background: 'var(--editor-affirm-solid, #1B7A4A)',
                         color: '#fff',
                         border: 'none',
                         borderRadius: 6,
@@ -3514,8 +3566,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       padding: '10px 12px',
                       borderRadius: 10,
                       border: '1px solid',
-                      borderColor: spiceModifierEnabled ? '#fecdd3' : 'var(--border)',
-                      background: spiceModifierEnabled ? '#fff1f2' : 'transparent',
+                      // Brand orange = interactive/on, the same signal every
+                      // other toggle in the dashboard uses. Rose meant nothing
+                      // here beyond "spice".
+                      borderColor: spiceModifierEnabled ? 'var(--orange-border)' : 'var(--border)',
+                      background: spiceModifierEnabled ? 'var(--orange-bg)' : 'transparent',
                       transition: 'all 0.15s',
                     }}
                   >
@@ -3541,7 +3596,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           borderRadius: 999,
                           border: 'none',
                           cursor: 'pointer',
-                          background: spiceModifierEnabled ? '#e11d48' : '#d1d5db',
+                          background: spiceModifierEnabled ? 'var(--brand-s)' : '#d1d5db',
                           transition: 'background-color 0.15s',
                           padding: 0,
                         }}
@@ -3562,7 +3617,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     </div>
 
                     {/* Divider */}
-                    <div style={{ height: 1, background: spiceModifierEnabled ? '#fecdd3' : 'var(--border)' }} />
+                    <div style={{ height: 1, background: spiceModifierEnabled ? 'var(--orange-border)' : 'var(--border)' }} />
 
                     {/* Row 2 — required (disabled + greyed when the picker is hidden) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: spiceModifierEnabled ? 1 : 0.5, transition: 'opacity 0.15s' }}>
@@ -3592,7 +3647,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           borderRadius: 999,
                           border: 'none',
                           cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
-                          background: spiceModifierEnabled && spiceSelectionRequired ? '#e11d48' : '#d1d5db',
+                          background: spiceModifierEnabled && spiceSelectionRequired ? 'var(--brand-s)' : '#d1d5db',
                           transition: 'background-color 0.15s',
                           padding: 0,
                         }}
@@ -3634,8 +3689,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         padding: '10px 12px',
                         borderRadius: 10,
                         border: '1px solid',
-                        borderColor: isByo ? 'var(--color-accent-teal, #00a996)' : 'var(--border)',
-                        background: isByo ? '#e6f7f5' : 'transparent',
+                        borderColor: isByo ? 'var(--orange-border)' : 'var(--border)',
+                        background: isByo ? 'var(--orange-bg)' : 'transparent',
                         opacity: toggleDisabled ? 0.6 : 1,
                         transition: 'all 0.15s',
                       }}
@@ -3664,7 +3719,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             borderRadius: 999,
                             border: 'none',
                             cursor: toggleDisabled ? 'not-allowed' : 'pointer',
-                            background: isByo ? 'var(--color-accent-teal, #00a996)' : '#d1d5db',
+                            background: isByo ? 'var(--brand-s)' : '#d1d5db',
                             transition: 'background-color 0.15s',
                             padding: 0,
                           }}
@@ -3850,9 +3905,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       gap: 8,
                       padding: '10px 12px',
                       borderRadius: 8,
-                      background: '#fff7ed',
-                      border: '1px solid #fed7aa',
-                      color: '#9a3412',
+                      background: 'var(--editor-ai-surface, #FFFBF5)',
+                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
+                      color: 'var(--editor-ai-ink, #A05A00)',
                       fontSize: 13,
                     }}
                   >
@@ -3862,7 +3917,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         width: 10,
                         height: 10,
                         borderRadius: '50%',
-                        background: '#f97316',
+                        background: 'var(--brand-s)',
                         animation: 'pulse 1.4s ease-in-out infinite',
                         flexShrink: 0,
                       }}
@@ -3895,9 +3950,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     style={{
                       padding: '8px 12px',
                       borderRadius: 6,
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      color: '#1e40af',
+                      // Was its own blue. It says the same kind of thing as
+                      // the banner above it, so it wears the same amber rather
+                      // than adding a tenth hue for one transient notice.
+                      background: 'var(--editor-ai-surface, #FFFBF5)',
+                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
+                      color: 'var(--editor-ai-ink, #A05A00)',
                       fontSize: 12,
                     }}
                   >
@@ -3921,10 +3979,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   // Collapsing it into "linked" hides the cheapest fix there is.
                   const label = linked ? 'Linked' : suggested ? 'Suggested' : 'Not linked';
                   const tone = linked
-                    ? { fg: '#166534', bg: '#DCFCE7' }
+                    ? {
+                        fg: 'var(--editor-affirm-ink, #1B7A4A)',
+                        bg: 'var(--editor-affirm-surface, #E8F5EE)',
+                      }
                     : suggested
-                      ? { fg: '#9A3412', bg: '#FFEDD5' }
-                      : { fg: '#9A3412', bg: '#FFEDD5' };
+                      ? {
+                          fg: 'var(--editor-accent-ink, #9A3412)',
+                          bg: 'var(--orange-bg, #FFF0E6)',
+                        }
+                      : {
+                          fg: 'var(--editor-accent-ink, #9A3412)',
+                          bg: 'var(--orange-bg, #FFF0E6)',
+                        };
                   return (
                     <div
                       data-testid="edit-modal-pos-link-row"
@@ -4041,9 +4108,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     padding: '4px 12px',
                     borderRadius: 20,
                     border: '1px solid',
-                    borderColor: active ? '#9333ea' : 'var(--border)',
-                    background: active ? '#f3e8ff' : 'transparent',
-                    color: active ? '#6b21a8' : 'var(--text2)',
+                    // Selected = brand orange, like every other selected
+                    // chip in the dashboard. The ink is darker than
+                    // --orange-text because this is body copy ON the tint.
+                    borderColor: active ? 'var(--brand-s)' : 'var(--border)',
+                    background: active ? 'var(--orange-bg)' : 'transparent',
+                    color: active ? 'var(--editor-accent-ink, #9A3412)' : 'var(--text2)',
                     cursor: 'pointer',
                     fontSize: 12,
                     fontWeight: active ? 600 : 400,
@@ -4172,8 +4242,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                       padding: '7px 0',
                                       borderRadius: 'var(--r-xs)',
                                       border: '1px solid',
-                                      borderColor: active ? '#9333ea' : 'var(--border)',
-                                      background: active ? '#9333ea' : 'white',
+                                      borderColor: active ? 'var(--brand-s)' : 'var(--border)',
+                                      background: active ? 'var(--brand-s)' : 'white',
                                       color: active ? 'white' : 'var(--text2)',
                                       fontSize: 13,
                                       fontWeight: active ? 600 : 400,
@@ -4406,7 +4476,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                         aria-label={`${label} scale`}
                                         value={typeof val === 'number' ? val : 50}
                                         onChange={(e) => setTasteScale(key, Number(e.target.value))}
-                                        style={{ width: '100%', accentColor: '#9333ea' }}
+                                        style={{ width: '100%', accentColor: 'var(--brand-s)' }}
                                       />
                                       <span
                                         data-testid={`beverage-scale-${key}-value`}
@@ -4577,8 +4647,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   onClick={() => setServingDefault(idx)}
                                   style={{
                                     padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid',
-                                    borderColor: row.is_default ? '#9333ea' : 'var(--border)',
-                                    background: row.is_default ? '#9333ea' : 'white',
+                                    borderColor: row.is_default ? 'var(--brand-s)' : 'var(--border)',
+                                    background: row.is_default ? 'var(--brand-s)' : 'white',
                                     color: row.is_default ? 'white' : 'var(--text2)',
                                     fontSize: 12, fontWeight: row.is_default ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
                                   }}
@@ -4792,9 +4862,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           padding: '4px 14px',
                           borderRadius: 20,
                           border: '1px solid',
-                          borderColor: sweetnessLabel === option ? '#db2777' : 'var(--border)',
-                          background: sweetnessLabel === option ? '#fdf2f8' : 'transparent',
-                          color: sweetnessLabel === option ? '#9d174d' : 'var(--text2)',
+                          borderColor: sweetnessLabel === option ? 'var(--brand-s)' : 'var(--border)',
+                          background: sweetnessLabel === option ? 'var(--orange-bg)' : 'transparent',
+                          color: sweetnessLabel === option ? 'var(--editor-accent-ink, #9A3412)' : 'var(--text2)',
                           cursor: 'pointer',
                           fontSize: 12,
                           fontWeight: sweetnessLabel === option ? 600 : 400,
