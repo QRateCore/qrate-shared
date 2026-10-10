@@ -15,10 +15,11 @@ import {
   X,
   Settings2,
 } from 'lucide-react';
-import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry } from '../../types/experience';
+import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry, ExperienceTableDevice } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
 import KitchenTab from './KitchenTab';
 import DrinksQrTab from './DrinksQrTab';
+import { Cylinder, KeyRound } from 'lucide-react';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -211,6 +212,53 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   const [qrModalTable, setQrModalTable] = useState<RestaurantTable | null>(null);
 
   // Delete table
+  // ── On-table service pucks ────────────────────────────────────────────
+  // Keyed by tableId so a card can answer "is a puck live on me?" without
+  // scanning the list on every render. Only populated when the consumer wired
+  // service.listTableDevices — admin and waiter do not, and see none of this.
+  const [devicesByTable, setDevicesByTable] = useState<Record<string, ExperienceTableDevice>>({});
+  const [pairCodes, setPairCodes] = useState<Record<string, string>>({});
+  const [pairingTableId, setPairingTableId] = useState<string | null>(null);
+
+  const loadDevices = service.listTableDevices;
+  useEffect(() => {
+    if (!restaurantId || !loadDevices) return;
+    let cancelled = false;
+    loadDevices(restaurantId)
+      .then(({ devices }) => {
+        if (cancelled) return;
+        const byTable: Record<string, ExperienceTableDevice> = {};
+        for (const d of devices ?? []) if (d.tableId) byTable[d.tableId] = d;
+        setDevicesByTable(byTable);
+      })
+      // A device read failing must not blank the Tables tab — the badge is
+      // supplementary, the tables are the point.
+      .catch(() => { if (!cancelled) setDevicesByTable({}); });
+    return () => { cancelled = true; };
+  }, [restaurantId, loadDevices]);
+
+  const mintCode = service.createTableDeviceCode;
+  const handlePairTable = async (tableId: string) => {
+    if (!restaurantId || !mintCode) return;
+    setPairingTableId(tableId);
+    try {
+      const result = await mintCode(restaurantId, tableId);
+      setPairCodes(prev => ({ ...prev, [tableId]: result.code }));
+    } catch {
+      // Surfaced on the card itself rather than a toast: the operator is
+      // looking at the card they just tapped.
+      setPairCodes(prev => ({ ...prev, [tableId]: '' }));
+    } finally {
+      setPairingTableId(null);
+    }
+  };
+
+  /** Green once seen inside this window, amber beyond it. A puck that paired
+   *  and then died looks identical to a healthy one without this. */
+  const DEVICE_STALE_AFTER_MS = 10 * 60 * 1000;
+  const deviceIsFresh = (d: ExperienceTableDevice) =>
+    !!d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < DEVICE_STALE_AFTER_MS;
+
   const [deleteConfirm, setDeleteConfirm] = useState<{ tableId: string; tableNumber: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -845,7 +893,22 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
 
               return (
-                <div key={table.id} className={`border-2 border-dashed rounded-xl p-3 bg-white ${borderClass}`}>
+                <div key={table.id} className={`relative border-2 border-dashed rounded-xl p-3 bg-white ${borderClass}`}>
+                  {/* A puck is live on this table. Icon-only on purpose: any
+                      text naming the table here would be a second match for the
+                      card's own name and break the Tables E2E, which finds
+                      cards by getByText. */}
+                  {devicesByTable[table.id] && (
+                    <span
+                      data-testid={`table-device-paired-${table.table_number}`}
+                      title={deviceIsFresh(devicesByTable[table.id])
+                        ? `Device paired — ${devicesByTable[table.id].name}`
+                        : `Device paired but not seen recently — ${devicesByTable[table.id].name}`}
+                      className="absolute top-1.5 right-1.5 inline-flex items-center justify-center"
+                    >
+                      <Cylinder className={`h-3.5 w-3.5 ${deviceIsFresh(devicesByTable[table.id]) ? 'text-green-600' : 'text-amber-500'}`} />
+                    </span>
+                  )}
                   {/* Row 1: Table name + server + QR + seats */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -1092,6 +1155,36 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         </button>
                       )}
                     </div>
+                    {mintCode && (
+                      <>
+                        <button
+                          onClick={() => handlePairTable(table.id)}
+                          disabled={pairingTableId === table.id}
+                          data-testid={`table-pair-device-${table.table_number}`}
+                          aria-label={`Generate a device pairing code for table ${table.table_number}`}
+                          title="Pairing code for the on-table device"
+                          className={`w-full px-2 text-xs border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-1 disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
+                        >
+                          <KeyRound className="h-3 w-3" />
+                          {pairingTableId === table.id ? 'Generating…' : 'Pair device'}
+                        </button>
+                        {pairCodes[table.id] !== undefined && (
+                          pairCodes[table.id] ? (
+                            <div
+                              data-testid={`table-pair-code-${table.table_number}`}
+                              className="w-full rounded-lg bg-blue-50 border border-blue-200 px-2 py-1.5 text-center"
+                            >
+                              <div className="font-mono text-base tracking-[0.2em] text-blue-900">{pairCodes[table.id]}</div>
+                              <div className="text-[10px] text-blue-700">Type this on the device</div>
+                            </div>
+                          ) : (
+                            <div className="w-full text-[10px] text-red-600 text-center">
+                              Could not generate a code — try again
+                            </div>
+                          )
+                        )}
+                      </>
+                    )}
                     {!isOccupied && service.deleteTable && (
                       <button
                         onClick={() => setDeleteConfirm({ tableId: table.id, tableNumber: table.table_number })}

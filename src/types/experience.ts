@@ -249,6 +249,22 @@ export interface KdsDevice {
 
 // ─── Service Interface ──────────────────────────────────────────────────────
 
+/**
+ * A paired on-table puck, as the Tables tab needs it. Structurally the owner
+ * API's TableDevice; declared here so @qrate/shared keeps no dependency on the
+ * owner data layer.
+ */
+export interface ExperienceTableDevice {
+  deviceId: string;
+  name: string;
+  tableId: string | null;
+  tableNumber: number | null;
+  tableLabel: string | null;
+  pairedAt: string;
+  /** Null until the device's first poll lands. */
+  lastSeenAt: string | null;
+}
+
 export interface ExperienceService {
   // Tables
   getTables(restaurantId: string): Promise<{ tables: RestaurantTable[]; count: number }>;
@@ -271,6 +287,22 @@ export interface ExperienceService {
   importPosTables?(restaurantId: string): Promise<{
     created: number; adopted: number; updated: number;
     skipped: string[]; provider_tables: number;
+  }>;
+
+  // On-table service pucks (qrate-table-device). A puck shows its table's QR
+  // and a row of tappable service buttons.
+  //
+  // OPTIONAL for the same reason as importPosTables: only a caller that wires
+  // them gets the pairing UI. The owner portal does; admin and waiter do not,
+  // and must keep rendering this component unchanged.
+  listTableDevices?(restaurantId: string): Promise<{ devices: ExperienceTableDevice[] }>;
+  /**
+   * Mint a pairing code. With `tableId` it is a TABLE code — the device is
+   * assigned to that table as it pairs and never sees the picker. Without one
+   * it is a ROOM code for the whole floor.
+   */
+  createTableDeviceCode?(restaurantId: string, tableId?: string): Promise<{
+    code: string; expiresAt: string; tableId: string | null;
   }>;
 
   // Drinks QR — SEPARATE standalone drinks-ordering QR per table, gated on
