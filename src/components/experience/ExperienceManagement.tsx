@@ -14,12 +14,13 @@ import {
   Check,
   X,
   Settings2,
+  Cylinder,
+  KeyRound,
 } from 'lucide-react';
 import type { ExperienceService, RestaurantTable, StaffMember, TableActivity, WaiterCall, TableActivityEntry, ExperienceTableDevice } from '../../types/experience';
 import StaffManagement from '../staff/StaffManagement';
 import KitchenTab from './KitchenTab';
 import DrinksQrTab from './DrinksQrTab';
-import { Cylinder, KeyRound } from 'lucide-react';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 import { useIsMobile } from '../../hooks/useIsMobile';
