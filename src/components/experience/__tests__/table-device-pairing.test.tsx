@@ -1,14 +1,23 @@
 // @vitest-environment jsdom
 /**
- * Pairing an on-table service puck, from the table's own card.
+ * Pairing an on-table service puck.
+ *
+ * ONE PERMANENT CODE PER RESTAURANT, at the top of the tab. A device enters it
+ * and then picks its own table on-screen.
+ *
+ * Per-table codes were retired 2026-10-11. A code carrying a tableId assigned
+ * the device as it paired, so the puck never showed its table picker — which
+ * made "I entered the code and got no table choice" the EXPECTED behaviour and
+ * confused everyone who tried it. `no per-table code` below is the regression
+ * guard against reintroducing that.
  *
  * Gated on the service supplying `createTableDeviceCode` / `listTableDevices`,
  * exactly like "Import from POS" above it. That gate IS the feature: the OWNER
  * portal wires them, the admin and waiter apps do not, and this component has
  * to keep rendering for them untouched. So the first test here — the one
- * asserting the button is ABSENT — matters more than the rest.
+ * asserting the strip is ABSENT — matters more than the rest.
  *
- * The second thing being pinned is that none of this renders a table's NAME.
+ * The other thing pinned here is that none of this renders a table's NAME.
  * The Tables E2E finds cards by text (`getByText(/table\s+\d+/i).first()`,
  * `getByText(TEST_LABEL).first()`), so a badge or code block that named its
  * table would become a second match and break four specs. That has already
@@ -55,8 +64,13 @@ const device = (over: Record<string, unknown> = {}) => ({
 function withDevices(devices: unknown[] = [], code = '04837261') {
   return makeService({
     listTableDevices: vi.fn().mockResolvedValue({ devices }),
+    // The backend provisions on read, so this is the call that normally
+    // supplies the code — no button press required.
+    getCurrentTableDeviceCode: vi.fn().mockResolvedValue({
+      code, expiresAt: null, neverExpires: true,
+    }),
     createTableDeviceCode: vi.fn().mockResolvedValue({
-      code, expiresAt: new Date(Date.now() + 3600_000).toISOString(), tableId: 't1',
+      code: '55556666', expiresAt: null, neverExpires: true, tableId: null,
     }),
   } as Partial<ExperienceService>);
 }
@@ -68,37 +82,68 @@ describe('the gate', () => {
   it('renders nothing about devices when the service does not wire them', async () => {
     render(<ExperienceManagement restaurantId="r1" service={makeService()} />);
     await screen.findByRole('heading', { name: 'Table 1' });
-    expect(screen.queryByTestId('table-pair-device-1')).toBeNull();
+    expect(screen.queryByTestId('room-pairing-code')).toBeNull();
     expect(screen.queryByTestId('table-device-paired-1')).toBeNull();
   });
 
-  it('offers Pair device once the service wires it', async () => {
+  it('shows the strip once the service wires it', async () => {
     render(<ExperienceManagement restaurantId="r1" service={withDevices()} />);
-    await screen.findByTestId('table-pair-device-1');
+    await screen.findByTestId('room-pairing-code');
   });
 });
 
-describe('pairing from the card', () => {
-  it('mints a code for THAT table and shows it on the card', async () => {
+describe('the restaurant pairing code', () => {
+  it('is on screen without anyone pressing a button', async () => {
+    // It used to read "None yet" until Generate was pressed, because the owner
+    // page never wired getCurrentTableDeviceCode at all — the code existed
+    // server-side and nothing asked for it.
     const service = withDevices();
     render(<ExperienceManagement restaurantId="r1" service={service} />);
-    await userEvent.click(await screen.findByTestId('table-pair-device-1'));
     await waitFor(() =>
-      expect(screen.getByTestId('table-pair-code-1').textContent).toContain('04837261'),
+      expect(screen.getByTestId('room-pairing-code-value').textContent).toContain('04837261'),
     );
-    // The tableId is what makes it a TABLE code — without it the device would
-    // pair to the restaurant and still have to be told which table it is on.
-    expect(service.createTableDeviceCode).toHaveBeenCalledWith('r1', 't1');
+    expect(service.getCurrentTableDeviceCode).toHaveBeenCalledWith('r1');
+    expect(service.createTableDeviceCode).not.toHaveBeenCalled();
   });
 
-  it('says so on the card when minting fails, rather than going quiet', async () => {
-    const service = makeService({
-      listTableDevices: vi.fn().mockResolvedValue({ devices: [] }),
-      createTableDeviceCode: vi.fn().mockRejectedValue(new Error('500')),
-    } as Partial<ExperienceService>);
+  it('says it never expires and that the device picks its table', async () => {
+    render(<ExperienceManagement restaurantId="r1" service={withDevices()} />);
+    await screen.findByTestId('room-pairing-code');
+    expect(screen.getByText(/does not expire/i)).toBeTruthy();
+    expect(screen.getByText(/asks which table it is on/i)).toBeTruthy();
+  });
+
+  it('replaces the code restaurant-wide, with no table scope', async () => {
+    const service = withDevices();
     render(<ExperienceManagement restaurantId="r1" service={service} />);
-    await userEvent.click(await screen.findByTestId('table-pair-device-1'));
-    await screen.findByText(/could not generate a code/i);
+    await screen.findByTestId('room-pairing-code-value');
+    await userEvent.click(screen.getByTestId('room-pairing-code-generate'));
+    await waitFor(() =>
+      expect(screen.getByTestId('room-pairing-code-value').textContent).toContain('55556666'),
+    );
+    // Exactly one argument. A second one would be a tableId, i.e. the retired
+    // per-table code sneaking back in.
+    expect(service.createTableDeviceCode).toHaveBeenCalledWith('r1');
+    expect((service.createTableDeviceCode as ReturnType<typeof vi.fn>).mock.calls[0])
+      .toHaveLength(1);
+  });
+
+  it('promises that replacing it does not disconnect paired devices', async () => {
+    // STR-890 invariant, stated where the operator makes the decision.
+    render(<ExperienceManagement restaurantId="r1" service={withDevices()} />);
+    await screen.findByTestId('room-pairing-code');
+    expect(screen.getByText(/never disconnects a device that is already paired/i)).toBeTruthy();
+  });
+});
+
+describe('no per-table code', () => {
+  it('offers no per-table pair button or code block', async () => {
+    // Retired 2026-10-11: a table-scoped code suppressed the device's table
+    // picker. If these testids ever come back, the confusion comes with them.
+    render(<ExperienceManagement restaurantId="r1" service={withDevices([device()])} />);
+    await screen.findByRole('heading', { name: 'Table 1' });
+    expect(screen.queryByTestId('table-pair-device-1')).toBeNull();
+    expect(screen.queryByTestId('table-pair-code-1')).toBeNull();
   });
 });
 
@@ -147,8 +192,7 @@ describe('not naming the table', () => {
   it('adds no "Table <n>" text beyond the card heading the grid already has', async () => {
     render(<ExperienceManagement restaurantId="r1" service={withDevices([device()])} />);
     await screen.findByRole('heading', { name: 'Table 1' });
-    await userEvent.click(await screen.findByTestId('table-pair-device-1'));
-    await screen.findByTestId('table-pair-code-1');
+    await screen.findByTestId('room-pairing-code-value');
     // Read the document, not one render's container: the tab content is
     // portalled, so the container misses most of the tree.
     // Count ELEMENTS whose own text is the table's name, not occurrences in

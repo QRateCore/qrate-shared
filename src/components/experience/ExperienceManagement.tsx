@@ -219,8 +219,6 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   // scanning the list on every render. Only populated when the consumer wired
   // service.listTableDevices — admin and waiter do not, and see none of this.
   const [devicesByTable, setDevicesByTable] = useState<Record<string, ExperienceTableDevice>>({});
-  const [pairCodes, setPairCodes] = useState<Record<string, string>>({});
-  const [pairingTableId, setPairingTableId] = useState<string | null>(null);
 
   // ── Ported from the retired /owner/tables (2026-10-10) ────────────────
   // Label, active/inactive and the QR killswitch lived ONLY there. Retiring
@@ -256,20 +254,6 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   }, [restaurantId, loadDevices]);
 
   const mintCode = service.createTableDeviceCode;
-  const handlePairTable = async (tableId: string) => {
-    if (!restaurantId || !mintCode) return;
-    setPairingTableId(tableId);
-    try {
-      const result = await mintCode(restaurantId, tableId);
-      setPairCodes(prev => ({ ...prev, [tableId]: result.code }));
-    } catch {
-      // Surfaced on the card itself rather than a toast: the operator is
-      // looking at the card they just tapped.
-      setPairCodes(prev => ({ ...prev, [tableId]: '' }));
-    } finally {
-      setPairingTableId(null);
-    }
-  };
 
   /** Green once seen inside this window, amber beyond it. A puck that paired
    *  and then died looks identical to a healthy one without this. */
@@ -960,35 +944,56 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         </div>
       )}
 
-      {/* Room pairing code. Separate from the per-card codes on purpose: this
-          one pairs every puck in the room and is the right tool for a whole
-          floor. Regenerating it never disconnects an already-paired device. */}
+      {/* THE pairing code. One per restaurant, PERMANENT, and the only one
+          there is: a device enters it, then picks its own table on-screen.
+          Deliberately at the top of the tab rather than on each card -- a
+          per-table code bound the device at pair time and suppressed the
+          picker, which is the confusion this replaced (2026-10-11).
+
+          Rotating it never disconnects a paired device: every puck already
+          holds a durable token and never presents the code again. */}
       {mintCode && (
         <div
           data-testid="room-pairing-code"
-          className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+          className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3"
         >
-          <span className="text-xs font-semibold text-gray-700">Device pairing code (whole room)</span>
-          {roomCode ? (
-            <span className="font-mono text-lg tracking-[0.25em] text-gray-900" data-testid="room-pairing-code-value">
-              {roomCode}
-            </span>
-          ) : (
-            <span className="text-xs text-gray-500">None yet</span>
-          )}
-          <button
-            onClick={handleMintRoomCode}
-            disabled={mintingRoom}
-            data-testid="room-pairing-code-generate"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-white disabled:opacity-50"
-          >
-            {mintingRoom ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
-            {roomCode ? 'Regenerate' : 'Generate'}
-          </button>
-          <span className="w-full text-[11px] text-gray-500">
-            One code pairs every device in the room and can be reused. Regenerating
-            replaces it for new devices — <strong className="font-semibold">devices already paired keep working</strong>.
-          </span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                Device pairing code
+              </div>
+              <div className="text-[11px] text-blue-700">
+                Enter this on any QRate table device
+              </div>
+            </div>
+            {roomCode ? (
+              <span
+                className="font-mono text-2xl font-semibold tracking-[0.3em] text-blue-900"
+                data-testid="room-pairing-code-value"
+              >
+                {roomCode}
+              </span>
+            ) : (
+              <span className="text-xs text-blue-700" data-testid="room-pairing-code-loading">
+                Loading…
+              </span>
+            )}
+            <button
+              onClick={handleMintRoomCode}
+              disabled={mintingRoom}
+              data-testid="room-pairing-code-generate"
+              className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+            >
+              {mintingRoom ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              {mintingRoom ? 'Replacing…' : 'Replace code'}
+            </button>
+          </div>
+          <div className="mt-2 text-[11px] text-blue-800">
+            This code does not expire and pairs every device in the room. After
+            pairing, the device asks which table it is on.{' '}
+            <strong className="font-semibold">Replacing it never disconnects a device that is already paired</strong>
+            {' '}— it only stops the old code working for new ones.
+          </div>
         </div>
       )}
 
@@ -1346,36 +1351,13 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                       )}
                     </div>
 
-                    {mintCode && (
-                      <>
-                        <button
-                          onClick={() => handlePairTable(table.id)}
-                          disabled={pairingTableId === table.id}
-                          data-testid={`table-pair-device-${table.table_number}`}
-                          aria-label={`Generate a device pairing code for table ${table.table_number}`}
-                          title="Pairing code for the on-table device"
-                          className={`w-full px-2 text-xs border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-1 disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
-                        >
-                          <KeyRound className="h-3 w-3" />
-                          {pairingTableId === table.id ? 'Generating…' : 'Pair device'}
-                        </button>
-                        {pairCodes[table.id] !== undefined && (
-                          pairCodes[table.id] ? (
-                            <div
-                              data-testid={`table-pair-code-${table.table_number}`}
-                              className="w-full rounded-lg bg-blue-50 border border-blue-200 px-2 py-1.5 text-center"
-                            >
-                              <div className="font-mono text-base tracking-[0.2em] text-blue-900">{pairCodes[table.id]}</div>
-                              <div className="text-[10px] text-blue-700">Type this on the device</div>
-                            </div>
-                          ) : (
-                            <div className="w-full text-[10px] text-red-600 text-center">
-                              Could not generate a code — try again
-                            </div>
-                          )
-                        )}
-                      </>
-                    )}
+                    {/* No per-table pairing code here on purpose. A code bound
+                        to one table assigned the device at pair time, so the
+                        puck never showed its table picker -- "I entered the
+                        code and got no table choice" was the EXPECTED
+                        behaviour, and it confused everyone. One permanent
+                        restaurant code now lives at the top of this tab and
+                        the device picks its own table. Retired 2026-10-11. */}
                     {!isOccupied && service.deleteTable && (
                       <button
                         onClick={() => setDeleteConfirm({ tableId: table.id, tableNumber: table.table_number })}

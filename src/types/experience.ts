@@ -308,18 +308,30 @@ export interface ExperienceService {
   // them gets the pairing UI. The owner portal does; admin and waiter do not,
   // and must keep rendering this component unchanged.
   listTableDevices?(restaurantId: string): Promise<{ devices: ExperienceTableDevice[] }>;
-  /** The live ROOM code, or nulls. One reusable code pairs the whole floor. */
-  getCurrentTableDeviceCode?(restaurantId: string, tableId?: string): Promise<{
-    code: string | null; expiresAt: string | null;
+  /**
+   * The restaurant's pairing code. ONE per restaurant and PERMANENT; the
+   * backend provisions it on first read, so in practice `code` is non-null.
+   * `neverExpires` is true for it — `expiresAt` is then null, because the
+   * stored sentinel date is an implementation detail and "valid until 2999"
+   * is not a useful thing to show an owner.
+   */
+  getCurrentTableDeviceCode?(restaurantId: string): Promise<{
+    code: string | null; expiresAt: string | null; neverExpires?: boolean;
   }>;
   revokeTableDevice?(restaurantId: string, deviceId: string): Promise<{ message: string }>;
   /**
-   * Mint a pairing code. With `tableId` it is a TABLE code — the device is
-   * assigned to that table as it pairs and never sees the picker. Without one
-   * it is a ROOM code for the whole floor.
+   * REPLACE the restaurant's pairing code. Use it when a code leaks; reading
+   * the current one is getCurrentTableDeviceCode, which provisions on demand.
+   *
+   * Rotating never disconnects a paired device — each puck holds a durable
+   * token and never presents the code again (STR-890).
+   *
+   * Per-table codes were retired 2026-10-11: binding a device at pair time
+   * suppressed its table picker, which made "I entered the code and got no
+   * table choice" the expected behaviour.
    */
-  createTableDeviceCode?(restaurantId: string, tableId?: string): Promise<{
-    code: string; expiresAt: string; tableId: string | null;
+  createTableDeviceCode?(restaurantId: string): Promise<{
+    code: string; expiresAt: string | null; neverExpires?: boolean; tableId: string | null;
   }>;
 
   // Drinks QR — SEPARATE standalone drinks-ordering QR per table, gated on
