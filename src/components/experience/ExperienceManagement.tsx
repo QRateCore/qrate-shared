@@ -1571,7 +1571,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
           style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6" data-testid="delete-table-confirm">
             <div className="flex items-start gap-3 mb-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
                 <AlertTriangle className="h-5 w-5 text-red-600" />
@@ -1594,6 +1594,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               <button
                 onClick={() => handleDeleteTable(deleteConfirm.tableId)}
                 disabled={deleting}
+                data-testid="delete-table-confirm-btn"
                 className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
