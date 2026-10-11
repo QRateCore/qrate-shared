@@ -57,6 +57,20 @@ interface ExperienceManagementProps {
   kdsUrl?: string;
   renderPairingQr?: (value: string) => ReactNode;
   /**
+   * Show tables numbered >= 9900, which are hidden by default.
+   *
+   * Those numbers are reserved for E2E fixtures (workspace rule: mutation
+   * specs must use 9900+ so a test can never touch a real owner's table
+   * 1-15 — the 2026-03-24 image-deletion incident). Hiding them keeps a real
+   * owner's grid clean, including anything a crashed run left behind.
+   *
+   * But the E2E suite has to SEE its own tables, and since /owner/tables was
+   * retired this is the only page that lists them. So the owner portal turns
+   * this on from `?testTables=1` and nothing else does. Default OFF: an owner
+   * sees exactly what they saw before.
+   */
+  showTestTables?: boolean;
+  /**
    * Whether to show the Kitchen (KDS pairing) tab. Defaults to `true` so waiter/admin
    * consumers are unaffected. The owner app passes `false` (STR-950) to hide it — the
    * tab is dropped from the bar and a `?tab=kitchen` deep-link falls back to Tables.
@@ -73,7 +87,7 @@ interface ExperienceManagementProps {
   showDrinksTab?: boolean;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false, showTestTables = false }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     if (!showKitchenTab && initialTab === 'kitchen') return 'tables';
     if (!showDrinksTab && initialTab === 'drinks') return 'tables';
@@ -92,12 +106,14 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
     try {
       const tablesData = await service.getTables(restaurantId).catch(() => null);
       setTabCounts({
-        tables: tablesData ? tablesData.tables.filter(t => t.table_number < 9900).length : undefined,
+        tables: tablesData
+          ? tablesData.tables.filter(t => showTestTables || t.table_number < 9900).length
+          : undefined,
       });
     } catch {
       // Non-critical — badges will just not show
     }
-  }, [restaurantId, service]);
+  }, [restaurantId, service, showTestTables]);
 
   useEffect(() => {
     fetchTabCounts();
@@ -167,7 +183,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
       {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} />}
-        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} />}
+        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} showTestTables={showTestTables} />}
         {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         {showDrinksTab && activeTab === 'drinks' && <DrinksQrTab restaurantId={restaurantId || undefined} service={service} />}
       </div>
@@ -175,7 +191,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   );
 }
 
-function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null }) {
+function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot, showTestTables = false }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null; showTestTables?: boolean }) {
   const isMobile = useIsMobile();
   // Mobile-only: which occupied cards have the config controls ("Manage")
   // expanded. Config is collapsed by default on a phone so the card's
@@ -234,6 +250,11 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   // to the per-table codes on each card. Both exist because they answer
   // different jobs — minting 40 codes to set up 40 tables would be worse.
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  // A LEGACY room code minted before 2026-10-11 really does lapse in 24h, so
+  // the copy cannot claim permanence unconditionally — it would tell an owner
+  // a code is permanent on the day before it dies. Press Replace code once and
+  // the replacement is permanent.
+  const [roomCodeExpiresAt, setRoomCodeExpiresAt] = useState<string | null>(null);
   const [mintingRoom, setMintingRoom] = useState(false);
 
   const loadDevices = service.listTableDevices;
@@ -350,14 +371,14 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     setLoading(true);
     try {
       const data = await service.getTables(restaurantId);
-      setTables(data.tables.filter(t => t.table_number < 9900));
+      setTables(data.tables.filter(t => showTestTables || t.table_number < 9900));
     } catch (err) {
       console.error('Failed to load tables:', err);
       showFeedback('error', 'Failed to load tables');
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, service]);
+  }, [restaurantId, service, showTestTables]);
 
   const fetchStaff = useCallback(async () => {
     if (!restaurantId) return;
@@ -481,7 +502,11 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     if (!restaurantId || !readRoomCode) return;
     let cancelled = false;
     readRoomCode(restaurantId)
-      .then(r => { if (!cancelled) setRoomCode(r.code); })
+      .then(r => {
+        if (cancelled) return;
+        setRoomCode(r.code);
+        setRoomCodeExpiresAt(r.neverExpires ? null : (r.expiresAt ?? null));
+      })
       .catch(() => { if (!cancelled) setRoomCode(null); });
     return () => { cancelled = true; };
   }, [restaurantId, readRoomCode]);
@@ -492,6 +517,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     try {
       const r = await mintCode(restaurantId);   // no tableId => ROOM code
       setRoomCode(r.code);
+      setRoomCodeExpiresAt(r.neverExpires ? null : (r.expiresAt ?? null));
     } catch {
       showFeedback('error', 'Could not generate a pairing code');
     } finally {
@@ -694,6 +720,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             )}
             <button
               onClick={() => setShowAddModal(true)}
+        data-testid="add-tables-btn"
               className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm inline-flex items-center gap-2"
             >
               <Plus className="h-4 w-4" />
@@ -706,12 +733,13 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         {showAddModal && (
           <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
             <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4" data-testid="add-tables-modal">Add Tables</h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Number of tables</label>
                   <input
                     type="number"
+                    data-testid="add-tables-count"
                     min={1}
                     max={50}
                     value={addCount}
@@ -723,6 +751,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start numbering from</label>
                   <input
                     type="number"
+                    data-testid="add-tables-start"
                     min={1}
                     value={addStartNumber}
                     onChange={e => setAddStartNumber(Math.max(1, parseInt(e.target.value) || 1))}
@@ -740,6 +769,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                 <button
                   onClick={handleAddTables}
                   disabled={addingTables}
+                  data-testid="add-tables-submit"
                   className="flex-1 bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {addingTables ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -815,6 +845,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
       </button>
       <button
         onClick={() => setShowAddModal(true)}
+        data-testid="add-tables-btn"
         className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm flex items-center gap-2"
       >
         <Plus className="h-4 w-4" />
@@ -989,8 +1020,20 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             </button>
           </div>
           <div className="mt-2 text-[11px] text-blue-800">
-            This code does not expire and pairs every device in the room. After
-            pairing, the device asks which table it is on.{' '}
+            {roomCodeExpiresAt ? (
+              <>
+                <strong className="font-semibold" data-testid="room-pairing-code-expiry">
+                  This is an older code and it expires on{' '}
+                  {new Date(roomCodeExpiresAt).toLocaleDateString()}
+                </strong>
+                {' '}— press Replace code once and the new one never expires.{' '}
+              </>
+            ) : (
+              <span data-testid="room-pairing-code-permanent">
+                This code does not expire and pairs every device in the room.{' '}
+              </span>
+            )}
+            After pairing, the device asks which table it is on.{' '}
             <strong className="font-semibold">Replacing it never disconnects a device that is already paired</strong>
             {' '}— it only stops the old code working for new ones.
           </div>
@@ -1408,12 +1451,13 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
       {showAddModal && (
         <div className={`fixed inset-0 bg-black/40 flex z-50 ${isMobile ? 'items-end' : 'items-center justify-center'}`} onClick={() => setShowAddModal(false)}>
           <div className={isMobile ? 'bg-white rounded-t-2xl p-6 pb-8 w-full shadow-xl' : 'bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl'} onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Add Tables</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4" data-testid="add-tables-modal">Add Tables</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Number of tables</label>
                 <input
                   type="number"
+                  data-testid="add-tables-count"
                   min={1}
                   max={50}
                   value={addCount}
@@ -1425,6 +1469,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start numbering from</label>
                 <input
                   type="number"
+                  data-testid="add-tables-start"
                   min={1}
                   value={addStartNumber}
                   onChange={e => setAddStartNumber(Math.max(1, parseInt(e.target.value) || 1))}
@@ -1442,6 +1487,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               <button
                 onClick={handleAddTables}
                 disabled={addingTables}
+                data-testid="add-tables-submit"
                 className="flex-1 bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {addingTables ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}

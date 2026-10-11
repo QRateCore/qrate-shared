@@ -108,9 +108,26 @@ describe('the restaurant pairing code', () => {
 
   it('says it never expires and that the device picks its table', async () => {
     render(<ExperienceManagement restaurantId="r1" service={withDevices()} />);
-    await screen.findByTestId('room-pairing-code');
+    await screen.findByTestId('room-pairing-code-permanent');
     expect(screen.getByText(/does not expire/i)).toBeTruthy();
     expect(screen.getByText(/asks which table it is on/i)).toBeTruthy();
+  });
+
+  it('does NOT claim permanence for a legacy code that really expires', async () => {
+    // Room codes minted before 2026-10-11 lapse in 24h. dev Anant had exactly
+    // one of these live when the change deployed, and the first version of
+    // this strip told the owner it "does not expire" the day before it died.
+    const service = makeService({
+      listTableDevices: vi.fn().mockResolvedValue({ devices: [] }),
+      getCurrentTableDeviceCode: vi.fn().mockResolvedValue({
+        code: '04837261', expiresAt: '2026-10-12T22:06:45Z', neverExpires: false,
+      }),
+      createTableDeviceCode: vi.fn(),
+    } as Partial<ExperienceService>);
+    render(<ExperienceManagement restaurantId="r1" service={service} />);
+    await screen.findByTestId('room-pairing-code-expiry');
+    expect(screen.queryByTestId('room-pairing-code-permanent')).toBeNull();
+    expect(screen.getByText(/press Replace code once/i)).toBeTruthy();
   });
 
   it('replaces the code restaurant-wide, with no table scope', async () => {
