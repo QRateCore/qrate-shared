@@ -269,10 +269,22 @@ export interface ExperienceService {
   // Tables
   getTables(restaurantId: string): Promise<{ tables: RestaurantTable[]; count: number }>;
   createTables(restaurantId: string, req: { table_count: number; start_number: number }): Promise<{ tables: RestaurantTable[]; message: string }>;
-  updateTable(restaurantId: string, tableId: string, updates: { capacity?: number; assigned_server_id?: string | null; table_label?: string | null; table_section?: string | null }): Promise<{ table: RestaurantTable }>;
+  updateTable(restaurantId: string, tableId: string, updates: { capacity?: number; assigned_server_id?: string | null; table_label?: string | null; table_section?: string | null; is_active?: boolean }): Promise<{ table: RestaurantTable }>;
   generateQRCodes(restaurantId: string): Promise<{ tables: Array<{ table_id: string; table_number: number; qr_code_url: string }>; message: string }>;
   downloadQRCodesZip(restaurantId: string): Promise<{ download_url: string; filename: string; table_count: number }>;
   deleteTable?(restaurantId: string, tableId: string): Promise<void>;
+  /**
+   * The QR killswitch: bumps `print_gen`, re-derives the table's slug, and
+   * stops the PRINTED code resolving immediately. For a sticker swap or a
+   * leaked code — the operator reprints from the returned `scan_path`.
+   *
+   * Optional like the rest, but the owner portal must supply it: before
+   * 2026-10-10 it lived only on /owner/tables, and retiring that page without
+   * this would have left no way to fire it from any UI.
+   */
+  rotateTableQR?(restaurantId: string, tableId: string): Promise<{
+    slug: string; sig: string; print_gen: number; scan_path: string;
+  }>;
   /**
    * Pull the floor plan from the restaurant's POS.
    *
@@ -296,6 +308,11 @@ export interface ExperienceService {
   // them gets the pairing UI. The owner portal does; admin and waiter do not,
   // and must keep rendering this component unchanged.
   listTableDevices?(restaurantId: string): Promise<{ devices: ExperienceTableDevice[] }>;
+  /** The live ROOM code, or nulls. One reusable code pairs the whole floor. */
+  getCurrentTableDeviceCode?(restaurantId: string, tableId?: string): Promise<{
+    code: string | null; expiresAt: string | null;
+  }>;
+  revokeTableDevice?(restaurantId: string, deviceId: string): Promise<{ message: string }>;
   /**
    * Mint a pairing code. With `tableId` it is a TABLE code — the device is
    * assigned to that table as it pairs and never sees the picker. Without one

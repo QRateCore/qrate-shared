@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Plus,
   Loader2,
+  RefreshCw,
   QrCode,
   Download,
   Trash2,
@@ -220,6 +221,22 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   const [devicesByTable, setDevicesByTable] = useState<Record<string, ExperienceTableDevice>>({});
   const [pairCodes, setPairCodes] = useState<Record<string, string>>({});
   const [pairingTableId, setPairingTableId] = useState<string | null>(null);
+
+  // ── Ported from the retired /owner/tables (2026-10-10) ────────────────
+  // Label, active/inactive and the QR killswitch lived ONLY there. Retiring
+  // that page without them would have removed three capabilities, one of them
+  // the security control that kills a printed QR after a sticker swap.
+  const [labelEdits, setLabelEdits] = useState<Record<string, string>>({});
+  const [savingLabel, setSavingLabel] = useState<Record<string, boolean>>({});
+  const [togglingActive, setTogglingActive] = useState<Record<string, boolean>>({});
+  const [rotatingQr, setRotatingQr] = useState<string | null>(null);
+  const [rotateConfirm, setRotateConfirm] = useState<{ tableId: string; tableNumber: number } | null>(null);
+
+  // The ROOM pairing code: one reusable code for the whole floor, as opposed
+  // to the per-table codes on each card. Both exist because they answer
+  // different jobs — minting 40 codes to set up 40 tables would be worse.
+  const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [mintingRoom, setMintingRoom] = useState(false);
 
   const loadDevices = service.listTableDevices;
   useEffect(() => {
@@ -475,6 +492,83 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     }
   };
 
+  const readRoomCode = service.getCurrentTableDeviceCode;
+  useEffect(() => {
+    if (!restaurantId || !readRoomCode) return;
+    let cancelled = false;
+    readRoomCode(restaurantId)
+      .then(r => { if (!cancelled) setRoomCode(r.code); })
+      .catch(() => { if (!cancelled) setRoomCode(null); });
+    return () => { cancelled = true; };
+  }, [restaurantId, readRoomCode]);
+
+  const handleMintRoomCode = async () => {
+    if (!restaurantId || !mintCode) return;
+    setMintingRoom(true);
+    try {
+      const r = await mintCode(restaurantId);   // no tableId => ROOM code
+      setRoomCode(r.code);
+    } catch {
+      showFeedback('error', 'Could not generate a pairing code');
+    } finally {
+      setMintingRoom(false);
+    }
+  };
+
+  const handleSaveLabel = async (tableId: string) => {
+    if (!restaurantId || labelEdits[tableId] === undefined) return;
+    setSavingLabel(prev => ({ ...prev, [tableId]: true }));
+    try {
+      // null CLEARS the label server-side; the local type uses undefined for
+      // "no label", so the two differ on purpose.
+      const label = labelEdits[tableId].trim() || null;
+      await service.updateTable(restaurantId, tableId, { table_label: label });
+      setTables(prev => prev.map(t =>
+        t.id === tableId ? { ...t, table_label: label ?? undefined } : t));
+      setLabelEdits(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+      showFeedback('success', 'Label updated');
+    } catch (err) {
+      console.error('Failed to update label:', err);
+      showFeedback('error', 'Failed to update label');
+    } finally {
+      setSavingLabel(prev => ({ ...prev, [tableId]: false }));
+    }
+  };
+
+  const handleToggleActive = async (tableId: string, currentActive: boolean) => {
+    if (!restaurantId) return;
+    setTogglingActive(prev => ({ ...prev, [tableId]: true }));
+    try {
+      await service.updateTable(restaurantId, tableId, { is_active: !currentActive });
+      setTables(prev => prev.map(t => t.id === tableId ? { ...t, is_active: !currentActive } : t));
+      showFeedback('success', currentActive ? 'Table deactivated' : 'Table reactivated');
+    } catch (err) {
+      console.error('Failed to update table:', err);
+      showFeedback('error', 'Failed to update table');
+    } finally {
+      setTogglingActive(prev => ({ ...prev, [tableId]: false }));
+    }
+  };
+
+  const rotateQr = service.rotateTableQR;
+  const handleRotateQr = async (tableId: string, tableNumber: number) => {
+    if (!restaurantId || !rotateQr) return;
+    setRotatingQr(tableId);
+    try {
+      const result = await rotateQr(restaurantId, tableId);
+      // The printed code is dead from this moment. Say the revision out loud:
+      // the operator has to reprint, and "it worked" is not enough to act on.
+      showFeedback('success', `Table ${tableNumber}: new QR ready (rev ${result.print_gen}) — reprint and replace the table tent`);
+      fetchTables();
+    } catch (err) {
+      console.error('Failed to rotate QR:', err);
+      showFeedback('error', `Failed to regenerate the QR for table ${tableNumber}`);
+    } finally {
+      setRotatingQr(null);
+      setRotateConfirm(null);
+    }
+  };
+
   const handleSaveSection = async (tableId: string) => {
     if (!restaurantId || sectionEdits[tableId] === undefined) return;
     setSavingSection(prev => ({ ...prev, [tableId]: true }));
@@ -704,6 +798,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
       )}
       {tablesWithQR.length > 0 && (
         <button
+          data-testid="download-qr-btn"
           onClick={handleDownloadZip}
           disabled={downloading}
           className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
@@ -717,6 +812,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         </button>
       )}
       <button
+        data-testid="generate-qr-btn"
         onClick={handleGenerate}
         disabled={generating || activeTables.length === 0}
         className="px-4 py-2 border border-gray-200 rounded-lg font-medium text-gray-600 hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 disabled:opacity-50"
@@ -864,10 +960,45 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         </div>
       )}
 
+      {/* Room pairing code. Separate from the per-card codes on purpose: this
+          one pairs every puck in the room and is the right tool for a whole
+          floor. Regenerating it never disconnects an already-paired device. */}
+      {mintCode && (
+        <div
+          data-testid="room-pairing-code"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+        >
+          <span className="text-xs font-semibold text-gray-700">Device pairing code (whole room)</span>
+          {roomCode ? (
+            <span className="font-mono text-lg tracking-[0.25em] text-gray-900" data-testid="room-pairing-code-value">
+              {roomCode}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-500">None yet</span>
+          )}
+          <button
+            onClick={handleMintRoomCode}
+            disabled={mintingRoom}
+            data-testid="room-pairing-code-generate"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-white disabled:opacity-50"
+          >
+            {mintingRoom ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
+            {roomCode ? 'Regenerate' : 'Generate'}
+          </button>
+          <span className="w-full text-[11px] text-gray-500">
+            One code pairs every device in the room and can be reused. Regenerating
+            replaces it for new devices — <strong className="font-semibold">devices already paired keep working</strong>.
+          </span>
+        </div>
+      )}
+
       {/* Table Grid — host station style */}
       {(() => {
+        // Inactive tables are shown, dimmed. They used to be filtered out
+        // here, which was safe only while /owner/tables existed to reach them;
+        // with the toggle living on this card, hiding them would make a table
+        // unreachable the moment it was deactivated.
         const sorted = [...tables]
-          .filter(t => t.is_active)
           .sort((a, b) => {
             const actA = tableActivity?.tables?.find(t => t.table_number === a.table_number);
             const actB = tableActivity?.tables?.find(t => t.table_number === b.table_number);
@@ -894,7 +1025,11 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
 
               return (
-                <div key={table.id} className={`relative border-2 border-dashed rounded-xl p-3 bg-white ${borderClass}`}>
+                <div
+                  key={table.id}
+                  data-testid={`table-card-${table.table_number}`}
+                  className={`relative border-2 border-dashed rounded-xl p-3 bg-white ${borderClass} ${table.is_active ? '' : 'opacity-60'}`}
+                >
                   {/* A puck is live on this table. Icon-only on purpose: any
                       text naming the table here would be a second match for the
                       card's own name and break the Tables E2E, which finds
@@ -959,9 +1094,9 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                   {/* Row 2: Status badge */}
                   <div className="mt-2">
                     {isOccupied ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">OCCUPIED</span>
+                      <span data-testid={`table-status-${table.table_number}`} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">OCCUPIED</span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">AVAILABLE</span>
+                      <span data-testid={`table-status-${table.table_number}`} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">AVAILABLE</span>
                     )}
                   </div>
 
@@ -1156,6 +1291,61 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         </button>
                       )}
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">Label:</span>
+                      <input
+                        type="text"
+                        placeholder="Custom label"
+                        aria-label={`Custom label for table ${table.table_number}`}
+                        value={labelEdits[table.id] ?? (table.table_label || '')}
+                        onChange={e => setLabelEdits(prev => ({ ...prev, [table.id]: e.target.value }))}
+                        className={`flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                        data-testid={`table-label-input-${table.table_number}`}
+                      />
+                      {labelEdits[table.id] !== undefined && labelEdits[table.id] !== (table.table_label || '') && (
+                        <button
+                          onClick={() => handleSaveLabel(table.id)}
+                          disabled={savingLabel[table.id]}
+                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                          data-testid={`table-label-save-${table.table_number}`}
+                        >
+                          {savingLabel[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleActive(table.id, table.is_active)}
+                        disabled={togglingActive[table.id]}
+                        data-testid={`table-toggle-${table.table_number}`}
+                        aria-label={`${table.is_active ? 'Deactivate' : 'Reactivate'} table ${table.table_number}`}
+                        className={`flex-1 px-2 text-xs rounded-lg border disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1.5'} ${
+                          table.is_active
+                            ? 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            : 'border-green-200 text-green-700 hover:bg-green-50'
+                        }`}
+                      >
+                        {togglingActive[table.id]
+                          ? <Loader2 className="h-3 w-3 animate-spin mx-auto" />
+                          : table.is_active ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                      {rotateQr && (
+                        <button
+                          onClick={() => setRotateConfirm({ tableId: table.id, tableNumber: table.table_number })}
+                          disabled={rotatingQr === table.id}
+                          data-testid={`table-rotate-qr-${table.table_number}`}
+                          aria-label={`Regenerate QR code for table ${table.table_number}`}
+                          title="Regenerate QR — the printed code stops working immediately (killswitch)"
+                          className={`px-2 text-xs rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1.5'}`}
+                        >
+                          {rotatingQr === table.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <RefreshCw className="h-3 w-3" />}
+                        </button>
+                      )}
+                    </div>
+
                     {mintCode && (
                       <>
                         <button
@@ -1311,6 +1501,39 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             <p className="text-xs text-gray-400 text-center mt-3">Scan to open the menu for this table</p>
           </div>
         </div>
+      )}
+
+      {/* Regenerate-QR confirmation. Destructive and irreversible for anything
+          already printed, so it gets the same weight as Delete. */}
+      {rotateConfirm && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl p-5 max-w-sm w-full" data-testid="rotate-qr-confirm">
+            <h2 className="text-lg font-bold text-gray-900">
+              Regenerate QR for Table {rotateConfirm.tableNumber}?
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              The current printed QR for this table will stop working immediately.
+              Reprint it and replace the table tent.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setRotateConfirm(null)}
+                data-testid="rotate-qr-cancel"
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRotateQr(rotateConfirm.tableId, rotateConfirm.tableNumber)}
+                data-testid="rotate-qr-confirm-btn"
+                className="px-3 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+              >
+                Regenerate
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* Delete Table Confirmation Modal */}
