@@ -1306,7 +1306,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         <button
                           onClick={() => handleSaveCapacity(table.id)}
                           disabled={savingCapacity[table.id]}
-                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                          className={`shrink-0 px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         >
                           {savingCapacity[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
                         </button>
@@ -1320,7 +1320,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         placeholder="e.g. Patio, Bar, Upstairs"
                         value={sectionEdits[table.id] ?? (table.table_section || '')}
                         onChange={e => setSectionEdits(prev => ({ ...prev, [table.id]: e.target.value }))}
-                        className={`flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                        className={`min-w-0 flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         data-testid={`table-section-input-${table.table_number}`}
                       />
                       <datalist id={`section-suggestions-${table.id}`}>
@@ -1332,7 +1332,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         <button
                           onClick={() => handleSaveSection(table.id)}
                           disabled={savingSection[table.id]}
-                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                          className={`shrink-0 px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                           data-testid={`table-section-save-${table.table_number}`}
                         >
                           {savingSection[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
@@ -1347,14 +1347,14 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                         aria-label={`Custom label for table ${table.table_number}`}
                         value={labelEdits[table.id] ?? (table.table_label || '')}
                         onChange={e => setLabelEdits(prev => ({ ...prev, [table.id]: e.target.value }))}
-                        className={`flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                        className={`min-w-0 flex-1 px-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                         data-testid={`table-label-input-${table.table_number}`}
                       />
                       {labelEdits[table.id] !== undefined && labelEdits[table.id] !== (table.table_label || '') && (
                         <button
                           onClick={() => handleSaveLabel(table.id)}
                           disabled={savingLabel[table.id]}
-                          className={`px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
+                          className={`shrink-0 px-3 text-xs bg-orange-500 text-white rounded-lg disabled:opacity-50 ${isMobile ? 'min-h-[44px]' : 'py-1'}`}
                           data-testid={`table-label-save-${table.table_number}`}
                         >
                           {savingLabel[table.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}

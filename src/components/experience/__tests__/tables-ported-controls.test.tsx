@@ -118,6 +118,18 @@ describe('the table label', () => {
     await waitFor(() =>
       expect(service.updateTable).toHaveBeenCalledWith('r1', 't1', { table_label: null }));
   });
+
+  // A flex-1 input keeps its intrinsic width unless min-w-0 lets it shrink, so
+  // the Save that appears beside it pushed the row past the card and under the
+  // NEXT card, which then swallowed the click (owner E2E edit-label, 10-10→10-11).
+  it('fits Save inside the card — the input shrinks, the button does not', async () => {
+    render(<ExperienceManagement restaurantId="r1" service={makeService([T()])} />);
+    const input = await screen.findByTestId('table-label-input-1');
+    await userEvent.type(input, 'x');
+    expect(input).toHaveClass('min-w-0', 'flex-1');
+    expect(await screen.findByTestId('table-label-save-1')).toHaveClass('shrink-0');
+    expect(screen.getByTestId('table-section-input-1')).toHaveClass('min-w-0', 'flex-1');
+  });
 });
 
 describe('the room pairing code', () => {
