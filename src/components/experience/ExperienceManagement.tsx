@@ -250,11 +250,6 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   // to the per-table codes on each card. Both exist because they answer
   // different jobs — minting 40 codes to set up 40 tables would be worse.
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  // A LEGACY room code minted before 2026-10-11 really does lapse in 24h, so
-  // the copy cannot claim permanence unconditionally — it would tell an owner
-  // a code is permanent on the day before it dies. Press Replace code once and
-  // the replacement is permanent.
-  const [roomCodeExpiresAt, setRoomCodeExpiresAt] = useState<string | null>(null);
   const [mintingRoom, setMintingRoom] = useState(false);
 
   const loadDevices = service.listTableDevices;
@@ -502,11 +497,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     if (!restaurantId || !readRoomCode) return;
     let cancelled = false;
     readRoomCode(restaurantId)
-      .then(r => {
-        if (cancelled) return;
-        setRoomCode(r.code);
-        setRoomCodeExpiresAt(r.neverExpires ? null : (r.expiresAt ?? null));
-      })
+      .then(r => { if (!cancelled) setRoomCode(r.code); })
       .catch(() => { if (!cancelled) setRoomCode(null); });
     return () => { cancelled = true; };
   }, [restaurantId, readRoomCode]);
@@ -517,7 +508,6 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     try {
       const r = await mintCode(restaurantId);   // no tableId => ROOM code
       setRoomCode(r.code);
-      setRoomCodeExpiresAt(r.neverExpires ? null : (r.expiresAt ?? null));
     } catch {
       showFeedback('error', 'Could not generate a pairing code');
     } finally {
@@ -1019,21 +1009,14 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               {mintingRoom ? 'Replacing…' : 'Replace code'}
             </button>
           </div>
-          <div className="mt-2 text-[11px] text-blue-800">
-            {roomCodeExpiresAt ? (
-              <>
-                <strong className="font-semibold" data-testid="room-pairing-code-expiry">
-                  This is an older code and it expires on{' '}
-                  {new Date(roomCodeExpiresAt).toLocaleDateString()}
-                </strong>
-                {' '}— press Replace code once and the new one never expires.{' '}
-              </>
-            ) : (
-              <span data-testid="room-pairing-code-permanent">
-                This code does not expire and pairs every device in the room.{' '}
-              </span>
-            )}
-            After pairing, the device asks which table it is on.{' '}
+          {/* Unconditional, because the API guarantees it: a legacy code that
+              still had an expiry is UPGRADED on read rather than reported, so
+              there is no state in which this sentence is false. The guarantee
+              is pinned where it is made —
+              test_a_legacy_expiring_room_code_is_UPGRADED_on_read. */}
+          <div className="mt-2 text-[11px] text-blue-800" data-testid="room-pairing-code-permanent">
+            This code does not expire and pairs every device in the room. After
+            pairing, the device asks which table it is on.{' '}
             <strong className="font-semibold">Replacing it never disconnects a device that is already paired</strong>
             {' '}— it only stops the old code working for new ones.
           </div>

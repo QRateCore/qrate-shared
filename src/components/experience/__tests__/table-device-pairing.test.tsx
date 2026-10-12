@@ -113,10 +113,11 @@ describe('the restaurant pairing code', () => {
     expect(screen.getByText(/asks which table it is on/i)).toBeTruthy();
   });
 
-  it('does NOT claim permanence for a legacy code that really expires', async () => {
-    // Room codes minted before 2026-10-11 lapse in 24h. dev Anant had exactly
-    // one of these live when the change deployed, and the first version of
-    // this strip told the owner it "does not expire" the day before it died.
+  it('never shows an expiry, even if a stale client reports one', async () => {
+    // There is no expiring-code state to render: the API upgrades a legacy
+    // code on read (test_a_legacy_expiring_room_code_is_UPGRADED_on_read), so
+    // the strip says "does not expire" unconditionally. This pins that the
+    // copy has no date branch left to resurrect.
     const service = makeService({
       listTableDevices: vi.fn().mockResolvedValue({ devices: [] }),
       getCurrentTableDeviceCode: vi.fn().mockResolvedValue({
@@ -125,9 +126,10 @@ describe('the restaurant pairing code', () => {
       createTableDeviceCode: vi.fn(),
     } as Partial<ExperienceService>);
     render(<ExperienceManagement restaurantId="r1" service={service} />);
-    await screen.findByTestId('room-pairing-code-expiry');
-    expect(screen.queryByTestId('room-pairing-code-permanent')).toBeNull();
-    expect(screen.getByText(/press Replace code once/i)).toBeTruthy();
+    await screen.findByTestId('room-pairing-code-permanent');
+    expect(screen.queryByTestId('room-pairing-code-expiry')).toBeNull();
+    expect(screen.queryByText(/older code/i)).toBeNull();
+    expect(screen.queryByText(/expires on/i)).toBeNull();
   });
 
   it('replaces the code restaurant-wide, with no table scope', async () => {
