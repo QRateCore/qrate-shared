@@ -156,6 +156,8 @@ describe('the room pairing code', () => {
     const service = withCodes(null);
     render(<ExperienceManagement restaurantId="r1" service={service} />);
     await userEvent.click(await screen.findByTestId('room-pairing-code-generate'));
+    // Replacing signs out every paired puck as of 2026-10-17, so it asks first.
+    await userEvent.click(await screen.findByTestId('replace-code-confirm-btn'));
     await waitFor(() => expect(service.createTableDeviceCode).toHaveBeenCalledWith('r1'));
   });
 });

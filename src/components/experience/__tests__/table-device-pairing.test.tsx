@@ -136,7 +136,9 @@ describe('the restaurant pairing code', () => {
     const service = withDevices();
     render(<ExperienceManagement restaurantId="r1" service={service} />);
     await screen.findByTestId('room-pairing-code-value');
+    // Replacing is destructive now, so it goes through a confirm.
     await userEvent.click(screen.getByTestId('room-pairing-code-generate'));
+    await userEvent.click(await screen.findByTestId('replace-code-confirm-btn'));
     await waitFor(() =>
       expect(screen.getByTestId('room-pairing-code-value').textContent).toContain('55556666'),
     );
@@ -147,11 +149,44 @@ describe('the restaurant pairing code', () => {
       .toHaveLength(1);
   });
 
-  it('promises that replacing it does not disconnect paired devices', async () => {
-    // STR-890 invariant, stated where the operator makes the decision.
+  it('WARNS that replacing it signs out every paired device', async () => {
+    // Reversed 2026-10-17: rotation is now the kill switch for a leaked code.
+    // The old copy promised the opposite, which would lead an owner to black
+    // out a dining room believing the action was safe — so the warning is
+    // pinned here, where the operator makes the decision.
     render(<ExperienceManagement restaurantId="r1" service={withDevices()} />);
     await screen.findByTestId('room-pairing-code');
-    expect(screen.getByText(/never disconnects a device that is already paired/i)).toBeTruthy();
+    expect(screen.getByText(/signs out every device you already paired/i)).toBeTruthy();
+    expect(screen.queryByText(/never disconnects/i)).toBeNull();
+  });
+
+  it('asks before replacing, and does not rotate if you cancel', async () => {
+    const service = withDevices();
+    render(<ExperienceManagement restaurantId="r1" service={service} />);
+    await screen.findByTestId('room-pairing-code-value');
+    await userEvent.click(screen.getByTestId('room-pairing-code-generate'));
+    await userEvent.click(await screen.findByTestId('replace-code-cancel'));
+    expect(service.createTableDeviceCode).not.toHaveBeenCalled();
+  });
+
+  it('tells the owner how many devices it just signed out', async () => {
+    const service = makeService({
+      listTableDevices: vi.fn().mockResolvedValue({ devices: [device()] }),
+      getCurrentTableDeviceCode: vi.fn().mockResolvedValue({
+        code: '04837261', expiresAt: null, neverExpires: true,
+      }),
+      createTableDeviceCode: vi.fn().mockResolvedValue({
+        code: '55556666', expiresAt: null, neverExpires: true, tableId: null,
+        signedOutDevices: 3,
+      }),
+    } as Partial<ExperienceService>);
+    render(<ExperienceManagement restaurantId="r1" service={service} />);
+    await screen.findByTestId('room-pairing-code-value');
+    await userEvent.click(screen.getByTestId('room-pairing-code-generate'));
+    await userEvent.click(await screen.findByTestId('replace-code-confirm-btn'));
+    // The room went dark; saying so is the difference between a known
+    // consequence and a mystery outage.
+    expect(await screen.findByText(/3 devices signed out/i)).toBeTruthy();
   });
 });
 

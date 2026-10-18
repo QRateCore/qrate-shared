@@ -323,8 +323,10 @@ export interface ExperienceService {
    * REPLACE the restaurant's pairing code. Use it when a code leaks; reading
    * the current one is getCurrentTableDeviceCode, which provisions on demand.
    *
-   * Rotating never disconnects a paired device — each puck holds a durable
-   * token and never presents the code again (STR-890).
+   * Rotating SIGNS OUT every paired device (2026-10-17): it is the kill
+   * switch for a leaked code, and a code that only stops new devices does not
+   * answer a leak. `signedOutDevices` reports how many went dark. This
+   * reverses STR-890 for table devices on purpose.
    *
    * Per-table codes were retired 2026-10-11: binding a device at pair time
    * suppressed its table picker, which made "I entered the code and got no
@@ -332,6 +334,8 @@ export interface ExperienceService {
    */
   createTableDeviceCode?(restaurantId: string): Promise<{
     code: string; expiresAt: string | null; neverExpires?: boolean; tableId: string | null;
+    /** How many paired devices this rotation signed out (2026-10-17). */
+    signedOutDevices?: number;
   }>;
 
   // Drinks QR — SEPARATE standalone drinks-ordering QR per table, gated on

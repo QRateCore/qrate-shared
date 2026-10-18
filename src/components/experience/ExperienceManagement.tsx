@@ -250,6 +250,10 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
   // to the per-table codes on each card. Both exist because they answer
   // different jobs — minting 40 codes to set up 40 tables would be worse.
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  // Rotation is destructive as of 2026-10-17: it signs out every paired puck,
+  // which blacks out the room until someone re-enters the code at each table.
+  // So it gets a confirm, like the QR rotate above it.
+  const [confirmReplaceCode, setConfirmReplaceCode] = useState(false);
   const [mintingRoom, setMintingRoom] = useState(false);
 
   const loadDevices = service.listTableDevices;
@@ -508,6 +512,13 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     try {
       const r = await mintCode(restaurantId);   // no tableId => ROOM code
       setRoomCode(r.code);
+      const evicted = r.signedOutDevices ?? 0;
+      showFeedback(
+        'success',
+        evicted > 0
+          ? `New code. ${evicted} device${evicted === 1 ? '' : 's'} signed out — re-enter the code at ${evicted === 1 ? 'that table' : 'those tables'}.`
+          : 'New pairing code.',
+      );
     } catch {
       showFeedback('error', 'Could not generate a pairing code');
     } finally {
@@ -965,6 +976,54 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         </div>
       )}
 
+      {/* Replacing the code signs out every paired puck (2026-10-17), so it
+          gets the same confirm the per-table QR rotate has. The count comes
+          from the device list the page already loaded, so the owner is told
+          how many tables go dark BEFORE they commit, not after. */}
+      {confirmReplaceCode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmReplaceCode(false); }}
+        >
+          <div className="bg-white rounded-xl p-5 max-w-sm w-full" data-testid="replace-code-confirm">
+            <h2 className="text-lg font-bold text-gray-900">Replace the pairing code?</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              {Object.keys(devicesByTable).length > 0 ? (
+                <>
+                  This signs out{' '}
+                  <strong className="font-semibold text-red-700">
+                    {Object.keys(devicesByTable).length} paired device
+                    {Object.keys(devicesByTable).length === 1 ? '' : 's'}
+                  </strong>
+                  . Each returns to its pairing screen, and somebody has to walk
+                  to that table and enter the new code. Do this when the code has
+                  leaked.
+                </>
+              ) : (
+                <>No devices are paired yet, so nothing will be signed out.</>
+              )}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmReplaceCode(false)}
+                data-testid="replace-code-cancel"
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirmReplaceCode(false); void handleMintRoomCode(); }}
+                data-testid="replace-code-confirm-btn"
+                className="px-3 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+              >
+                Replace and sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* THE pairing code. One per restaurant, PERMANENT, and the only one
           there is: a device enters it, then picks its own table on-screen.
           Deliberately at the top of the tab rather than on each card -- a
@@ -1000,7 +1059,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               </span>
             )}
             <button
-              onClick={handleMintRoomCode}
+              onClick={() => setConfirmReplaceCode(true)}
               disabled={mintingRoom}
               data-testid="room-pairing-code-generate"
               className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100 disabled:opacity-50"
@@ -1017,8 +1076,12 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
           <div className="mt-2 text-[11px] text-blue-800" data-testid="room-pairing-code-permanent">
             This code does not expire and pairs every device in the room. After
             pairing, the device asks which table it is on.{' '}
-            <strong className="font-semibold">Replacing it never disconnects a device that is already paired</strong>
-            {' '}— it only stops the old code working for new ones.
+            <strong className="font-semibold text-red-700">
+              Replacing it signs out every device you already paired
+            </strong>
+            {' '}— each one returns to its pairing screen and somebody has to
+            re-enter the new code at that table. Replace it when the code has
+            leaked, not to tidy up.
           </div>
         </div>
       )}
