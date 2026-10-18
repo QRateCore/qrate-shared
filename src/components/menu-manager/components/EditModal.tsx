@@ -208,6 +208,15 @@ interface EditModalProps {
    */
   pairingsSlot?: ReactNode;
   /**
+   * Optional render-slot for the Recipe tab (owner Kitchen Ops, 2026-10-18).
+   * When provided for a saved dish, a "Recipe" tab is added right after
+   * "Dish Properties" (a section on mobile) and the slot's content is
+   * rendered inside it. The consumer decides whether the restaurant has
+   * recipes at all (feature flag) and owns the recipe API; other consumers
+   * don't pass it and see no tab.
+   */
+  recipeSlot?: ReactNode;
+  /**
    * Optional render-slot for the Placements tab's overlap surface. When
    * supplied, the node is rendered above the per-menu placement cards
    * inside the Placements tab content area. Consumers (owner-webapp)
@@ -779,6 +788,8 @@ function DietaryMultiSelect({
 // Desktop is untouched (it keeps the tab bar + activeTab switching). The header
 // is a ≥52px tap target; the caller gates the body render on `open`, so lazy tab
 // content (and its guarded fetches) only mount once the owner expands a section.
+type EditModalTab = 'food_tags' | 'recipe' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'pairings' | 'dishes' | 'performance';
+
 function MobileAccordionHeader({
   id,
   title,
@@ -843,7 +854,7 @@ function MobileAccordionHeader({
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1214,6 +1225,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // The in-modal Dishes/Add-ons toggle was removed (2026-07-18), so isAddon is
   // derived once and never changes while the modal is open.
   const isAddon = forceAddon || item.item_type === 'addon';
+  const showRecipeTab = !!recipeSlot && !isAddon && !isNewItem;
   // True when the addon has no DB row yet — dish associations must be deferred until save.
   const isDeferredCreation = isNewItem && !!onSaveNewItem;
 
@@ -1294,7 +1306,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
   // Tab state — Food Tags | Placements (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
-  const [activeTab, setActiveTab] = useState<'food_tags' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'pairings' | 'dishes' | 'performance'>('food_tags');
+  const [activeTab, setActiveTab] = useState<EditModalTab>('food_tags');
 
   // Mobile accordion (STR-858) — which sections are expanded on the mobile
   // layout. Desktop ignores this entirely (it uses the tab bar + activeTab).
@@ -1311,7 +1323,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       else next.add(id);
       return next;
     });
-    if (id === 'food_tags' || id === 'placements' || id === 'groupings' || id === 'pairings' || id === 'dishes' || id === 'performance') {
+    if (id === 'food_tags' || id === 'recipe' || id === 'placements' || id === 'groupings' || id === 'pairings' || id === 'dishes' || id === 'performance') {
       setActiveTab(id);
     }
   }, []);
@@ -3784,7 +3796,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               flexShrink: 0,
             }}
           >
-            {(isAddon
+            {((isAddon
               // Add-ons get a slimmed-down Food Tags tab (allergens +
               // dietary only — heat/spice and free-text fields are
               // suppressed inside the section). Modifiers / sides
@@ -3822,12 +3834,18 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     ? (['food_tags', 'placements', 'groupings', 'pairings', 'performance'] as const)
                     : (['food_tags', 'placements', 'groupings', 'performance'] as const))
                   : (['food_tags', 'placements', 'performance'] as const)))
-            ).map((tab) => {
+            ) as readonly EditModalTab[])
+              // Recipe sits right after Dish Properties, for saved dishes
+              // whose consumer supplies the slot.
+              .flatMap((t): EditModalTab[] => (t === 'food_tags' && showRecipeTab ? ['food_tags', 'recipe'] : [t]))
+              .map((tab) => {
               const isActive = activeTab === tab;
               const placementsCount = item.menu_associations?.length ?? 0;
               const label =
                 tab === 'food_tags'
                   ? (isAddon ? 'Food Tags' : 'Dish Properties')
+                  : tab === 'recipe'
+                    ? 'Recipe'
                   : tab === 'placements'
                     ? `Menus${placementsCount > 0 ? ` (${placementsCount})` : ''}`
                     : tab === 'groupings'
@@ -4990,6 +5008,22 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   ))}
                 </div>
               </div>
+            </section>
+          )}
+
+          {/* ── Recipe tab (content provided by consumer) ───────────────── */}
+          {isMobile && showRecipeTab && (
+            <MobileAccordionHeader
+              id="recipe"
+              title="Recipe"
+              subtitle="Linked recipe, cost & nutrition"
+              open={expandedSections.has('recipe')}
+              onToggle={toggleSection}
+            />
+          )}
+          {showRecipeTab && (isMobile ? expandedSections.has('recipe') : activeTab === 'recipe') && (
+            <section style={{ marginBottom: 4 }} data-testid="edit-modal-recipe-panel">
+              {recipeSlot}
             </section>
           )}
 

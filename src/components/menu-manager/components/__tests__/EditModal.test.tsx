@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EditModal from '../EditModal';
@@ -161,6 +161,8 @@ interface RenderConfig {
   groupingsSlot?: React.ReactNode;
   /** 2026-09-02 — Pairings tab content (the recommendations grouping). */
   pairingsSlot?: React.ReactNode;
+  /** 2026-10-18 — Recipe tab content (owner Kitchen Ops). */
+  recipeSlot?: React.ReactNode;
   /** PDD 2026-05-26 — drives the BYO toggle's enabled/disabled state. */
   groupingsCount?: number;
 }
@@ -187,6 +189,7 @@ function renderModal(config: RenderConfig = {}) {
     heatLabels,
     groupingsSlot,
     pairingsSlot,
+    recipeSlot,
     groupingsCount,
   } = config;
 
@@ -213,6 +216,7 @@ function renderModal(config: RenderConfig = {}) {
         heatLabels={heatLabels}
         groupingsSlot={groupingsSlot}
         pairingsSlot={pairingsSlot}
+        recipeSlot={recipeSlot}
         groupingsCount={groupingsCount}
       />
     </MenuManagerServiceProvider>,
@@ -2219,5 +2223,40 @@ describe('EditModal — add-on image panel', () => {
   it('renders exactly ONE image panel in dish mode', () => {
     renderModal({ item: makeDishItem({ id: 'img-dish-2' }) });
     expect(screen.getAllByTestId('item-image-panel')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recipe tab (owner Kitchen Ops, 2026-10-18)
+// ---------------------------------------------------------------------------
+
+describe('EditModal — Recipe tab', () => {
+  const groupingsSlot = <div data-testid="test-groupings-slot">modifiers</div>;
+  const recipeSlot = <div data-testid="test-recipe-slot">recipe</div>;
+
+  it('puts Recipe right after Dish Properties when recipeSlot is provided', () => {
+    renderModal({ item: makeDishItem({ id: 'r-1' }), groupingsSlot, recipeSlot });
+    const tabs = Array.from(document.querySelectorAll('[data-testid^="tab-"]')).map(el => el.getAttribute('data-testid'));
+    expect(tabs.slice(0, 2)).toEqual(['tab-food_tags', 'tab-recipe']);
+    expect(screen.getByTestId('tab-recipe')).toHaveTextContent('Recipe');
+  });
+
+  it('renders the slot only on the Recipe tab', async () => {
+    const user = userEvent.setup();
+    renderModal({ item: makeDishItem({ id: 'r-2' }), groupingsSlot, recipeSlot });
+    expect(screen.queryByTestId('test-recipe-slot')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('tab-recipe'));
+    expect(screen.getByTestId('test-recipe-slot')).toBeInTheDocument();
+  });
+
+  it('has no Recipe tab without the slot, for a new item, or for an add-on', () => {
+    renderModal({ item: makeDishItem({ id: 'r-3' }), groupingsSlot });
+    expect(screen.queryByTestId('tab-recipe')).not.toBeInTheDocument();
+    cleanup();
+    renderModal({ item: makeDishItem({ id: 'r-4' }), isNewItem: true, recipeSlot });
+    expect(screen.queryByTestId('tab-recipe')).not.toBeInTheDocument();
+    cleanup();
+    renderModal({ item: makeDishItem({ id: 'r-5' }), forceAddon: true, recipeSlot });
+    expect(screen.queryByTestId('tab-recipe')).not.toBeInTheDocument();
   });
 });
