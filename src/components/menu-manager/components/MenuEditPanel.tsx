@@ -50,6 +50,7 @@ export default function MenuEditPanel({
   const [name, setName]           = useState(menu.name);
   const [isActive, setIsActive]   = useState(menu.active);
   const [isAllDay, setIsAllDay]   = useState(menu.is_all_day);
+  const [isDrinksOnly, setIsDrinksOnly] = useState(menu.is_drinks_only ?? false);
   const [showInactiveWarning, setShowInactiveWarning] = useState(false);
 
   // Schedule: per-day {start, end} pairs
@@ -137,6 +138,7 @@ export default function MenuEditPanel({
         name: name.trim(),
         active: isActive,
         is_all_day: isAllDay,
+        is_drinks_only: isDrinksOnly,
         schedule: buildSchedule(),
         days_of_week: isAllDay ? [0, 1, 2, 3, 4, 5, 6] : [...enabledDays].sort(),
       });
@@ -376,7 +378,7 @@ export default function MenuEditPanel({
             </p>
 
             {/* All-day toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
               <input
                 type="checkbox"
                 checked={isAllDay}
@@ -385,6 +387,18 @@ export default function MenuEditPanel({
                 style={{ accentColor: 'var(--blue)', width: 14, height: 14 }}
               />
               <span style={{ fontSize: 12, color: 'var(--text)' }}>Available all day</span>
+            </label>
+
+            {/* Drinks-only flag */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={isDrinksOnly}
+                onChange={(e) => setIsDrinksOnly(e.target.checked)}
+                data-testid="menu-drinks-only"
+                style={{ accentColor: 'var(--blue)', width: 14, height: 14 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text)' }}>Drinks only</span>
             </label>
 
             {/* Per-day schedule grid */}
