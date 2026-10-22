@@ -2274,7 +2274,7 @@ function CategoryBucket({
                   key={item.id}
                   className="flex items-stretch w-full"
                   style={{
-                    background: isSelected ? 'rgba(255,107,43,0.05)' : undefined,
+                    background: isSelected ? 'rgba(184,57,42,0.05)' : undefined,
                     borderLeft: isSelected
                       ? '3px solid var(--brand)'
                       : undefined,

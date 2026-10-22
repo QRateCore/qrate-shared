@@ -260,7 +260,7 @@ export function ItemPlacementModal({
                       className="rounded-full border px-3.5 py-2 text-sm font-medium transition-colors"
                       style={
                         isSel
-                          ? { borderColor: 'var(--brand, #FF6B2B)', background: 'var(--brand, #FF6B2B)', color: '#fff' }
+                          ? { borderColor: 'var(--brand, #B8392A)', background: 'var(--brand, #B8392A)', color: '#fff' }
                           : { borderColor: '#E7C9A3', background: '#fff', color: 'var(--text)' }
                       }
                     >
@@ -409,7 +409,7 @@ export function ItemPlacementModal({
               className="min-h-11 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold"
               style={
                 canConfirm
-                  ? { color: '#fff', background: 'var(--brand, #FF6B2B)' }
+                  ? { color: '#fff', background: 'var(--brand, #B8392A)' }
                   : { color: '#fff', background: '#CBD5E1', cursor: 'not-allowed' }
               }
             >

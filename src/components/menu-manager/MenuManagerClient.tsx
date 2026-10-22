@@ -2901,7 +2901,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               width: 160,
               height: 160,
               borderRadius: 999,
-              background: 'radial-gradient(circle, rgba(255,140,66,.3), transparent 60%)',
+              background: 'radial-gradient(circle, rgba(204,74,56,.3), transparent 60%)',
             }}
           />
           <div
@@ -2909,7 +2909,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               width: 38,
               height: 38,
               borderRadius: 10,
-              background: 'var(--brand-gradient, linear-gradient(135deg,#ff8c42,#ff6b2b))',
+              background: 'var(--brand-gradient, linear-gradient(135deg,#CC4A38,#B8392A))',
               display: 'grid',
               placeItems: 'center',
               flexShrink: 0,
@@ -3419,7 +3419,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 position: 'absolute',
                 inset: 0,
                 transition: 'background 120ms',
-                background: dividerActive ? 'rgba(255, 107, 43, 0.1)' : 'transparent',
+                background: dividerActive ? 'rgba(184, 57, 42, 0.1)' : 'transparent',
               }}
             />
             <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -3430,7 +3430,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                     width: 3,
                     height: 3,
                     borderRadius: '50%',
-                    background: dividerActive ? '#FF6B2B' : 'var(--border, #e2e8f0)',
+                    background: dividerActive ? 'var(--brand-s, #B8392A)' : 'var(--border, #e2e8f0)',
                     transition: 'background 120ms',
                   }}
                 />

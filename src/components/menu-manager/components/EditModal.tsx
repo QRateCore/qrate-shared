@@ -3869,7 +3869,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 14,
                     fontWeight: isActive ? 600 : 500,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
-                    background: isActive ? 'rgba(255,107,43,0.05)' : 'transparent',
+                    background: isActive ? 'rgba(184,57,42,0.05)' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid var(--brand-s)' : '2px solid transparent',
                     marginBottom: -1,
@@ -4004,11 +4004,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     : suggested
                       ? {
                           fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FFF0E6)',
+                          bg: 'var(--orange-bg, #FDF0EE)',
                         }
                       : {
                           fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FFF0E6)',
+                          bg: 'var(--orange-bg, #FDF0EE)',
                         };
                   return (
                     <div
@@ -6339,7 +6339,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
         style={{
           display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 8,
           marginBottom: 10, borderRadius: 8, overflow: 'hidden',
-          background: 'var(--orange-bg, #FFF3EC)',
+          background: 'var(--orange-bg, #FDF0EE)',
           border: '1px solid var(--orange-300, #FFB48A)',
         }}
       >

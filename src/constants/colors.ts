@@ -17,5 +17,5 @@ export const COLOR_ERROR         = '#dc2626';  // red-600
 export const COLOR_ERROR_MUTED   = '#ef4444';  // red-500   — icon/badge use
 
 // Brand colors
-export const COLOR_BRAND_SOLID   = '#FF6B2B';
-export const COLOR_BRAND_HOVER   = '#FDBA74';  // orange-300 — hover borders
+export const COLOR_BRAND_SOLID   = '#B8392A';
+export const COLOR_BRAND_HOVER   = '#E9A79D';  // orange-300 — hover borders

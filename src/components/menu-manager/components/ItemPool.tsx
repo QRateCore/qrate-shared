@@ -490,7 +490,7 @@ function CategorySection({
                 fontSize: 10,
                 fontWeight: 600,
                 color: 'var(--brand-s)',
-                background: 'rgba(255,107,43,0.08)',
+                background: 'rgba(184,57,42,0.08)',
                 borderRadius: 4,
                 padding: '1px 5px',
                 whiteSpace: 'nowrap',

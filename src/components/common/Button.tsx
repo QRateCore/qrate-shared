@@ -15,7 +15,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-[linear-gradient(135deg,#FF8C42,#FF4500)] text-white hover:opacity-90 focus-visible:ring-orange-500',
+    'bg-[image:var(--brand-gradient,linear-gradient(135deg,#CC4A38,#B8392A))] text-white hover:opacity-90 focus-visible:ring-orange-500',
   secondary:
     'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-400',
   danger:

@@ -168,7 +168,7 @@ export default function MobileMenuManagerLayout({
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                       minHeight: 52, padding: '10px 12px', marginBottom: 2,
-                      background: isActive ? 'rgba(255,107,43,0.06)' : 'transparent',
+                      background: isActive ? 'rgba(184,57,42,0.06)' : 'transparent',
                       border: isActive ? '1px solid var(--brand-s)' : '1px solid transparent',
                       borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                     }}
