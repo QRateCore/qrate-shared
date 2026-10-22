@@ -981,6 +981,12 @@ export interface GroupingItem {
   suggestion_source?: 'manual' | 'ai';
   ai_confidence?: number | null;
   /**
+   * Auto Pairings PDD (2026-10-21) — why this member is here. 'owner' for
+   * anything the owner added; system rows carry the pairing suggester's
+   * reason. Same vocabulary as the diner "Pairs well with" tag.
+   */
+  reason_kind?: 'owner' | 'ai' | 'often_together' | 'great_match' | 'cuisine';
+  /**
    * PDD 2026-05-25 — owner/staff-only memo, projected from the linked
    * menu_items.memo so the Add member popup picker can render the Memo
    * column without an extra fetch. Add-ons only by convention.
