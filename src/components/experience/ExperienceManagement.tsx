@@ -1100,8 +1100,12 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             const hasB = actB?.has_active_session === true;
             const callA = waiterCalls.filter(c => c.table_number === a.table_number && (c.status === 'active' || c.status === 'overdue')).length;
             const callB = waiterCalls.filter(c => c.table_number === b.table_number && (c.status === 'active' || c.status === 'overdue')).length;
-            if (hasA !== hasB) return hasA ? -1 : 1;
-            if (hasA && callA !== callB) return callB - callA;
+            // A table asking for service floats up whether or not anyone is
+            // seated: a device call on an empty table still needs a person.
+            const upA = hasA || callA > 0;
+            const upB = hasB || callB > 0;
+            if (upA !== upB) return upA ? -1 : 1;
+            if (upA && callA !== callB) return callB - callA;
             return a.table_number - b.table_number;
           });
 
@@ -1110,12 +1114,34 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             {sorted.map(table => {
               const activity = tableActivity?.tables?.find(t => t.table_number === table.table_number) ?? null;
               const isOccupied = activity?.has_active_session === true;
-              const borderClass = isOccupied ? 'border-red-400' : 'border-green-400';
               const tableCalls = waiterCalls.filter(c => c.table_number === table.table_number && (c.status === 'active' || c.status === 'overdue'));
+              const borderClass = isOccupied || tableCalls.length > 0 ? 'border-red-400' : 'border-green-400';
               // Mobile: when a table has active calls and the manager hasn't
               // explicitly picked a sub-tab, default to Service so the call + the
               // large "Done" ack show without a tap (desktop keeps the Orders default).
               const activeTab = cardTabState[table.table_number] ?? ((isMobile && tableCalls.length > 0) ? 'service' : 'orders');
+              const renderCalls = () => tableCalls.map(call => (
+                <div key={call.id} className={`flex items-center justify-between rounded-lg px-2.5 py-2 ${call.status === 'overdue' ? 'bg-orange-50' : 'bg-red-50'}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {call.status === 'overdue'
+                      ? <AlertTriangle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                      : <BellRing className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                    }
+                    <div className="min-w-0">
+                      <p title={callTypeLabel(call.call_type ?? '')} className="text-xs font-medium text-gray-800 truncate">{callTypeLabel(call.call_type ?? '')}</p>
+                      <p className={`text-[11px] ${call.status === 'overdue' ? 'text-orange-500' : 'text-red-400'}`}>{timeSince(call.created_at)}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAcknowledgeCall(call.id)}
+                    className={`ml-2 flex items-center justify-center gap-1 rounded-md font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0 ${isMobile ? 'min-h-[44px] px-4 text-sm' : 'px-2 py-1 text-[11px]'}`}
+                    data-testid={`table-ack-call-${table.table_number}`}
+                  >
+                    <Check className={isMobile ? 'h-4 w-4' : 'h-3 w-3'} />
+                    Done
+                  </button>
+                </div>
+              ));
               const serverName = table.assigned_server_id ? (staff.find(s => s.id === table.assigned_server_id)?.name ?? null) : null;
 
               return (
@@ -1277,32 +1303,22 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
                           <div className="space-y-1.5">
                             {tableCalls.length === 0 ? (
                               <p className="text-xs text-gray-400 text-center py-2">No service requests</p>
-                            ) : tableCalls.map(call => (
-                              <div key={call.id} className={`flex items-center justify-between rounded-lg px-2.5 py-2 ${call.status === 'overdue' ? 'bg-orange-50' : 'bg-red-50'}`}>
-                                <div className="flex items-center gap-2 min-w-0">
-                                  {call.status === 'overdue'
-                                    ? <AlertTriangle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
-                                    : <BellRing className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                                  }
-                                  <div className="min-w-0">
-                                    <p title={callTypeLabel(call.call_type ?? '')} className="text-xs font-medium text-gray-800 truncate">{callTypeLabel(call.call_type ?? '')}</p>
-                                    <p className={`text-[11px] ${call.status === 'overdue' ? 'text-orange-500' : 'text-red-400'}`}>{timeSince(call.created_at)}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => handleAcknowledgeCall(call.id)}
-                                  className={`ml-2 flex items-center justify-center gap-1 rounded-md font-semibold text-white bg-gray-800 active:bg-gray-900 flex-shrink-0 ${isMobile ? 'min-h-[44px] px-4 text-sm' : 'px-2 py-1 text-[11px]'}`}
-                                  data-testid={`table-ack-call-${table.table_number}`}
-                                >
-                                  <Check className={isMobile ? 'h-4 w-4' : 'h-3 w-3'} />
-                                  Done
-                                </button>
-                              </div>
-                            ))}
+                            ) : renderCalls()}
                           </div>
                         )}
                       </div>
                     </>
+                  )}
+
+                  {/* A call can arrive with nobody seated: the on-table device
+                      (and a diner who rang before joining) raise calls on a table
+                      with no session. Everything above is gated on a session, so
+                      those calls were invisible here although the API returned
+                      them (dev Anant tables 3 and 4, 2026-10-22). */}
+                  {!isOccupied && tableCalls.length > 0 && (
+                    <div className="mt-3 space-y-1.5" data-testid={`table-calls-unseated-${table.table_number}`}>
+                      {renderCalls()}
+                    </div>
                   )}
 
                   {/* Management controls. Mobile: config (server / seats / delete)
