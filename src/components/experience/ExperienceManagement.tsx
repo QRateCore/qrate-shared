@@ -38,6 +38,13 @@ interface ExperienceManagementProps {
    * reason reads as "connect a POS first", which is the actionable truth.
    */
   posConnected?: boolean;
+  /**
+   * Rendered at the top of the Tables tab, above the grid. The owner app puts
+   * its read-only table-device panel here (remote-config PDD 2026-10-24: the
+   * device pairing code is retired, QRate sets devices up from the admin
+   * portal). Admin and waiter leave it unset.
+   */
+  tablesTopSlot?: ReactNode;
   initialTab?: Tab;
   restaurantId?: string | null;
   service: ExperienceService;
@@ -87,7 +94,7 @@ interface ExperienceManagementProps {
   showDrinksTab?: boolean;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false, showTestTables = false }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, tablesTopSlot, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false, showTestTables = false }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     if (!showKitchenTab && initialTab === 'kitchen') return 'tables';
     if (!showDrinksTab && initialTab === 'drinks') return 'tables';
@@ -183,7 +190,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
       {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} />}
-        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} showTestTables={showTestTables} />}
+        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} showTestTables={showTestTables} topSlot={tablesTopSlot} />}
         {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         {showDrinksTab && activeTab === 'drinks' && <DrinksQrTab restaurantId={restaurantId || undefined} service={service} />}
       </div>
@@ -191,7 +198,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   );
 }
 
-function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot, showTestTables = false }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null; showTestTables?: boolean }) {
+function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot, showTestTables = false, topSlot }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null; showTestTables?: boolean; topSlot?: ReactNode }) {
   const isMobile = useIsMobile();
   // Mobile-only: which occupied cards have the config controls ("Manage")
   // expanded. Config is collapsed by default on a phone so the card's
@@ -1023,6 +1030,8 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
           </div>
         </div>
       )}
+
+      {topSlot}
 
       {/* THE pairing code. One per restaurant, PERMANENT, and the only one
           there is: a device enters it, then picks its own table on-screen.
