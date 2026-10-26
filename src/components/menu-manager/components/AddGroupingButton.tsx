@@ -91,10 +91,10 @@ export default function AddGroupingButton({
             alignItems: 'center',
             gap: 4,
             padding: '6px 10px',
-            border: '1px dashed #94a3b8',
+            border: '1px dashed var(--ink-faint)',
             borderRadius: 6,
-            background: '#f8fafc',
-            color: '#475569',
+            background: 'var(--surface-sunk)',
+            color: 'var(--ink-label)',
             fontSize: 13,
             cursor: 'pointer',
           }}
@@ -111,9 +111,9 @@ export default function AddGroupingButton({
             alignItems: 'center',
             gap: 6,
             padding: 8,
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--line)',
             borderRadius: 6,
-            background: '#fff',
+            background: 'var(--surface)',
             boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
             flexWrap: 'wrap',
           }}
@@ -128,7 +128,7 @@ export default function AddGroupingButton({
             style={{
               padding: '4px 8px',
               fontSize: 13,
-              border: '1px solid #cbd5e1',
+              border: '1px solid var(--line-input)',
               borderRadius: 4,
               minWidth: 180,
             }}
@@ -166,7 +166,7 @@ export default function AddGroupingButton({
               border: 'none',
               borderRadius: 4,
               background: '#0f766e',
-              color: '#fff',
+              color: 'var(--surface)',
               fontSize: 12,
               cursor: saving ? 'wait' : 'pointer',
             }}
@@ -182,10 +182,10 @@ export default function AddGroupingButton({
             data-testid={`${testIdPrefix}-cancel`}
             style={{
               padding: '4px 8px',
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--line)',
               borderRadius: 4,
-              background: '#fff',
-              color: '#64748b',
+              background: 'var(--surface)',
+              color: 'var(--ink-soft)',
               fontSize: 12,
               cursor: 'pointer',
             }}
@@ -204,8 +204,8 @@ export default function AddGroupingButton({
             left: 0,
             marginTop: 8,
             zIndex: 200,
-            background: '#fff',
-            border: '1px solid #e2e8f0',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
             borderRadius: 8,
             boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
             padding: 12,
@@ -215,7 +215,7 @@ export default function AddGroupingButton({
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
             New: Custom groupings
           </div>
-          <div style={{ fontSize: 12, color: '#475569', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--ink-label)', marginBottom: 10 }}>
             You can now add and rename groups beyond Sides, Add-ons, and Recommendations. Set
             rules like &ldquo;patron picks at most 2&rdquo; to build composable dishes.
           </div>
@@ -228,7 +228,7 @@ export default function AddGroupingButton({
                 fontSize: 12,
                 padding: '4px 10px',
                 background: '#0f766e',
-                color: '#fff',
+                color: 'var(--surface)',
                 border: 'none',
                 borderRadius: 4,
                 cursor: 'pointer',

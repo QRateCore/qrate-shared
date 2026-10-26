@@ -195,7 +195,7 @@ function ItemPoolCard({
           width: 18,
           height: 18,
           borderRadius: 4,
-          border: isSelected ? '2px solid var(--blue)' : '2px solid #ccc',
+          border: isSelected ? '2px solid var(--blue)' : '2px solid var(--line-input)',
           background: isSelected ? 'var(--blue)' : 'transparent',
           display: 'flex',
           alignItems: 'center',
@@ -215,7 +215,7 @@ function ItemPoolCard({
             width: 48,
             height: 48,
             borderRadius: 'var(--r-xs)',
-            background: '#f0f0f0',
+            background: 'var(--surface2)',
             flexShrink: 0,
             overflow: 'hidden',
             display: 'flex',
@@ -263,8 +263,8 @@ function ItemPoolCard({
                 fontSize: 10,
                 fontWeight: 700,
                 letterSpacing: '0.04em',
-                color: '#b91c1c',
-                background: '#fee2e2',
+                color: 'var(--bad)',
+                background: 'var(--bad-bg)',
                 borderRadius: 4,
                 padding: '1px 5px',
               }}
@@ -333,7 +333,7 @@ function ItemPoolCard({
           aria-label={`Add ${item.name} to a menu`}
           title="Add to menu"
           style={{
-            background: 'var(--brand-gradient)', color: '#fff', border: 'none',
+            background: 'var(--brand-gradient)', color: 'var(--surface)', border: 'none',
             cursor: 'pointer', minWidth: 44, minHeight: 44, borderRadius: 8,
             flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             ...noDrag,
@@ -490,7 +490,7 @@ function CategorySection({
                 fontSize: 10,
                 fontWeight: 600,
                 color: 'var(--brand-s)',
-                background: 'rgba(184,57,42,0.08)',
+                background: 'rgba(17, 17, 17,0.08)',
                 borderRadius: 4,
                 padding: '1px 5px',
                 whiteSpace: 'nowrap',
@@ -511,7 +511,7 @@ function CategorySection({
             width: 16,
             height: 16,
             borderRadius: 3,
-            border: allSelected ? '2px solid var(--blue)' : '2px solid #ccc',
+            border: allSelected ? '2px solid var(--blue)' : '2px solid var(--line-input)',
             background: allSelected ? 'var(--blue)' : 'transparent',
             display: 'flex',
             alignItems: 'center',
@@ -741,7 +741,7 @@ export default function ItemPool({
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            background: '#f6f6f6',
+            background: 'var(--surface2)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--r-xs)',
             padding: '6px 10px',
@@ -821,8 +821,8 @@ export default function ItemPool({
                     cursor: 'pointer',
                     border: 'none',
                     borderRight: idx === 0 ? '1px solid var(--border)' : 'none',
-                    background: itemTypeFilter === tab.key ? '#fff7ed' : 'transparent',
-                    color: itemTypeFilter === tab.key ? '#c2410c' : 'var(--text2)',
+                    background: itemTypeFilter === tab.key ? 'var(--surface2)' : 'transparent',
+                    color: itemTypeFilter === tab.key ? 'var(--ink)' : 'var(--text2)',
                   }}
                 >
                   {tab.label}
@@ -857,7 +857,7 @@ export default function ItemPool({
                     border: 'none',
                     borderRight: tab === 'Visible' ? '1px solid var(--border)' : 'none',
                     background: visibilityFilter === tab ? 'var(--brand-s)' : 'var(--white)',
-                    color: visibilityFilter === tab ? 'white' : 'var(--text2)',
+                    color: visibilityFilter === tab ? 'var(--on-ink)' : 'var(--text2)',
                     transition: 'background 0.12s, color 0.12s',
                   }}
                 >
@@ -901,7 +901,7 @@ export default function ItemPool({
               width: 14,
               height: 14,
               borderRadius: 3,
-              border: allSelected ? '2px solid var(--blue)' : '2px solid #ccc',
+              border: allSelected ? '2px solid var(--blue)' : '2px solid var(--line-input)',
               background: allSelected ? 'var(--blue)' : 'transparent',
               display: 'flex',
               alignItems: 'center',

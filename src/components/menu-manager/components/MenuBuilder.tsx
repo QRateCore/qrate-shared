@@ -196,12 +196,12 @@ interface MenuBuilderProps {
 // groupings use the grouping's own name. Hovering for 500ms opens a popover
 // listing the grouping's members.
 const KIND_PALETTE: Record<string, { bg: string; fg: string; border: string }> = {
-  addons:          { bg: '#ffedd5', fg: '#9a3412', border: '#fb923c' }, // orange
-  sides_and:       { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
-  sides_or:        { bg: '#dcfce7', fg: '#166534', border: '#86efac' }, // green
-  recommendations: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' }, // blue
-  modifier:        { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' }, // amber
-  custom:          { bg: '#ede9fe', fg: '#6b21a8', border: '#c4b5fd' }, // purple
+  addons:          { bg: '#ffedd5', fg: '#9a3412', border: 'var(--ink)' }, // orange
+  sides_and:       { bg: '#dcfce7', fg: '#166534', border: '#A6CDB3' }, // green
+  sides_or:        { bg: '#dcfce7', fg: '#166534', border: '#A6CDB3' }, // green
+  recommendations: { bg: '#dbeafe', fg: '#1e40af', border: 'var(--line-input)' }, // blue
+  modifier:        { bg: '#fef3c7', fg: '#92400e', border: '#D9BF8E' }, // amber
+  custom:          { bg: '#ede9fe', fg: '#6b21a8', border: 'var(--line-input)' }, // purple
 };
 const GROUPING_HOVER_DELAY_MS = 500;
 
@@ -318,8 +318,8 @@ function GroupingChip({
 // Empty side renders a faded zero pill — owners can scan a row and see
 // "0 active / 3 inactive" at a glance.
 
-const REC_ACTIVE_PALETTE = { bg: '#dcfce7', fg: '#166534', border: '#86efac' };
-const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' };
+const REC_ACTIVE_PALETTE = { bg: '#dcfce7', fg: '#166534', border: '#A6CDB3' };
+const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#D9BF8E' };
 
 // Single, consistent "valid drop target" highlight. Green is reserved for
 // "you can drop here" and is used identically across every drop zone — course
@@ -327,7 +327,7 @@ const REC_INACTIVE_PALETTE = { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' }
 // zones — so the builder reads the same wherever the owner drags. Course
 // colours still own the collapsed tab/identity; only the *drop* affordance is
 // green.
-export const DROP_TARGET = { bg: '#F0FDF4', fill: '#DCFCE7', border: '#16A34A', accent: '#15803D' };
+export const DROP_TARGET = { bg: '#F0FDF4', fill: '#DCFCE7', border: 'var(--ok)', accent: '#15803D' };
 
 export function _classifyRecMembersForTest(
   members: readonly Grouping['items'][number][],
@@ -1508,7 +1508,7 @@ function MenuItemRow({
                     onBlur={() => handleCategoryPriceBlur(cat)}
                     placeholder={settings.price != null ? String(settings.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[#b91c1c] rounded-sm' : 'border-none'}`}
+                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[var(--bad)] rounded-sm' : 'border-none'}`}
                   />
                 ) : (
                   <input
@@ -1522,7 +1522,7 @@ function MenuItemRow({
                     onBlur={handlePriceBlur}
                     placeholder={item.price != null ? String(item.price) : ''}
                     data-testid={`price-input-${item.id}`}
-                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[#b91c1c] rounded-sm' : 'border-none'}`}
+                    className={`outline-none text-xs w-[60px] bg-transparent text-[var(--text)] ${priceInvalid ? 'border border-[var(--bad)] rounded-sm' : 'border-none'}`}
                   />
                 )}
               </div>
@@ -2274,7 +2274,7 @@ function CategoryBucket({
                   key={item.id}
                   className="flex items-stretch w-full"
                   style={{
-                    background: isSelected ? 'rgba(184,57,42,0.05)' : undefined,
+                    background: isSelected ? 'rgba(17, 17, 17,0.05)' : undefined,
                     borderLeft: isSelected
                       ? '3px solid var(--brand)'
                       : undefined,

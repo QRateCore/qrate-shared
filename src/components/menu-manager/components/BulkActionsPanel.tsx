@@ -1261,7 +1261,7 @@ export default function BulkActionsPanel({
               style={{
                 fontSize: 11,
                 fontWeight: 500,
-                background: '#f0f0f0',
+                background: 'var(--surface2)',
                 color: 'var(--text)',
                 borderRadius: 4,
                 padding: '2px 7px',
@@ -1476,8 +1476,8 @@ export default function BulkActionsPanel({
               style={{
                 display: 'flex', flexDirection: 'column', gap: 8,
                 padding: 12, borderRadius: 6,
-                background: '#fff7ed', border: '1px solid #fed7aa',
-                color: '#7c2d12', fontSize: 13,
+                background: 'var(--surface2)', border: '1px solid var(--line)',
+                color: 'var(--ink)', fontSize: 13,
               }}
             >
               <div style={{ fontWeight: 600 }}>
@@ -1570,8 +1570,8 @@ export default function BulkActionsPanel({
             <div
               style={{
                 fontSize: 11,
-                color: '#b91c1c',
-                background: '#fee2e2',
+                color: 'var(--bad)',
+                background: 'var(--bad-bg)',
                 borderRadius: 4,
                 padding: '6px 10px',
               }}
@@ -1596,7 +1596,7 @@ export default function BulkActionsPanel({
                 style={{
                   flex: 1,
                   height: 4,
-                  background: '#f0f0f0',
+                  background: 'var(--surface2)',
                   borderRadius: 2,
                   overflow: 'hidden',
                 }}
@@ -1604,7 +1604,7 @@ export default function BulkActionsPanel({
                 <div
                   style={{
                     height: '100%',
-                    background: isDelete ? '#ef4444' : 'var(--blue)',
+                    background: isDelete ? 'var(--bad)' : 'var(--blue)',
                     borderRadius: 2,
                     width: `${(progress.done / progress.total) * 100}%`,
                     transition: 'width 0.2s',
@@ -1627,7 +1627,7 @@ export default function BulkActionsPanel({
                 fontSize: 12,
                 fontWeight: 600,
                 color: 'var(--text2)',
-                background: '#f0f0f0',
+                background: 'var(--surface2)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: 'pointer',
@@ -1645,8 +1645,8 @@ export default function BulkActionsPanel({
                 padding: '8px 0',
                 fontSize: 12,
                 fontWeight: 700,
-                color: 'white',
-                background: isDelete && deleteConfirm ? '#ef4444' : isDelete ? '#ef4444' : 'var(--blue)',
+                color: 'var(--on-ink)',
+                background: isDelete && deleteConfirm ? 'var(--bad)' : isDelete ? 'var(--bad)' : 'var(--blue)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: executing ? 'not-allowed' : 'pointer',
@@ -1713,7 +1713,7 @@ function AssignForm({
               />
               <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>{menu.name}</span>
               {!menu.active && (
-                <span style={{ fontSize: 10, color: '#b91c1c' }}>Inactive</span>
+                <span style={{ fontSize: 10, color: 'var(--bad)' }}>Inactive</span>
               )}
             </label>
           ))
@@ -1817,7 +1817,7 @@ function BoostForm({
                 fontWeight: 600,
                 borderRadius: 'var(--r-xs)',
                 border: isSelected ? '2px solid var(--blue)' : '1px solid var(--border)',
-                background: isSelected ? 'var(--blue-bg)' : 'white',
+                background: isSelected ? 'var(--blue-bg)' : 'var(--surface)',
                 color: isSelected ? 'var(--blue)' : 'var(--text)',
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -1866,8 +1866,8 @@ function SpecialForm({
               fontWeight: 600,
               borderRadius: 'var(--r-xs)',
               border: value === v ? '2px solid var(--amber, #f59e0b)' : '1px solid var(--border)',
-              background: value === v ? '#fef3c7' : 'white',
-              color: value === v ? '#b45309' : 'var(--text)',
+              background: value === v ? 'var(--warn-bg)' : 'var(--surface)',
+              color: value === v ? 'var(--warn)' : 'var(--text)',
               cursor: 'pointer',
               textAlign: 'left',
             }}
@@ -1913,9 +1913,9 @@ function AvailabilityForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: value ? '2px solid #16a34a' : '1px solid var(--border)',
-            background: value ? '#dcfce7' : 'white',
-            color: value ? '#15803d' : 'var(--text)',
+            border: value ? '2px solid var(--ok)' : '1px solid var(--border)',
+            background: value ? 'var(--ok-bg)' : 'var(--surface)',
+            color: value ? 'var(--ok)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -1935,9 +1935,9 @@ function AvailabilityForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: !value ? '2px solid #b91c1c' : '1px solid var(--border)',
-            background: !value ? '#fee2e2' : 'white',
-            color: !value ? '#b91c1c' : 'var(--text)',
+            border: !value ? '2px solid var(--bad)' : '1px solid var(--border)',
+            background: !value ? 'var(--bad-bg)' : 'var(--surface)',
+            color: !value ? 'var(--bad)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -1979,9 +1979,9 @@ function SpiceModifierForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: value ? '2px solid #e11d48' : '1px solid var(--border)',
-            background: value ? '#fff1f2' : 'white',
-            color: value ? '#9f1239' : 'var(--text)',
+            border: value ? '2px solid var(--bad)' : '1px solid var(--border)',
+            background: value ? 'var(--bad-bg)' : 'var(--surface)',
+            color: value ? 'var(--bad)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -2001,9 +2001,9 @@ function SpiceModifierForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: !value ? '2px solid #525b6b' : '1px solid var(--border)',
-            background: !value ? '#f1f5f9' : 'white',
-            color: !value ? '#1f2937' : 'var(--text)',
+            border: !value ? '2px solid var(--ink-soft)' : '1px solid var(--border)',
+            background: !value ? 'var(--surface2)' : 'var(--surface)',
+            color: !value ? 'var(--ink)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -2045,9 +2045,9 @@ function SpiceRequiredForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: value ? '2px solid #e11d48' : '1px solid var(--border)',
-            background: value ? '#fff1f2' : 'white',
-            color: value ? '#9f1239' : 'var(--text)',
+            border: value ? '2px solid var(--bad)' : '1px solid var(--border)',
+            background: value ? 'var(--bad-bg)' : 'var(--surface)',
+            color: value ? 'var(--bad)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -2067,9 +2067,9 @@ function SpiceRequiredForm({
             fontSize: 12,
             fontWeight: 600,
             borderRadius: 'var(--r-xs)',
-            border: !value ? '2px solid #525b6b' : '1px solid var(--border)',
-            background: !value ? '#f1f5f9' : 'white',
-            color: !value ? '#1f2937' : 'var(--text)',
+            border: !value ? '2px solid var(--ink-soft)' : '1px solid var(--border)',
+            background: !value ? 'var(--surface2)' : 'var(--surface)',
+            color: !value ? 'var(--ink)' : 'var(--text)',
             cursor: 'pointer',
             textAlign: 'left',
           }}
@@ -2122,7 +2122,7 @@ function SpiceForm({
                 fontWeight: 600,
                 borderRadius: 'var(--r-xs)',
                 border: selected ? `2px solid ${border}` : '1px solid var(--border)',
-                background: selected ? bg : 'white',
+                background: selected ? bg : 'var(--surface)',
                 color: selected ? color : 'var(--text)',
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -2179,7 +2179,7 @@ function SweetnessForm({
                 fontWeight: 600,
                 borderRadius: 'var(--r-xs)',
                 border: selected ? `2px solid ${border}` : '1px solid var(--border)',
-                background: selected ? bg : 'white',
+                background: selected ? bg : 'var(--surface)',
                 color: selected ? color : 'var(--text)',
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -2301,8 +2301,8 @@ function ServingSizesForm({
               style={{
                 padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid',
                 borderColor: row.is_default ? 'var(--accent, #9333ea)' : 'var(--border)',
-                background: row.is_default ? 'var(--accent, #9333ea)' : 'white',
-                color: row.is_default ? 'white' : 'var(--text2)', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+                background: row.is_default ? 'var(--accent, #9333ea)' : 'var(--surface)',
+                color: row.is_default ? 'var(--on-ink)' : 'var(--text2)', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
               }}
             >
               {row.is_default ? '★' : '☆'}
@@ -2312,7 +2312,7 @@ function ServingSizesForm({
               data-testid={`bulk-serving-remove-${i}`}
               aria-label="Remove serving size"
               onClick={() => remove(i)}
-              style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'white', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
+              style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
             >
               ✕
             </button>
@@ -2323,7 +2323,7 @@ function ServingSizesForm({
         type="button"
         data-testid="bulk-serving-add"
         onClick={add}
-        style={{ marginTop: 8, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'white', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
+        style={{ marginTop: 8, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'var(--surface)', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
       >
         + Add serving size
       </button>
@@ -2366,9 +2366,9 @@ function DietaryForm({
                   fontWeight: 600,
                   padding: '5px 10px',
                   borderRadius: 20,
-                  border: selected ? '2px solid #6366f1' : '1px solid var(--border)',
-                  background: selected ? '#eef2ff' : 'white',
-                  color: selected ? '#4338ca' : 'var(--text2)',
+                  border: selected ? '2px solid var(--live)' : '1px solid var(--border)',
+                  background: selected ? 'var(--live-bg)' : 'var(--surface)',
+                  color: selected ? 'var(--live)' : 'var(--text2)',
                   cursor: 'pointer',
                 }}
               >
@@ -2397,9 +2397,9 @@ function DietaryForm({
                   fontWeight: 600,
                   padding: '5px 10px',
                   borderRadius: 20,
-                  border: selected ? '2px solid #f59e0b' : '1px solid var(--border)',
-                  background: selected ? '#fef3c7' : 'white',
-                  color: selected ? '#b45309' : 'var(--text2)',
+                  border: selected ? '2px solid var(--warn)' : '1px solid var(--border)',
+                  background: selected ? 'var(--warn-bg)' : 'var(--surface)',
+                  color: selected ? 'var(--warn)' : 'var(--text2)',
                   cursor: 'pointer',
                 }}
               >
@@ -2450,18 +2450,18 @@ function DeleteForm({ count, confirmed }: { count: number; confirmed: boolean })
     <div>
       <div
         style={{
-          background: '#fee2e2',
-          border: '1px solid #fca5a5',
+          background: 'var(--bad-bg)',
+          border: '1px solid #E5A9A2',
           borderRadius: 'var(--r-xs)',
           padding: '12px 14px',
           marginBottom: 14,
         }}
         data-testid="delete-warning"
       >
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--bad)', marginBottom: 4 }}>
           Permanent deletion
         </div>
-        <p style={{ fontSize: 12, color: '#991b1b', margin: 0 }}>
+        <p style={{ fontSize: 12, color: 'var(--bad)', margin: 0 }}>
           This will permanently delete {count} item{count !== 1 ? 's' : ''} and remove
           them from all menus. This cannot be undone.
         </p>
@@ -2470,12 +2470,12 @@ function DeleteForm({ count, confirmed }: { count: number; confirmed: boolean })
       {confirmed && (
         <div
           style={{
-            background: '#fef3c7',
-            border: '1px solid #fcd34d',
+            background: 'var(--warn-bg)',
+            border: '1px solid #D9BF8E',
             borderRadius: 'var(--r-xs)',
             padding: '10px 14px',
             fontSize: 12,
-            color: '#92400e',
+            color: 'var(--warn)',
           }}
           data-testid="delete-confirm-prompt"
         >
@@ -2656,7 +2656,7 @@ function BulkGroupingForm({
                     display: 'flex', alignItems: 'center', gap: 6,
                     fontSize: 12, padding: '6px 8px',
                     border: `1px solid ${existingPickedName === c.name ? 'var(--brand)' : 'var(--border)'}`,
-                    background: existingPickedName === c.name ? 'var(--brand-l)' : '#fff',
+                    background: existingPickedName === c.name ? 'var(--brand-l)' : 'var(--surface)',
                     borderRadius: 'var(--r-xs)', cursor: 'pointer',
                   }}
                 >
@@ -2682,7 +2682,7 @@ function BulkGroupingForm({
             style={{
               alignSelf: 'flex-start',
               fontSize: 11, padding: '4px 8px',
-              background: '#fff', border: '1px solid var(--border)',
+              background: 'var(--surface)', border: '1px solid var(--border)',
               borderRadius: 'var(--r-xs)', cursor: 'pointer',
             }}
           >
@@ -2729,7 +2729,7 @@ function BulkGroupingForm({
                     padding: '5px 10px',
                     fontSize: 12,
                     border: `1px solid ${preset === p.key ? 'var(--brand)' : 'var(--border)'}`,
-                    background: preset === p.key ? 'var(--brand-l)' : '#fff',
+                    background: preset === p.key ? 'var(--brand-l)' : 'var(--surface)',
                     color: preset === p.key ? 'var(--brand-s)' : 'var(--ink)',
                     borderRadius: 'var(--r-xs)',
                     cursor: 'pointer',
@@ -2801,20 +2801,20 @@ function BulkGroupingForm({
           data-testid="bulk-grouping-error-banner"
           role="alert"
           style={{
-            background: '#fee2e2',
-            border: '1px solid #fca5a5',
+            background: 'var(--bad-bg)',
+            border: '1px solid #E5A9A2',
             borderRadius: 'var(--r-xs)',
             padding: '10px 12px',
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--bad)', marginBottom: 4 }}>
             Name conflict on {conflicts.length} item{conflicts.length !== 1 ? 's' : ''}
           </div>
-          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--bad)', marginBottom: 6 }}>
             These items already have a grouping named "{name.trim()}". Rename your grouping
             or deselect these items, then try again.
           </div>
-          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: 'var(--bad)' }}>
             {conflicts.map((c) => (
               <li
                 key={c.food_item_id}
@@ -2833,19 +2833,19 @@ function BulkGroupingForm({
           data-testid="bulk-grouping-existing-error-banner"
           role="alert"
           style={{
-            background: '#fee2e2',
-            border: '1px solid #fca5a5',
+            background: 'var(--bad-bg)',
+            border: '1px solid #E5A9A2',
             borderRadius: 'var(--r-xs)',
             padding: '10px 12px',
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--bad)', marginBottom: 4 }}>
             Grouping changed on {addMembersMismatches.length} item{addMembersMismatches.length !== 1 ? 's' : ''}
           </div>
-          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--bad)', marginBottom: 6 }}>
             The expected grouping no longer matches. Refresh and try again.
           </div>
-          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+          <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 11, color: 'var(--bad)' }}>
             {addMembersMismatches.map((m) => (
               <li
                 key={m.food_item_id}
@@ -2861,9 +2861,9 @@ function BulkGroupingForm({
             style={{
               marginTop: 8,
               fontSize: 11, padding: '4px 8px',
-              background: '#fff', border: '1px solid #fca5a5',
+              background: 'var(--surface)', border: '1px solid #E5A9A2',
               borderRadius: 'var(--r-xs)', cursor: 'pointer',
-              color: '#991b1b',
+              color: 'var(--bad)',
             }}
           >
             Refresh
@@ -2938,8 +2938,8 @@ function BulkRemoveGroupingForm({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '6px 10px', fontSize: 11,
-                background: '#fef3c7', border: '1px solid #fcd34d',
-                borderRadius: 'var(--r-xs)', color: '#92400e',
+                background: 'var(--warn-bg)', border: '1px solid #D9BF8E',
+                borderRadius: 'var(--r-xs)', color: 'var(--warn)',
               }}
             >
               <span>Couldn't load groupings for "{err.item_name}"</span>
@@ -2948,9 +2948,9 @@ function BulkRemoveGroupingForm({
                 data-testid={`bulk-remove-grouping-load-retry-${err.item_id}`}
                 onClick={() => onRetryParent(err.item_id)}
                 style={{
-                  background: 'transparent', border: '1px solid #92400e',
+                  background: 'transparent', border: '1px solid var(--warn)',
                   borderRadius: 'var(--r-xs)', padding: '2px 8px',
-                  fontSize: 11, color: '#92400e', cursor: 'pointer',
+                  fontSize: 11, color: 'var(--warn)', cursor: 'pointer',
                 }}
               >
                 Retry
@@ -2966,7 +2966,7 @@ function BulkRemoveGroupingForm({
           style={{
             fontSize: 12, color: 'var(--muted)',
             padding: 12, textAlign: 'center',
-            background: '#f9fafb', border: '1px solid var(--border)',
+            background: 'var(--surface-sunk)', border: '1px solid var(--border)',
             borderRadius: 'var(--r-xs)',
           }}
         >
@@ -2985,7 +2985,7 @@ function BulkRemoveGroupingForm({
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 10px',
                   border: `1px solid ${pickedName === c.name ? 'var(--brand)' : 'var(--border)'}`,
-                  background: pickedName === c.name ? 'var(--brand-l)' : '#fff',
+                  background: pickedName === c.name ? 'var(--brand-l)' : 'var(--surface)',
                   borderRadius: 'var(--r-xs)',
                   cursor: 'pointer',
                   fontSize: 13,
@@ -3026,20 +3026,20 @@ function BulkRemoveGroupingForm({
           data-testid="bulk-remove-grouping-error-banner"
           role="alert"
           style={{
-            background: '#fee2e2',
-            border: '1px solid #fca5a5',
+            background: 'var(--bad-bg)',
+            border: '1px solid #E5A9A2',
             borderRadius: 'var(--r-xs)',
             padding: '10px 12px',
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--bad)', marginBottom: 4 }}>
             Strict match failed on {mismatches.length} item{mismatches.length !== 1 ? 's' : ''}
           </div>
-          <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--bad)', marginBottom: 6 }}>
             Another tab or owner may have edited these groupings while you were
             choosing. Click Refresh to re-discover the shared groupings.
           </div>
-          <ul style={{ margin: '0 0 8px 0', padding: '0 0 0 16px', fontSize: 11, color: '#991b1b' }}>
+          <ul style={{ margin: '0 0 8px 0', padding: '0 0 0 16px', fontSize: 11, color: 'var(--bad)' }}>
             {mismatches.map((m) => (
               <li
                 key={m.food_item_id}
@@ -3054,9 +3054,9 @@ function BulkRemoveGroupingForm({
             data-testid="bulk-remove-grouping-refresh-btn"
             onClick={onRefresh}
             style={{
-              background: '#fff', border: '1px solid #b91c1c',
+              background: 'var(--surface)', border: '1px solid var(--bad)',
               borderRadius: 'var(--r-xs)', padding: '4px 10px',
-              fontSize: 11, fontWeight: 600, color: '#b91c1c',
+              fontSize: 11, fontWeight: 600, color: 'var(--bad)',
               cursor: 'pointer',
             }}
           >

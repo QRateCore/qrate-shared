@@ -207,10 +207,10 @@ export default function SelectionRuleEditor({
         style={{
           fontSize: 12,
           padding: '2px 8px',
-          border: '1px solid #cbd5e1',
+          border: '1px solid var(--line-input)',
           borderRadius: 12,
-          background: isRequired ? '#fef3c7' : '#fff',
-          color: isRequired ? '#92400e' : '#475569',
+          background: isRequired ? 'var(--warn-bg)' : 'var(--surface)',
+          color: isRequired ? 'var(--warn)' : 'var(--ink-label)',
           cursor: 'pointer',
         }}
         title="Change selection rule"
@@ -227,8 +227,8 @@ export default function SelectionRuleEditor({
             top: coords.top,
             left: coords.left,
             zIndex: 1000,
-            background: '#fff',
-            border: '1px solid #e2e8f0',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
             borderRadius: 8,
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
             padding: 12,
@@ -300,7 +300,7 @@ export default function SelectionRuleEditor({
           </div>
 
           {memberCount !== undefined && memberCount > 0 ? (
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 8 }}>
               {memberCount} member{memberCount === 1 ? '' : 's'} in this grouping
             </div>
           ) : null}
@@ -313,9 +313,9 @@ export default function SelectionRuleEditor({
               style={{
                 fontSize: 12,
                 padding: '4px 8px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--line)',
                 borderRadius: 6,
-                background: '#fff',
+                background: 'var(--surface)',
                 cursor: 'pointer',
               }}
             >
@@ -332,7 +332,7 @@ export default function SelectionRuleEditor({
                 border: 'none',
                 borderRadius: 6,
                 background: '#0f766e',
-                color: '#fff',
+                color: 'var(--surface)',
                 cursor: saving ? 'wait' : 'pointer',
               }}
             >

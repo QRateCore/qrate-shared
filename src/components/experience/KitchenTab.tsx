@@ -37,11 +37,11 @@ function lastActiveLabel(lastSeenAt: string | null): { text: string; live: boole
 // editor: this tab configures device behaviour + the device pairing code only.
 const DEFAULT_KDS_CONFIG: KdsConfig = {
   stations: [
-    { id: 'grill', label: 'Grill', order: 0, color: '#ef4444' },
-    { id: 'fry', label: 'Fry', order: 1, color: '#f97316' },
+    { id: 'grill', label: 'Grill', order: 0, color: 'var(--bad)' },
+    { id: 'fry', label: 'Fry', order: 1, color: 'var(--ink)' },
     { id: 'cold', label: 'Cold', order: 2, color: '#38bdf8' },
-    { id: 'pass', label: 'Pass', order: 3, color: '#a3a3a3' },
-    { id: 'bar', label: 'Bar', order: 4, color: '#a855f7' },
+    { id: 'pass', label: 'Pass', order: 3, color: 'var(--ink-faint)' },
+    { id: 'bar', label: 'Bar', order: 4, color: 'var(--live)' },
   ],
   device: { autoCloseMs: 10_000, ageWarnMs: 480_000, ageCritMs: 900_000, readyRetainMs: 360_000 },
 };

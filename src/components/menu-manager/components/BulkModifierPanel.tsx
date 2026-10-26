@@ -586,8 +586,8 @@ export default function BulkModifierPanel({
             style={{
               padding: '8px 16px',
               fontSize: 11,
-              color: '#92400e',
-              background: '#fffbeb',
+              color: 'var(--warn)',
+              background: 'var(--warn-bg)',
               borderBottom: '1px solid var(--border)',
             }}
           >
@@ -651,10 +651,10 @@ export default function BulkModifierPanel({
           style={{
             padding: '10px 16px',
             borderBottom: '1px solid var(--border)',
-            background: '#fef3c7',
+            background: 'var(--warn-bg)',
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--warn)', marginBottom: 6 }}>
             {previewLabel}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -664,8 +664,8 @@ export default function BulkModifierPanel({
                 style={{
                   fontSize: 11,
                   fontWeight: 500,
-                  background: '#fde68a',
-                  color: '#92400e',
+                  background: '#EBDDC2',
+                  color: 'var(--warn)',
                   borderRadius: 4,
                   padding: '2px 7px',
                   maxWidth: 140,
@@ -679,7 +679,7 @@ export default function BulkModifierPanel({
               </span>
             ))}
             {previewItems.length > 5 && (
-              <span style={{ fontSize: 11, color: '#92400e', padding: '2px 4px' }}>
+              <span style={{ fontSize: 11, color: 'var(--warn)', padding: '2px 4px' }}>
                 +{previewItems.length - 5} more
               </span>
             )}
@@ -696,9 +696,9 @@ export default function BulkModifierPanel({
             <div
               data-testid="bulk-modifier-enrich-banner"
               style={{
-                background: '#fff7ed', border: '1px solid #fed7aa',
+                background: 'var(--surface2)', border: '1px solid var(--line)',
                 borderRadius: 'var(--r-xs)', padding: '14px 16px',
-                fontSize: 12, color: '#7c2d12', lineHeight: 1.5,
+                fontSize: 12, color: 'var(--ink)', lineHeight: 1.5,
                 display: 'flex', flexDirection: 'column', gap: 8,
               }}
             >
@@ -716,9 +716,9 @@ export default function BulkModifierPanel({
               <div
                 data-testid="bulk-modifier-enrich-result"
                 style={{
-                  background: '#ecfdf5', border: '1px solid #a7f3d0',
+                  background: 'var(--ok-bg)', border: '1px solid #CFE5D6',
                   borderRadius: 'var(--r-xs)', padding: '10px 14px',
-                  fontSize: 12, color: '#065f46',
+                  fontSize: 12, color: 'var(--ok)',
                 }}
               >
                 Enriched <strong>{enrichResult.enriched}</strong> · skipped{' '}
@@ -741,12 +741,12 @@ export default function BulkModifierPanel({
           >
             <div
               style={{
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
+                background: 'var(--bad-bg)',
+                border: '1px solid #F3D3CF',
                 borderRadius: 'var(--r-xs)',
                 padding: '14px 16px',
                 fontSize: 12,
-                color: '#991b1b',
+                color: 'var(--bad)',
                 lineHeight: 1.5,
               }}
               data-testid="bulk-modifier-delete-warning"
@@ -760,7 +760,7 @@ export default function BulkModifierPanel({
             </div>
             {deleteConfirm && (
               <div
-                style={{ fontSize: 11, color: '#b91c1c', textAlign: 'center', fontWeight: 600 }}
+                style={{ fontSize: 11, color: 'var(--bad)', textAlign: 'center', fontWeight: 600 }}
                 data-testid="bulk-modifier-delete-confirm-prompt"
               >
                 ⚠️ Click &ldquo;Confirm — delete {inputAddons.length} addon
@@ -793,7 +793,7 @@ export default function BulkModifierPanel({
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    background: '#f6f6f6',
+                    background: 'var(--surface2)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--r-xs)',
                     padding: '6px 10px',
@@ -844,8 +844,8 @@ export default function BulkModifierPanel({
                           style={{
                             fontSize: 11,
                             fontWeight: 500,
-                            background: isSelected ? 'var(--blue)' : '#f0f0f0',
-                            color: isSelected ? 'white' : 'var(--text)',
+                            background: isSelected ? 'var(--blue)' : 'var(--surface2)',
+                            color: isSelected ? 'var(--on-ink)' : 'var(--text)',
                             border:
                               '1px solid ' + (isSelected ? 'var(--blue)' : 'var(--border)'),
                             borderRadius: 12,
@@ -875,7 +875,7 @@ export default function BulkModifierPanel({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  background: '#f6f6f6',
+                  background: 'var(--surface2)',
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--r-xs)',
                   padding: '6px 10px',
@@ -949,7 +949,7 @@ export default function BulkModifierPanel({
                     width: 14,
                     height: 14,
                     borderRadius: 3,
-                    border: allSelected ? '2px solid var(--blue)' : '2px solid #ccc',
+                    border: allSelected ? '2px solid var(--blue)' : '2px solid var(--line-input)',
                     background: allSelected ? 'var(--blue)' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
@@ -1019,7 +1019,7 @@ export default function BulkModifierPanel({
                           display: 'flex',
                           alignItems: 'center',
                           gap: 0,
-                          background: '#f9f9fb',
+                          background: 'var(--surface-sunk)',
                           border: '1px solid var(--border)',
                           borderRadius: 'var(--r-xs)',
                         }}
@@ -1188,7 +1188,7 @@ export default function BulkModifierPanel({
                                       width: 32,
                                       height: 32,
                                       borderRadius: 4,
-                                      background: '#f0f0f0',
+                                      background: 'var(--surface2)',
                                       flexShrink: 0,
                                       display: 'flex',
                                       alignItems: 'center',
@@ -1246,8 +1246,8 @@ export default function BulkModifierPanel({
             <div
               style={{
                 fontSize: 11,
-                color: '#b91c1c',
-                background: '#fee2e2',
+                color: 'var(--bad)',
+                background: 'var(--bad-bg)',
                 borderRadius: 4,
                 padding: '6px 10px',
               }}
@@ -1273,7 +1273,7 @@ export default function BulkModifierPanel({
                 fontSize: 12,
                 fontWeight: 600,
                 color: 'var(--text2)',
-                background: '#f0f0f0',
+                background: 'var(--surface2)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: 'pointer',
@@ -1305,7 +1305,7 @@ export default function BulkModifierPanel({
                 padding: '8px 0',
                 fontSize: 12,
                 fontWeight: 700,
-                color: 'white',
+                color: 'var(--on-ink)',
                 background: tab === 'assign'
                   ? '#f59e0b'
                   : tab === 'enrich'

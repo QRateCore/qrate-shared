@@ -121,7 +121,7 @@ export default function ItemPoolDrawer({
             height: 4,
             margin: '8px auto 4px',
             borderRadius: 2,
-            background: '#cfcfcf',
+            background: 'var(--line-input)',
             flexShrink: 0,
           }}
         />

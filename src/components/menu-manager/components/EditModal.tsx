@@ -695,7 +695,7 @@ function DietaryMultiSelect({
             style={{
               fontSize: 11,
               fontWeight: 700,
-              color: '#fff',
+              color: 'var(--surface)',
               background: 'var(--editor-affirm-solid, #1B7A4A)',
               border: '1px solid var(--editor-affirm-solid, #1B7A4A)',
               borderRadius: 6,
@@ -730,7 +730,7 @@ function DietaryMultiSelect({
                   fontWeight: isSelected ? 600 : 400,
                   border: `1.5px solid ${isSelected ? selectedBorder : 'rgba(0,0,0,0.15)'}`,
                   background: isSelected ? selectedBg : 'transparent',
-                  color: isSelected ? '#fff' : 'var(--text3)',
+                  color: isSelected ? 'var(--surface)' : 'var(--text3)',
                   cursor: isBusy ? 'wait' : 'pointer',
                   opacity: isBusy ? 0.5 : 1,
                   transition: 'all 0.12s ease',
@@ -2524,7 +2524,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     width: '100%',
                     height: 240,
                     borderRadius: 'var(--r)',
-                    background: thumbnail ? undefined : '#f6f6f6',
+                    background: thumbnail ? undefined : 'var(--surface2)',
                     overflow: 'hidden',
                     display: 'flex',
                     alignItems: 'center',
@@ -2640,7 +2640,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       width: '100%',
                       height: 38,
                       border: '1px solid var(--border)',
-                      background: '#fff',
+                      background: 'var(--surface)',
                       color: 'var(--text)',
                       borderRadius: 'var(--r-xs)',
                       fontSize: 13,
@@ -2661,7 +2661,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   
                 {/* Image error */}
                 {imgError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div className="text-caption" style={{ color: 'var(--bad)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <AlertCircle size={11} />
                     {imgError}
                   </div>
@@ -2673,9 +2673,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     data-testid="no-image-warning"
                     className="text-caption"
                     style={{
-                      color: '#92400e',
-                      background: '#fffbeb',
-                      border: '1px solid #fde68a',
+                      color: 'var(--warn)',
+                      background: 'var(--warn-bg)',
+                      border: '1px solid #EBDDC2',
                       borderRadius: 6,
                       padding: '6px 8px',
                       display: 'flex',
@@ -2879,7 +2879,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
                 data-testid="delete-item-cancel"
                 disabled={deleteLoading}
-                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -2888,7 +2888,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 onClick={handleDelete}
                 data-testid="delete-item-confirm"
                 disabled={deleteLoading}
-                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
+                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 700, color: 'var(--on-ink)', background: 'var(--bad)', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
               >
                 {deleteLoading ? 'Deleting…' : 'Confirm'}
               </button>
@@ -2901,7 +2901,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   onClick={() => setDeleteConfirming(true)}
                   disabled={saving}
                   data-testid="delete-item-btn"
-                  style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  style={{ fontSize: 12, fontWeight: 600, color: 'var(--bad)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   Delete
                 </button>
@@ -2919,8 +2919,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   data-testid="edit-enrich-btn"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 600, color: '#c2410c',
-                    background: '#fff7ed', border: '1px solid #fed7aa',
+                    fontSize: 12, fontWeight: 600, color: 'var(--ink)',
+                    background: 'var(--surface2)', border: '1px solid var(--line)',
                     borderRadius: 'var(--r-xs)',
                     padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
                     cursor: (saving || enriching) ? 'not-allowed' : 'pointer',
@@ -2967,7 +2967,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   data-testid="edit-clone-save-btn"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 700, color: 'white',
+                    fontSize: 12, fontWeight: 700, color: 'var(--on-ink)',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
                     padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
@@ -2996,7 +2996,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   data-testid="edit-save-btn"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 700, color: 'white',
+                    fontSize: 12, fontWeight: 700, color: 'var(--on-ink)',
                     background: 'var(--brand)',
                     border: 'none', borderRadius: 'var(--r-xs)',
                     padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
@@ -3073,7 +3073,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <div
               data-testid="edit-save-error"
               className="text-caption"
-              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
             >
               <AlertCircle size={12} />
               {saveError}
@@ -3083,7 +3083,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <div
               data-testid="edit-clone-error"
               className="text-caption"
-              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
             >
               <AlertCircle size={12} />
               {cloneError}
@@ -3092,7 +3092,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           {deleteError && (
             <div
               className="text-caption"
-              style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
+              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
             >
               <AlertCircle size={12} />
               {deleteError}
@@ -3179,11 +3179,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                      ("Name is required" / "cannot contain 'Copy'" /
                      "must differ from the source"). */}
             {showNameInvalid && nameHelperText ? (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
                 {nameHelperText}
               </div>
             ) : nameError ? (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
                 Name is required
               </div>
             ) : null}
@@ -3282,7 +3282,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 title at the top. Surface its error state here so the
                 user sees it adjacent to the rest of Basic Info. */}
             {nameError && (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: '#b91c1c' }}>
+              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
                 Name is required
               </div>
             )}
@@ -3294,14 +3294,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ flex: '0 0 160px' }}>
                 <label style={labelStyle} htmlFor="edit-price-input">
-                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: '#b91c1c', marginLeft: 2 }}>*</span>}
+                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: 'var(--bad)', marginLeft: 2 }}>*</span>}
                 </label>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4,
-                    border: priceError ? '1px solid #b91c1c' : '1px solid var(--border)',
+                    border: priceError ? '1px solid var(--bad)' : '1px solid var(--border)',
                     borderRadius: 'var(--r-xs)',
                     padding: '0 8px',
                     background: 'var(--white)',
@@ -3340,7 +3340,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   )}
                 </div>
                 {priceError && (
-                  <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>{priceError}</div>
+                  <div className="text-caption" style={{ color: 'var(--bad)', marginTop: 3 }}>{priceError}</div>
                 )}
               </div>
             </div>
@@ -3426,7 +3426,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   server's text, not the local draft.) */}
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                 <label style={labelStyle} htmlFor="edit-description">
-                  Description <span style={{ color: '#b91c1c' }}>*</span>
+                  Description <span style={{ color: 'var(--bad)' }}>*</span>
                 </label>
                 {/* AI-suggested eyebrow — opt-in via descriptionSource +
                     descriptionReviewed props. Mirrors the chip color used
@@ -3479,7 +3479,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 }}
               />
               {descError && (
-                <div className="text-caption" style={{ color: '#b91c1c', marginTop: 3 }}>Description is required</div>
+                <div className="text-caption" style={{ color: 'var(--bad)', marginTop: 3 }}>Description is required</div>
               )}
               {/* Accept button — verbatim accept of the AI suggestion
                   without typing your own. Routes through the consumer's
@@ -3508,7 +3508,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         // Affirmative, exactly like the dietary Accept pill —
                         // same action, same colour.
                         background: 'var(--editor-affirm-solid, #1B7A4A)',
-                        color: '#fff',
+                        color: 'var(--surface)',
                         border: 'none',
                         borderRadius: 6,
                         padding: '6px 14px',
@@ -3608,7 +3608,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           borderRadius: 999,
                           border: 'none',
                           cursor: 'pointer',
-                          background: spiceModifierEnabled ? 'var(--brand-s)' : '#d1d5db',
+                          background: spiceModifierEnabled ? 'var(--brand-s)' : 'var(--line-input)',
                           transition: 'background-color 0.15s',
                           padding: 0,
                         }}
@@ -3619,7 +3619,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             height: 18,
                             width: 18,
                             borderRadius: '50%',
-                            background: '#fff',
+                            background: 'var(--surface)',
                             boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                             transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
                             transition: 'transform 0.15s',
@@ -3659,7 +3659,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           borderRadius: 999,
                           border: 'none',
                           cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
-                          background: spiceModifierEnabled && spiceSelectionRequired ? 'var(--brand-s)' : '#d1d5db',
+                          background: spiceModifierEnabled && spiceSelectionRequired ? 'var(--brand-s)' : 'var(--line-input)',
                           transition: 'background-color 0.15s',
                           padding: 0,
                         }}
@@ -3670,7 +3670,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             height: 18,
                             width: 18,
                             borderRadius: '50%',
-                            background: '#fff',
+                            background: 'var(--surface)',
                             boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                             transform: spiceModifierEnabled && spiceSelectionRequired ? 'translateX(21px)' : 'translateX(3px)',
                             transition: 'transform 0.15s',
@@ -3731,7 +3731,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             borderRadius: 999,
                             border: 'none',
                             cursor: toggleDisabled ? 'not-allowed' : 'pointer',
-                            background: isByo ? 'var(--brand-s)' : '#d1d5db',
+                            background: isByo ? 'var(--brand-s)' : 'var(--line-input)',
                             transition: 'background-color 0.15s',
                             padding: 0,
                           }}
@@ -3742,7 +3742,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               height: 18,
                               width: 18,
                               borderRadius: '50%',
-                              background: '#fff',
+                              background: 'var(--surface)',
                               boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                               transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
                               transition: 'transform 0.15s',
@@ -3869,7 +3869,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     fontSize: 14,
                     fontWeight: isActive ? 600 : 500,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
-                    background: isActive ? 'rgba(184,57,42,0.05)' : 'transparent',
+                    background: isActive ? 'rgba(17, 17, 17,0.05)' : 'transparent',
                     border: 'none',
                     borderBottom: isActive ? '2px solid var(--brand-s)' : '2px solid transparent',
                     marginBottom: -1,
@@ -3949,9 +3949,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     style={{
                       padding: '10px 12px',
                       borderRadius: 8,
-                      background: '#fef2f2',
-                      border: '1px solid #fecaca',
-                      color: '#991b1b',
+                      background: 'var(--bad-bg)',
+                      border: '1px solid #F3D3CF',
+                      color: 'var(--bad)',
                       fontSize: 13,
                     }}
                   >
@@ -4077,7 +4077,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         // Confirmed but still blocked: saying "Linked" alone
                         // would tell an owner the dish is live when a diner
                         // cannot order it.
-                        <span style={{ fontSize: 11, color: '#9A3412' }}>
+                        <span style={{ fontSize: 11, color: 'var(--ink)' }}>
                           not yet sellable
                         </span>
                       )}
@@ -4089,7 +4089,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           marginLeft: 'auto', fontSize: 12, fontWeight: 600,
                           padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
                           border: '1px solid var(--border, #e2e8f0)',
-                          background: '#fff', color: 'var(--text)',
+                          background: 'var(--surface)', color: 'var(--text)',
                           fontFamily: 'inherit',
                         }}
                       >
@@ -4203,8 +4203,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         style={{
                           padding: 12,
                           borderRadius: 8,
-                          background: '#faf5ff',
-                          border: '1px solid #e9d5ff',
+                          background: 'var(--surface-sunk)',
+                          border: '1px solid var(--line)',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: 12,
@@ -4216,8 +4216,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             style={{
                               padding: '8px 10px',
                               borderRadius: 6,
-                              background: 'white',
-                              border: '1px dashed #d8b4fe',
+                              background: 'var(--surface)',
+                              border: '1px dashed var(--line-input)',
                               color: 'var(--text2)',
                               fontSize: 11,
                               lineHeight: 1.5,
@@ -4261,8 +4261,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                       borderRadius: 'var(--r-xs)',
                                       border: '1px solid',
                                       borderColor: active ? 'var(--brand-s)' : 'var(--border)',
-                                      background: active ? 'var(--brand-s)' : 'white',
-                                      color: active ? 'white' : 'var(--text2)',
+                                      background: active ? 'var(--brand-s)' : 'var(--surface)',
+                                      color: active ? 'var(--on-ink)' : 'var(--text2)',
                                       fontSize: 13,
                                       fontWeight: active ? 600 : 400,
                                       cursor: 'pointer',
@@ -4666,8 +4666,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   style={{
                                     padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid',
                                     borderColor: row.is_default ? 'var(--brand-s)' : 'var(--border)',
-                                    background: row.is_default ? 'var(--brand-s)' : 'white',
-                                    color: row.is_default ? 'white' : 'var(--text2)',
+                                    background: row.is_default ? 'var(--brand-s)' : 'var(--surface)',
+                                    color: row.is_default ? 'var(--on-ink)' : 'var(--text2)',
                                     fontSize: 12, fontWeight: row.is_default ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
                                   }}
                                 >
@@ -4678,7 +4678,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   data-testid={`serving-option-remove-${idx}`}
                                   aria-label="Remove serving size"
                                   onClick={() => removeServingRow(idx)}
-                                  style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'white', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
+                                  style={{ padding: '6px 9px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', fontSize: 13, cursor: 'pointer' }}
                                 >
                                   ✕
                                 </button>
@@ -4688,7 +4688,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               type="button"
                               data-testid="add-serving-option-btn"
                               onClick={addServingRow}
-                              style={{ marginTop: 2, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'white', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
+                              style={{ marginTop: 2, padding: '7px 12px', borderRadius: 'var(--r-xs)', border: '1px dashed var(--border)', background: 'var(--surface)', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}
                             >
                               + Add serving size
                             </button>
@@ -4803,8 +4803,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                   gap: 4,
                                   padding: '3px 4px 3px 10px',
                                   borderRadius: 12,
-                                  background: '#fef3c7',
-                                  color: '#92400e',
+                                  background: 'var(--warn-bg)',
+                                  color: 'var(--warn)',
                                   fontSize: 11,
                                   fontWeight: 500,
                                 }}
@@ -4820,7 +4820,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                     border: 'none',
                                     borderRadius: '50%',
                                     background: 'transparent',
-                                    color: '#92400e',
+                                    color: 'var(--warn)',
                                     cursor: 'pointer',
                                     fontSize: 14,
                                     lineHeight: 1,
@@ -5081,14 +5081,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 <>
                   {/* Mutation error banner */}
                   {addonsError && (
-                    <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="text-caption" style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <AlertCircle size={14} /> {addonsError}
                     </div>
                   )}
                   {/* AI Suggestions — pending approval */}
                   {itemAddons.filter((a) => a.status === 'suggested').length > 0 && (
                     <div style={{ marginBottom: 20 }}>
-                      <div className="section-header" style={{ color: '#92400e', marginBottom: 8 }}>
+                      <div className="section-header" style={{ color: 'var(--warn)', marginBottom: 8 }}>
                         AI Suggestions
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -5137,7 +5137,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       <div className="text-caption" style={{ padding: '8px 0' }}>Loading…</div>
                     )}
                     {addonsError && !addonsLoading && (
-                      <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
+                      <div className="text-caption" style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px' }}>
                         {addonsError}
                       </div>
                     )}
@@ -5211,7 +5211,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 padding: '8px 10px',
                                 borderRadius: 'var(--r-xs)',
                                 border: '1px solid var(--border)',
-                                background: '#fafafa',
+                                background: 'var(--surface-sunk)',
                               }}
                             >
                               <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -5232,9 +5232,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 title={poolItem.price == null || poolItem.price <= 0 ? 'Set a price on this add-on item before adding' : undefined}
                                 style={{
                                   fontSize: 11, fontWeight: 700, padding: '4px 10px',
-                                  background: poolItem.price != null && poolItem.price > 0 ? '#fff7ed' : '#f3f4f6',
+                                  background: poolItem.price != null && poolItem.price > 0 ? 'var(--surface2)' : 'var(--surface2)',
                                   border: `1px solid ${poolItem.price != null && poolItem.price > 0 ? '#f59e0b' : '#d1d5db'}`,
-                                  color: poolItem.price != null && poolItem.price > 0 ? '#92400e' : '#9ca3af',
+                                  color: poolItem.price != null && poolItem.price > 0 ? 'var(--warn)' : 'var(--ink-faint)',
                                   borderRadius: 4,
                                   cursor: poolItem.price != null && poolItem.price > 0 ? 'pointer' : 'not-allowed',
                                   flexShrink: 0,
@@ -5339,9 +5339,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               type="button"
                               onClick={() => handleAddSeedRec(d)}
                               data-testid={`recs-seed-add-${d.id}`}
-                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: '#fafafa', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'var(--surface-sunk)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
                             >
-                              <div style={{ width: 32, height: 32, borderRadius: 4, background: '#f0f0f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--surface2)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
                                 {d.thumbnail_url ? (
                                   <img src={d.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : '🍽'}
@@ -5373,7 +5373,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 <div className="text-caption" style={{ padding: '8px 0' }}>Loading…</div>
               )}
               {recsError && !recsLoading && (
-                <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px' }}>
+                <div className="text-caption" style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px' }}>
                   {recsError}
                 </div>
               )}
@@ -5387,7 +5387,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     {/* AI Suggestions — from pairing_graph, pending acceptance */}
                     {aiSugs.length > 0 && (
                       <div style={{ marginBottom: 20 }}>
-                        <div className="section-header" style={{ color: '#92400e', marginBottom: 8 }}>
+                        <div className="section-header" style={{ color: 'var(--warn)', marginBottom: 8 }}>
                           AI Suggestions
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -5499,13 +5499,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 10,
                                 padding: '8px 10px', borderRadius: 'var(--r-xs)',
-                                border: '1px solid var(--border)', background: '#fafafa',
+                                border: '1px solid var(--border)', background: 'var(--surface-sunk)',
                               }}
                             >
                               <div
                                 style={{
                                   width: 32, height: 32, borderRadius: 4,
-                                  background: '#f0f0f0', overflow: 'hidden',
+                                  background: 'var(--surface2)', overflow: 'hidden',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   fontSize: 14, flexShrink: 0,
                                 }}
@@ -5526,7 +5526,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 type="button"
                                 onClick={() => void handleRemoveFromDish(dish)}
                                 data-testid={`remove-dish-${dish.id}`}
-                                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', background: 'var(--bad-bg)', border: '1px solid #E5A9A2', color: 'var(--bad)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
                               >
                                 Remove
                               </button>
@@ -5617,7 +5617,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               }}
                               style={{
                                 fontSize: 11, fontWeight: 700, padding: '6px 12px',
-                                background: filtered.length > 0 && filtered.every((d) => selectedDishIds.has(d.id)) ? '#fef3c7' : '#f9fafb',
+                                background: filtered.length > 0 && filtered.every((d) => selectedDishIds.has(d.id)) ? 'var(--warn-bg)' : 'var(--surface-sunk)',
                                 border: '1px solid var(--border)',
                                 color: 'var(--text)', borderRadius: 4, cursor: 'pointer',
                                 whiteSpace: 'nowrap', flexShrink: 0, minWidth: 105,
@@ -5634,8 +5634,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                 data-testid="add-selected-dishes"
                                 style={{
                                   fontSize: 11, fontWeight: 700, padding: '6px 12px',
-                                  background: '#fff7ed', border: '1px solid #f59e0b',
-                                  color: '#92400e', borderRadius: 4, cursor: 'pointer',
+                                  background: 'var(--surface2)', border: '1px solid var(--warn)',
+                                  color: 'var(--warn)', borderRadius: 4, cursor: 'pointer',
                                   whiteSpace: 'nowrap', flexShrink: 0,
                                 }}
                               >
@@ -5657,8 +5657,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                     style={{
                                       display: 'flex', alignItems: 'center', gap: 10,
                                       padding: '8px 10px', borderRadius: 'var(--r-xs)',
-                                      border: isSelected ? '1px solid #f59e0b' : '1px solid var(--border)',
-                                      background: isSelected ? '#fffbeb' : '#fafafa',
+                                      border: isSelected ? '1px solid var(--warn)' : '1px solid var(--border)',
+                                      background: isSelected ? 'var(--warn-bg)' : 'var(--surface-sunk)',
                                       cursor: 'pointer',
                                     }}
                                     onClick={() => {
@@ -5675,12 +5675,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                       checked={isSelected}
                                       readOnly
                                       data-testid={`select-dish-${dish.id}`}
-                                      style={{ flexShrink: 0, cursor: 'pointer', accentColor: '#f59e0b' }}
+                                      style={{ flexShrink: 0, cursor: 'pointer', accentColor: 'var(--warn)' }}
                                     />
                                     <div
                                       style={{
                                         width: 32, height: 32, borderRadius: 4,
-                                        background: '#f0f0f0', overflow: 'hidden',
+                                        background: 'var(--surface2)', overflow: 'hidden',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontSize: 14, flexShrink: 0,
                                       }}
@@ -5701,7 +5701,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); void handleAddToDish(dish); }}
                                       data-testid={`add-to-dish-${dish.id}`}
-                                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', background: '#fff7ed', border: '1px solid #f59e0b', color: '#92400e', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
+                                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', background: 'var(--surface2)', border: '1px solid var(--warn)', color: 'var(--warn)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}
                                     >
                                       + Add
                                     </button>
@@ -5756,7 +5756,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               )}
               {perfError && !perfLoading && (
-                <div className="text-caption" style={{ color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="text-caption" style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <AlertCircle size={12} />
                   {perfError}
                 </div>
@@ -5791,7 +5791,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     Delete this item permanently?
                   </span>
                   {deleteError && (
-                    <span style={{ fontSize: 12, color: '#b91c1c' }}>{deleteError}</span>
+                    <span style={{ fontSize: 12, color: 'var(--bad)' }}>{deleteError}</span>
                   )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button
@@ -5799,7 +5799,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
                       data-testid="delete-item-cancel"
                       disabled={deleteLoading}
-                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
                     >
                       Cancel
                     </button>
@@ -5808,7 +5808,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       onClick={handleDelete}
                       data-testid="delete-item-confirm"
                       disabled={deleteLoading}
-                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700, color: 'white', background: '#b91c1c', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
+                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700, color: 'var(--on-ink)', background: 'var(--bad)', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
                     >
                       {deleteLoading ? 'Deleting…' : 'Delete permanently'}
                     </button>
@@ -5820,7 +5820,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   onClick={() => setDeleteConfirming(true)}
                   disabled={saving}
                   data-testid="delete-item-btn"
-                  style={{ width: '100%', minHeight: 44, fontSize: 13, fontWeight: 600, color: '#b91c1c', background: 'none', border: '1px solid #fca5a5', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+                  style={{ width: '100%', minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--bad)', background: 'none', border: '1px solid #E5A9A2', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
                 >
                   Delete item
                 </button>
@@ -5866,8 +5866,8 @@ function RecommendationCard({
         gap: 10,
         padding: '8px 10px',
         borderRadius: 'var(--r-xs)',
-        border: isAI ? '1px solid #f59e0b' : '1px solid var(--border)',
-        background: isAI ? '#fffbeb' : '#fafafa',
+        border: isAI ? '1px solid var(--warn)' : '1px solid var(--border)',
+        background: isAI ? 'var(--warn-bg)' : 'var(--surface-sunk)',
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -5876,7 +5876,7 @@ function RecommendationCard({
             {rec.name}
           </div>
           {isAI && (
-            <span style={{ fontSize: 9, fontWeight: 700, background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 4px', flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 4px', flexShrink: 0 }}>
               AI
             </span>
           )}
@@ -5888,7 +5888,7 @@ function RecommendationCard({
             type="button"
             onClick={onApprove}
             data-testid={`approve-rec-modal-${rec.menu_item_id}`}
-            style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', borderRadius: 4, cursor: 'pointer' }}
+            style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', background: 'var(--ok-bg)', border: '1px solid #A6CDB3', color: 'var(--ok)', borderRadius: 4, cursor: 'pointer' }}
           >
             Accept
           </button>
@@ -5897,7 +5897,7 @@ function RecommendationCard({
           type="button"
           onClick={onRemove}
           data-testid={`remove-rec-modal-${rec.menu_item_id}`}
-          style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 4, cursor: 'pointer' }}
+          style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', background: 'var(--bad-bg)', border: '1px solid #E5A9A2', color: 'var(--bad)', borderRadius: 4, cursor: 'pointer' }}
         >
           Remove
         </button>
@@ -5934,8 +5934,8 @@ function AddonCard({
         gap: 10,
         padding: '8px 10px',
         borderRadius: 'var(--r-xs)',
-        border: addon.status === 'suggested' ? '1px solid #f59e0b' : '1px solid var(--border)',
-        background: addon.status === 'suggested' ? '#fffbeb' : '#fafafa',
+        border: addon.status === 'suggested' ? '1px solid var(--warn)' : '1px solid var(--border)',
+        background: addon.status === 'suggested' ? 'var(--warn-bg)' : 'var(--surface-sunk)',
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -5944,7 +5944,7 @@ function AddonCard({
             {addon.name}
           </div>
           {addon.status === 'suggested' && (
-            <span style={{ fontSize: 9, fontWeight: 700, background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 4px', flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 4, padding: '1px 4px', flexShrink: 0 }}>
               AI
             </span>
           )}
@@ -5977,7 +5977,7 @@ function AddonCard({
                   borderRadius: 4,
                   width: 80,
                   outline: 'none',
-                  background: '#fff',
+                  background: 'var(--surface)',
                 }}
               />
             </div>
@@ -5994,9 +5994,9 @@ function AddonCard({
             title={priceValid ? undefined : 'Enter a price to approve this add-on'}
             style={{
               fontSize: 11, fontWeight: 700, padding: '4px 8px',
-              background: priceValid ? '#dcfce7' : '#f3f4f6',
+              background: priceValid ? 'var(--ok-bg)' : 'var(--surface2)',
               border: `1px solid ${priceValid ? '#86efac' : '#d1d5db'}`,
-              color: priceValid ? '#15803d' : '#9ca3af',
+              color: priceValid ? 'var(--ok)' : 'var(--ink-faint)',
               borderRadius: 4,
               cursor: priceValid ? 'pointer' : 'not-allowed',
             }}
@@ -6008,7 +6008,7 @@ function AddonCard({
           type="button"
           onClick={onRemove}
           data-testid={`remove-addon-modal-${addon.menu_item_id}`}
-          style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 4, cursor: 'pointer' }}
+          style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', background: 'var(--bad-bg)', border: '1px solid #E5A9A2', color: 'var(--bad)', borderRadius: 4, cursor: 'pointer' }}
         >
           Remove
         </button>
@@ -6023,7 +6023,7 @@ function PerfCard({ testId, label, value, highlight }: { testId?: string; label:
       data-testid={testId}
       style={{
         ...EDITOR_CARD_STYLE,
-        ...(highlight ? { background: '#fff7ed', border: '1px solid #fed7aa' } : {}),
+        ...(highlight ? { background: 'var(--surface2)', border: '1px solid var(--line)' } : {}),
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
@@ -6108,7 +6108,7 @@ function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
     variant === 'blue'
       ? { bg: 'var(--blue-bg)', border: 'var(--blue)', color: 'var(--blue)' }
       : variant === 'red'
-        ? { bg: '#fee2e2', border: '#fca5a5', color: '#b91c1c' }
+        ? { bg: '#fee2e2', border: '#E5A9A2', color: 'var(--bad)' }
         : { bg: '#f6f6f6', border: 'var(--border)', color: 'var(--text2)' };
   return {
     display: 'flex',
@@ -6226,7 +6226,7 @@ function PlacementsTabPanel({
             fontSize: 13,
             border: '1px dashed var(--border)',
             borderRadius: 8,
-            background: '#fafafa',
+            background: 'var(--surface-sunk)',
           }}
         >
           This item is not published on any menu yet.
@@ -6422,7 +6422,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
             }}
             style={{
               ...inputStyle,
-              ...(priceError ? { border: '1px solid #b91c1c' } : null),
+              ...(priceError ? { border: '1px solid var(--bad)' } : null),
             }}
           />
           {priceError && (
@@ -6430,7 +6430,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
               role="alert"
               data-testid={`placements-tab-price-error-${assoc.menu_id}`}
               className="text-caption"
-              style={{ color: '#b91c1c', marginTop: 3 }}
+              style={{ color: 'var(--bad)', marginTop: 3 }}
             >
               {priceError}
             </div>

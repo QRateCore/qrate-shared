@@ -289,16 +289,16 @@ export default function MenuEditPanel({
 
           {/* Name */}
           <div>
-            <label style={labelStyle} htmlFor="menu-edit-name">Menu name <span style={{ color: '#b91c1c' }}>*</span></label>
+            <label style={labelStyle} htmlFor="menu-edit-name">Menu name <span style={{ color: 'var(--bad)' }}>*</span></label>
             <input
               id="menu-edit-name"
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
               data-testid="menu-edit-name-input"
-              style={{ ...inputStyle, border: nameError ? '1px solid #b91c1c' : '1px solid var(--border)' }}
+              style={{ ...inputStyle, border: nameError ? '1px solid var(--bad)' : '1px solid var(--border)' }}
             />
-            {nameError && <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 3 }}>Name is required</div>}
+            {nameError && <div style={{ fontSize: 12, color: 'var(--bad)', marginTop: 3 }}>Name is required</div>}
           </div>
 
           {/* Active */}
@@ -322,13 +322,13 @@ export default function MenuEditPanel({
                     flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 600,
                     borderRadius: 4,
                     border: isActive === v
-                      ? (v ? '2px solid #16a34a' : '2px solid #b91c1c')
+                      ? (v ? '2px solid var(--ok)' : '2px solid var(--bad)')
                       : '1px solid var(--border)',
                     background: isActive === v
-                      ? (v ? '#dcfce7' : '#fee2e2')
-                      : 'white',
+                      ? (v ? 'var(--ok-bg)' : 'var(--bad-bg)')
+                      : 'var(--surface)',
                     color: isActive === v
-                      ? (v ? '#15803d' : '#b91c1c')
+                      ? (v ? 'var(--ok)' : 'var(--bad)')
                       : 'var(--text2)',
                     cursor: 'pointer',
                   }}
@@ -441,12 +441,12 @@ export default function MenuEditPanel({
 
           {/* Danger zone */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--bad)', marginBottom: 8 }}>
               Danger zone
             </div>
             {deleteStep === 2 && (
               <div
-                style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 4, padding: '8px 10px', marginBottom: 8, fontSize: 12, color: '#991b1b' }}
+                style={{ background: 'var(--bad-bg)', border: '1px solid #E5A9A2', borderRadius: 4, padding: '8px 10px', marginBottom: 8, fontSize: 12, color: 'var(--bad)' }}
                 data-testid="delete-menu-warning"
               >
                 This permanently removes the menu and all its item assignments. Item data is preserved.
@@ -460,8 +460,8 @@ export default function MenuEditPanel({
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 width: '100%', padding: '8px 12px', fontSize: 12, fontWeight: 600,
-                color: deleteStep > 0 ? 'white' : '#b91c1c',
-                background: deleteStep > 0 ? '#ef4444' : '#fee2e2',
+                color: deleteStep > 0 ? 'var(--on-ink)' : 'var(--bad)',
+                background: deleteStep > 0 ? 'var(--bad)' : 'var(--bad-bg)',
                 border: `1px solid ${deleteStep > 0 ? '#ef4444' : '#fca5a5'}`,
                 borderRadius: 4, cursor: deleting ? 'not-allowed' : 'pointer',
                 justifyContent: 'center',
@@ -480,7 +480,7 @@ export default function MenuEditPanel({
         {/* Footer */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
           {saveError && (
-            <div style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <AlertCircle size={12} />
               {saveError}
             </div>
@@ -489,14 +489,14 @@ export default function MenuEditPanel({
             <button
               type="button" onClick={onClose} disabled={saving}
               data-testid="menu-edit-cancel"
-              style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: '#f0f0f0', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
             >
               Cancel
             </button>
             <button
               type="button" onClick={handleSave} disabled={saving}
               data-testid="menu-edit-save"
-              style={{ flex: 2, padding: '8px 0', fontSize: 12, fontWeight: 700, color: 'white', background: 'var(--blue)', border: 'none', borderRadius: 'var(--r-xs)', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
+              style={{ flex: 2, padding: '8px 0', fontSize: 12, fontWeight: 700, color: 'var(--on-ink)', background: 'var(--blue)', border: 'none', borderRadius: 'var(--r-xs)', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
             >
               {saving ? 'Saving…' : 'Save changes'}
             </button>
@@ -527,7 +527,7 @@ export default function MenuEditPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
+              <AlertCircle size={20} style={{ color: 'var(--warn)', flexShrink: 0 }} />
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text, #111)' }}>
                 Warning
               </div>
@@ -544,7 +544,7 @@ export default function MenuEditPanel({
               style={{
                 alignSelf: 'flex-end',
                 padding: '8px 20px', fontSize: 13, fontWeight: 600,
-                color: 'white', background: 'var(--blue, #2563eb)',
+                color: 'var(--on-ink)', background: 'var(--blue, #2563eb)',
                 border: 'none', borderRadius: 'var(--r-xs, 4px)',
                 cursor: 'pointer',
               }}
@@ -579,7 +579,7 @@ export default function MenuEditPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertCircle size={20} style={{ color: '#b91c1c', flexShrink: 0 }} />
+              <AlertCircle size={20} style={{ color: 'var(--bad)', flexShrink: 0 }} />
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text, #111)' }}>
                 {pendingDrinksMode ? 'Switch to a drinks menu?' : 'Switch back to a normal menu?'}
               </div>
@@ -603,7 +603,7 @@ export default function MenuEditPanel({
             {drinksModeError && (
               <div
                 data-testid="drinks-mode-error"
-                style={{ fontSize: 12, color: '#b91c1c', background: '#fee2e2', borderRadius: 4, padding: '8px 10px' }}
+                style={{ fontSize: 12, color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '8px 10px' }}
               >
                 {drinksModeError}
               </div>
@@ -617,7 +617,7 @@ export default function MenuEditPanel({
                 data-testid="drinks-mode-cancel"
                 style={{
                   padding: '8px 16px', fontSize: 13, fontWeight: 600,
-                  color: 'var(--text2)', background: '#f0f0f0',
+                  color: 'var(--text2)', background: 'var(--surface2)',
                   border: 'none', borderRadius: 'var(--r-xs, 4px)',
                   cursor: drinksModeSaving ? 'not-allowed' : 'pointer',
                 }}
@@ -631,7 +631,7 @@ export default function MenuEditPanel({
                 data-testid="drinks-mode-confirm"
                 style={{
                   padding: '8px 16px', fontSize: 13, fontWeight: 700,
-                  color: 'white', background: '#ef4444',
+                  color: 'var(--on-ink)', background: 'var(--bad)',
                   border: 'none', borderRadius: 'var(--r-xs, 4px)',
                   cursor: drinksModeSaving ? 'not-allowed' : 'pointer',
                   opacity: drinksModeSaving ? 0.7 : 1,
@@ -656,13 +656,13 @@ const labelStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', fontSize: 16, color: 'var(--text)', background: 'white',
+  width: '100%', fontSize: 16, color: 'var(--text)', background: 'var(--surface)',
   border: '1px solid var(--border)', borderRadius: 'var(--r-xs)', padding: '7px 10px',
   outline: 'none', boxSizing: 'border-box',
 };
 
 const timeInputStyle: React.CSSProperties = {
-  fontSize: 16, color: 'var(--text)', background: 'white',
+  fontSize: 16, color: 'var(--text)', background: 'var(--surface)',
   border: '1px solid var(--border)', borderRadius: 4, padding: '3px 6px',
   outline: 'none',
 };

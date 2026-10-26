@@ -141,7 +141,7 @@ export function SubCategoryGroup({
       className="ml-1 border-l-2"
       // Green = "valid drop target", consistent with the course buckets and
       // modifier zones (see DROP_TARGET in MenuBuilder).
-      style={{ borderColor: isDragOver ? '#16A34A' : 'var(--border)' }}
+      style={{ borderColor: isDragOver ? 'var(--ok)' : 'var(--border)' }}
     >
       {/* Insertion line above this row while a reorder drag hovers its top half. */}
       {insertionLine === 'before' && (
@@ -149,7 +149,7 @@ export function SubCategoryGroup({
           data-testid={`subcategory-insertion-before-${category}-${label}`}
           aria-hidden="true"
           className="ml-1 mr-1 rounded-full"
-          style={{ height: 3, background: '#2563EB' }}
+          style={{ height: 3, background: 'var(--ink)' }}
         />
       )}
       {/* Header — always rendered (unconditional E2E sync-point). The WHOLE row
@@ -216,8 +216,8 @@ export function SubCategoryGroup({
         // 2026-07-21 — gray read as disabled inside expanded courses.
         className="flex items-center gap-1 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors"
         style={{
-          color: isDragOver ? '#15803D' : 'var(--text)',
-          background: isDragOver ? '#DCFCE7' : 'transparent',
+          color: isDragOver ? 'var(--ok)' : 'var(--text)',
+          background: isDragOver ? 'var(--ok-bg)' : 'transparent',
           // grab cursor when reorder is armed; pointer otherwise (row is clickable)
           cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),
           opacity: isReorderDragging ? 0.4 : undefined,
@@ -382,7 +382,7 @@ export function SubCategoryGroup({
           data-testid={`subcategory-insertion-after-${category}-${label}`}
           aria-hidden="true"
           className="ml-1 mr-1 rounded-full"
-          style={{ height: 3, background: '#2563EB' }}
+          style={{ height: 3, background: 'var(--ink)' }}
         />
       )}
 

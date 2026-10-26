@@ -4,7 +4,7 @@
  *
  * Covers:
  *  - "Enter in POS" button: orange filled (bg-orange-500) for ORDER PLACED group
- *  - "Mark Served" button: green filled (bg-[#2a7a3b]) for IN KITCHEN group — not ghost gray
+ *  - "Mark Served" button: green filled (Kar ok tone, bg-[var(--ok)]) for IN KITCHEN group — not ghost gray
  *  - "ORDER PLACED" label: text-orange-500 class
  *  - "IN KITCHEN" label: text-purple-700 class (unchanged)
  *  - Dietary preferences visible in "All" view (no guest filter required)
@@ -121,10 +121,10 @@ describe('TableDetailSheet — button styling', () => {
     expect(btn.className).not.toContain('font-semibold');
   });
 
-  it('"Mark Served" button has green filled style (bg-[#2a7a3b], white text)', () => {
+  it('"Mark Served" button has green filled style (Kar ok tone, white text)', () => {
     renderSheet();
     const btn = screen.getByRole('button', { name: 'Mark Served' });
-    expect(btn.className).toContain('bg-[#2a7a3b]');
+    expect(btn.className).toContain('bg-[var(--ok)]');
     expect(btn.className).toContain('text-white');
     expect(btn.className).toContain('font-medium');
   });

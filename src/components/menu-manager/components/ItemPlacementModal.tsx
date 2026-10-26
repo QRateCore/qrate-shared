@@ -241,8 +241,8 @@ export function ItemPlacementModal({
 
           {/* Section 1 — Category (course). Single-select; required when shown. */}
           {showCategoryPicker ? (
-            <div className="rounded-lg p-4" style={{ background: '#FFF7ED' }}>
-              <div className={capCls} style={{ color: '#9A6A1E' }}>
+            <div className="rounded-lg p-4" style={{ background: 'var(--surface2)' }}>
+              <div className={capCls} style={{ color: 'var(--warn)' }}>
                 Category (course)
               </div>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Category">
@@ -260,8 +260,8 @@ export function ItemPlacementModal({
                       className="rounded-full border px-3.5 py-2 text-sm font-medium transition-colors"
                       style={
                         isSel
-                          ? { borderColor: 'var(--brand, #B8392A)', background: 'var(--brand, #B8392A)', color: '#fff' }
-                          : { borderColor: '#E7C9A3', background: '#fff', color: 'var(--text)' }
+                          ? { borderColor: 'var(--brand, #B8392A)', background: 'var(--brand, #B8392A)', color: 'var(--surface)' }
+                          : { borderColor: '#EBDDC2', background: 'var(--surface)', color: 'var(--text)' }
                       }
                     >
                       {cat}
@@ -274,7 +274,7 @@ export function ItemPlacementModal({
             lockedCategory && (
               <div
                 className="rounded-lg px-4 py-2.5 text-sm font-medium"
-                style={{ background: '#FFF7ED', color: '#9A6A1E' }}
+                style={{ background: 'var(--surface2)', color: 'var(--warn)' }}
                 data-testid="item-placement-locked-category"
               >
                 Category: {dest}
@@ -285,9 +285,9 @@ export function ItemPlacementModal({
           {/* Section 2 — Sub-category (optional). */}
           <div
             className="rounded-lg p-4"
-            style={{ background: showCategoryPicker && !category ? '#F8FAFC' : '#F0FDF4', opacity: showCategoryPicker && !category ? 0.6 : 1 }}
+            style={{ background: showCategoryPicker && !category ? 'var(--surface-sunk)' : 'var(--ok-bg)', opacity: showCategoryPicker && !category ? 0.6 : 1 }}
           >
-            <div className={capCls} style={{ color: '#15803D' }}>
+            <div className={capCls} style={{ color: 'var(--ok)' }}>
               Sub-category <span style={{ textTransform: 'none', fontWeight: 500 }}>(optional)</span>
             </div>
 
@@ -303,8 +303,8 @@ export function ItemPlacementModal({
                     className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm"
                     style={
                       sub.type === 'existing' && sub.label === matched.label
-                        ? { color: '#fff', background: 'var(--brand-s, #c2710a)' }
-                        : { color: 'var(--brand-s, #c2710a)', background: '#fff', border: '1px solid #E7C9A3' }
+                        ? { color: 'var(--surface)', background: 'var(--brand-s, #c2710a)' }
+                        : { color: 'var(--brand-s, #c2710a)', background: 'var(--surface)', border: '1px solid #EBDDC2' }
                     }
                   >
                     <Plus size={15} />
@@ -328,14 +328,14 @@ export function ItemPlacementModal({
                       className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium"
                       style={
                         isSel
-                          ? { borderColor: '#16A34A', background: '#16A34A', color: '#fff' }
-                          : { borderColor: '#BBF7D0', background: '#fff', color: 'var(--text)' }
+                          ? { borderColor: 'var(--ok)', background: 'var(--ok)', color: 'var(--surface)' }
+                          : { borderColor: '#CFE5D6', background: 'var(--surface)', color: 'var(--text)' }
                       }
                     >
                       <span className="truncate max-w-[15rem]">{l.label}</span>
                       <span
                         className="rounded-full px-1.5 text-xs font-semibold"
-                        style={{ background: isSel ? 'rgba(255,255,255,0.28)' : '#F3EAD9', color: isSel ? '#fff' : '#9A6A1E' }}
+                        style={{ background: isSel ? 'rgba(255,255,255,0.28)' : '#F3EAD9', color: isSel ? 'var(--surface)' : 'var(--warn)' }}
                       >
                         {l.item_count}
                       </span>
@@ -360,10 +360,10 @@ export function ItemPlacementModal({
               placeholder="+ Create a new sub-category…"
               data-testid="subcategory-pick-input"
               className="w-full rounded-lg border px-4 py-3 text-sm"
-              style={{ borderColor: '#BBF7D0', background: '#fff' }}
+              style={{ borderColor: '#CFE5D6', background: 'var(--surface)' }}
             />
             {sub.type === 'new' && newValue.length > 0 && newExactExists && (
-              <div className="mt-2 text-xs italic" style={{ color: '#15803D' }}>
+              <div className="mt-2 text-xs italic" style={{ color: 'var(--ok)' }}>
                 &ldquo;{newValue}&rdquo; already exists above.
               </div>
             )}
@@ -376,8 +376,8 @@ export function ItemPlacementModal({
               className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm font-medium"
               style={
                 ungroupedSelected
-                  ? { background: '#E2E8F0', color: '#334155' }
-                  : { background: '#F1F5F9', color: '#475569' }
+                  ? { background: 'var(--line)', color: 'var(--ink-label)' }
+                  : { background: 'var(--surface2)', color: 'var(--ink-label)' }
               }
             >
               {ungroupedSelected ? '✓ ' : ''}No sub-category — add directly to {dest}
@@ -409,8 +409,8 @@ export function ItemPlacementModal({
               className="min-h-11 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold"
               style={
                 canConfirm
-                  ? { color: '#fff', background: 'var(--brand, #B8392A)' }
-                  : { color: '#fff', background: '#CBD5E1', cursor: 'not-allowed' }
+                  ? { color: 'var(--surface)', background: 'var(--brand, #B8392A)' }
+                  : { color: 'var(--surface)', background: 'var(--line-input)', cursor: 'not-allowed' }
               }
             >
               <Plus size={16} />

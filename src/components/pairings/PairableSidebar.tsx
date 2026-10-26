@@ -112,7 +112,7 @@ export default function PairableSidebar({ items, pairedItemIds, isTouchDevice, o
                       )}
                     </div>
                     {isPaired ? (
-                      <Check size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
+                      <Check size={14} style={{ color: 'var(--ok)', flexShrink: 0 }} />
                     ) : isTouchDevice ? (
                       <button
                         className="pairable-sidebar-add-btn"

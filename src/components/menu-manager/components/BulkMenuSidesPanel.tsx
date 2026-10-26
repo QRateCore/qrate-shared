@@ -422,7 +422,7 @@ export default function BulkMenuSidesPanel({
               zIndex: 10,
               minWidth: 180,
               maxWidth: 320,
-              background: '#fff',
+              background: 'var(--surface)',
               border: '1px solid var(--border)',
               borderRadius: 8,
               boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
@@ -1026,7 +1026,7 @@ export default function BulkMenuSidesPanel({
               style={{
                 fontSize: 11,
                 fontWeight: 500,
-                background: '#f0f0f0',
+                background: 'var(--surface2)',
                 color: 'var(--text)',
                 borderRadius: 4,
                 padding: '2px 7px',
@@ -1177,17 +1177,17 @@ export default function BulkMenuSidesPanel({
                   data-testid="bulk-menu-sides-discovery-errors"
                   role="alert"
                   style={{
-                    background: '#fef3c7',
-                    border: '1px solid #fcd34d',
+                    background: 'var(--warn-bg)',
+                    border: '1px solid #D9BF8E',
                     borderRadius: 'var(--r-xs)',
                     padding: '8px 10px',
                     fontSize: 11,
                   }}
                 >
-                  <div style={{ fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--warn)', marginBottom: 4 }}>
                     Couldn't load sides for {removeLoadErrors.length} item{removeLoadErrors.length === 1 ? '' : 's'}
                   </div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', color: '#78350f' }}>
+                  <ul style={{ margin: 0, padding: '0 0 0 16px', color: 'var(--warn)' }}>
                     {removeLoadErrors.map((p) => (
                       <li
                         key={p.id}
@@ -1204,9 +1204,9 @@ export default function BulkMenuSidesPanel({
                     style={{
                       marginTop: 6,
                       fontSize: 11, padding: '3px 8px',
-                      background: '#fff', border: '1px solid #fcd34d',
+                      background: 'var(--surface)', border: '1px solid #D9BF8E',
                       borderRadius: 'var(--r-xs)', cursor: 'pointer',
-                      color: '#92400e',
+                      color: 'var(--warn)',
                     }}
                   >
                     Retry
@@ -1221,7 +1221,7 @@ export default function BulkMenuSidesPanel({
                   style={{
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--r-xs)',
-                    background: '#fff',
+                    background: 'var(--surface)',
                     flex: 1,
                     minHeight: 0,
                     overflowY: 'auto',
@@ -1240,7 +1240,7 @@ export default function BulkMenuSidesPanel({
                           // Selected = same brand-light tint the picker
                           // uses for selected rows → visual parity across
                           // both drawers' list surfaces.
-                          background: checked ? 'var(--brand-l)' : '#fff',
+                          background: checked ? 'var(--brand-l)' : 'var(--surface)',
                         }}
                       >
                         <div
@@ -1314,12 +1314,12 @@ export default function BulkMenuSidesPanel({
                   flex: 1, minHeight: 0, overflow: 'auto',
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--r-xs)',
-                  background: '#fff',
+                  background: 'var(--surface)',
                 }}
               >
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
-                    <tr style={{ position: 'sticky', top: 0, background: '#f9fafb', zIndex: 1 }}>
+                    <tr style={{ position: 'sticky', top: 0, background: 'var(--surface-sunk)', zIndex: 1 }}>
                       <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', minWidth: 140 }}>Item</th>
                       <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 140 }}>Price</th>
                       <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 100 }}>Boost</th>
@@ -1345,9 +1345,9 @@ export default function BulkMenuSidesPanel({
                                     flexShrink: 0,
                                     fontSize: 8,
                                     fontWeight: 700,
-                                    color: '#b91c1c',
-                                    background: '#fee2e2',
-                                    border: '1px solid #fca5a5',
+                                    color: 'var(--bad)',
+                                    background: 'var(--bad-bg)',
+                                    border: '1px solid #E5A9A2',
                                     borderRadius: 8,
                                     padding: '1px 5px',
                                     textTransform: 'uppercase',
@@ -1607,7 +1607,7 @@ export default function BulkMenuSidesPanel({
               data-testid="bulk-menu-sides-error-banner"
               role="alert"
               style={{
-                fontSize: 11, color: '#b91c1c', background: '#fee2e2',
+                fontSize: 11, color: 'var(--bad)', background: 'var(--bad-bg)',
                 borderRadius: 4, padding: '6px 10px',
               }}
             >
@@ -1619,7 +1619,7 @@ export default function BulkMenuSidesPanel({
               data-testid="bulk-menu-sides-skipped-count"
               aria-live="polite"
               style={{
-                fontSize: 11, color: '#065f46', background: '#d1fae5',
+                fontSize: 11, color: 'var(--ok)', background: 'var(--ok-bg)',
                 borderRadius: 4, padding: '6px 10px',
               }}
             >
@@ -1639,7 +1639,7 @@ export default function BulkMenuSidesPanel({
                 fontSize: 12,
                 fontWeight: 600,
                 color: 'var(--text2)',
-                background: '#f0f0f0',
+                background: 'var(--surface2)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
                 cursor: executing ? 'not-allowed' : 'pointer',
@@ -1657,7 +1657,7 @@ export default function BulkMenuSidesPanel({
                 padding: '8px 0',
                 fontSize: 12,
                 fontWeight: 700,
-                color: 'white',
+                color: 'var(--on-ink)',
                 background: applyDisabled ? 'var(--text2)' : 'var(--blue)',
                 border: 'none',
                 borderRadius: 'var(--r-xs)',
@@ -1692,7 +1692,7 @@ function ZoneRadio({ value, onChange, testidPrefix }: ZoneRadioProps) {
       style={{
         display: 'flex', flexDirection: 'column', gap: 4,
         padding: '10px 12px',
-        background: '#f9fafb',
+        background: 'var(--surface-sunk)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--r-xs)',
       }}

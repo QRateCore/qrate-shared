@@ -266,8 +266,8 @@ export function BulkMemberPicker({
                       borderRadius: 999,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: isActive ? 'var(--brand)' : '#e5e7eb',
-                      color: isActive ? '#fff' : '#374151',
+                      background: isActive ? 'var(--brand)' : 'var(--line)',
+                      color: isActive ? 'var(--surface)' : 'var(--ink-label)',
                       fontSize: 10,
                       fontWeight: 700,
                     }}
@@ -296,7 +296,7 @@ export function BulkMemberPicker({
               title={`Select all ${selectAllIds.length} matching item${selectAllIds.length === 1 ? '' : 's'}`}
               style={{
                 fontSize: 11, padding: '2px 6px',
-                background: '#fff', border: '1px solid var(--brand)',
+                background: 'var(--surface)', border: '1px solid var(--brand)',
                 borderRadius: 'var(--r-xs)', cursor: 'pointer',
                 color: 'var(--brand)', fontWeight: 600,
               }}
@@ -311,7 +311,7 @@ export function BulkMemberPicker({
               onClick={onClearAll}
               style={{
                 fontSize: 11, padding: '2px 6px',
-                background: '#fff', border: '1px solid var(--border)',
+                background: 'var(--surface)', border: '1px solid var(--border)',
                 borderRadius: 'var(--r-xs)', cursor: 'pointer',
                 color: 'var(--muted)',
               }}
@@ -375,8 +375,8 @@ export function BulkMemberPicker({
                   alignItems: 'center',
                   gap: 5,
                   padding: '3px 8px',
-                  background: isActive ? '#fff4ee' : '#fff',
-                  color: isActive ? '#c2710a' : '#374151',
+                  background: isActive ? 'var(--surface2)' : 'var(--surface)',
+                  color: isActive ? 'var(--ink)' : 'var(--ink-label)',
                   border: `1px solid ${isActive ? '#fed7aa' : 'var(--border)'}`,
                   borderRadius: 999,
                   cursor: 'pointer',
@@ -394,8 +394,8 @@ export function BulkMemberPicker({
                     fontWeight: 700,
                     padding: '0 5px',
                     borderRadius: 999,
-                    background: isActive ? '#c2710a' : '#f3f4f6',
-                    color: isActive ? '#fff' : '#6b7280',
+                    background: isActive ? 'var(--ink)' : 'var(--surface2)',
+                    color: isActive ? 'var(--surface)' : 'var(--ink-soft)',
                   }}
                 >
                   {c.count}
@@ -419,7 +419,7 @@ export function BulkMemberPicker({
           overflowY: 'auto',
           border: '1px solid var(--border)',
           borderRadius: 'var(--r-xs)',
-          background: '#fff',
+          background: 'var(--surface)',
         }}
       >
         {selectedRows.length === 0 && unselectedRows.length === 0 && (
@@ -484,7 +484,7 @@ function PickerRow({
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 10px',
         borderBottom: '1px solid var(--border)',
-        background: selected ? 'var(--brand-l)' : '#fff',
+        background: selected ? 'var(--brand-l)' : 'var(--surface)',
         fontSize: 12,
       }}
     >
@@ -513,8 +513,8 @@ function PickerRow({
           padding: '3px 8px',
           fontSize: 11,
           border: `1px solid ${selected ? 'var(--brand)' : 'var(--border)'}`,
-          background: selected ? 'var(--brand)' : '#fff',
-          color: selected ? '#fff' : 'var(--ink)',
+          background: selected ? 'var(--brand)' : 'var(--surface)',
+          color: selected ? 'var(--surface)' : 'var(--ink)',
           borderRadius: 'var(--r-xs)',
           cursor: disabled && !selected ? 'not-allowed' : 'pointer',
           opacity: disabled && !selected ? 0.5 : 1,

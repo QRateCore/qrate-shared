@@ -69,7 +69,7 @@ export default function GroupActionsMenu({
           border: 'none',
           padding: 2,
           cursor: 'pointer',
-          color: '#64748b',
+          color: 'var(--ink-soft)',
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -87,8 +87,8 @@ export default function GroupActionsMenu({
             right: 0,
             marginTop: 4,
             zIndex: 100,
-            background: '#fff',
-            border: '1px solid #e2e8f0',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
             borderRadius: 6,
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
             minWidth: 160,
@@ -110,7 +110,7 @@ export default function GroupActionsMenu({
             data-testid={`${testIdPrefix}-change-rule`}
             style={menuItemStyle}
           >
-            <span style={{ width: 12, fontSize: 12, color: '#64748b' }}>↺</span>
+            <span style={{ width: 12, fontSize: 12, color: 'var(--ink-soft)' }}>↺</span>
             <span>Change rule</span>
           </button>
           <button
@@ -121,7 +121,7 @@ export default function GroupActionsMenu({
             title={!isDeletable ? deleteDisabledTooltip : 'Delete grouping'}
             style={{
               ...menuItemStyle,
-              color: isDeletable ? '#b91c1c' : '#cbd5e1',
+              color: isDeletable ? 'var(--bad)' : 'var(--line-input)',
               cursor: isDeletable ? 'pointer' : 'not-allowed',
             }}
           >
@@ -145,5 +145,5 @@ const menuItemStyle: React.CSSProperties = {
   border: 'none',
   cursor: 'pointer',
   textAlign: 'left',
-  color: '#1e293b',
+  color: 'var(--ink)',
 };

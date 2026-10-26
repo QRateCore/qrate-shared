@@ -416,7 +416,7 @@ export default function ItemModifierZones({
       <div className="modifier-section" style={{ flex: 1, minWidth: 0 }}>
         <div
           className="modifier-section-header modifier-section-header--sides"
-          style={{ background: '#fef3c7', color: '#92400e' }}
+          style={{ background: 'var(--warn-bg)', color: 'var(--warn)' }}
         >
           <span className="modifier-section-title">Includes one by choice</span>
           {sidesOr.length > 0 && (
@@ -429,7 +429,7 @@ export default function ItemModifierZones({
         <div
           data-testid={`sides-or-drop-zone-${itemId}`}
           className={`modifier-drop-zone${sidesOrDragOver ? ' drag-over' : ''}`}
-          style={sidesOrDragOver ? { borderColor: '#f59e0b', background: '#fffbeb' } : undefined}
+          style={sidesOrDragOver ? { borderColor: 'var(--warn)', background: 'var(--warn-bg)' } : undefined}
           onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();

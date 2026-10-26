@@ -374,7 +374,7 @@ export default function TableDetailSheet({
                               className={`text-xs px-2.5 py-1 rounded-full disabled:opacity-50 ${
                                 group.statuses.includes('pending')
                                   ? 'font-medium text-white bg-orange-500 active:bg-orange-600'
-                                  : 'font-medium text-white bg-[#2a7a3b] active:bg-[#236633]'
+                                  : 'font-medium text-white bg-[var(--ok)] active:bg-[var(--ok)]'
                               }`}
                             >
                               {group.actionLabel}
