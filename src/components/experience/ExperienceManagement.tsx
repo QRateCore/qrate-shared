@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LayoutGrid,
@@ -25,6 +25,8 @@ import DrinksQrTab from './DrinksQrTab';
 import Select from '../common/Select';
 import { timeSince, initials, callTypeLabel, avatarColor } from './table-utils';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import type { ListKit } from '../common/listKit';
+import TablesListView, { type TableUpdate } from './TablesListView';
 
 type Tab = 'staff' | 'tables' | 'kitchen' | 'drinks';
 
@@ -92,9 +94,16 @@ interface ExperienceManagementProps {
    * back to Tables when hidden, same coercion as the Kitchen tab.
    */
   showDrinksTab?: boolean;
+  /**
+   * The host app's list + modal primitives. When given (owner portal), Tables
+   * and Staff render as one-line rows in that app's house table, each row
+   * opening a modal — the same look as every other owner list. Omitted
+   * (waiter, admin) → the card layouts below. Phones always get the cards.
+   */
+  listKit?: ListKit;
 }
 
-export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, tablesTopSlot, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false, showTestTables = false }: ExperienceManagementProps) {
+export default function ExperienceManagement({ initialTab = 'tables', restaurantId, service, posConnected = true, tablesTopSlot, hostStationHref, kdsUrl, renderPairingQr, showKitchenTab = true, showDrinksTab = false, showTestTables = false, listKit }: ExperienceManagementProps) {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     if (!showKitchenTab && initialTab === 'kitchen') return 'tables';
     if (!showDrinksTab && initialTab === 'drinks') return 'tables';
@@ -102,6 +111,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   });
   const [tabCounts, setTabCounts] = useState<{ tables?: number }>({});
   const isMobile = useIsMobile();
+  const kit = isMobile ? undefined : listKit;
   // Desktop only: the active tab portals its primary controls (Add Table /
   // Add Staff / QR actions) into this node so they sit on the tab row instead
   // of a second header strip below it. On a phone the row has no space, so the
@@ -187,10 +197,11 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
         )}
       </div>
 
-      {/* Tab Content */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} />}
-        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} showTestTables={showTestTables} topSlot={tablesTopSlot} />}
+      {/* Tab Content. With a list kit (desktop) Staff and Tables bring their
+          own bordered table, so they sit on the page rather than in a card. */}
+      <div className={kit && (activeTab === 'staff' || activeTab === 'tables') ? '' : 'bg-white rounded-xl shadow-lg p-6'}>
+        {activeTab === 'staff' && <StaffManagement restaurantId={restaurantId ?? null} service={service} actionsSlot={actionsSlot} listKit={kit} />}
+        {activeTab === 'tables' && <TablesTab restaurantId={restaurantId || undefined} service={service} posConnected={posConnected} hostStationHref={hostStationHref} actionsSlot={actionsSlot} showTestTables={showTestTables} topSlot={tablesTopSlot} listKit={kit} />}
         {showKitchenTab && activeTab === 'kitchen' && <KitchenTab restaurantId={restaurantId || undefined} service={service} kdsUrl={kdsUrl} renderPairingQr={renderPairingQr} />}
         {showDrinksTab && activeTab === 'drinks' && <DrinksQrTab restaurantId={restaurantId || undefined} service={service} />}
       </div>
@@ -198,7 +209,7 @@ export default function ExperienceManagement({ initialTab = 'tables', restaurant
   );
 }
 
-function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot, showTestTables = false, topSlot }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null; showTestTables?: boolean; topSlot?: ReactNode }) {
+function TablesTab({ restaurantId, service, posConnected = true, hostStationHref, actionsSlot, showTestTables = false, topSlot, listKit }: { restaurantId?: string; service: ExperienceService; posConnected?: boolean; hostStationHref?: string; actionsSlot?: HTMLElement | null; showTestTables?: boolean; topSlot?: ReactNode; listKit?: ListKit }) {
   const isMobile = useIsMobile();
   // Mobile-only: which occupied cards have the config controls ("Manage")
   // expanded. Config is collapsed by default on a phone so the card's
@@ -372,17 +383,38 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     }
   };
 
+  // A table read that started BEFORE a local write must not land after it:
+  // on a cold page several reads are in flight (StrictMode doubles them in
+  // dev, the Lambda can take 1-2s), and the slowest one used to put a
+  // just-deleted table back or flip a just-toggled one back (2026-10-27, seen
+  // in the toggle-active and create-tables E2E). Each write bumps the epoch;
+  // a read only applies if no write happened since it started and no newer
+  // read has superseded it.
+  const writeEpoch = useRef(0);
+  const readSeq = useRef(0);
+  const markWrite = () => { writeEpoch.current += 1; };
+  // Only the first load blanks the tab with a spinner; a re-read (after
+  // Regenerate QR, Import, Add) keeps the list on screen.
+  const hasLoaded = useRef(false);
+
   const fetchTables = useCallback(async () => {
     if (!restaurantId) return;
-    setLoading(true);
+    const seq = ++readSeq.current;
+    const epoch = writeEpoch.current;
+    if (!hasLoaded.current) setLoading(true);
     try {
       const data = await service.getTables(restaurantId);
+      if (seq !== readSeq.current || epoch !== writeEpoch.current) return;
+      hasLoaded.current = true;
       setTables(data.tables.filter(t => showTestTables || t.table_number < 9900));
     } catch (err) {
+      if (seq !== readSeq.current) return;
       console.error('Failed to load tables:', err);
       showFeedback('error', 'Failed to load tables');
     } finally {
-      setLoading(false);
+      // Only the newest read ends the spinner — a superseded one finishing
+      // first would otherwise flash "No tables found".
+      if (seq === readSeq.current) setLoading(false);
     }
   }, [restaurantId, service, showTestTables]);
 
@@ -481,6 +513,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
 
   const handleSaveCapacity = async (tableId: string) => {
     if (!restaurantId || capacityEdits[tableId] === undefined) return;
+    markWrite();
     setSavingCapacity(prev => ({ ...prev, [tableId]: true }));
     try {
       await service.updateTable(restaurantId, tableId, {
@@ -535,6 +568,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
 
   const handleSaveLabel = async (tableId: string) => {
     if (!restaurantId || labelEdits[tableId] === undefined) return;
+    markWrite();
     setSavingLabel(prev => ({ ...prev, [tableId]: true }));
     try {
       // null CLEARS the label server-side; the local type uses undefined for
@@ -555,6 +589,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
 
   const handleToggleActive = async (tableId: string, currentActive: boolean) => {
     if (!restaurantId) return;
+    markWrite();
     setTogglingActive(prev => ({ ...prev, [tableId]: true }));
     try {
       await service.updateTable(restaurantId, tableId, { is_active: !currentActive });
@@ -589,6 +624,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
 
   const handleSaveSection = async (tableId: string) => {
     if (!restaurantId || sectionEdits[tableId] === undefined) return;
+    markWrite();
     setSavingSection(prev => ({ ...prev, [tableId]: true }));
     try {
       const section = sectionEdits[tableId].trim() || null;
@@ -612,6 +648,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
 
   const handleAssignServer = async (tableId: string, serverId: string | null) => {
     if (!restaurantId) return;
+    markWrite();
     try {
       await service.updateTable(restaurantId, tableId, {
         assigned_server_id: serverId,
@@ -626,8 +663,51 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     }
   };
 
+  /** One-field save for the list view's modal (drafts live in the modal). */
+  const handleUpdateTable = async (table: RestaurantTable, patch: TableUpdate): Promise<boolean> => {
+    if (!restaurantId) return false;
+    markWrite();
+    try {
+      await service.updateTable(restaurantId, table.id, patch);
+      setTables(prev => prev.map(t => (t.id === table.id
+        ? { ...t, ...patch, table_label: 'table_label' in patch ? patch.table_label ?? undefined : t.table_label }
+        : t)));
+      const what = 'assigned_server_id' in patch
+        ? (patch.assigned_server_id ? 'Server assigned' : 'Server unassigned')
+        : 'capacity' in patch ? 'Capacity updated'
+          : 'table_section' in patch ? 'Section updated' : 'Label updated';
+      showFeedback('success', what);
+      return true;
+    } catch (err) {
+      console.error('Failed to update table:', err);
+      showFeedback('error', 'Failed to update table');
+      return false;
+    }
+  };
+
+  const handleResetTable = async (table: RestaurantTable) => {
+    if (!restaurantId || !service.closeTableSession) return;
+    if (!confirm(`Reset Table #${table.table_number}? This will end the session and remove all guests.`)) return;
+    try {
+      await service.closeTableSession(restaurantId, table.table_number);
+      setTableActivity(prev => prev ? {
+        ...prev,
+        tables: prev.tables.map(t =>
+          t.table_number === table.table_number
+            ? { ...t, guests: [], active_carts: [], placed_orders: [], has_active_session: false, needs_attention: false }
+            : t
+        ),
+      } : prev);
+      setWaiterCalls(prev => prev.filter(c => c.table_number !== table.table_number));
+      showFeedback('success', `Table #${table.table_number} reset`);
+    } catch {
+      showFeedback('error', `Failed to reset Table #${table.table_number}`);
+    }
+  };
+
   const handleDeleteTable = async (tableId: string) => {
     if (!restaurantId) return;
+    markWrite();
     setDeleting(true);
     try {
       await service.deleteTable!(restaurantId, tableId);
@@ -1095,7 +1175,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
         </div>
       )}
 
-      {/* Table Grid — host station style */}
+      {/* Table Grid — host station style; or the host app's list (desktop owner) */}
       {(() => {
         // Inactive tables are shown, dimmed. They used to be filtered out
         // here, which was safe only while /owner/tables existed to reach them;
@@ -1117,6 +1197,28 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
             if (upA && callA !== callB) return callB - callA;
             return a.table_number - b.table_number;
           });
+
+        if (listKit && !isMobile) {
+          return (
+            <TablesListView
+              kit={listKit}
+              tables={sorted}
+              staff={staff}
+              tableActivity={tableActivity}
+              waiterCalls={waiterCalls}
+              devicesByTable={devicesByTable}
+              deviceIsFresh={deviceIsFresh}
+              onUpdate={handleUpdateTable}
+              onAcknowledgeCall={handleAcknowledgeCall}
+              onToggleActive={(t) => handleToggleActive(t.id, t.is_active)}
+              togglingActive={togglingActive}
+              onAskRotateQr={rotateQr ? (t) => setRotateConfirm({ tableId: t.id, tableNumber: t.table_number }) : undefined}
+              rotatingQrId={rotatingQr}
+              onAskDelete={service.deleteTable ? (t) => setDeleteConfirm({ tableId: t.id, tableNumber: t.table_number }) : undefined}
+              onResetTable={service.closeTableSession ? handleResetTable : undefined}
+            />
+          );
+        }
 
         return (
           <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 ${isMobile ? 'pb-24' : ''}`}>
