@@ -6108,8 +6108,8 @@ function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
     variant === 'blue'
       ? { bg: 'var(--blue-bg)', border: 'var(--blue)', color: 'var(--blue)' }
       : variant === 'red'
-        ? { bg: '#fee2e2', border: '#E5A9A2', color: 'var(--bad)' }
-        : { bg: '#f6f6f6', border: 'var(--border)', color: 'var(--text2)' };
+        ? { bg: 'var(--bad-bg)', border: '#E5A9A2', color: 'var(--bad)' }
+        : { bg: 'var(--surface2)', border: 'var(--border)', color: 'var(--text2)' };
   return {
     display: 'flex',
     alignItems: 'center',

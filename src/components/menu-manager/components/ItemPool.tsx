@@ -452,7 +452,7 @@ function CategorySection({
           cursor: !!onCategoryDragStart && categoryIds.length > 0 ? 'grab' : 'pointer',
           userSelect: 'none',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#f6f6f6'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface2)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
         {/* Collapse indicator (visual only — the whole header toggles) */}
@@ -490,7 +490,7 @@ function CategorySection({
                 fontSize: 10,
                 fontWeight: 600,
                 color: 'var(--brand-s)',
-                background: 'rgba(17, 17, 17,0.08)',
+                background: 'var(--line)',
                 borderRadius: 4,
                 padding: '1px 5px',
                 whiteSpace: 'nowrap',
