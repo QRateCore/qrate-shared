@@ -47,6 +47,8 @@ export interface TableGuest {
   idle_since?: string | null;
   /** Dining occasion selected by this patron (e.g. 'celebration', 'date', 'family') */
   occasion?: string | null;
+  /** ISO time this guest scanned the table QR / joined the session (owner_waiter `_patron_joined_at`). */
+  joined_at?: string | null;
 }
 
 export interface TableCart {

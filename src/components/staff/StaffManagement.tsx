@@ -434,7 +434,7 @@ function StaffListView({
   onDelete: (m: StaffMember) => void;
   deletingId: string | null;
 }) {
-  const { DataTable, Modal, ModalFooter, StatusPill } = kit;
+  const { DataTable, Drawer, DrawerFooter, StatusPill } = kit;
   const roleLabel = (m: StaffMember) => ROLE_LABELS[m.role as StaffRole] || m.role;
   const columns: ListKitColumn<StaffMember>[] = [
     { key: 'name', header: 'Name', width: 'minmax(180px,1.2fr)', render: (m) => <span className="font-semibold overflow-hidden text-ellipsis">{m.name}</span> },
@@ -467,22 +467,22 @@ function StaffListView({
         empty={loading ? 'Loading staff…' : 'No staff members yet — add your first team member with Add Staff.'}
       />
 
-      <Modal open={showForm} onClose={onCloseForm} eyebrow="Staff" title="Add a team member" width={640} testId="add-staff-modal">
+      <Drawer open={showForm} onClose={onCloseForm} eyebrow="Staff" title="Add a team member" width={640} testId="add-staff-modal">
         <div className="pt-3">{form}</div>
-      </Modal>
+      </Drawer>
 
       {member && (
-        <Modal
+        <Drawer
           open
           onClose={onCloseMember}
           eyebrow="Staff"
           title={member.name}
           titleAdornment={<StatusPill tone="tag">{roleLabel(member)}</StatusPill>}
           sub={member.email}
-          width={520}
+          width={560}
           testId="staff-modal"
           footer={
-            <ModalFooter
+            <DrawerFooter
               dangerAction={canDelete && (confirmDeleteId === member.id ? (
                 <span className="inline-flex items-center gap-2">
                   <button type="button" onClick={() => onDelete(member)} disabled={deletingId === member.id}
@@ -510,7 +510,7 @@ function StaffListView({
               <button type="button" onClick={onCloseMember} className={`${btn} bg-ink text-on-ink border border-ink hover:bg-ink-hover`}>
                 Done
               </button>
-            </ModalFooter>
+            </DrawerFooter>
           }
         >
           <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 pt-3 text-sm">
@@ -522,7 +522,7 @@ function StaffListView({
           {confirmDeleteId === member.id && (
             <p className="mt-4 text-sm text-bad">Remove {member.name} from the team? Their staff sign-in stops working.</p>
           )}
-        </Modal>
+        </Drawer>
       )}
     </>
   );

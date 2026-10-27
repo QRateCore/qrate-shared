@@ -37,6 +37,20 @@ export function callTypeLabel(callType: string): string {
   }
 }
 
+/** One- or two-word label for a call BUBBLE in a table row (full label: callTypeLabel). */
+export function shortCallLabel(callType: string): string {
+  switch (callType) {
+    case 'water_refill_regular':
+    case 'water_refill_bottled':
+    case 'water_refill': return 'Water';
+    case 'cutlery': return 'Cutlery';
+    case 'napkins': return 'Napkins';
+    case 'bill': return 'Bill';
+    case 'order_status': return 'Order?';
+    default: return 'Waiter';
+  }
+}
+
 // ─── Avatar Colors ────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [

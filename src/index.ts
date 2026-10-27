@@ -28,7 +28,7 @@ export type { TableCardProps, TableDetailSheetProps } from './components/experie
 
 // Components — Staff
 export { StaffManagement, SwipeSlider } from './components/staff';
-export type { ListKit, ListKitColumn, ListKitTableProps, ListKitModalProps, ListKitModalFooterProps, ListKitPillProps, ListKitTone } from './components/common/listKit';
+export type { ListKit, ListKitColumn, ListKitTableProps, ListKitDrawerProps, ListKitDrawerFooterProps, ListKitPillProps, ListKitTone } from './components/common/listKit';
 export type { SwipeSliderProps } from './components/staff';
 
 // Components — Menu Items

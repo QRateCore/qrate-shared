@@ -4,10 +4,10 @@ import type { HTMLAttributes, ReactNode } from 'react';
  * The host app's own list + modal primitives, injected so a shared surface can
  * render in that app's house style without this package re-implementing it.
  *
- * The owner portal passes its Kar `DataTable` / `Modal` / `ModalFooter` /
- * `StatusPill` (apps/owner/src/components/shared/kar) — the exact components
- * the Devices page uses — so Tables and Staff look like every other owner list
- * instead of a near-copy that drifts. Waiter and admin pass nothing and keep
+ * The owner portal passes its Kar `DataTable` / `Drawer` / `ModalFooter` /
+ * `StatusPill` (apps/owner/src/components/shared/kar) — the Devices table and
+ * the right-hand drawer the Food Item editor uses — so Tables and Staff look
+ * like every other owner list instead of a near-copy that drifts. Waiter and admin pass nothing and keep
  * the card layouts. The shapes below are the SUBSET of those components' props
  * that shared code relies on; the owner's components satisfy them structurally.
  */
@@ -34,7 +34,8 @@ export interface ListKitTableProps<T> {
   ariaLabel?: string;
 }
 
-export interface ListKitModalProps {
+/** The detail surface a row opens — the owner passes a right-hand drawer. */
+export interface ListKitDrawerProps {
   open: boolean;
   onClose: () => void;
   eyebrow?: ReactNode;
@@ -47,7 +48,7 @@ export interface ListKitModalProps {
   testId?: string;
 }
 
-export interface ListKitModalFooterProps {
+export interface ListKitDrawerFooterProps {
   dangerAction?: ReactNode;
   note?: ReactNode;
   children?: ReactNode;
@@ -59,13 +60,14 @@ export interface ListKitPillProps {
   tone?: ListKitTone;
   children: ReactNode;
   dot?: boolean;
+  icon?: ReactNode;
   title?: string;
   testId?: string;
 }
 
 export interface ListKit {
   DataTable: <T>(props: ListKitTableProps<T>) => ReactNode;
-  Modal: (props: ListKitModalProps) => ReactNode;
-  ModalFooter: (props: ListKitModalFooterProps) => ReactNode;
+  Drawer: (props: ListKitDrawerProps) => ReactNode;
+  DrawerFooter: (props: ListKitDrawerFooterProps) => ReactNode;
   StatusPill: (props: ListKitPillProps) => ReactNode;
 }

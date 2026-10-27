@@ -1,22 +1,29 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { BellRing, AlertTriangle, Check, Cylinder, Loader2, QrCode, RefreshCw } from 'lucide-react';
-import type { RestaurantTable, StaffMember, TableActivity, TableActivityEntry, WaiterCall, ExperienceTableDevice } from '../../types/experience';
-import type { ListKit, ListKitColumn } from '../common/listKit';
+import { BellRing, AlertTriangle, Check, Cylinder, Loader2, RefreshCw, ScanLine } from 'lucide-react';
+import type {
+  RestaurantTable, StaffMember, TableActivity, TableActivityEntry, TablePlacedOrder, WaiterCall, ExperienceTableDevice,
+} from '../../types/experience';
+import type { ListKit, ListKitColumn, ListKitTone } from '../common/listKit';
 import Select from '../common/Select';
-import { timeSince, callTypeLabel } from './table-utils';
+import { STATUS_DISPLAY } from '../../utils/order-status-display';
+import { timeSince, callTypeLabel, shortCallLabel } from './table-utils';
 
 /**
  * Tables as one-line rows in the host app's house table (owner: the Kar
- * DataTable the Devices page uses). A row opens that table's modal, which
- * holds every control the card carried — server, seats, section, label,
- * activate, QR, delete / reset, and the live calls + orders.
+ * DataTable the Devices page uses). A row opens that table's right-hand
+ * drawer (owner: the Food Item editor's drawer geometry), which holds the live
+ * orders and calls plus every control the card carried — server, seats,
+ * section, label, activate, QR, delete / reset.
+ *
+ * The row itself carries the at-a-glance signals: when someone last SCANNED
+ * the table, and a bubble per open service call.
  *
  * Testids are the card's, on purpose: `table-card-N` is the ROW and
  * `table-device-paired-N` / `table-status-N` / `table-pos-badge-N` sit inside
  * it (the table-device-onboarding canary asserts exactly that pair), and the
- * edit controls keep theirs inside the modal.
+ * edit controls keep theirs inside the drawer.
  */
 
 /** null CLEARS a field server-side (label, section, server). */
@@ -45,14 +52,47 @@ export interface TablesListViewProps {
   rotatingQrId?: string | null;
   onAskDelete?: (table: RestaurantTable) => void;
   onResetTable?: (table: RestaurantTable) => void;
+  /** Told when a drawer opens / closes, so the host can poll faster while one is open. */
+  onDrawerOpenChange?: (open: boolean) => void;
 }
 
 const LIVE = (c: WaiterCall) => c.status === 'active' || c.status === 'overdue';
 
+/** A scan this recent shows as a live "Just scanned" pill rather than a time. */
+export const FRESH_SCAN_MS = 2 * 60 * 1000;
+
+/** Newest guest scan / join on the table, or null. */
+export function lastScanAt(a: TableActivityEntry | null): string | null {
+  if (!a) return null;
+  let best: string | null = null;
+  for (const g of a.guests) {
+    if (g.joined_at && (!best || new Date(g.joined_at).getTime() > new Date(best).getTime())) best = g.joined_at;
+  }
+  return best;
+}
+
+const ORDER_TONE: Record<string, ListKitTone> = {
+  placed: 'warn', pending: 'warn',
+  confirmed: 'live', preparing: 'live',
+  ready: 'ok',
+  delivered: 'tag', completed: 'tag',
+  cancelled: 'bad', issue: 'bad',
+};
+const orderLabel = (status: string) => STATUS_DISPLAY[status]?.label ?? status;
+const money = (n: number) => `$${(Number(n) || 0).toFixed(2)}`;
+const orderTotal = (o: TablePlacedOrder) => o.active_total ?? o.total_amount;
+
 export default function TablesListView(props: TablesListViewProps) {
-  const { kit, tables, staff, tableActivity, waiterCalls, devicesByTable, deviceIsFresh } = props;
+  const { kit, tables, staff, tableActivity, waiterCalls, devicesByTable, deviceIsFresh, onDrawerOpenChange } = props;
   const { DataTable, StatusPill } = kit;
   const [openId, setOpenId] = useState<string | null>(null);
+  // Re-render the relative times ("2m ago", "Just scanned") between polls.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setNow(n => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => { onDrawerOpenChange?.(openId !== null); }, [openId, onDrawerOpenChange]);
 
   const activityOf = (t: RestaurantTable) =>
     tableActivity?.tables?.find(a => a.table_number === t.table_number) ?? null;
@@ -66,7 +106,7 @@ export default function TablesListView(props: TablesListViewProps) {
     {
       key: 'table',
       header: 'Table',
-      width: 'minmax(180px,1.3fr)',
+      width: 'minmax(150px,1.2fr)',
       render: (t) => (
         <span className="flex items-baseline gap-2 min-w-0 overflow-hidden">
           <span className="font-semibold flex-shrink-0">Table {t.table_number}</span>
@@ -90,7 +130,7 @@ export default function TablesListView(props: TablesListViewProps) {
     {
       key: 'status',
       header: 'Status',
-      width: '120px',
+      width: '112px',
       render: (t) => {
         const occupied = activityOf(t)?.has_active_session === true;
         if (!t.is_active) return <StatusPill tone="tag" testId={`table-status-${t.table_number}`}>Inactive</StatusPill>;
@@ -100,51 +140,90 @@ export default function TablesListView(props: TablesListViewProps) {
       },
     },
     {
+      key: 'scan',
+      header: 'Last scan',
+      width: '124px',
+      render: (t) => {
+        const at = lastScanAt(activityOf(t));
+        if (!at) return dash;
+        const fresh = Date.now() - new Date(at).getTime() < FRESH_SCAN_MS;
+        const when = new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return fresh ? (
+          <StatusPill tone="live" icon={<ScanLine size={12} aria-hidden="true" />} title={`Scanned at ${when}`}
+            testId={`table-scan-${t.table_number}`}>
+            Just scanned
+          </StatusPill>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-ink-soft" title={`Scanned at ${when}`}
+            data-testid={`table-scan-${t.table_number}`}>
+            <ScanLine size={13} aria-hidden="true" />{timeSince(at)}
+          </span>
+        );
+      },
+    },
+    {
       key: 'calls',
-      header: 'Requests',
-      width: '120px',
+      header: 'Service calls',
+      width: 'minmax(170px,1.3fr)',
       render: (t) => {
         const calls = callsOf(t);
         if (calls.length === 0) return dash;
-        const overdue = calls.some(c => c.status === 'overdue');
+        const shown = calls.slice(0, 2);
         return (
-          <StatusPill tone={overdue ? 'bad' : 'warn'} testId={`table-calls-count-${t.table_number}`}>
-            {calls.length} {calls.length === 1 ? 'request' : 'requests'}
-          </StatusPill>
+          <span className="flex items-center gap-1 min-w-0 overflow-hidden" data-testid={`table-calls-${t.table_number}`}>
+            {shown.map(c => (
+              <StatusPill key={c.id} tone={c.status === 'overdue' ? 'bad' : 'warn'}
+                icon={c.status === 'overdue' ? <AlertTriangle size={12} aria-hidden="true" /> : <BellRing size={12} aria-hidden="true" />}
+                title={`${callTypeLabel(c.call_type ?? '')} · ${timeSince(c.created_at)}`}
+                testId={`table-call-bubble-${t.table_number}`}>
+                {shortCallLabel(c.call_type ?? '')}
+              </StatusPill>
+            ))}
+            {calls.length > shown.length && (
+              <span className="text-xs font-semibold text-ink-soft">+{calls.length - shown.length}</span>
+            )}
+          </span>
         );
       },
     },
     {
       key: 'guests',
       header: 'Guests',
-      width: '80px',
+      width: '68px',
       align: 'center',
       render: (t) => {
         const a = activityOf(t);
         return a?.has_active_session ? <span className="tabular-nums">{a.guests.length}</span> : dash;
       },
     },
-    { key: 'server', header: 'Server', width: 'minmax(120px,1fr)', render: (t) => serverOf(t) ?? dash },
+    {
+      key: 'orders',
+      header: 'Orders',
+      width: '110px',
+      render: (t) => {
+        const orders = (activityOf(t)?.placed_orders ?? []).filter(o => o.status !== 'cancelled');
+        if (orders.length === 0) return dash;
+        const total = orders.reduce((s, o) => s + orderTotal(o), 0);
+        return (
+          <span className="tabular-nums" data-testid={`table-orders-${t.table_number}`}>
+            {orders.length} · <span className="text-ink-soft">{money(total)}</span>
+          </span>
+        );
+      },
+    },
+    { key: 'server', header: 'Server', width: 'minmax(100px,0.9fr)', render: (t) => serverOf(t) ?? dash },
     {
       key: 'seats',
       header: 'Seats',
-      width: '70px',
+      width: '60px',
       align: 'center',
       render: (t) => (t.capacity ? <span className="tabular-nums">{t.capacity}</span> : dash),
     },
-    { key: 'section', header: 'Section', width: 'minmax(100px,0.8fr)', render: (t) => t.table_section || dash },
-    {
-      key: 'qr',
-      header: 'QR',
-      width: '70px',
-      render: (t) => (t.qr_code_url
-        ? <span className="inline-flex items-center gap-1 text-ink-soft"><QrCode size={14} aria-hidden="true" />Ready</span>
-        : dash),
-    },
+    { key: 'section', header: 'Section', width: 'minmax(80px,0.7fr)', render: (t) => t.table_section || dash },
     {
       key: 'device',
       header: 'Device',
-      width: '70px',
+      width: '64px',
       render: (t) => {
         const d = devicesByTable[t.id];
         if (!d) return dash;
@@ -177,12 +256,12 @@ export default function TablesListView(props: TablesListViewProps) {
           className: t.is_active ? undefined : 'opacity-60',
         })}
         isProblem={(t) => callsOf(t).length > 0}
-        minWidth={880}
+        minWidth={1000}
         testId="tables-list"
         ariaLabel="Tables"
       />
       {open && (
-        <TableModal
+        <TableDrawer
           {...props}
           table={open}
           activity={activityOf(open)}
@@ -194,7 +273,7 @@ export default function TablesListView(props: TablesListViewProps) {
   );
 }
 
-function TableModal({
+function TableDrawer({
   kit, table, staff, tables, activity, calls, onClose, onUpdate, onAcknowledgeCall, onToggleActive,
   togglingActive, onAskRotateQr, rotatingQrId, onAskDelete, onResetTable,
 }: TablesListViewProps & {
@@ -203,11 +282,11 @@ function TableModal({
   calls: WaiterCall[];
   onClose: () => void;
 }) {
-  const { Modal, ModalFooter, StatusPill } = kit;
+  const { Drawer, DrawerFooter, StatusPill } = kit;
   const n = table.table_number;
   const occupied = activity?.has_active_session === true;
 
-  // Drafts are local to the open modal and re-seed when the row changes
+  // Drafts are local to the open drawer and re-seed when the row changes
   // underneath (a poll, or a save landing).
   const [seats, setSeats] = useState(String(table.capacity ?? 0));
   const [section, setSection] = useState(table.table_section || '');
@@ -246,15 +325,22 @@ function TableModal({
     </div>
   );
 
-  const sectionHead = (title: string) => (
-    <h3 className="mt-4 mb-1 text-[11px] font-semibold uppercase tracking-[.06em] text-ink-soft">{title}</h3>
+  const sectionHead = (title: ReactNode, right?: ReactNode) => (
+    <div className="mt-5 mb-1 flex items-center justify-between gap-3">
+      <h3 className="m-0 text-[11px] font-semibold uppercase tracking-[.06em] text-ink-soft">{title}</h3>
+      {right}
+    </div>
   );
 
-  const items = (activity?.placed_orders ?? []).flatMap((o, oi) =>
-    (o.items || []).map((it, ii) => ({ ...it, diner: o.diner_name, key: `${oi}-${ii}` })));
+  // Newest first — the owner opens a busy table to see what just came in.
+  const orders = [...(activity?.placed_orders ?? [])]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const carts = (activity?.active_carts ?? []).filter(c => c.items.length > 0);
+  const liveTotal = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + orderTotal(o), 0);
+  const scannedAt = lastScanAt(activity);
 
   return (
-    <Modal
+    <Drawer
       open
       onClose={onClose}
       eyebrow="Table"
@@ -262,11 +348,15 @@ function TableModal({
       titleAdornment={!table.is_active
         ? <StatusPill tone="tag">Inactive</StatusPill>
         : occupied ? <StatusPill tone="live" dot>Occupied</StatusPill> : <StatusPill tone="ok" dot>Available</StatusPill>}
-      sub={[table.table_label, table.pos_linked ? `POS: ${table.pos_table_name ?? n}` : null].filter(Boolean).join(' · ') || undefined}
-      width={620}
+      sub={[
+        table.table_label,
+        table.pos_linked ? `POS: ${table.pos_table_name ?? n}` : null,
+        scannedAt ? `Last scan ${timeSince(scannedAt)}` : null,
+      ].filter(Boolean).join(' · ') || undefined}
+      width={720}
       testId={`table-modal-${n}`}
       footer={
-        <ModalFooter
+        <DrawerFooter
           dangerAction={occupied
             ? (onResetTable && (
               <button type="button" onClick={() => onResetTable(table)} data-testid={`table-reset-${n}`}
@@ -286,12 +376,12 @@ function TableModal({
             {togglingActive[table.id] ? <Loader2 size={14} className="animate-spin" /> : table.is_active ? 'Deactivate' : 'Reactivate'}
           </button>
           <button type="button" onClick={onClose} className={primary}>Done</button>
-        </ModalFooter>
+        </DrawerFooter>
       }
     >
       {calls.length > 0 && (
         <>
-          {sectionHead('Service requests')}
+          {sectionHead('Service calls')}
           <div className="divide-y divide-line-row" data-testid={occupied ? undefined : `table-calls-unseated-${n}`}>
             {calls.map(call => (
               <div key={call.id} className="flex items-center gap-3 py-2">
@@ -310,27 +400,78 @@ function TableModal({
         </>
       )}
 
-      {occupied && activity && (
-        <>
-          {sectionHead(`At the table · ${activity.guests.length} ${activity.guests.length === 1 ? 'guest' : 'guests'}`)}
-          {activity.guests.length > 0 && (
-            <p className="text-sm text-ink py-1">{activity.guests.map(g => g.name || 'Guest').join(', ')}</p>
-          )}
-          {items.length === 0 ? (
-            <p className="text-sm text-ink-soft py-1">No orders yet</p>
-          ) : (
-            <div className="divide-y divide-line-row">
-              {items.slice(0, 8).map(it => (
-                <div key={it.key} className="flex items-center gap-3 py-1.5 text-sm">
-                  <span className="tabular-nums font-semibold">{it.quantity}×</span>
-                  <span className="flex-1 min-w-0 truncate">{it.name}</span>
-                  {it.diner && <span className="text-[13px] text-ink-soft truncate max-w-[120px]">{it.diner}</span>}
-                  <span className="tabular-nums">${(it.price * it.quantity).toFixed(2)}</span>
-                </div>
-              ))}
-              {items.length > 8 && <p className="text-[13px] text-ink-soft py-1.5">+{items.length - 8} more</p>}
+      {sectionHead(
+        <span className="inline-flex items-center gap-2">
+          Live orders
+          <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium text-live">
+            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" aria-hidden="true" />live
+          </span>
+        </span>,
+        orders.length > 0 ? <span className="text-[13px] font-semibold tabular-nums">{money(liveTotal)}</span> : undefined,
+      )}
+      <div data-testid={`table-live-orders-${n}`}>
+        {orders.length === 0 && carts.length === 0 && (
+          <p className="text-sm text-ink-soft py-1">{occupied ? 'No orders yet' : 'Nobody is seated'}</p>
+        )}
+        {orders.map(o => (
+          <div key={o.order_id} className="py-2.5 border-b border-line-row last:border-b-0" data-testid={`table-order-${o.order_id}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-ink truncate">{o.diner_name || 'Guest'}</span>
+              <StatusPill tone={ORDER_TONE[o.status] ?? 'tag'}>{orderLabel(o.status)}</StatusPill>
+              <span className="text-[13px] text-ink-soft">{timeSince(o.created_at)}</span>
+              <span className="ml-auto text-sm font-semibold tabular-nums">{money(orderTotal(o))}</span>
             </div>
-          )}
+            {(o.items ?? []).map((it, i) => {
+              const cancelled = it.item_status === 'cancelled';
+              return (
+                <div key={it.id ?? i} className={`flex items-center gap-3 pl-1 pt-1 text-sm ${cancelled ? 'line-through text-ink-faint' : ''}`}>
+                  <span className="tabular-nums w-7 flex-none">{it.quantity}×</span>
+                  <span className="flex-1 min-w-0 truncate">{it.name}</span>
+                  {it.item_status && it.item_status !== 'cancelled' && (
+                    <span className="text-[12px] text-ink-soft">{orderLabel(it.item_status)}</span>
+                  )}
+                  <span className="tabular-nums text-ink-soft">{money(it.price * it.quantity)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {carts.map(c => (
+          <div key={c.order_id} className="py-2.5 border-b border-line-row last:border-b-0" data-testid={`table-cart-${c.order_id}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-ink truncate">{c.diner_name || 'Guest'}</span>
+              <StatusPill tone="tag">In cart · not placed</StatusPill>
+              <span className="text-[13px] text-ink-soft">browsing {c.minutes_browsing}m</span>
+            </div>
+            {c.items.map((it, i) => (
+              <div key={i} className="flex items-center gap-3 pl-1 pt-1 text-sm text-ink-soft">
+                <span className="tabular-nums w-7 flex-none">{it.quantity}×</span>
+                <span className="flex-1 min-w-0 truncate">{it.name}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {occupied && activity && activity.guests.length > 0 && (
+        <>
+          {sectionHead(`Guests · ${activity.guests.length}`)}
+          <div className="divide-y divide-line-row">
+            {activity.guests.map((g, i) => (
+              <div key={g.diner_id ?? i} className="flex items-center gap-3 py-1.5 text-sm">
+                <span className="flex-1 min-w-0 truncate">{g.name || 'Guest'}</span>
+                {g.is_first_timer && <StatusPill tone="tag">First visit</StatusPill>}
+                {g.allergens.length > 0 && (
+                  <span className="text-[12px] text-bad truncate max-w-[160px]" title={g.allergens.join(', ')}>
+                    {g.allergens.join(', ')}
+                  </span>
+                )}
+                <span className="text-[13px] text-ink-soft whitespace-nowrap">
+                  {g.joined_at ? `scanned ${timeSince(g.joined_at)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
@@ -388,6 +529,6 @@ function TableModal({
           </button>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }

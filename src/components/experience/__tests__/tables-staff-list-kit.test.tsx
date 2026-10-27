@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import ExperienceManagement from '../ExperienceManagement';
 import StaffManagement from '../../staff/StaffManagement';
-import type { ListKit, ListKitTableProps, ListKitModalProps, ListKitModalFooterProps, ListKitPillProps } from '../../common/listKit';
+import type { ListKit, ListKitTableProps, ListKitDrawerProps, ListKitDrawerFooterProps, ListKitPillProps } from '../../common/listKit';
 import type { ExperienceService, StaffMember } from '../../../types/experience';
 
 function FakeTable<T>({ columns, rows, rowKey, onRowClick, rowProps, testId }: ListKitTableProps<T>) {
@@ -38,7 +38,7 @@ function FakeTable<T>({ columns, rows, rowKey, onRowClick, rowProps, testId }: L
     </div>
   );
 }
-const FakeModal = ({ open, title, children, footer, testId, onClose }: ListKitModalProps) =>
+const FakeDrawer = ({ open, title, children, footer, testId, onClose }: ListKitDrawerProps) =>
   open ? (
     <div role="dialog" data-testid={testId}>
       <h2>{title}</h2>
@@ -47,10 +47,10 @@ const FakeModal = ({ open, title, children, footer, testId, onClose }: ListKitMo
       {footer}
     </div>
   ) : null;
-const FakeFooter = ({ dangerAction, children }: ListKitModalFooterProps) => <div>{dangerAction}{children}</div>;
+const FakeFooter = ({ dangerAction, children }: ListKitDrawerFooterProps) => <div>{dangerAction}{children}</div>;
 const FakePill = ({ children, testId }: ListKitPillProps) => <span data-testid={testId}>{children}</span>;
 
-const kit: ListKit = { DataTable: FakeTable, Modal: FakeModal, ModalFooter: FakeFooter, StatusPill: FakePill };
+const kit: ListKit = { DataTable: FakeTable, Drawer: FakeDrawer, DrawerFooter: FakeFooter, StatusPill: FakePill };
 
 function setViewport(mobile: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -210,5 +210,60 @@ describe('a slow table read never undoes a local write', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(screen.queryByTestId('table-card-1')).toBeNull();
     expect(screen.getByTestId('table-card-2')).toBeTruthy();
+  });
+});
+
+describe('row signals and the live drawer', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const activity = {
+    tables: [{
+      table_number: 1, has_active_session: true, needs_attention: false,
+      guests: [
+        { diner_id: 'd1', name: 'Ana', allergens: [], dietary_restrictions: [], is_first_timer: false, joined_at: ago(30_000) },
+      ],
+      active_carts: [{ order_id: 'c1', diner_name: 'Ben', created_at: ago(60_000), minutes_browsing: 3, items: [{ name: 'Soup', quantity: 1, price: 6 }] }],
+      placed_orders: [{
+        order_id: 'o1', status: 'pending', diner_id: 'd1', diner_name: 'Ana', created_at: ago(90_000),
+        item_count: 2, total_amount: 30,
+        items: [{ id: 'i1', name: 'Burger', quantity: 2, price: 15 }],
+      }],
+    }, {
+      table_number: 2, has_active_session: true, needs_attention: false,
+      guests: [{ diner_id: 'd2', name: 'Cy', allergens: [], dietary_restrictions: [], is_first_timer: false, joined_at: ago(20 * 60_000) }],
+      active_carts: [], placed_orders: [],
+    }],
+  };
+  const calls = [
+    { id: 'k1', table_number: 1, status: 'active', created_at: ago(60_000), call_type: 'bill' },
+    { id: 'k2', table_number: 1, status: 'overdue', created_at: ago(400_000), call_type: 'water_refill' },
+  ];
+
+  function svcWithActivity() {
+    return makeService([T(), T({ id: 't2', table_number: 2 })], {
+      getTableActivity: vi.fn().mockResolvedValue(activity),
+      getWaiterCalls: vi.fn().mockResolvedValue(calls),
+    } as Partial<ExperienceService>);
+  }
+
+  it('shows a fresh scan as "Just scanned" and an older one as a time', async () => {
+    render(<ExperienceManagement restaurantId="r1" service={svcWithActivity()} listKit={kit} />);
+    await waitFor(() => expect(screen.getByTestId('table-scan-1').textContent).toBe('Just scanned'));
+    expect(screen.getByTestId('table-scan-2').textContent).toMatch(/20m ago/);
+  });
+
+  it('puts a bubble per open service call on the row', async () => {
+    render(<ExperienceManagement restaurantId="r1" service={svcWithActivity()} listKit={kit} />);
+    const row = await screen.findByTestId('table-card-1');
+    await waitFor(() => expect(within(row).getAllByTestId('table-call-bubble-1').map(b => b.textContent)).toEqual(['Bill', 'Water']));
+    expect(within(screen.getByTestId('table-card-2')).queryByTestId('table-call-bubble-2')).toBeNull();
+  });
+
+  it('lists the live orders and open carts in the drawer', async () => {
+    render(<ExperienceManagement restaurantId="r1" service={svcWithActivity()} listKit={kit} />);
+    await waitFor(() => expect(screen.getByTestId('table-orders-1').textContent).toMatch(/1 · \$30\.00/));
+    await userEvent.click(screen.getByTestId('table-card-1'));
+    const live = await screen.findByTestId('table-live-orders-1');
+    expect(within(live).getByTestId('table-order-o1').textContent).toMatch(/Ana.*Order Placed.*\$30\.00.*2×Burger/);
+    expect(within(live).getByTestId('table-cart-c1').textContent).toMatch(/Ben.*In cart.*Soup/);
   });
 });

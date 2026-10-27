@@ -444,6 +444,15 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
     return () => clearInterval(interval);
   }, [fetchTables, fetchStaff, fetchWaiterCalls, fetchTableActivity]);
 
+  // While a table's drawer is open its orders and calls are the thing being
+  // watched, so poll them every 4s instead of every 10s.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const fast = setInterval(() => { fetchWaiterCalls(); fetchTableActivity(); }, 4000);
+    return () => clearInterval(fast);
+  }, [drawerOpen, fetchWaiterCalls, fetchTableActivity]);
+
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
     setTimeout(() => setFeedback(null), 3000);
@@ -1216,6 +1225,7 @@ function TablesTab({ restaurantId, service, posConnected = true, hostStationHref
               rotatingQrId={rotatingQr}
               onAskDelete={service.deleteTable ? (t) => setDeleteConfirm({ tableId: t.id, tableNumber: t.table_number }) : undefined}
               onResetTable={service.closeTableSession ? handleResetTable : undefined}
+              onDrawerOpenChange={setDrawerOpen}
             />
           );
         }
