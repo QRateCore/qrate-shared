@@ -24,7 +24,7 @@
  *  - A9: Zone-radio change clears removeSelectedIds (candidate pool changes).
  *  - A13: Side item allowlist enforced server-side (dish + included).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MenuAssociation, MenuItemDisplay, MenuItemJunctionSettings } from '../../../types/restaurant';
 import { BulkMemberPicker } from './BulkMemberPicker';
@@ -158,6 +158,33 @@ type TabKey =
 // Allowed side item_types (mirrors server-side ALLOWED_SIDE_ITEM_TYPES
 // and the existing per-item PUT endpoint's _reject_addons).
 const ALLOWED_SIDE_ITEM_TYPES = new Set(['dish', 'included']);
+
+/*
+ * Item-info matrix cells — the Kar table look (owner DataTable / Table
+ * parts) in inline styles, because this package is also rendered by the
+ * admin app and cannot import the owner's kar components. Header 12/600
+ * sentence case ink-soft on a 1px line; rows on line-row dividers. Kept
+ * compact (36px header, ~40px rows) — it is a dense input grid in a panel.
+ * Fallbacks are the older vars this file already used.
+ */
+const ITEM_INFO_TH: CSSProperties = {
+  textAlign: 'left',
+  height: 36,
+  padding: '0 10px',
+  borderBottom: '1px solid var(--line, var(--border))',
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: '0.02em',
+  color: 'var(--ink-soft, var(--text2))',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'middle',
+};
+const ITEM_INFO_TD: CSSProperties = {
+  padding: '6px 10px',
+  height: 40,
+  borderBottom: '1px solid var(--line-row, var(--border))',
+  verticalAlign: 'middle',
+};
 
 interface CandidateSide {
   id: string;
@@ -1317,14 +1344,14 @@ export default function BulkMenuSidesPanel({
                   background: 'var(--surface)',
                 }}
               >
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: 'var(--ink, var(--text))' }}>
                   <thead>
-                    <tr style={{ position: 'sticky', top: 0, background: 'var(--surface-sunk)', zIndex: 1 }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', minWidth: 140 }}>Item</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 140 }}>Price</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 100 }}>Boost</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 70 }}>Special</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--border)', width: 140 }}>Portion</th>
+                    <tr style={{ position: 'sticky', top: 0, background: 'var(--surface, #fff)', zIndex: 1 }}>
+                      <th style={{ ...ITEM_INFO_TH, minWidth: 140 }}>Item</th>
+                      <th style={{ ...ITEM_INFO_TH, width: 140 }}>Price</th>
+                      <th style={{ ...ITEM_INFO_TH, width: 100 }}>Boost</th>
+                      <th style={{ ...ITEM_INFO_TH, width: 70, textAlign: 'center' }}>Special</th>
+                      <th style={{ ...ITEM_INFO_TH, width: 140 }}>Portion</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1335,23 +1362,24 @@ export default function BulkMenuSidesPanel({
                       const isWine = full ? isWineItem(full) : false;
                       return (
                         <tr key={parent.id} data-testid={`bulk-item-info-row-${parent.id}`}>
-                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                          <td style={ITEM_INFO_TD}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span>{parent.name}</span>
                               {isWine && (
                                 <span
                                   data-testid={`bulk-item-info-wine-badge-${parent.id}`}
                                   style={{
+                                    // Neutral Kar tag chip (surface2 fill, ink
+                                    // text, sentence case) — not a status.
                                     flexShrink: 0,
-                                    fontSize: 8,
-                                    fontWeight: 700,
-                                    color: 'var(--bad)',
-                                    background: 'var(--bad-bg)',
-                                    border: '1px solid #E5A9A2',
-                                    borderRadius: 8,
-                                    padding: '1px 5px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.03em',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    lineHeight: 1,
+                                    color: 'var(--ink, var(--text))',
+                                    background: 'var(--surface2, var(--surface-sunk))',
+                                    borderRadius: 999,
+                                    padding: '4px 7px',
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
                                   Wine
@@ -1359,7 +1387,7 @@ export default function BulkMenuSidesPanel({
                               )}
                             </div>
                           </td>
-                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                          <td style={ITEM_INFO_TD}>
                             {isWine ? (
                               // Wine prices By Glass / By Bottle instead of a flat
                               // price (mirrors InlineItemEditor.tsx). Every other
@@ -1400,7 +1428,7 @@ export default function BulkMenuSidesPanel({
                               />
                             )}
                           </td>
-                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                          <td style={ITEM_INFO_TD}>
                             <select
                               data-testid={`bulk-item-info-boost-${parent.id}`}
                               value={row.boostLabel}
@@ -1413,7 +1441,7 @@ export default function BulkMenuSidesPanel({
                               ))}
                             </select>
                           </td>
-                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                          <td style={{ ...ITEM_INFO_TD, textAlign: 'center' }}>
                             <input
                               type="checkbox"
                               data-testid={`bulk-item-info-special-${parent.id}`}
@@ -1422,7 +1450,7 @@ export default function BulkMenuSidesPanel({
                               aria-label={`Chef's special for ${parent.name}`}
                             />
                           </td>
-                          <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                          <td style={ITEM_INFO_TD}>
                             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                               <select
                                 data-testid={`bulk-item-info-portion-type-${parent.id}`}
