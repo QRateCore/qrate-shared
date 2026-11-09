@@ -95,3 +95,15 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   empty, subshell, `cd -`/`popd`, conditional and UNRESOLVED dirs/targets count as QRate; never derive a gh
   endpoint/subcommand from a fixed argument position; keep a whole-command fail-closed fallback for anything the
   parser can't read.
+- **G4 Every exit is locked while a write is in flight** (2026-11-09; `busy-flow-abort-via-ui-switch`,
+  `dialog-dismissible-while-busy`). When a flow can be mid-write (claim, save, send to a device, payment),
+  EVERY route that closes, unmounts or switches it — X, Esc, scrim, Done/Cancel, Back/stepper, route or tab
+  pickers, links that navigate or unmount the parent — is disabled for that window, and the lock is keyed on
+  the WRITE only (not on long waits the user must be able to cancel). Enumerate the exits in the review;
+  one missed exit is the bug.
+- **G5 Async flows re-check that they are still current after every await** (2026-11-09;
+  `async-flow-missing-generation-check`, `generation-guard-self-invalidated`). A cancellable async flow
+  (connect, scan, poll, upload) captures a generation/attempt id and checks it after EACH await — on the
+  success path AND in every catch/finally — before touching state, opening resources or reporting an error.
+  The id that answers "was I abandoned?" must not be bumped by the flow's own failure handler; who clears a
+  busy flag is decided by a separate per-attempt id. Each guard needs a test that is red without it.
