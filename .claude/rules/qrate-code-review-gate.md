@@ -18,6 +18,11 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
   checklist: `.claude/review/checklist.md`. Logs are per user, in
   `${CLAUDE_CONFIG_DIR:-~/.claude}/qrate-review-logs/`.
 - The hooks need `python3` on `PATH` and `git`.
+- Force pushes (`--force`, `-f`, `--force-with-lease`, `+refspec`) and GitHub-side changes (`gh pr merge`,
+  `gh api` writes to contents/refs/merges) are denied too.
+- On Avi's Mac a **machine layer** (`~/.claude/qrate-review-machine/`) adds a git `pre-push` hook to every
+  QRate clone, so terminal, IDE and script pushes are gated as well. Agents must not touch it, the
+  clones' git hooks dirs, `core.hooksPath` or `init.templateDir`, and must not use `--no-verify`.
 
 ## The loop (builder agent)
 
@@ -29,8 +34,10 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
    - anything deliberately out of scope.
    Do **not** hand it your reasoning or conclusions. Its value is reading the code cold.
 3. **PASS:** the push unlocks. Run the normal protocol: `git fetch origin && git rebase origin/main &&
-   git push origin main`. Rebasing does not invalidate the PASS, because the key is the patch-id of
-   the zero-context diff. If a rebase conflict changed the diff, review again.
+   git push origin main`. Rebasing usually keeps the PASS: the key is a hash of the diff with 3
+   lines of context and without line numbers. It changes, and a new review is needed, if the diff
+   changes at all: an edit, a re-indent, a moved line, a conflict resolution, or an upstream change
+   within 3 lines of yours.
 4. **BLOCK:** fix each P0/P1, or rebut it with evidence (a command and its output) in the next brief.
    Then commit and re-review. Never argue a finding away without evidence.
 5. **Report to the user** in your final message, every time: the verdict, any P2/P3 you deferred, the

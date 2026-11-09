@@ -36,8 +36,9 @@ that way: judge the diff on its own.
    ```bash
    python3 "$(git -C <repo> rev-parse --show-toplevel)/.claude/review/qrate_review.py" key <repo>
    ```
-   (Every QRate repo carries the gate in `.claude/review/`. If a repo lacks it, use any sibling
-   repo's copy. The key computation is the same.)
+   (Every QRate repo carries the gate in `.claude/review/`. Use the repo's own copy whenever it
+   exists, even an old one. Only if a repo has none, use the machine-wide copy:
+   `python3 ~/.claude/qrate-review-machine/qrate_review.py key <repo>`.)
    This prints the review key and the upstream it diffs against. Then:
    ```bash
    git -C <repo> log --oneline <base>..HEAD

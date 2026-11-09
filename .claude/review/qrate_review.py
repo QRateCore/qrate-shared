@@ -7,9 +7,11 @@ One file, three entry points:
   qrate_review.py gate             -> PreToolUse hook (Bash/Edit/Write): block unreviewed pushes
   qrate_review.py record           -> SubagentStop hook: turn a qrate-reviewer verdict into a marker
 
-Review key = `git patch-id --stable` of the ZERO-context diff merge-base(upstream, HEAD)..HEAD.
-Zero context makes the key survive the mandatory `fetch && rebase origin/main` before a push
-(the SHA changes, the change does not). Any edit to the change => new key => new review.
+Review key = sha1 of the diff merge-base(upstream, HEAD)..HEAD with 3 lines of context, whitespace
+KEPT, and only the hunk line numbers and blob ids stripped. So the key survives the mandatory
+`fetch && rebase origin/main` before a push (the SHA and line numbers change, the change does not),
+but any edit to the change, including re-indenting it or moving it, means a new key and a new review.
+A repo with nothing upstream yet (a first push) is diffed against the empty tree.
 
 Markers live in <git-common-dir>/qrate-review/<key>.json — inside .git, so never committed and
 shared by every worktree of the repo. ONLY the SubagentStop hook writes them; the gate refuses
@@ -20,6 +22,7 @@ Scope: repos whose `origin` is a QRate GitHub org (see QRATE_REMOTE). Everything
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import json
 import os
 import re
@@ -28,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-GATE_VERSION = "2026-11-08.4"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
+GATE_VERSION = "2026-11-09.2"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
 REVIEW_HOME = Path(__file__).resolve().parent
 # Logs are per-USER, not per-repo: a hook writing into the work tree would dirty `git status`.
 LOG_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "qrate-review-logs"
@@ -37,11 +40,21 @@ BYPASS_LOG = LOG_HOME / "bypass.log"
 GATE_LOG = LOG_HOME / "gate.log"
 MARKER_DIRNAME = "qrate-review"
 REVIEWER_AGENT = "qrate-reviewer"
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 QRATE_REMOTE = re.compile(r"github\.com[:/](QRateCore|qrate-builder)/", re.I)
 VERDICT_LINE = re.compile(
     r"QRATE-REVIEW\s+repo=(?P<repo>\S+)\s+key=(?P<key>[0-9a-f]{40}|none)\s+verdict=(?P<verdict>PASS|BLOCK)",
 )
 FINDINGS_BLOCK = re.compile(r"```(?:json)?\s*QRATE-FINDINGS\s*\n(?P<body>.*?)```", re.S)
+GH_WRITE_PATH = re.compile(r"repos/(?P<org>[^/\s]+)/[^/\s]+/"
+                           r"(contents|git/|merges|pulls/\d+/merge|branches/[^/\s]+/rename)", re.I)
+GH_QRATE_ORG = re.compile(r"^(QRateCore|qrate-builder)$", re.I)
+GH_PLACEHOLDER_ORG = re.compile(r"^(\{owner\}|:owner|\$\{?\w+\}?|.*\$.*)$")
+GH_GRAPHQL_WRITE = re.compile(r"createCommitOnBranch|mergePullRequest|updateRef|createRef|deleteRef|"
+                              r"enablePullRequestAutoMerge|mergeBranch|updateRefs", re.I)
+GH_WRITE_METHOD = re.compile(r"(-X|--method)[\s=]*['\"]?(PUT|POST|PATCH|DELETE)", re.I)
+GH_READ_METHOD = re.compile(r"(-X|--method)[\s=]*['\"]?(GET|HEAD)\b", re.I)
+GH_FIELDS = re.compile(r"\s(-f|-F|--field|--raw-field|--input)[\s=]")
 READ_ONLY_CMDS = {"ls", "cat", "head", "tail", "jq", "find", "grep", "wc", "stat", "less"}
 GIT_PUSH = re.compile(r"(?:^|[\s;&|(])git(?P<opts>(?:\s+-[Cc]\s+\S+|\s+--[\w-]+(?:=\S+)?)*)\s+push\b")
 
@@ -57,6 +70,17 @@ def _git(repo: str, *args: str) -> str:
 def toplevel(path: str) -> str | None:
     try:
         return _git(path, "rev-parse", "--show-toplevel")
+    except Exception:
+        return None
+
+
+def repo_root(path: str) -> str | None:
+    """Work-tree top level, or the absolute git dir when run from inside .git or a bare clone."""
+    top = toplevel(path)
+    if top:
+        return top
+    try:
+        return _git(path, "rev-parse", "--absolute-git-dir")
     except Exception:
         return None
 
@@ -78,36 +102,58 @@ def upstream_ref(repo: str) -> str | None:
     return None
 
 
-def review_key(repo: str, src: str = "HEAD", dst: str | None = None) -> tuple[str | None, str]:
-    """Return (key, explanation) for pushing `src` (default HEAD) to `dst`. key None => nothing to review."""
+def _exists(repo: str, rev: str) -> bool:
+    try:
+        _git(repo, "rev-parse", "--verify", "--quiet", rev)
+        return True
+    except Exception:
+        return False
+
+
+def review_key(repo: str, src: str = "HEAD", dst: str | None = None, remote: str = "origin",
+               remote_sha: str | None = None) -> tuple[str | None, str]:
+    """Return (key, explanation) for pushing `src` (default HEAD) to `dst` on `remote`.
+    key None => nothing to review. `remote_sha` (the remote's current tip, from a pre-push hook)
+    is the most exact base when we have that commit locally."""
     up = None
-    if src != "HEAD" or dst:
+    if remote_sha and set(remote_sha) != {"0"} and _exists(repo, f"{remote_sha}^{{commit}}"):
+        up = remote_sha
+    elif src != "HEAD" or dst:
         branch = (dst or src).replace("refs/heads/", "")
-        for ref in (f"origin/{branch}", "origin/main", "origin/master"):
-            try:
-                _git(repo, "rev-parse", "--verify", "--quiet", ref)
+        for ref in dict.fromkeys((f"{remote}/{branch}", f"{remote}/main", f"{remote}/master",
+                                  "origin/main", "origin/master")):
+            if _exists(repo, ref):
                 up = ref
                 break
-            except Exception:
-                continue
     else:
         up = upstream_ref(repo)
-    if up is None:
-        return None, "no upstream/origin ref to diff against"
     head = _git(repo, "rev-parse", "--verify", f"{src}^{{commit}}")
-    base = _git(repo, "merge-base", up, head)
-    if base == head:
-        return None, f"{src} is already contained in {up} — nothing to push"
+    if up is None:
+        base, label = EMPTY_TREE, "nothing upstream yet (first push): whole tree"
+    else:
+        base = _git(repo, "merge-base", up, head)
+        if base == head:
+            return None, f"{src} is already contained in {up} — nothing to push"
+        ahead = _git(repo, "rev-list", "--count", f"{base}..{head}")
+        label = f"{ahead} commit(s) ahead of {up} (base {base[:10]})"
     diff = subprocess.run(
-        ["git", "-C", repo, "diff", "-U0", "--no-color", "--no-ext-diff", base, head],
+        ["git", "-C", repo, "diff", "-U3", "--binary", "--no-color", "--no-ext-diff", "--no-textconv",
+         "--no-renames", "--diff-algorithm=myers", "--src-prefix=a/", "--dst-prefix=b/", base, head],
         capture_output=True, timeout=60,
-    ).stdout
-    if not diff.strip():
+    )
+    if diff.returncode != 0:
+        raise RuntimeError(diff.stderr.decode(errors="replace").strip() or "git diff failed")
+    if not diff.stdout.strip():
         return None, "commits ahead have an empty net diff"
-    pid = subprocess.run(["git", "patch-id", "--stable"], input=diff, capture_output=True, timeout=30)
-    key = pid.stdout.decode().split()[0] if pid.stdout.strip() else None
-    ahead = _git(repo, "rev-list", "--count", f"{base}..{head}")
-    return key, f"{ahead} commit(s) ahead of {up} (base {base[:10]})"
+    norm = []
+    for line in diff.stdout.split(b"\n"):
+        if line.startswith(b"index "):
+            continue  # blob ids change when the base moves under a rebase
+        if line.startswith(b"@@"):
+            line = b"@@"  # line numbers change under a rebase; the content and context don't
+        norm.append(line)
+    key = hashlib.sha1(b"\n".join(norm)).hexdigest()
+    return key, label
 
 
 def marker_dir(repo: str) -> Path:
@@ -216,32 +262,40 @@ def push_targets(command: str, cwd: str, _depth: int = 0) -> list[tuple]:
         if os.path.basename(w[0]) != "git":
             return
         d, i = (UNRESOLVED if repo_override or "GIT_DIR" in env else cur), 1
+        gitdir_override = d == UNRESOLVED
         while i < len(w) and w[i].startswith("-"):
             if w[i].startswith(("--git-dir", "--work-tree")):
-                d = UNRESOLVED
-            if w[i] in ("-C", "-c") and i + 1 < len(w):
+                gitdir_override = True
+            if w[i] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace") and i + 1 < len(w):
                 if w[i] == "-C":
                     d = _resolve(d, w[i + 1], env)
                 i += 2
             else:
                 i += 1
+        if gitdir_override:
+            d = UNRESOLVED
         if i < len(w) and w[i] == "push":
             # Refspecs: `git push [opts] <remote> [<src>[:<dst>] ...]`. Recorded per target so the gate
             # reviews what is ACTUALLY pushed, not just HEAD (e.g. `git push origin <sha>:main`).
             args, j = w[i + 1:], 0
             pos: list[str] = []
+            force: list[str] = []
             while j < len(args):
                 a = args[j]
                 if a in ("--all", "--mirror", "--branches"):
                     pos.append("*ALL*")
                 elif a in ("--delete", "-d"):
                     pos.append("*DELETE*")
+                elif a.startswith("--force") or re.match(r"^-[A-Za-z]*f[A-Za-z]*$", a):
+                    force.append(a)
                 elif a in ("--repo", "-o", "--push-option", "--receive-pack", "--exec"):
                     j += 1
                 elif not a.startswith("-"):
                     pos.append(a)
                 j += 1
             specs = tuple(pos[1:]) if "*DELETE*" not in pos else ("*DELETE*",)
+            if force or any(x.startswith("+") for x in pos[1:]):
+                specs = specs + ("*FORCE*",)
             targets.append((d, specs))
 
     for t in tokens:
@@ -252,6 +306,62 @@ def push_targets(command: str, cwd: str, _depth: int = 0) -> list[tuple]:
             seg.append(t)
     flush(seg)
     return targets
+
+
+def gh_writes(command: str, cwd: str = "", _depth: int = 0) -> bool:
+    """True if `command` RUNS a GitHub-side write to a QRate repo (`gh pr merge`, a `gh api` REST write to
+    contents/refs/merges, or a graphql ref/commit/merge mutation) — not merely mentions one."""
+    def cwd_is_qrate() -> bool:
+        r = repo_root(cwd) if cwd and os.path.isdir(cwd) else None
+        return bool(r and is_qrate_repo(r))
+    try:
+        lex = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=";&|()")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except Exception:
+        return bool(re.search(r"(?:^|[\s;&|(])gh\s+(pr\s+merge|api\b)", command))  # unparseable: over-match
+    segs, cur = [], []
+    for t in tokens + [";"]:
+        if t in _CONTROL or set(t) <= set(";&|()"):
+            if cur:
+                segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    for w in segs:
+        while w and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w[0]) or w[0] in _WRAPPERS or w[0] in _KEYWORDS):
+            w = w[1:]
+        if not w:
+            continue
+        if _depth < 3 and ((w[0] in _SHELLS and "-c" in w[1:-1]) or w[0] == "eval"):
+            inner = w[w.index("-c") + 1] if w[0] in _SHELLS else " ".join(w[1:])
+            if gh_writes(inner, cwd, _depth + 1):
+                return True
+            continue
+        if os.path.basename(w[0]) != "gh" or len(w) < 2:
+            continue
+        rest = " " + " ".join(w[1:])
+        if w[1] == "pr" and len(w) > 2 and w[2] == "merge":
+            m = re.search(r"\s(?:-R|--repo)[\s=]+(\S+)", rest)
+            if (m and re.match(r"^(github\.com/)?(QRateCore|qrate-builder)/", m.group(1), re.I)) or (not m and cwd_is_qrate()):
+                return True
+            continue
+        if w[1] != "api":
+            continue
+        if len(w) > 2 and w[2] == "graphql":
+            if GH_GRAPHQL_WRITE.search(rest):
+                return True  # mutations name repos by node id: can't scope them, so fail closed
+            continue
+        m = GH_WRITE_PATH.search(rest)
+        if not m:
+            continue
+        org = m.group("org")
+        if not (GH_QRATE_ORG.match(org) or (GH_PLACEHOLDER_ORG.match(org) and cwd_is_qrate())
+                or (org.startswith("$") or "$" in org)):
+            continue
+        if GH_WRITE_METHOD.search(rest) or (GH_FIELDS.search(rest) and not GH_READ_METHOD.search(rest)):
+            return True
+    return False
 
 
 def _push_targets_regex(command: str, cwd: str) -> list[tuple]:
@@ -323,6 +433,18 @@ def cmd_gate() -> None:
     if tool != "Bash":
         sys.exit(0)
     command = ti.get("command", "")
+    bypass = re.search(r"QRATE_REVIEW_BYPASS=(\"[^\"]*\"|'[^']*'|\S+)", command)
+
+    # 2. Ways to change a QRate repo on GitHub without a local push (no PRs here; see git-workflow.md).
+    if "gh" in command and gh_writes(command, cwd):
+        if bypass:
+            _append(BYPASS_LOG, json.dumps({"ts": _now(), "github_api_write": command[:300],
+                                            "reason": bypass.group(1).strip("'\""), "session": data.get("session_id")}))
+        else:
+                _deny("QRate review gate: changing a QRate repo through the GitHub API (`gh pr merge`, or "
+                      "`gh api` writes to contents/refs/merges) skips the pre-push review. Commit locally, get a "
+                      "qrate-reviewer PASS, and push. See .claude/rules/qrate-code-review-gate.md.")
+
     if "push" not in command or "git" not in command:
         sys.exit(0)
 
@@ -330,7 +452,6 @@ def cmd_gate() -> None:
     if not targets:
         sys.exit(0)
 
-    bypass = re.search(r"QRATE_REVIEW_BYPASS=(\"[^\"]*\"|'[^']*'|\S+)", command)
     problems: list[str] = []
     checks: list[tuple] = []
     for d, specs in dict.fromkeys(targets):
@@ -346,9 +467,20 @@ def cmd_gate() -> None:
                             "somewhere else (e.g. after a failed `cd x;`), so the gate fails closed. Use a literal, "
                             "existing repo path.")
             continue
-        repo = toplevel(d)
+        repo = repo_root(d)
         if not repo or not is_qrate_repo(repo):
             continue
+        if "*FORCE*" in specs:
+            if bypass:
+                _append(BYPASS_LOG, json.dumps({"ts": _now(), "repo": repo, "force": True,
+                                                "reason": bypass.group(1).strip("'\""),
+                                                "session": data.get("session_id")}))
+            else:
+                problems.append(f"- {repo}: force push (`--force`, `-f`, `--force-with-lease` or a `+` refspec). "
+                                "Force pushes are forbidden here: fetch, rebase and push plainly. If it still "
+                                "won't go, stop and ask the user.")
+                continue
+            specs = tuple(x for x in specs if x != "*FORCE*")
         if "*ALL*" in specs or "*UNPARSED*" in specs:
             problems.append(f"- {repo}: push form not supported by the gate (--all/--mirror or unparseable "
                             "quoting) — push one explicit ref, e.g. `git push origin main`")
@@ -461,7 +593,7 @@ def cmd_record() -> None:
     if not lines:
         notes.append("qrate-reviewer ended without a QRATE-REVIEW verdict line — nothing recorded; push stays blocked")
     for m in lines:
-        repo = toplevel(os.path.expanduser(m.group("repo")))
+        repo = repo_root(os.path.expanduser(m.group("repo")))
         verdict = m.group("verdict")
         claimed = m.group("key")
         if not repo:
@@ -469,6 +601,12 @@ def cmd_record() -> None:
             continue
         try:
             actual, why = review_key(repo)
+            if claimed != actual:  # the builder may push HEAD to main while tracking another branch
+                for dst in ("main", "master"):
+                    k2, w2 = review_key(repo, "HEAD", dst)
+                    if k2 and k2 == claimed:
+                        actual, why = k2, w2
+                        break
         except Exception as e:
             notes.append(f"{repo}: could not recompute key ({e})")
             continue
@@ -506,7 +644,7 @@ def cmd_record() -> None:
 
 
 def cmd_key(argv: list[str]) -> None:
-    repo = toplevel(argv[0] if argv else os.getcwd())
+    repo = repo_root(argv[0] if argv else os.getcwd())
     if not repo:
         print("not a git repo", file=sys.stderr)
         sys.exit(2)
