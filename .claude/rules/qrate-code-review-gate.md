@@ -18,8 +18,13 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
   checklist: `.claude/review/checklist.md`. Logs are per user, in
   `${CLAUDE_CONFIG_DIR:-~/.claude}/qrate-review-logs/`.
 - The hooks need `python3` on `PATH` and `git`.
-- Force pushes (`--force`, `-f`, `--force-with-lease`, `+refspec`) and GitHub-side changes (`gh pr merge`,
-  `gh api` writes to contents/refs/merges) are denied too.
+- Force pushes (`--force`, `-f`, `--force-with-lease`, `+refspec`) and GitHub-side code changes (`gh pr merge`,
+  `gh api` writes to contents/refs/merges, graphql ref/commit/merge mutations) are denied too. The GitHub-side
+  deny applies to **every** repo, not just QRate ones: the target repo can't be resolved reliably from a shell
+  command. A genuine non-QRate merge needs the logged bypass and the user's OK.
+  gh aliases that expand to `pr merge`, `api` or a shell (`!`) are denied too, both when set and when run.
+  **Out of scope** (this gate stops accidents and agents following the rules, not a deliberate attacker):
+  raw HTTP clients such as `curl … $(gh auth token)`, and writes made outside this machine.
 - On Avi's Mac a **machine layer** (`~/.claude/qrate-review-machine/`) adds a git `pre-push` hook to every
   QRate clone, so terminal, IDE and script pushes are gated as well. Agents must not touch it, the
   clones' git hooks dirs, `core.hooksPath` or `init.templateDir`, and must not use `--no-verify`.

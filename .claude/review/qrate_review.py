@@ -31,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-GATE_VERSION = "2026-11-09.2"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
+GATE_VERSION = "2026-11-09.8"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
 REVIEW_HOME = Path(__file__).resolve().parent
 # Logs are per-USER, not per-repo: a hook writing into the work tree would dirty `git status`.
 LOG_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "qrate-review-logs"
@@ -46,10 +46,8 @@ VERDICT_LINE = re.compile(
     r"QRATE-REVIEW\s+repo=(?P<repo>\S+)\s+key=(?P<key>[0-9a-f]{40}|none)\s+verdict=(?P<verdict>PASS|BLOCK)",
 )
 FINDINGS_BLOCK = re.compile(r"```(?:json)?\s*QRATE-FINDINGS\s*\n(?P<body>.*?)```", re.S)
-GH_WRITE_PATH = re.compile(r"repos/(?P<org>[^/\s]+)/[^/\s]+/"
+GH_WRITE_PATH = re.compile(r"repos(?:itories)?/(?P<org>[^/\s]+)/(?:[^/\s]+/)?"
                            r"(contents|git/|merges|pulls/\d+/merge|branches/[^/\s]+/rename)", re.I)
-GH_QRATE_ORG = re.compile(r"^(QRateCore|qrate-builder)$", re.I)
-GH_PLACEHOLDER_ORG = re.compile(r"^(\{owner\}|:owner|\$\{?\w+\}?|.*\$.*)$")
 GH_GRAPHQL_WRITE = re.compile(r"createCommitOnBranch|mergePullRequest|updateRef|createRef|deleteRef|"
                               r"enablePullRequestAutoMerge|mergeBranch|updateRefs", re.I)
 GH_WRITE_METHOD = re.compile(r"(-X|--method)[\s=]*['\"]?(PUT|POST|PATCH|DELETE)", re.I)
@@ -286,7 +284,7 @@ def push_targets(command: str, cwd: str, _depth: int = 0) -> list[tuple]:
                     pos.append("*ALL*")
                 elif a in ("--delete", "-d"):
                     pos.append("*DELETE*")
-                elif a.startswith("--force") or re.match(r"^-[A-Za-z]*f[A-Za-z]*$", a):
+                elif (a.startswith("--force") and a != "--force-if-includes") or re.match(r"^-[A-Za-z]*f[A-Za-z]*$", a):
                     force.append(a)
                 elif a in ("--repo", "-o", "--push-option", "--receive-pack", "--exec"):
                     j += 1
@@ -308,59 +306,216 @@ def push_targets(command: str, cwd: str, _depth: int = 0) -> list[tuple]:
     return targets
 
 
+_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# gh flags that take a value (so the value is never mistaken for a subcommand or endpoint)
+_GH_VALUE_FLAGS = {"-R", "--repo", "-b", "--body", "-F", "--body-file", "-t", "--subject", "-A", "--author-email",
+                   "--match-head-commit", "--hostname", "-H", "--header", "-X", "--method", "-f", "--raw-field",
+                   "--field", "--input", "-q", "--jq", "--template", "--cache", "-p", "--preview"}
+_EXEC_FLAGS = {"-exec", "-execdir", "-ok", "-okdir"}
+
+
+_HTTP_WRITE = {"PUT", "POST", "PATCH", "DELETE"}
+
+
+def _unquote_all(text: str) -> str:
+    from urllib.parse import unquote
+    for _ in range(5):  # %2563 -> %63 -> c
+        nxt = unquote(text)
+        if nxt == text:
+            break
+        text = nxt
+    return text
+
+
+def _gh_api_is_write(args: list) -> bool:
+    """Fail-closed. A write if: a bare PUT/POST/PATCH/DELETE token appears anywhere; or the explicit method
+    (the value of `-X`/`-iX`/`--method`, separate, `=` or attached) is a write verb; or a field/body flag
+    (`-f`, `-F`, `-if`, `--field`, `--raw-field`, `--input`) is present and the explicit method is not GET/HEAD.
+    A GET token that is the value of some OTHER flag (`--template GET`, `-q GET`) does not count as a read."""
+    explicit = None
+    fields = False
+    for i, a in enumerate(args):
+        if a.upper() in _HTTP_WRITE:
+            return True
+        m = re.match(r"^(?:--method=?|-[A-Za-z]*X=?)(\w+)$", a)
+        if m:
+            explicit = m.group(1).upper()
+        elif (a == "--method" or re.match(r"^-[A-Za-z]*X$", a)) and i + 1 < len(args):
+            explicit = args[i + 1].upper()
+        if a in ("--field", "--raw-field", "--input") or a.startswith(("--field=", "--raw-field=", "--input=")) \
+                or re.match(r"^-[A-Za-z]*[fF]", a):
+            fields = True
+    if explicit in _HTTP_WRITE:
+        return True
+    if explicit in ("GET", "HEAD"):
+        return False
+    return fields
+
+
+def _gh_aliases() -> dict:
+    """gh aliases from gh's config (crude YAML read: `aliases:` then indented `name: expansion`)."""
+    base = os.environ.get("GH_CONFIG_DIR") or os.path.join(
+        os.environ.get("XDG_CONFIG_HOME") or os.path.join(str(Path.home()), ".config"), "gh")
+    out, inside = {}, False
+    try:
+        for line in Path(base, "config.yml").read_text(errors="replace").splitlines():
+            if re.match(r"^aliases:\s*$", line):
+                inside = True
+                continue
+            if inside:
+                m = re.match(r"^\s+([^\s:#][^:]*):\s*(.*)$", line)
+                if m:
+                    out[m.group(1).strip().strip("'\"")] = m.group(2).strip().strip("'\"")
+                elif line.strip() and not line.startswith((" ", "\t", "#")):
+                    inside = False
+    except Exception:
+        pass
+    return out
+
+
+def _alias_is_risky(expansion: str) -> bool:
+    return expansion.startswith("!") or bool(re.search(r"\bpr\s+merge\b|\bapi\b", expansion))
+
+
+def _gh_args_write(args: list, command: str, _depth: int = 0) -> bool:
+    """`args` = everything after `gh`. True if it merges a PR, writes code via the API, or sets a risky alias."""
+    first_i = next((i for i, a in enumerate(args) if not a.startswith("-")), None)
+    if first_i is None:
+        return False
+    first = args[first_i]
+    aliases = _gh_aliases()
+    if first in aliases and _depth < 3:
+        exp = aliases[first]
+        if exp.startswith("!"):
+            return True  # shell alias: can't see what it runs
+        try:
+            return _gh_args_write(args[:first_i] + shlex.split(exp) + args[first_i + 1:], command, _depth + 1)
+        except Exception:
+            return True
+    if first == "alias" and ("set" in args or "import" in args):
+        if "import" in args or "--shell" in args or "-s" in args:
+            return True
+        rest = args[args.index("set") + 1:]
+        exps = [a for a in rest if not a.startswith("-")][1:2]
+        for e in exps:
+            if e.startswith("!"):
+                return True
+            try:
+                if _gh_args_write(shlex.split(e), command, _depth + 1) or "api" in shlex.split(e):
+                    return True
+            except Exception:
+                return True
+    # `gh … pr [-R X] merge`: merge must be pr's subcommand (so `gh pr list --label merge` is fine)
+    if "pr" in args:
+        rest, j = args[args.index("pr") + 1:], 0
+        while j < len(rest) and rest[j].startswith("-"):
+            j += 2 if rest[j] in ("-R", "--repo") else 1
+        if j < len(rest) and rest[j] == "merge":
+            return True
+    if "api" not in args:
+        return False
+    api_args = args[args.index("api") + 1:]
+    flat = re.sub(r"/{2,}", "/", _unquote_all(" ".join(api_args)))
+    if _graphql_text_writes(" ".join(api_args)) or _graphql_text_writes(flat):
+        return True  # a ref/commit/merge mutation in the (dequoted) args, whatever the endpoint looks like
+    is_gql = any("graphql" in _unquote_all(a).lower() and not re.match(r"^[\w.\[\]-]+=", a) for a in api_args)
+    if is_gql:
+        if _graphql_text_writes(_unquote_all(command)):
+            return True
+        if "=@" in flat or any(a == "--input" or a.startswith("--input=") for a in api_args):
+            return True  # query/body read from a file or stdin: can't be inspected reliably
+        if any("$" in a or "`" in a for a in api_args):
+            return True  # query built by the shell ($(cat f), $Q): can't be inspected
+    if not _gh_api_is_write(api_args):
+        return False
+    if GH_WRITE_PATH.search("/" + flat):
+        return True
+    return any(("$" in a or "`" in a) and not re.match(r"^[\w.-]+=", a) for a in api_args)  # unseen endpoint
+
+
+def _graphql_text_writes(text: str) -> bool:
+    if GH_GRAPHQL_WRITE.search(text):
+        return True
+    try:  # a JSON body may spell the mutation with \u escapes
+        return bool(GH_GRAPHQL_WRITE.search(json.dumps(json.loads(text), ensure_ascii=False)))
+    except Exception:
+        return False
+
+
 def gh_writes(command: str, cwd: str = "", _depth: int = 0) -> bool:
-    """True if `command` RUNS a GitHub-side write to a QRate repo (`gh pr merge`, a `gh api` REST write to
-    contents/refs/merges, or a graphql ref/commit/merge mutation) — not merely mentions one."""
-    def cwd_is_qrate() -> bool:
-        r = repo_root(cwd) if cwd and os.path.isdir(cwd) else None
-        return bool(r and is_qrate_repo(r))
+    """True if `command` RUNS a GitHub-side code change: `gh pr merge`, a `gh api` REST write to
+    contents/refs/merges, or a graphql ref/commit/merge mutation — for ANY repo.
+
+    Deliberately NOT scoped to QRate repos: which repo gh targets depends on -R, GH_REPO, PR URLs (gh
+    percent-decodes them) and the directory it runs in, and shell semantics (subshells, conditionals,
+    pipelines, functions, non-exported variables) make that impossible to resolve statically. Every scoping
+    attempt opened a bypass. We never use PRs, so a genuine non-QRate merge goes through the logged
+    QRATE_REVIEW_BYPASS with the user's OK. `cwd` is accepted for backward compatibility only."""
     try:
         lex = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=";&|()")
         lex.whitespace_split = True
         tokens = list(lex)
     except Exception:
-        return bool(re.search(r"(?:^|[\s;&|(])gh\s+(pr\s+merge|api\b)", command))  # unparseable: over-match
-    segs, cur = [], []
+        return bool(re.search(r"(?:^|[\s;&|(`$])(?:\S*/)?gh\s+(?:\S+\s+)*?(?:pr|api|alias)\b", command))
+    segs, buf = [], []
     for t in tokens + [";"]:
-        if t in _CONTROL or set(t) <= set(";&|()"):
-            if cur:
-                segs.append(cur)
-            cur = []
+        if t in _CONTROL or set(t) <= set(";&|(){}"):
+            if buf:
+                segs.append(buf)
+            buf = []
         else:
-            cur.append(t)
+            buf.append(t)
     for w in segs:
-        while w and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w[0]) or w[0] in _WRAPPERS or w[0] in _KEYWORDS):
-            w = w[1:]
+        w = list(w)
+        # strip keywords, assignments and wrappers (by basename, so /usr/bin/env counts)
+        while w:
+            b = os.path.basename(w[0])
+            if w[0] in _KEYWORDS or _ASSIGN.match(w[0]) or w[0] in ("export", "local", "declare", "typeset"):
+                w.pop(0)
+            elif b == "env":
+                w.pop(0)
+                while w and (w[0].startswith("-") or _ASSIGN.match(w[0])):
+                    a = w.pop(0)
+                    if a in ("-u", "--unset", "-C", "--chdir") and w:
+                        w.pop(0)
+                    elif a in ("-S", "--split-string") or (a.startswith("-S") and len(a) > 2) \
+                            or a.startswith("--split-string="):
+                        val = (w.pop(0) if w else "") if a in ("-S", "--split-string") else \
+                            (a.split("=", 1)[1] if a.startswith("--split-string=") else a[2:])
+                        try:
+                            w = shlex.split(val) + w
+                        except Exception:
+                            return True
+                        break
+            elif b == "timeout":
+                w.pop(0)
+                while w and (w[0].startswith("-") or re.match(r"^\d+(\.\d+)?[smhd]?$", w[0])):
+                    w = w[2:] if w[0] in ("-s", "--signal", "-k", "--kill-after") else w[1:]
+            elif b in _WRAPPERS:
+                w.pop(0)
+                while w and w[0].startswith("-"):  # wrapper options, e.g. `nice -n 5`, `xargs -0`
+                    w = w[2:] if w[0] in ("-n", "-I", "-L", "-P") else w[1:]
+            else:
+                break
         if not w:
             continue
-        if _depth < 3 and ((w[0] in _SHELLS and "-c" in w[1:-1]) or w[0] == "eval"):
-            inner = w[w.index("-c") + 1] if w[0] in _SHELLS else " ".join(w[1:])
+        if _depth < 3 and ((os.path.basename(w[0]) in _SHELLS and "-c" in w[1:-1]) or w[0] == "eval"):
+            inner = w[w.index("-c") + 1] if os.path.basename(w[0]) in _SHELLS else " ".join(w[1:])
             if gh_writes(inner, cwd, _depth + 1):
                 return True
             continue
-        if os.path.basename(w[0]) != "gh" or len(w) < 2:
-            continue
-        rest = " " + " ".join(w[1:])
-        if w[1] == "pr" and len(w) > 2 and w[2] == "merge":
-            m = re.search(r"\s(?:-R|--repo)[\s=]+(\S+)", rest)
-            if (m and re.match(r"^(github\.com/)?(QRateCore|qrate-builder)/", m.group(1), re.I)) or (not m and cwd_is_qrate()):
+        # gh as the command, or run by find -exec/-execdir
+        starts = [0] + [i + 1 for i, t in enumerate(w[:-1]) if t in _EXEC_FLAGS]
+        for st in starts:
+            sub_w = w[st:]
+            if _depth < 3 and st and os.path.basename(sub_w[0]) in _SHELLS and "-c" in sub_w[1:-1]:
+                if gh_writes(sub_w[sub_w.index("-c") + 1], cwd, _depth + 1):
+                    return True
+                continue
+            if os.path.basename(sub_w[0]) != "gh" or len(sub_w) < 2:
+                continue
+            if _gh_args_write(sub_w[1:], command):
                 return True
-            continue
-        if w[1] != "api":
-            continue
-        if len(w) > 2 and w[2] == "graphql":
-            if GH_GRAPHQL_WRITE.search(rest):
-                return True  # mutations name repos by node id: can't scope them, so fail closed
-            continue
-        m = GH_WRITE_PATH.search(rest)
-        if not m:
-            continue
-        org = m.group("org")
-        if not (GH_QRATE_ORG.match(org) or (GH_PLACEHOLDER_ORG.match(org) and cwd_is_qrate())
-                or (org.startswith("$") or "$" in org)):
-            continue
-        if GH_WRITE_METHOD.search(rest) or (GH_FIELDS.search(rest) and not GH_READ_METHOD.search(rest)):
-            return True
     return False
 
 
@@ -441,9 +596,10 @@ def cmd_gate() -> None:
             _append(BYPASS_LOG, json.dumps({"ts": _now(), "github_api_write": command[:300],
                                             "reason": bypass.group(1).strip("'\""), "session": data.get("session_id")}))
         else:
-                _deny("QRate review gate: changing a QRate repo through the GitHub API (`gh pr merge`, or "
-                      "`gh api` writes to contents/refs/merges) skips the pre-push review. Commit locally, get a "
-                      "qrate-reviewer PASS, and push. See .claude/rules/qrate-code-review-gate.md.")
+                _deny("QRate review gate: changing code through the GitHub API (`gh pr merge`, `gh api` writes "
+                      "to contents/refs/merges, graphql ref/commit/merge mutations) skips the local pre-push "
+                      "review, so it is denied for every repo. Commit locally, get a qrate-reviewer PASS, and "
+                      "push. See .claude/rules/qrate-code-review-gate.md.")
 
     if "push" not in command or "git" not in command:
         sys.exit(0)
