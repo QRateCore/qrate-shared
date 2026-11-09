@@ -81,3 +81,17 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 
 <!-- The reviewer proposes promotions in its PROMOTE section; the orchestrating agent (with the
      user's OK) appends them here as G1, G2, … with the date and the finding ids that justified it. -->
+
+- **G1 Gate matcher changes are corpus-diffed, not spot-tested** (2026-11-09; `gate-fail-open-unresolved-push-dir`,
+  `gh-api-write-detection-gaps`). Any change to how `qrate_review.py`/`machine.py` parse commands or resolve a
+  repo/dir must run the OLD and NEW gate over a GENERATED corpus: every deny case with read-looking suffixes
+  (`--jq GET`, `--template HEAD`, `-q GET`), quoted pure-punctuation values before the write flags (`'{}'`,
+  `';'`, `'()'`, `'|'`), `$(…)`/backtick wraps, and percent-encoded and alias variants. Every
+  old-DENY → new-ALLOW needs real-shell/real-gh evidence (a fake binary showing the env, pwd and args the child
+  sees) or it is a P1.
+- **G2 gh alias handling is tested at set AND run time** (2026-11-09; `gate-gh-alias-indirection`): `$N`
+  placeholders, multi-word names, `alias set x -` (stdin), `!` and `--shell`, `alias import`.
+- **G3 Fail closed on what can't be resolved** (2026-11-09; `gate-fail-open-unresolved-push-dir`): non-existent,
+  empty, subshell, `cd -`/`popd`, conditional and UNRESOLVED dirs/targets count as QRate; never derive a gh
+  endpoint/subcommand from a fixed argument position; keep a whole-command fail-closed fallback for anything the
+  parser can't read.

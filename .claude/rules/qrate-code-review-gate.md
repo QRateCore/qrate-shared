@@ -22,9 +22,13 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
   `gh api` writes to contents/refs/merges, graphql ref/commit/merge mutations) are denied too. The GitHub-side
   deny applies to **every** repo, not just QRate ones: the target repo can't be resolved reliably from a shell
   command. A genuine non-QRate merge needs the logged bypass and the user's OK.
-  gh aliases that expand to `pr merge`, `api` or a shell (`!`) are denied too, both when set and when run.
+  gh aliases are expanded when run (multi-word names, `$N` placeholders, trailing args) and the result is
+  re-checked; shell (`!`) aliases are denied when run. Setting an alias is denied when its expansion is a
+  merge, an `api` call, a shell alias, `--shell`, from stdin (`-`) or an `alias import`. `gh` inside
+  `$(…)` or backticks is checked like any other command.
   **Out of scope** (this gate stops accidents and agents following the rules, not a deliberate attacker):
-  raw HTTP clients such as `curl … $(gh auth token)`, and writes made outside this machine.
+  raw HTTP clients such as `curl … $(gh auth token)`, other interpreters (`python3 -c 'os.system(…)'`),
+  `ssh`, and writes made outside this machine.
 - On Avi's Mac a **machine layer** (`~/.claude/qrate-review-machine/`) adds a git `pre-push` hook to every
   QRate clone, so terminal, IDE and script pushes are gated as well. Agents must not touch it, the
   clones' git hooks dirs, `core.hooksPath` or `init.templateDir`, and must not use `--no-verify`.

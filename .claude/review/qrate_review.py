@@ -31,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-GATE_VERSION = "2026-11-09.8"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
+GATE_VERSION = "2026-11-09.12"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
 REVIEW_HOME = Path(__file__).resolve().parent
 # Logs are per-USER, not per-repo: a hook writing into the work tree would dirty `git status`.
 LOG_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "qrate-review-logs"
@@ -50,9 +50,6 @@ GH_WRITE_PATH = re.compile(r"repos(?:itories)?/(?P<org>[^/\s]+)/(?:[^/\s]+/)?"
                            r"(contents|git/|merges|pulls/\d+/merge|branches/[^/\s]+/rename)", re.I)
 GH_GRAPHQL_WRITE = re.compile(r"createCommitOnBranch|mergePullRequest|updateRef|createRef|deleteRef|"
                               r"enablePullRequestAutoMerge|mergeBranch|updateRefs", re.I)
-GH_WRITE_METHOD = re.compile(r"(-X|--method)[\s=]*['\"]?(PUT|POST|PATCH|DELETE)", re.I)
-GH_READ_METHOD = re.compile(r"(-X|--method)[\s=]*['\"]?(GET|HEAD)\b", re.I)
-GH_FIELDS = re.compile(r"\s(-f|-F|--field|--raw-field|--input)[\s=]")
 READ_ONLY_CMDS = {"ls", "cat", "head", "tail", "jq", "find", "grep", "wc", "stat", "less"}
 GIT_PUSH = re.compile(r"(?:^|[\s;&|(])git(?P<opts>(?:\s+-[Cc]\s+\S+|\s+--[\w-]+(?:=\S+)?)*)\s+push\b")
 
@@ -182,12 +179,12 @@ def _segments(command: str) -> list[str]:
 
 
 _CONTROL = {"&&", "||", ";", "|", "&", "(", ")", ";;", "|&", "\n"}
-_WRAPPERS = {"command", "builtin", "exec", "time", "nice", "nohup", "sudo", "env", "xargs"}
-_SHELLS = {"bash", "sh", "zsh", "dash"}
+_WRAPPERS = {"command", "builtin", "exec", "time", "nice", "nohup", "sudo", "env", "xargs", "caffeinate"}
+_SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "mksh", "fish"}
 
 
 UNRESOLVED = "*UNRESOLVED*"
-_KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "{", "!", "}"}
+_KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "{", "!", "}", "coproc"}
 
 
 def _expand(arg: str, env: dict) -> str:
@@ -307,10 +304,15 @@ def push_targets(command: str, cwd: str, _depth: int = 0) -> list[tuple]:
 
 
 _ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-# gh flags that take a value (so the value is never mistaken for a subcommand or endpoint)
-_GH_VALUE_FLAGS = {"-R", "--repo", "-b", "--body", "-F", "--body-file", "-t", "--subject", "-A", "--author-email",
-                   "--match-head-commit", "--hostname", "-H", "--header", "-X", "--method", "-f", "--raw-field",
-                   "--field", "--input", "-q", "--jq", "--template", "--cache", "-p", "--preview"}
+_WRAPPER_VALUE_FLAGS = {
+    "sudo": ("-u", "-g", "-C", "-h", "-p", "-U", "-D", "-r", "-t", "-T", "--user", "--group", "--close-from",
+             "--host", "--prompt", "--other-user", "--chdir", "--role", "--type", "--command-timeout"),
+    "xargs": ("-n", "-I", "-L", "-P", "-s", "-E", "-d", "-a", "--max-args", "--max-lines", "--max-procs",
+              "--max-chars", "--eof", "--delimiter", "--arg-file", "--process-slot-var", "-J", "-R", "-S"),
+    "exec": ("-a",),
+    "nice": ("-n", "--adjustment"),
+    "stdbuf": ("-i", "-o", "-e"),
+}
 _EXEC_FLAGS = {"-exec", "-execdir", "-ok", "-okdir"}
 
 
@@ -373,29 +375,50 @@ def _gh_aliases() -> dict:
     return out
 
 
-def _alias_is_risky(expansion: str) -> bool:
-    return expansion.startswith("!") or bool(re.search(r"\bpr\s+merge\b|\bapi\b", expansion))
+def _expand_alias(exp: str, trailing: list) -> list:
+    """gh's non-shell alias expansion: `$N` takes the Nth trailing arg; unused trailing args are appended."""
+    used = set()
+
+    def sub(m):
+        k = int(m.group(1))
+        used.add(k)
+        return trailing[k - 1] if 0 < k <= len(trailing) else ""
+    out = shlex.split(re.sub(r"\$(\d+)", sub, exp))  # substitute, THEN split (gh 2.85 behaviour)
+    return out + [a for i, a in enumerate(trailing, 1) if i not in used]
 
 
-def _gh_args_write(args: list, command: str, _depth: int = 0) -> bool:
-    """`args` = everything after `gh`. True if it merges a PR, writes code via the API, or sets a risky alias."""
+def _gh_args_write(args: list, command: str, _depth: int = 0, dyn: list | None = None) -> bool:
+    """`args` = everything after `gh`; `dyn[i]` is True if args[i] is expanded by the shell ($VAR, $(..)).
+    True if it merges a PR, writes code via the API, or sets a risky alias."""
+    dyn = list(dyn) if dyn is not None else [("$" in a or "`" in a) for a in args]
     first_i = next((i for i, a in enumerate(args) if not a.startswith("-")), None)
     if first_i is None:
         return False
     first = args[first_i]
     aliases = _gh_aliases()
-    if first in aliases and _depth < 3:
-        exp = aliases[first]
-        if exp.startswith("!"):
-            return True  # shell alias: can't see what it runs
-        try:
-            return _gh_args_write(args[:first_i] + shlex.split(exp) + args[first_i + 1:], command, _depth + 1)
-        except Exception:
-            return True
+    if _depth < 3:
+        # longest (multi-word) alias name matching the words at the command position
+        for name in sorted(aliases, key=lambda k: -len(k.split())):
+            kw = name.split()
+            if args[first_i:first_i + len(kw)] != kw:
+                continue
+            exp = aliases[name]
+            if exp.startswith("!"):
+                return True  # shell alias: can't see what it runs
+            try:
+                new = args[:first_i] + _expand_alias(exp, args[first_i + len(kw):])
+            except Exception:
+                return True
+            return _gh_args_write(new, command, _depth + 1)
+    pos = [i for i, a in enumerate(args) if not a.startswith("-")]
+    if dyn[pos[0]] or (args[pos[0]] == "pr" and len(pos) > 1 and dyn[pos[1]]):
+        return True  # gh $S merge, gh pr "$(echo merge)", f(){ gh "$@"; }: subcommand built by the shell
     if first == "alias" and ("set" in args or "import" in args):
         if "import" in args or "--shell" in args or "-s" in args:
             return True
         rest = args[args.index("set") + 1:]
+        if "-" in rest:
+            return True  # expansion read from stdin: can't be inspected
         exps = [a for a in rest if not a.startswith("-")][1:2]
         for e in exps:
             if e.startswith("!"):
@@ -415,7 +438,10 @@ def _gh_args_write(args: list, command: str, _depth: int = 0) -> bool:
     if "api" not in args:
         return False
     api_args = args[args.index("api") + 1:]
-    flat = re.sub(r"/{2,}", "/", _unquote_all(" ".join(api_args)))
+    api_dyn = dyn[args.index("api") + 1:]
+    import posixpath
+    flat = " ".join(posixpath.normpath(re.sub(r"/{2,}", "/", u)) if "/" in u else u
+                    for u in (_unquote_all(a) for a in api_args))  # ./ ../ // in endpoint paths
     if _graphql_text_writes(" ".join(api_args)) or _graphql_text_writes(flat):
         return True  # a ref/commit/merge mutation in the (dequoted) args, whatever the endpoint looks like
     is_gql = any("graphql" in _unquote_all(a).lower() and not re.match(r"^[\w.\[\]-]+=", a) for a in api_args)
@@ -424,13 +450,16 @@ def _gh_args_write(args: list, command: str, _depth: int = 0) -> bool:
             return True
         if "=@" in flat or any(a == "--input" or a.startswith("--input=") for a in api_args):
             return True  # query/body read from a file or stdin: can't be inspected reliably
-        if any("$" in a or "`" in a for a in api_args):
-            return True  # query built by the shell ($(cat f), $Q): can't be inspected
+        if any(api_dyn):
+            return True  # query built by the shell ($(cat f), "$Q"); '$var' in single quotes is fine
+    raw_flat = re.sub(r"/{2,}", "/", _unquote_all(" ".join(api_args)))
+    if any(api_dyn) and (GH_WRITE_PATH.search("/" + flat) or GH_WRITE_PATH.search("/" + raw_flat)):
+        return True  # e.g. {-X,PUT}: the shell builds the method/flags, so assume a write
     if not _gh_api_is_write(api_args):
         return False
-    if GH_WRITE_PATH.search("/" + flat):
+    if GH_WRITE_PATH.search("/" + flat) or GH_WRITE_PATH.search("/" + raw_flat):
         return True
-    return any(("$" in a or "`" in a) and not re.match(r"^[\w.-]+=", a) for a in api_args)  # unseen endpoint
+    return any(d and not re.match(r"^[\w.-]+=", a) for a, d in zip(api_args, api_dyn))  # unseen endpoint
 
 
 def _graphql_text_writes(text: str) -> bool:
@@ -442,7 +471,152 @@ def _graphql_text_writes(text: str) -> bool:
         return False
 
 
-def gh_writes(command: str, cwd: str = "", _depth: int = 0) -> bool:
+def _subst_body(cmd: str, i: int) -> tuple:
+    """cmd[i:i+2] == '$(' -> (body, index after the closing ')'), skipping quoted parens."""
+    depth, j, n = 1, i + 2, len(cmd)
+    while j < n:
+        c = cmd[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "'":
+            k = cmd.find("'", j + 1)
+            if k < 0:
+                raise ValueError("unterminated quote")
+            j = k + 1
+            continue
+        if c == '"':
+            j += 1
+            while j < n and cmd[j] != '"':
+                j += 2 if cmd[j] == "\\" else 1
+            j += 1
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return cmd[i + 2:j], j + 1
+        j += 1
+    raise ValueError("unterminated $(")
+
+
+def _shell_words(cmd: str) -> tuple:
+    """Quote-aware split of a shell command into segments of words.
+    Returns (segments, substitutions): each segment is a list of (word, dynamic) where `word` is the
+    dequoted text and `dynamic` is True if it contains $ / backticks the SHELL will expand (i.e. outside
+    single quotes); `substitutions` are the bodies of every $(...) and `...` outside single quotes.
+    `;&|`, newlines and `()` separate segments anywhere when unquoted; `{}` only at the start of a word.
+    Raises ValueError on unbalanced quotes (callers fail closed)."""
+    segs, cur, subs = [], [], []
+    word, dyn = None, False
+    i, n = 0, len(cmd)
+
+    def end_word():
+        nonlocal word, dyn
+        if word is not None:
+            cur.append(("".join(word), dyn))
+        word, dyn = None, False
+
+    def end_seg():
+        nonlocal cur
+        end_word()
+        if cur:
+            segs.append(cur)
+        cur = []
+
+    def add(t):
+        nonlocal word
+        if word is None:
+            word = []
+        word.append(t)
+
+    while i < n:
+        c = cmd[i]
+        if c in " \t":
+            end_word()
+            i += 1
+        elif c in "\n;&|":
+            end_seg()
+            i += 1
+        elif c in "()" or (c in "{}" and word is None and (i + 1 >= n or cmd[i + 1] in " \t\n;&|)")):
+            end_seg()  # <(…) >(…) f(){ …; } `case x in x)`; `{`/`}` only as standalone reserved words
+            i += 1
+        elif c == "#" and word is None:
+            k = cmd.find("\n", i)  # comment to end of line (apostrophes inside must not pair up)
+            i = n if k < 0 else k
+        elif c == "\\" and i + 1 < n and cmd[i + 1] == "\n":
+            i += 2  # line continuation
+        elif c == "\\":
+            add(cmd[i + 1] if i + 1 < n else "")
+            i += 2
+        elif c == "'":
+            k = cmd.find("'", i + 1)
+            if k < 0:
+                raise ValueError("unterminated '")
+            add(cmd[i + 1:k])
+            i = k + 1
+        elif c == '"':
+            j, buf = i + 1, []
+            while True:
+                if j >= n:
+                    raise ValueError('unterminated "')
+                d = cmd[j]
+                if d == '"':
+                    break
+                if d == "\\" and j + 1 < n and cmd[j + 1] == "\n":
+                    j += 2  # line continuation inside double quotes
+                    continue
+                if d == "\\" and j + 1 < n and cmd[j + 1] in '"\\$`':
+                    buf.append(cmd[j + 1])
+                    j += 2
+                    continue
+                if d == "$" and j + 1 < n and cmd[j + 1] == "(":
+                    body, j2 = _subst_body(cmd, j)
+                    subs.append(body)
+                    buf.append(cmd[j:j2])
+                    dyn = True
+                    j = j2
+                    continue
+                if d == "`":
+                    k = cmd.find("`", j + 1)
+                    if k < 0:
+                        raise ValueError("unterminated `")
+                    subs.append(cmd[j + 1:k])
+                    buf.append(cmd[j:k + 1])
+                    dyn = True
+                    j = k + 1
+                    continue
+                if d == "$":
+                    dyn = True
+                buf.append(d)
+                j += 1
+            add("".join(buf))
+            i = j + 1
+        elif c == "$" and i + 1 < n and cmd[i + 1] == "(":
+            body, j2 = _subst_body(cmd, i)
+            subs.append(body)
+            add(cmd[i:j2])
+            dyn = True
+            i = j2
+        elif c == "`":
+            k = cmd.find("`", i + 1)
+            if k < 0:
+                raise ValueError("unterminated `")
+            subs.append(cmd[i + 1:k])
+            add(cmd[i:k + 1])
+            dyn = True
+            i = k + 1
+        else:
+            if c in "${":
+                dyn = True  # parameter or brace expansion: the shell builds this word
+            add(c)
+            i += 1
+    end_seg()
+    return segs, subs
+
+
+def gh_writes(command: str, cwd: str = "", _depth: int = 0, _parent_gh: bool = False) -> bool:
     """True if `command` RUNS a GitHub-side code change: `gh pr merge`, a `gh api` REST write to
     contents/refs/merges, or a graphql ref/commit/merge mutation — for ANY repo.
 
@@ -452,21 +626,30 @@ def gh_writes(command: str, cwd: str = "", _depth: int = 0) -> bool:
     attempt opened a bypass. We never use PRs, so a genuine non-QRate merge goes through the logged
     QRATE_REVIEW_BYPASS with the user's OK. `cwd` is accepted for backward compatibility only."""
     try:
-        lex = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=";&|()")
-        lex.whitespace_split = True
-        tokens = list(lex)
+        segs, subs = _shell_words(command)
     except Exception:
         return bool(re.search(r"(?:^|[\s;&|(`$])(?:\S*/)?gh\s+(?:\S+\s+)*?(?:pr|api|alias)\b", command))
-    segs, buf = [], []
-    for t in tokens + [";"]:
-        if t in _CONTROL or set(t) <= set(";&|(){}"):
-            if buf:
-                segs.append(buf)
-            buf = []
-        else:
-            buf.append(t)
-    for w in segs:
-        w = list(w)
+    mentions_gh = _parent_gh or bool(re.search(r"\bgh\b", command))
+
+    def inner_writes(body: str) -> bool:
+        if _depth >= 6:
+            return mentions_gh  # too deep to follow: fail closed
+        return gh_writes(body, cwd, _depth + 1, mentions_gh)
+
+    for body in subs:  # OUT="$(gh pr merge 3)", `gh api …`: the shell runs these too
+        if re.search(r"\bcase\b", body):
+            # `case` patterns' `)` end our $(…) scan early: fail closed
+            if mentions_gh:
+                return True
+            continue
+        if inner_writes(body):
+            return True
+    for seg in segs:
+        via_xargs = False
+        w = [t for t, _ in seg]
+        dyn_of = {}
+        for t, d in seg:
+            dyn_of[t] = dyn_of.get(t, False) or d
         # strip keywords, assignments and wrappers (by basename, so /usr/bin/env counts)
         while w:
             b = os.path.basename(w[0])
@@ -491,30 +674,59 @@ def gh_writes(command: str, cwd: str = "", _depth: int = 0) -> bool:
                 w.pop(0)
                 while w and (w[0].startswith("-") or re.match(r"^\d+(\.\d+)?[smhd]?$", w[0])):
                     w = w[2:] if w[0] in ("-s", "--signal", "-k", "--kill-after") else w[1:]
-            elif b in _WRAPPERS:
+            elif b == "script":
                 w.pop(0)
-                while w and w[0].startswith("-"):  # wrapper options, e.g. `nice -n 5`, `xargs -0`
-                    w = w[2:] if w[0] in ("-n", "-I", "-L", "-P") else w[1:]
+                while w and w[0].startswith("-"):
+                    w = w[2:] if w[0] in ("-t", "-T", "-E", "-I", "-O", "-B") else w[1:]
+                if w:
+                    w.pop(0)  # the typescript file; the rest is the command
+            elif b in _WRAPPERS or b == "stdbuf":
+                if b == "xargs":
+                    via_xargs = True
+                w.pop(0)
+                vflags = _WRAPPER_VALUE_FLAGS.get(b, ())
+                while w and w[0].startswith("-"):  # wrapper options, e.g. `sudo -u root`, `xargs -0`
+                    w = w[2:] if w[0] in vflags else w[1:]
             else:
                 break
         if not w:
             continue
-        if _depth < 3 and ((os.path.basename(w[0]) in _SHELLS and "-c" in w[1:-1]) or w[0] == "eval"):
-            inner = w[w.index("-c") + 1] if os.path.basename(w[0]) in _SHELLS else " ".join(w[1:])
-            if gh_writes(inner, cwd, _depth + 1):
+        if mentions_gh and any(dyn_of.get(w[i], True) for i in [0] + [k + 1 for k, t in enumerate(w[:-1])
+                                                                      if t in _EXEC_FLAGS]):
+            return True  # command word built by the shell ($(echo)gh, ${X}gh, $G, $'gh'): can't see it
+        b0 = os.path.basename(w[0])
+        cflag = next((k for k, a in enumerate(w[1:-1], 1) if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a)), None) \
+            if b0 in _SHELLS else None
+        if cflag is not None or b0 == "eval":
+            k = cflag + 1 if cflag is not None else None
+            if k is not None and k < len(w) - 1 and w[k] == "--":
+                k += 1
+            inner = w[k] if k is not None else " ".join(w[1:])
+            if inner_writes(inner):
                 return True
             continue
+        if mentions_gh and b0 in _SHELLS and (any(a in ("<", "<<", "<<<") for a in w[1:]) or
+                                              all(a.startswith("-") for a in w[1:])):
+            return True  # `… | bash`, `bash <<< '…'`, `bash < f`: the script comes from stdin
+        if mentions_gh and re.search(r"\balias\s+[^\s=]+=\S*\bgh\b", command):
+            return True  # shell alias for gh
+        if mentions_gh and b0 in ("source", ".") and (len(w) < 2 or w[1] in ("<", "/dev/stdin") or
+                                                       dyn_of.get(w[1], True)):
+            return True  # `source <(…)`: can't see what it runs
+        if mentions_gh and via_xargs and re.search(r"\b(merge|api)\b", command) and \
+                any(os.path.basename(t) == "gh" for t in w):
+            return True  # xargs feeds gh its arguments from stdin
         # gh as the command, or run by find -exec/-execdir
         starts = [0] + [i + 1 for i, t in enumerate(w[:-1]) if t in _EXEC_FLAGS]
         for st in starts:
             sub_w = w[st:]
-            if _depth < 3 and st and os.path.basename(sub_w[0]) in _SHELLS and "-c" in sub_w[1:-1]:
-                if gh_writes(sub_w[sub_w.index("-c") + 1], cwd, _depth + 1):
+            if st and os.path.basename(sub_w[0]) in _SHELLS and "-c" in sub_w[1:-1]:
+                if inner_writes(sub_w[sub_w.index("-c") + 1]):
                     return True
                 continue
             if os.path.basename(sub_w[0]) != "gh" or len(sub_w) < 2:
                 continue
-            if _gh_args_write(sub_w[1:], command):
+            if _gh_args_write(sub_w[1:], command, dyn=[dyn_of.get(t, True) for t in sub_w[1:]]):
                 return True
     return False
 

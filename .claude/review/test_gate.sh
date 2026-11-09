@@ -24,6 +24,7 @@ check() { # check <allow|deny> <command>
   elif [ -z "$out" ]; then got=allow
   else got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "allow"' 2>/dev/null || echo "BADJSON"); fi
   if [ "$got" = "$exp" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [$cmd] expected $exp got $got"; fi
+  case "$exp:$cmd" in deny:*gh*) printf '%s\0' "$cmd" >> "$T/gh_denies.txt";; esac
 }
 W="$PWD"
 check deny  "git push origin main"
@@ -161,13 +162,18 @@ check allow "gh api -i repos/QRateCore/zz/git/refs/heads/main"
 check allow "gh api -X POST repos/someone/else/issues -f body=x"
 mkdir -p "$T/ghcfg" && printf 'aliases:\n    mm: pr merge\n    co: pr checkout\n' > "$T/ghcfg/config.yml"
 export GH_CONFIG_DIR="$T/ghcfg"
-printf 'aliases:\n    mm: pr merge\n    co: pr checkout\n    m: pr\n    mx: pr -R QRateCore/qrate-core merge\n    sh: "!gh pr merge"\n' > "$T/ghcfg/config.yml"
+printf 'aliases:\n    mm: pr merge\n    co: pr checkout\n    m: pr\n    mx: pr -R QRateCore/qrate-core merge\n    sh: "!gh pr merge"\n    p: pr $1\n    pr m: pr merge\n' > "$T/ghcfg/config.yml"
 check deny  "gh mm 3"
 check allow "gh co 3"
 check deny  "gh m merge 3"
 check deny  "gh mx 3"
 check deny  "gh sh 3"
 check allow "gh m list"
+check deny  "gh p merge 3"
+check allow "gh p view 3"
+check deny  "gh pr m 3"
+check deny  "gh p \"merge 3\""
+check deny  "gh p 'merge -R QRateCore/x 3'"
 unset GH_CONFIG_DIR
 # round-6 review: read verbs in non-method positions, shell-built queries, endpoint spellings, false positives
 check deny  "gh api repos/QRateCore/qrate-core/merges -f base=main -f head=feat --template GET"
@@ -183,6 +189,101 @@ check deny  "gh api -X PUT repositories/123/contents/a -f message=m"
 check deny  "gh api -X PUT repos/QRateCore/x//contents/a -f message=m"
 check allow "gh pr list --label merge"
 check allow "echo \"use gh to view the PR; don't merge"
+# round-7 review: quoted punctuation values, command substitution, alias stdin, graphql variables
+check deny  "gh api repos/QRateCore/qrate-core/contents/a.txt --jq '{}' -X PUT -f message=m -f content=eA=="
+check deny  "gh api repos/QRateCore/zz/git/refs --template ';' -f ref=refs/heads/x -f sha=1"
+check deny  "gh api repos/QRateCore/zz/git/refs --jq '()' -f ref=refs/heads/x -f sha=1"
+check deny  "gh api repos/QRateCore/zz/git/refs --jq '.|.' -f ref=refs/heads/x -f sha=1"
+check deny  "OUT=\"\$(gh pr merge 3 --squash)\""
+check deny  "R=\`gh pr merge 3\`"
+check deny  "echo \"\$(gh api -X PUT repos/QRateCore/zz/contents/a -f content=x)\""
+check deny  "echo \$(echo \$(gh pr merge 3))"
+check deny  "echo 'pr merge' | gh alias set mm -"
+check allow "gh api graphql --paginate -f query='query(\$endCursor: String){viewer{repositories(first:1, after:\$endCursor){nodes{name}}}}'"
+check allow "gh api graphql -f query='query(\$o:String!){organization(login:\$o){login}}' -f o=QRateCore"
+check deny  "gh api graphql -f query=\"query(\$o:String!){x}\""
+check allow "OUT=\"\$(gh pr view 3 --json state)\""
+check allow "echo '\$(gh pr merge 3)'"
+check deny  "gh api -X PUT repos/QRateCore/qrate-core/./contents/a.txt -f message=m -f content=eA=="
+check deny  "gh api -X PATCH repos/QRateCore/x/../qrate-core/git/refs/heads/main -f sha=abc"
+check deny  "exec -a foo gh pr merge 3"
+# round-8 review: ( ) mid-word, deep nesting, case, sudo/time options, normalized-away paths
+check deny  "cat <(gh pr merge 3)"
+check deny  "tee >(gh pr merge 3)"
+check deny  "f(){ gh pr merge 3; }; f"
+check deny  "f(){ gh api -X PUT repos/QRateCore/x/contents/a -f content=x; }; f"
+check deny  "case x in x) gh pr merge 3;;esac"
+check deny  "for r in a b; do case \$r in a) gh pr merge 3;; esac; done"
+check deny  "x=\$(f(){ gh pr merge 3; }; f)"
+check deny  "echo \$(echo \$(echo \$(echo \$(echo \$(gh pr merge 3)))))"
+check deny  "echo \$(case x in x) gh pr merge 3;; esac)"
+check deny  "gh api -X POST repos/QRateCore/x/merges/.. -f base=main -f head=f"
+check deny  "sudo -u root gh pr merge 3"
+check deny  "time -p gh pr merge 3"
+check allow "ls | xargs -I{} echo {}"
+# round-9 review: recursion budget shared across entry points; shell-built command words
+check deny  "echo \$(echo \$(echo \$(bash -c 'gh pr merge 3')))"
+check deny  "bash -c \"echo \\\$(echo \\\$(bash -c 'gh pr merge 3'))\""
+check deny  "echo \$(echo \$(eval 'gh pr merge 3'))"
+check deny  "echo \`sh -c 'gh pr merge 3'\`"
+check deny  "env bash -c 'gh pr merge 3'"
+check deny  "find . -maxdepth 0 -exec bash -c 'gh pr merge 3' \\;"
+check deny  "\$(echo)gh pr merge 3"
+check deny  "bash -c \"\\\$(echo)gh pr merge 3\""
+check deny  "\${X}gh pr merge 3"
+check deny  "\`true\`gh pr merge 3"
+check deny  "\$'gh' pr merge 3"
+check deny  "G=gh; \$G pr merge 3"
+check deny  "\$(which gh) pr merge 3"
+check deny  "sudo --user root gh pr merge 3"
+check deny  "xargs --max-args 1 gh pr merge <<< 3"
+check deny  "nice --adjustment 5 gh pr merge 3"
+check allow "\$EDITOR notes.md"
+# round-10 review: brace expansion, comments, continuations, inherited gh context, more shells/launchers
+check deny  "gh api -X PUT {repos/QRateCore/x/contents/a,} -f message=m -f content=Yg=="
+check deny  "gh api {repos/QRateCore/x/merges,} -f base=main -f head=y"
+check deny  "gh api -X POST {repos/QRateCore/x/pulls/3/merge,}"
+check deny  "bash -c 'gh api -X PATCH {repos/QRateCore/x/git/refs/heads/main,} -f sha=1'"
+check deny  "{gh,} pr merge 3"
+check deny  "gh {pr,} merge 3"
+check deny  "G=gh; eval \"\$G pr merge 3\""
+check deny  "G=gh; bash -c \"\$G pr merge 3\""
+check deny  "export G=gh; bash -c '\$G pr merge 3'"
+check deny  "# don't touch prod
+gh pr merge 3
+# that's it"
+check deny  "gh pr \\
+  merge 3"
+check deny  "gh pr mer\\
+ge 3"
+check deny  "S=pr; gh \$S merge 3"
+check deny  "gh pr \"\$(echo merge)\" 3"
+check deny  "f(){ gh \"\$@\"; }; f pr merge 3"
+check deny  "echo 'pr merge 3' | xargs gh"
+check deny  "bash -lc 'gh pr merge 3'"
+check deny  "zsh -fc 'gh pr merge 3'"
+check deny  "ksh -c 'gh pr merge 3'"
+check deny  "source <(echo gh pr merge 3)"
+check deny  "echo 'gh pr merge 3' | bash"
+check deny  "coproc gh pr merge 3"
+check deny  "stdbuf -o L gh pr merge 3"
+check deny  "script -q /dev/null gh pr merge 3"
+check deny  "echo 3 | xargs -J % gh pr merge %"
+check deny  "sh -c -- 'gh pr merge 3'"
+check deny  "bash <<< 'gh pr merge 3'"
+check deny  "alias g=gh; g pr merge 3"
+check deny  "caffeinate gh pr merge 3"
+check deny  "gh api {-X,PUT} repos/QRateCore/x/contents/a"
+check allow "gh pr merge\\ 3"
+check allow "echo \"\\\$(gh pr merge 3)\""
+check allow "gh pr list  # what's open"
+check allow "gh pr view \"\$PR\""
+check allow "bash scripts/test.sh && gh pr view 3"
+check allow "ls {a,b}.txt"
+check allow "\$(git rev-parse --show-toplevel)/scripts/x.sh"
+check allow "echo \$(gh pr view 3 --json state)"
+check allow "gh api repos/QRateCore/qrate-core/contents/README.md --jq .content"
+check allow "gh api repos/QRateCore/qrate-core/issues/1/comments -f body='use PUT here'"
 check allow "git push origin v1"
 check allow "git push origin :old-branch"
 check allow "git push origin --delete old-branch"
@@ -231,4 +332,59 @@ NK=$(python3 "$Q" key . | jq -r .key)
 jq -n --arg m "done
 QRATE-REVIEW repo=$PWD key=$NK verdict=PASS" '{agent_type:"qrate-reviewer",last_assistant_message:$m}' | python3 "$Q" record >/dev/null
 check allow "git push origin main"
+# generated corpus (checklist G1): every gh deny case must stay denied under each variant
+cat > "$T/gen.py" <<'PYEOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("g", sys.argv[1]); g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+cases = [c for c in open(sys.argv[2]).read().split("\0") if c.strip()]
+inner = ["--jq '{}'", "--template ';'", "-q '()'", "-H 'X: |'", "--jq GET", "--template HEAD", "-q GET", "-i"]
+suffix = ["", " --jq GET", " --template HEAD", " -q GET", " --cache 1h", " --silent", " -- "]
+miss, total = [], 0
+for c in cases:
+    # suffixes only where the case ENDS in the gh command (appending to `| bash` changes what runs)
+    vs = [c + sfx for sfx in suffix] if __import__("re").search(r"\bgh\b[^|;&\n]*$", c) else [c]
+    for v in (inner if "'" not in c else [i for i in inner if "'" not in i]):
+        if " api " in c:
+            vs.append(c.replace(" api ", " api " + v + " ", 1))
+        elif " merge" in c:
+            vs.append(c.replace(" merge", " merge " + v, 1))
+    vs += ["f(){ " + c + "; }; f", "case x in x) " + c + ";; esac"]
+    if "`" not in c and ")" not in c:
+        vs += ["OUT=$(" + c + ")", "R=`" + c + "`", "cat <(" + c + ")", "tee >(" + c + ")",
+               "echo $(echo $(echo $(echo $(echo $(" + c + ")))))"]
+    # cross every recursion entry point with every nesting depth 1-4 (checklist G1)
+    if "'" not in c:
+        for sh in ["bash -c '" + c + "'", "eval '" + c + "'", "sh -c '" + c + "'",
+                   "find . -maxdepth 0 -exec bash -c '" + c + "' \\;"]:
+            for d in range(1, 5):
+                vs.append("echo $(" * d + sh + ")" * d)
+                vs.append("f(){ " + "echo $(" * (d - 1) + sh + ")" * (d - 1) + "; }; f")
+    vs += ["$(echo)" + c, "${X}" + c, "`true`" + c]
+    # brace expansion, comments with apostrophes, line continuations, clustered -c (checklist G1)
+    vs.append(c.replace("gh ", "{gh,} ", 1))
+    vs.append("# don't touch prod\n" + c + "\n# that's it")
+    vs.append(c.replace("gh ", "gh \\\n  ", 1))
+    if "repos/" in c:
+        import re as _re
+        vs.append(_re.sub(r"(\S*repos/[^\s']+)", r"{\1,}", c, count=1))
+    if "'" not in c:
+        vs += ["bash -lc '" + c + "'", "G=gh; eval '" + c.replace("gh ", "$G ", 1) + "'"]
+    for v in vs:
+        total += 1
+        try:
+            ok = g.gh_writes(v, sys.argv[3])
+        except Exception:
+            ok = False
+        if not ok:
+            miss.append(v)
+print(total, len(miss))
+for m in miss[:20]:
+    print("GENMISS:", m)
+PYEOF
+GEN=$(GH_CONFIG_DIR="$T/ghcfg" python3 "$T/gen.py" "$Q" "$T/gh_denies.txt" "$T")
+gtotal=$(printf '%s\n' "$GEN" | head -1 | cut -d' ' -f1); gmiss=$(printf '%s\n' "$GEN" | head -1 | cut -d' ' -f2)
+printf '%s\n' "$GEN" | grep '^GENMISS' || true
+if [ -n "$gtotal" ] && [ "$gmiss" = 0 ]; then pass=$((pass+1)); echo "generated corpus: $gtotal variants, 0 allowed"
+else fail=$((fail+1)); echo "FAIL: generated corpus: ${gmiss:-?} of ${gtotal:-?} variants allowed"; fi
 echo "passed=$pass failed=$fail"; rm -rf "$T"; [ $fail -eq 0 ]
