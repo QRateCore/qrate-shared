@@ -347,15 +347,16 @@ interface EditModalProps {
 
 // ── Food tag fields shown in the editor (heat_spice, allergens, dietary handled separately) ──
 
-// STR-963 P1 — icon + full-width flags drive the Food Tags card grid.
-// The emoji is decorative (rendered aria-hidden inside TagInput's label).
-const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string; icon: string; full?: boolean }[] = [
-  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…', icon: '🥘', full: true },
-  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…', icon: '🔥' },
-  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…', icon: '🎯' },
-  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…', icon: '👅', full: true },
-  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…', icon: '📅' },
-  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…', icon: '🎉' },
+// STR-963 P1 — the full-width flag drives the Food Tags card grid. The
+// emoji that sat beside each panel name were removed 2026-11-11 (Avi): no
+// other panel in the app carries one.
+const TAG_FIELDS: { key: keyof FoodTags; label: string; placeholder: string; full?: boolean }[] = [
+  { key: 'ingredients',    label: 'Ingredients',    placeholder: 'e.g. chicken, lemon…', full: true },
+  { key: 'cooking_method', label: 'Cooking method',  placeholder: 'e.g. grilled, fried…' },
+  { key: 'textures',       label: 'Texture',          placeholder: 'e.g. crispy, creamy…' },
+  { key: 'taste_profile',  label: 'Taste profile',   placeholder: 'e.g. savoury, smoky…', full: true },
+  { key: 'seasons',        label: 'Seasonal',         placeholder: 'e.g. summer, winter…' },
+  { key: 'festivity',      label: 'Festivities',      placeholder: 'e.g. Christmas, Diwali…' },
 ];
 
 // ── Wine identity + facet constants (PLAN 2026-08-04 M5) ──────────────────────
@@ -496,16 +497,15 @@ function TagInput({
   placeholder,
   onChange,
   fieldKey,
-  icon,
 }: {
   label: string;
   values: string[];
   placeholder: string;
   onChange: (newValues: string[]) => void;
   fieldKey: string;
-  icon?: string;
 }) {
   const [input, setInput] = useState('');
+  const inputId = `tag-input-${fieldKey}`;
 
   function addTag() {
     const trimmed = input.trim();
@@ -514,35 +514,19 @@ function TagInput({
     setInput('');
   }
 
+  // Kar panel (2026-11-11): the label is the editor's field label, the chips
+  // are the neutral grey pills used across the portal, and the input is the
+  // cursor after the last chip — a card with a few tags stays one line.
   return (
     <div>
-      <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
-        {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
+      <label htmlFor={inputId} className="block text-[13px] font-semibold text-ink mb-2" data-testid={`tag-label-${fieldKey}`}>
+        {label}
       </label>
-      {/* Chips + inline input flow together directly on the card — no nested
-          white box, no dedicated input row (compact per owner feedback: the
-          separate input row wasted a whole line per card). Neutral chip pills
-          (2026-09-14): free text carries no meaning of its own, so it takes the
-          editor's grey chrome rather than the cream of an older mockup — the
-          coloured families are reserved for tags that MEAN something. The input
-          is the cursor position after the last chip, so a card with a few tags
-          is a single line. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <div className="flex flex-wrap items-center gap-1.5">
         {values.map((v) => (
           <span
             key={v}
-            className="font-medium"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'var(--editor-chip-bg, #f3f4f6)',
-              color: 'var(--editor-chip-ink, #374151)',
-              borderRadius: 14,
-              padding: '4px 10px',
-              fontSize: 12,
-              lineHeight: 1.2,
-            }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface2 px-2.5 py-1 text-xs font-medium leading-tight text-ink"
           >
             {v}
             <button
@@ -550,22 +534,14 @@ function TagInput({
               onClick={() => onChange(values.filter((t) => t !== v))}
               data-testid={`remove-tag-${fieldKey}-${v}`}
               aria-label={`Remove ${v}`}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                lineHeight: 1,
-                fontWeight: 700,
-                opacity: 0.55,
-                color: 'var(--editor-chip-ink, #374151)',
-              }}
+              className="border-0 bg-transparent p-0 leading-none font-bold text-ink-soft cursor-pointer hover:text-ink"
             >
               ×
             </button>
           </span>
         ))}
         <input
+          id={inputId}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -575,16 +551,7 @@ function TagInput({
           onBlur={addTag}
           placeholder={values.length === 0 ? placeholder : 'Add…'}
           data-testid={`tag-input-${fieldKey}`}
-          style={{
-            flex: 1,
-            minWidth: 90,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontSize: 14,
-            padding: '4px 2px',
-            color: 'var(--text)',
-          }}
+          className="min-w-[90px] flex-1 border-0 bg-transparent px-0.5 py-1 text-sm text-ink outline-none placeholder:text-ink-faint"
         />
       </div>
     </div>
@@ -4006,43 +3973,16 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 {item.enrichment_status === 'enriching' && (
                   <div
                     data-testid="edit-modal-enrichment-in-progress"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'var(--editor-ai-surface, #FFFBF5)',
-                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
-                      color: 'var(--editor-ai-ink, #A05A00)',
-                      fontSize: 13,
-                    }}
+                    className="flex items-center gap-2 rounded-ctl bg-warn-bg px-3 py-2.5 text-[13px] text-warn"
                   >
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        background: 'var(--brand-s)',
-                        animation: 'pulse 1.4s ease-in-out infinite',
-                        flexShrink: 0,
-                      }}
-                    />
+                    <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full bg-warn animate-pulse" />
                     <span>Enrichment in progress — AI is analysing this item to suggest tags. You'll be able to review and edit them in a few seconds.</span>
                   </div>
                 )}
                 {item.enrichment_status === 'failed' && (
                   <div
                     data-testid="edit-modal-enrichment-failed"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'var(--bad-bg)',
-                      border: '1px solid #F3D3CF',
-                      color: 'var(--bad)',
-                      fontSize: 13,
-                    }}
+                    className="rounded-ctl bg-bad-bg px-3 py-2.5 text-[13px] text-bad"
                   >
                     Enrichment didn't complete. You can still edit tags manually below.
                   </div>
@@ -4054,17 +3994,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 {enrichNotice && (
                   <div
                     data-testid="edit-modal-enrich-notice"
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      // Was its own blue. It says the same kind of thing as
-                      // the banner above it, so it wears the same amber rather
-                      // than adding a tenth hue for one transient notice.
-                      background: 'var(--editor-ai-surface, #FFFBF5)',
-                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
-                      color: 'var(--editor-ai-ink, #A05A00)',
-                      fontSize: 12,
-                    }}
+                    className="rounded-ctl bg-warn-bg px-3 py-2 text-xs text-warn"
                   >
                     {enrichNotice}
                   </div>
@@ -4084,41 +4014,20 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   // unapproved guess and the dish is STILL unsellable.
                   // Collapsing it into "linked" hides the cheapest fix there is.
                   const label = linked ? 'Linked' : suggested ? 'Suggested' : 'Not linked';
-                  const tone = linked
-                    ? {
-                        fg: 'var(--editor-affirm-ink, #1B7A4A)',
-                        bg: 'var(--editor-affirm-surface, #E8F5EE)',
-                      }
-                    : suggested
-                      ? {
-                          fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FDF0EE)',
-                        }
-                      : {
-                          fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FDF0EE)',
-                        };
+                  // Kar status tones: ok when linked, warn while it still blocks ordering.
+                  const toneCls = linked ? 'bg-ok-bg text-ok' : 'bg-warn-bg text-warn';
                   return (
                     <div
                       data-testid="edit-modal-pos-link-row"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 12px', borderRadius: 6,
-                        background: 'var(--bg2, #f8fafc)',
-                        border: '1px solid var(--border, #e2e8f0)',
-                      }}
+                      className="flex items-center gap-2.5 rounded-ctl border border-line px-3 py-2"
                     >
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+                      <span className="text-[13px] font-semibold text-ink">
                         POS product
                       </span>
                       <span
                         data-testid="edit-modal-pos-link-status"
                         data-pos-link={posLinkStatus ?? 'none'}
-                        style={{
-                          fontSize: 11, fontWeight: 700, letterSpacing: '0.02em',
-                          padding: '3px 8px', borderRadius: 999,
-                          color: tone.fg, background: tone.bg, whiteSpace: 'nowrap',
-                        }}
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneCls}`}
                       >
                         {label}
                       </span>
@@ -4139,11 +4048,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         <span
                           data-testid="edit-modal-pos-link-name"
                           title={posLinkName ?? undefined}
-                          style={{
-                            fontSize: 12, color: 'var(--text2)', minWidth: 0,
-                            overflow: 'hidden', textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
+                          className="min-w-0 truncate text-xs text-ink-soft"
                         >
                           {posLinkName
                             ? posLinkName
@@ -4154,7 +4059,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                             // to read this line at all.
                             <span
                               data-testid="edit-modal-pos-link-price"
-                              style={{ marginLeft: 6, color: 'var(--text3, #94a3b8)' }}
+                              className="ml-1.5 text-ink-faint"
                             >
                               {currencySymbol}{posLinkPrice.toFixed(2)}
                             </span>
@@ -4165,7 +4070,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         // Confirmed but still blocked: saying "Linked" alone
                         // would tell an owner the dish is live when a diner
                         // cannot order it.
-                        <span style={{ fontSize: 11, color: 'var(--ink)' }}>
+                        <span className="text-[11px] text-warn">
                           not yet sellable
                         </span>
                       )}
@@ -4173,13 +4078,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         type="button"
                         onClick={onOpenPosLink}
                         data-testid="edit-modal-pos-link-button"
-                        style={{
-                          marginLeft: 'auto', fontSize: 12, fontWeight: 600,
-                          padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
-                          border: '1px solid var(--border, #e2e8f0)',
-                          background: 'var(--surface)', color: 'var(--text)',
-                          fontFamily: 'inherit',
-                        }}
+                        className="ml-auto h-8 rounded-ctl border border-line bg-surface px-3 text-xs font-semibold text-ink cursor-pointer hover:bg-surface2"
                       >
                         {linked || suggested ? 'Change' : 'Link'}
                       </button>
@@ -4191,7 +4090,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         className="grid gap-3.5"
         style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))' }}
       >
-        {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
+        {TAG_FIELDS.map(({ key, label, placeholder, full }) => (
           <div
             key={key}
             className="border border-line rounded-ctl p-3.5"
@@ -4200,7 +4099,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <TagInput
               fieldKey={key}
               label={label}
-              icon={icon}
               values={tags[key] ?? []}
               placeholder={placeholder}
               onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
