@@ -70,6 +70,12 @@ export interface MenuManagerActions {
   /** Open the Clone-menu dialog (`clone-menu-modal`). No-op when the service
    *  has no `cloneMenu`. */
   openCloneMenu: () => void;
+  /** Stage a drag of library items from the host's own item panel (owner
+   *  Menu workspace, `hidePool`): the drop targets treat it exactly like a
+   *  drag out of the built-in ItemPool. Call from the panel's onDragStart. */
+  startPoolDrag: (e: React.DragEvent, itemIds: string[]) => void;
+  /** End that drag (the panel's onDragEnd). */
+  endPoolDrag: () => void;
 }
 
 interface Props {
@@ -514,6 +520,11 @@ interface Props {
    * inline rail. Passing null (the default) is exactly today's behaviour.
    */
   tabBarPortalTarget?: Element | null;
+  /** Desktop: leave out the built-in ItemPool (and its resize divider) — the
+   *  host draws its own item panel and stages drags through
+   *  MenuManagerActions.startPoolDrag (owner Menu workspace, 2026-11-11).
+   *  Admin / waiter leave it unset. */
+  hidePool?: boolean;
   /**
    * Receives the menu-level actions (open settings / clone) once this client
    * has mounted, and `null` on unmount. Pass a STABLE callback (a useState
@@ -560,7 +571,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -767,11 +778,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // Publish the menu-level actions to the host (see MenuManagerActions). The
   // setters are stable, so this only re-runs when the host's callback changes.
   const canClone = !!service.cloneMenu;
+  // The pool-drag handlers are declared further down; the published actions
+  // call them through this ref so the effect can run here.
+  const poolDragRef = useRef<{ start: (e: React.DragEvent, ids: string[]) => void; end: () => void } | null>(null);
   useEffect(() => {
     if (!onMenuActionsReady) return;
     onMenuActionsReady({
       openMenuSettings: (menuId: string) => setEditMenuId(menuId),
       openCloneMenu: () => { if (canClone) setCloneOpen(true); },
+      startPoolDrag: (e: React.DragEvent, itemIds: string[]) => poolDragRef.current?.start(e, itemIds),
+      endPoolDrag: () => poolDragRef.current?.end(),
     });
     return () => onMenuActionsReady(null);
   }, [onMenuActionsReady, canClone]);
@@ -1366,6 +1382,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     poolDcRef.current = 0;
     bucketDcRef.current = {};
   }, []);
+  useEffect(() => {
+    poolDragRef.current = { start: handleCategoryDragStart, end: handleDragEnd };
+  }, [handleCategoryDragStart, handleDragEnd]);
 
   const handleDragEnterPool = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -3451,6 +3470,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           />
           </div>
 
+          {!hidePool && (<>
           {/* Draggable divider */}
           <div
             onMouseDown={handleDividerMouseDown}
@@ -3526,6 +3546,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             groupByRawCategory={poolGroupByRawCategory}
           />
           </div>
+          </>)}
           </div>
         </div>
       )}

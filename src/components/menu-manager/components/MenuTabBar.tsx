@@ -213,9 +213,10 @@ export interface MenuTabBarProps {
   onCreateMenu?: (name: string) => Promise<void>;
   onCloneMenu?: () => void;
   /**
-   * Compact = the Owner Portal redesign's segmented menu switch (2026-11-10):
-   * ONE bordered strip of plain label buttons, the selected one ink-filled.
-   * No status pill, no schedule sub-line, no pencil, no Clone — the page
+   * Compact = the owner Menu workspace's menu switch (2026-11-11): underline
+   * tabs — a status dot (green = active), the menu's name and its item count;
+   * the selected one is ink with an ink underline. No status pill, no schedule
+   * sub-line, no pencil, no Clone — the page
    * header beside it shows the menu's Active/Inactive pill and schedule, and
    * "Menu settings" / "Clone menu" live in the page's ⋯ actions menu (the
    * host wires them through MenuManagerClient.onMenuActionsReady).
@@ -254,11 +255,21 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
               data-testid={`menu-tab-${menu.id}`}
               onClick={() => onTabChange(menu.id)}
               title={menu.name}
-              className={`h-[30px] shrink-0 px-3 border-0 text-[13px] font-semibold leading-none whitespace-nowrap cursor-pointer transition-colors ${
-                isActive ? 'bg-ink text-on-ink' : 'bg-transparent text-ink hover:bg-surface2'
+              className={`relative inline-flex h-9 shrink-0 items-center gap-1.5 border-0 bg-transparent px-3 text-[13.5px] leading-none whitespace-nowrap cursor-pointer transition-colors ${
+                isActive ? 'font-semibold text-ink' : 'font-medium text-ink-soft hover:text-ink'
               }`}
             >
-              {menu.name}
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
+              />
+              <span>{menu.name}</span>
+              {typeof menu.item_count === 'number' && (
+                <span className="text-[12px] font-normal text-ink-faint tabular-nums">
+                  {menu.item_count}
+                </span>
+              )}
+              {isActive && <span aria-hidden="true" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-ink" />}
             </button>
           );
         })}

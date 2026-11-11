@@ -214,7 +214,7 @@ describe('<MenuTabBar />', () => {
     expect(inner.className).toContain('min-w-0');
   });
 
-  it('compact mode is the plain segmented switch: labels only, selected = ink fill, no pill / sub-line / pencil / Clone', () => {
+  it('compact mode is the Menu workspace switch: status dot + name + count, selected = ink + underline, no pill / sub-line / pencil / Clone', () => {
     const onCloneMenu = vi.fn();
     const { onTabChange } = setup(
       [menu({ id: 'lunch', name: 'Lunch' }), menu({ id: 'dinner', name: 'Dinner', active: false })],
@@ -225,9 +225,16 @@ describe('<MenuTabBar />', () => {
     expect(lunch.getAttribute('role')).toBe('tab');
     expect(lunch.getAttribute('aria-selected')).toBe('true');
     expect(dinner.getAttribute('aria-selected')).toBe('false');
-    expect(lunch.className).toContain('bg-ink');
-    expect(dinner.className).not.toContain('bg-ink');
-    expect(lunch.textContent).toBe('Lunch');
+    expect(lunch.className).toContain('text-ink');
+    expect(lunch.className).toContain('font-semibold');
+    expect(dinner.className).toContain('text-ink-soft');
+    // Name + item count; the dot is green for an active menu, neutral otherwise.
+    expect(lunch.textContent).toBe(`Lunch${menu({ id: 'lunch' }).item_count}`);
+    expect(lunch.querySelector('.bg-ok')).not.toBeNull();
+    expect(dinner.querySelector('.bg-ok')).toBeNull();
+    // Only the selected tab carries the underline.
+    expect(lunch.querySelectorAll('.bg-ink')).toHaveLength(1);
+    expect(dinner.querySelectorAll('.bg-ink')).toHaveLength(0);
     // The chrome the page header now owns is gone from the strip.
     expect(screen.queryByTestId('menu-tab-lunch-sub')).toBeNull();
     expect(screen.queryByTestId('menu-tab-status-active')).toBeNull();
