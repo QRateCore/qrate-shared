@@ -45,6 +45,43 @@ function renderWith(settings: Record<string, unknown>, cat = 'Entrees', withChro
   return { onUpdateSettings, props: () => last! };
 }
 
+describe('MenuItemRow rowChrome — pairing chips', () => {
+  it('hands the real Active / Inactive pairing chips to the chrome (Bring into menu lives in the Inactive one)', () => {
+    const target = makeItem({ id: 'tgt-1', name: 'Truffle Fries', menu_associations: [] });
+    const dish = makeItem({
+      menu_associations: [{ menu_id: 'menu-1', menu_name: 'Dinner', price: null }] as MenuItemDisplay['menu_associations'],
+      groupings: [{
+        id: 'g-1', kind: 'recommendations', name: 'Pairings', position: 0, is_default: true, is_deletable: false,
+        is_symmetric: true, min_select: 0, max_select: null, default_select: 'none', pricing_contribution: 'none',
+        items: [{ id: 'gi-1', menu_item_id: 'tgt-1', name: 'Truffle Fries', item_type: 'dish', position: 0, price_override: null, status: 'approved' }],
+      }],
+    } as unknown as Partial<MenuItemDisplay>);
+    const menus = [{
+      id: 'menu-1', name: 'Dinner', slug: 'dinner', display_order: 0, active: true, start_time: null, end_time: null,
+      days_of_week: [0, 1, 2, 3, 4, 5, 6], is_all_day: true, schedule: null, item_count: 1,
+    }];
+    render(
+      <MenuItemRow
+        item={dish}
+        menuId="menu-1"
+        cat="Entrees"
+        settings={{ price: null }}
+        itemsById={new Map([[dish.id, dish], [target.id, target]])}
+        menus={menus as never}
+        onUpdateSettings={vi.fn().mockResolvedValue(undefined)}
+        onUpdateModifiers={vi.fn().mockResolvedValue(undefined)}
+        onDragStart={vi.fn()}
+        onDragEnd={vi.fn()}
+        onRemove={vi.fn()}
+        onEdit={vi.fn()}
+        rowChrome={(p) => <div data-testid="chrome">{p.pairingsChips}</div>}
+      />,
+    );
+    // The target is on no menu, so it is an Inactive pairing for this dish.
+    expect(screen.getByTestId('chrome').querySelector('[data-testid="rec-inactive-chip-itm-1"]')).not.toBeNull();
+  });
+});
+
 describe('MenuItemRow rowChrome', () => {
   it('replaces the default desktop row only when set', () => {
     renderWith({ price: null }, 'Entrees', false);
