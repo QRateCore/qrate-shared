@@ -107,3 +107,9 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   success path AND in every catch/finally — before touching state, opening resources or reporting an error.
   The id that answers "was I abandoned?" must not be bumped by the flow's own failure handler; who clears a
   busy flag is decided by a separate per-attempt id. Each guard needs a test that is red without it.
+- **G6 Every App-Doc selector has a unit test that renders it** (2026-11-10;
+  `app-doc-selector-contract-without-unit-test`, recurring). App-Doc `execution.ts` is the SAGE-AI
+  contract: any `data-testid` that a commit adds to or changes in an App-Doc procedure's `selectors` (and
+  any id a canary or E2E spec asserts) must have, in the same commit, a unit test that mounts the page or
+  component and finds that id — including its gated/disabled states. A manual browser run is not evidence;
+  only a test keeps the contract honest when the control is later moved or renamed.
