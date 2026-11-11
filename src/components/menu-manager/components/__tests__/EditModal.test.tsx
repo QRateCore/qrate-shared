@@ -2404,3 +2404,117 @@ describe('EditModal — Menu pricing section', () => {
     expect(screen.getByTestId('edit-scope-pill')).toHaveTextContent('Not on any menu');
   });
 });
+
+// ── App-Doc selectors (checklist G6) + save-in-flight exit lock (G4) ─────────
+
+describe('EditModal — App-Doc selectors are mounted', () => {
+  const assoc = {
+    menu_id: 'm1',
+    menu_name: 'Dinner',
+    category_name: 'Entrees',
+    canonical_categories: ['Entrees'],
+    raw_categories: [],
+    price: null,
+    boost_level: null,
+    chefs_special: false,
+    portion_type: 'single',
+    portion_serves: null,
+  };
+
+  function renderWithPlacement(extra: Partial<React.ComponentProps<typeof EditModal>> = {}) {
+    const onClose = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal
+          item={makeDishItem({ menu_associations: [assoc] } as unknown as Partial<MenuItemDisplay>)}
+          restaurantId="rest-1"
+          menus={[makeMenu('m1', 'Dinner')]}
+          allItems={[]}
+          onClose={onClose}
+          onComplete={vi.fn()}
+          getMenuHref={(menuId, itemId) => `/owner/menu?menuId=${menuId}&scrollToItemId=${itemId}`}
+          {...extra}
+        />
+      </MenuManagerServiceProvider>,
+    );
+    return { onClose };
+  }
+
+  it('edit-close-btn (header ×) closes the editor', () => {
+    const { onClose } = renderWithPlacement();
+    fireEvent.click(screen.getByTestId('edit-close-btn'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('edit-goto-advanced inside the flavor accordion jumps to the Advanced details section', () => {
+    renderWithPlacement();
+    const accordion = screen.getByTestId('edit-flavor-accordion');
+    if (accordion.getAttribute('aria-expanded') !== 'true') fireEvent.click(accordion);
+    fireEvent.click(screen.getByTestId('edit-goto-advanced'));
+    expect(screen.getByTestId('edit-item-modal').getAttribute('data-section')).toBe('advanced');
+  });
+
+  it('Menu pricing shows where the item appears, the Menu-builder link and the portion select per menu', () => {
+    renderWithPlacement();
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    expect(screen.getByTestId('menu-pricing-appears')).toBeTruthy();
+    const link = screen.getByTestId('placements-tab-menu-link-m1') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/owner/menu?menuId=m1&scrollToItemId=item-1');
+    const portion = screen.getByTestId('placements-tab-portion-type-m1') as HTMLSelectElement;
+    expect(portion.value).toBe('single');
+    expect(portion.disabled).toBe(false);
+  });
+
+  it('the Menu-builder link is absent when the host passes no getMenuHref', () => {
+    renderWithPlacement({ getMenuHref: undefined });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    expect(screen.getByTestId('menu-pricing-appears')).toBeTruthy();
+    expect(screen.queryByTestId('placements-tab-menu-link-m1')).toBeNull();
+  });
+
+  it('edit-pairings-section renders only with both groupings and pairings slots (gate), under the Pairings tab', () => {
+    renderWithPlacement({ groupingsSlot: <div>groups</div>, pairingsSlot: <div data-testid="pairings-body">pairs</div> });
+    expect(screen.queryByTestId('edit-pairings-section')).toBeNull();
+    fireEvent.click(screen.getByTestId('tab-pairings'));
+    expect(screen.getByTestId('edit-pairings-section')).toBeTruthy();
+    expect(screen.getByTestId('pairings-body')).toBeTruthy();
+  });
+
+  it('the Pairings tab is gated off without a groupings slot', () => {
+    renderWithPlacement({ pairingsSlot: <div>pairs</div> });
+    expect(screen.queryByTestId('tab-pairings')).toBeNull();
+  });
+});
+
+describe('EditModal — exits are locked while a save is in flight (G4)', () => {
+  it('× / Cancel are disabled, the backdrop is inert and onSavingChange reports the save', async () => {
+    let resolveSave: (v: MenuItemDisplay) => void = () => {};
+    const pending = new Promise<MenuItemDisplay>((res) => { resolveSave = res; });
+    const service = makeService({ updateMenuItem: vi.fn().mockReturnValue(pending) } as Partial<MenuManagerService>);
+    const onClose = vi.fn();
+    const onSavingChange = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]} onClose={onClose} onComplete={vi.fn()} onSavingChange={onSavingChange} />
+      </MenuManagerServiceProvider>,
+    );
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+
+    fireEvent.click(screen.getByTestId('edit-save-btn'));
+    const closeBtn = screen.getByTestId('edit-close-btn') as HTMLButtonElement;
+    await waitFor(() => expect(closeBtn.disabled).toBe(true));
+    expect(onSavingChange).toHaveBeenLastCalledWith(true);
+    expect((screen.getByTestId('edit-cancel-btn') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(closeBtn);
+    fireEvent.click(screen.getByTestId('edit-cancel-btn'));
+    fireEvent.click(screen.getByTestId('edit-modal-backdrop'));
+    expect(onClose).not.toHaveBeenCalled();
+
+    resolveSave(makeDishItem({ name: 'Saved' }));
+    await waitFor(() => expect(closeBtn.disabled).toBe(false));
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

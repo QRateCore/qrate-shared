@@ -111,6 +111,30 @@ describe('getMenuTabStatus', () => {
     ).toBe('active');
   });
 
+  describe('overnight windows (mirrors core _is_in_window — see utils/menuWindow.ts)', () => {
+    const sat23 = new Date(2026, 10, 14, 23, 0, 0); // Saturday
+    const sun01 = new Date(2026, 10, 15, 1, 0, 0);  // Sunday
+    const late = (days: number[]) => menu({ id: 'late', start_time: '17:00', end_time: '02:00', days_of_week: days });
+
+    it('reads ACTIVE before midnight on the overnight day', () => {
+      expect(getMenuTabStatus(late([6]), sat23)).toBe('active');
+    });
+    it('reads ACTIVE after midnight when the next day is scheduled with a covering window', () => {
+      expect(getMenuTabStatus(late([6, 0]), sun01)).toBe('active');
+      const perDay = menu({
+        id: 'late', start_time: null, end_time: null, days_of_week: [6, 0],
+        schedule: { '6': { start: '17:00', end: '02:00' }, '0': { start: '00:00', end: '15:00' } },
+      });
+      expect(getMenuTabStatus(perDay, sun01)).toBe('active');
+    });
+    it('reads SCHEDULED after midnight when the next day is unscheduled', () => {
+      expect(getMenuTabStatus(late([6]), sun01)).toBe('scheduled');
+    });
+    it('a zero-length window is never ACTIVE', () => {
+      expect(getMenuTabStatus(menu({ id: 'z', start_time: '23:00', end_time: '23:00', days_of_week: [6] }), sat23)).toBe('scheduled');
+    });
+  });
+
   it('coerces stringified days_of_week numbers', () => {
     expect(
       getMenuTabStatus(

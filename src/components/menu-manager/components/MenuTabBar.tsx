@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Pencil } from 'lucide-react';
 import type { MenuSummary } from '../../../types/restaurant';
 import Button from '../../common/Button';
+import { isMinuteInWindow } from '../../../utils/menuWindow';
 
 /**
  * MenuTabBar — strip of menu tabs spanning the two-panel Menu Manager.
@@ -166,6 +167,13 @@ function timeToMinutes(value: string | null | undefined): number | null {
  * Derive the status pill state. Uses the per-day schedule entry when
  * present (source of truth for menus with only some days configured),
  * falling back to row-level start_time/end_time.
+ *
+ * Window math mirrors core `_is_in_window` via `isMinuteInWindow`
+ * (utils/menuWindow.ts): an overnight window (end < start) is live from
+ * start to midnight AND from midnight to end on the SAME day's entry, so a
+ * Sat 17:00–02:00 menu reads ACTIVE at 01:00 Sunday only when Sunday's own
+ * entry covers it. The owner app's `lib/menu/scheduleGap.ts` draws its bands
+ * from the same helper — keep the two in step.
  */
 export function getMenuTabStatus(menu: MenuSummary, now: Date): MenuTabStatus {
   if (!menu.active) return 'archived';
@@ -184,13 +192,12 @@ export function getMenuTabStatus(menu: MenuSummary, now: Date): MenuTabStatus {
     startMin = timeToMinutes(menu.start_time);
     endMin = timeToMinutes(menu.end_time);
   }
-  if (startMin === null || endMin === null || endMin <= startMin) {
+  if (startMin === null || endMin === null) {
     return 'scheduled';
   }
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  if (nowMin >= startMin && nowMin < endMin) return 'active';
-  return 'scheduled';
+  return isMinuteInWindow(nowMin, startMin, endMin) ? 'active' : 'scheduled';
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────

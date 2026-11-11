@@ -143,6 +143,7 @@ export {
 // doesn't exist as a column, so a server-side UTC eval would be wrong
 // for non-UTC restaurants.
 export { isMenuLiveNow, classifyRecMember } from './utils/menuSchedule';
+export { isMinuteInWindow, windowSegmentsForDay, windowCoversEarlyMorning, MINUTES_PER_DAY } from './utils/menuWindow';
 
 // Utils — Owner-app routing (MK-9). Single source of truth for the
 // micro-kitchen → owner-lite routing decision, shared by owner-app's redirect

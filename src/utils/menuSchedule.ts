@@ -1,4 +1,5 @@
 import type { MenuSummary } from '../types/restaurant';
+import { isMinuteInWindow } from './menuWindow';
 
 /**
  * Decide whether a menu is "live now" in the owner's *browser* timezone.
@@ -48,12 +49,9 @@ function isNowInHHMMWindow(now: Date, start: string, end: string): boolean {
   const startMin = toMinutes(start);
   const endMin = toMinutes(end);
   if (startMin === null || endMin === null) return false;
-  if (startMin === endMin) return false;
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  if (startMin < endMin) {
-    return nowMin >= startMin && nowMin < endMin;
-  }
-  return nowMin >= startMin || nowMin < endMin;
+  // Same overnight/zero-length rule as core `_is_in_window` — see menuWindow.ts.
+  return isMinuteInWindow(nowMin, startMin, endMin);
 }
 
 function toMinutes(hhmm: string): number | null {

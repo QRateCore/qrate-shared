@@ -48,6 +48,11 @@ interface EditModalProps {
   onClose: () => void;
   /** Called with the fully merged updated item after save, or with _deleted: true after delete */
   onComplete: (updated: MenuItemDisplay & { _deleted?: boolean }) => void;
+  /** G4 — fires with `true` while a save (or clone save) is in flight and
+   *  `false` when it settles / on unmount, so an inline host can ignore its
+   *  own scrim click and Escape key for the duration. The modal's own ×,
+   *  Cancel and backdrop are already gated internally. */
+  onSavingChange?: (saving: boolean) => void;
   /** Called when user clicks a menu chip — close modal and navigate to that menu+item */
   onNavigateToMenu?: (menuId: string, itemId: string) => void;
   /** STR-977 — builds the URL for a menu placement so the compact placement
@@ -940,7 +945,7 @@ const PRIMARY_BTN_CLS = 'h-10 px-[18px] rounded-ctl border-0 bg-ink text-on-ink 
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -1325,6 +1330,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // errors back to the owner inline (banner above the action bar).
   const [cloneSaving, setCloneSaving] = useState(false);
   const [cloneError, setCloneError]   = useState<string | null>(null);
+  const savingInFlight = saving || cloneSaving;
+  useEffect(() => {
+    onSavingChange?.(savingInFlight);
+    return () => onSavingChange?.(false);
+  }, [savingInFlight, onSavingChange]);
 
   // Name validation derived state — covers BOTH the new-item rename gate
   // and the clone-rename gate, so the name field shows a red border + a
@@ -4230,7 +4240,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               Remove from {pricingMenu.menu_name}
             </button>
             <span className="flex-1" />
-            <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+            <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
             <button
               type="button"
               data-testid="menu-pricing-save-btn"
@@ -4245,7 +4255,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         <div className="flex items-center gap-2.5">
           <span className="text-[13px] text-ink-soft">Add this item to a menu from the Menu builder to set a price.</span>
           <span className="flex-1" />
-          <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+          <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
         </div>
       )}
     </div>
@@ -4351,7 +4361,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         </>
       ) : (
         <>
-          <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+          <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
           {cloneMode && onCloneSave ? (
             <button
               type="button"
@@ -4392,7 +4402,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       {/* Backdrop — modal mode only */}
       {!isInline && (
         <div
-          onClick={onClose}
+          onClick={saving || cloneSaving ? undefined : onClose}
           className="fixed inset-0 z-[60] bg-ink/45"
           data-testid="edit-modal-backdrop"
         />
@@ -4441,9 +4451,14 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           <button
             type="button"
             onClick={onClose}
+            // G4: no exit while a save is in flight — the backdrop and the
+            // footer Cancel are gated the same way, and the owner host
+            // (FoodItemsManagerClient) ignores its scrim/Escape via
+            // `onSavingChange`.
+            disabled={saving || cloneSaving}
             data-testid="edit-close-btn"
             aria-label="Close"
-            className="w-9 h-9 shrink-0 rounded-ctl border-0 bg-transparent text-ink cursor-pointer inline-flex items-center justify-center hover:bg-surface2"
+            className="w-9 h-9 shrink-0 rounded-ctl border-0 bg-transparent text-ink cursor-pointer inline-flex items-center justify-center hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X size={18} aria-hidden="true" />
           </button>

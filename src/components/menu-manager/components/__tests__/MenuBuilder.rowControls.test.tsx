@@ -120,6 +120,8 @@ describe('MenuItemRow — redesigned row chrome', () => {
     renderRow();
     expect(screen.queryByTestId('remove-from-menu-itm-1')).toBeNull();
     openMenu();
+    // App-Doc execution.ts names the open list `menu-row-menu-list-<id>`.
+    expect(screen.getByTestId('menu-row-menu-list-itm-1').getAttribute('role')).toBe('menu');
     expect(screen.getByTestId('menu-row-edit-itm-1')).toBeTruthy();
     expect(screen.getByTestId('menu-row-visibility-itm-1').textContent).toContain('Hide from guests');
     expect(screen.getByTestId('menu-row-sides-itm-1')).toBeTruthy();
