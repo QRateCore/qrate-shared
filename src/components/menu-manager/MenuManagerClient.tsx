@@ -2985,10 +2985,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         </div>
       )}
 
-      {/* Edit Item Modal — opens centered (legacy) or inside the right-side
-          drawer chrome that mirrors /owner/food-items when editItemDrawerMode
-          is on. The drawer path uses the same `food-library-drawer*` classes
-          (defined in owner-webapp globals.css) and EditModal `displayMode=inline`.
+      {/* Edit Item Modal — opens centered (legacy) or, when editItemDrawerMode
+          is on, inside the same centred floating chrome /owner/food-items uses
+          (scrim = `food-library-drawer-overlay` from owner-webapp globals.css;
+          EditModal `displayMode=inline`). It slid in from the right until
+          2026-11-11.
           When the owner clicks Clone, the same drawer hosts the cloneMode
           EditModal — no second popup — so the visual treatment of editing
           and cloning is identical. */}
@@ -3126,19 +3127,30 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               onClick={closeFn}
               aria-hidden
             />
+            {/* The SAME centred floating editor as Item library (Avi,
+                2026-11-11: the menu builder used to slide a full-height
+                drawer in). width min(960px, 100%), max-height
+                calc(100vh - 40px), full-screen on phones; the wrapper
+                ignores pointer events so a click beside the box reaches the
+                scrim and closes it. Test ids are unchanged. */}
             <div
-              className="food-library-drawer"
-              data-testid="food-item-edit-drawer"
-              role="dialog"
-              aria-modal="true"
-              aria-label={drawerLabel}
-              onKeyDown={(e) => { if (e.key === 'Escape') closeFn(); }}
+              className="fixed inset-0 flex items-center justify-center p-5 max-lg:p-0 pointer-events-none"
+              style={{ zIndex: 'var(--z-drawer)' }}
             >
               <div
-                data-testid={cloneDraftSource ? 'food-item-clone-draft' : 'food-item-profile'}
-                style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+                className="pointer-events-auto w-[min(960px,100%)] h-[calc(100vh-40px)] max-h-[calc(100vh-40px)] max-lg:w-full max-lg:h-full max-lg:max-h-none max-lg:rounded-none bg-surface rounded-2xl shadow-float flex flex-col overflow-hidden"
+                data-testid="food-item-edit-drawer"
+                role="dialog"
+                aria-modal="true"
+                aria-label={drawerLabel}
+                onKeyDown={(e) => { if (e.key === 'Escape') closeFn(); }}
               >
-                {body}
+                <div
+                  data-testid={cloneDraftSource ? 'food-item-clone-draft' : 'food-item-profile'}
+                  style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+                >
+                  {body}
+                </div>
               </div>
             </div>
           </>
