@@ -190,6 +190,31 @@ describe('<MenuTabBar />', () => {
     expect(inner.className).toContain('min-w-0');
   });
 
+  it('compact mode is the plain segmented switch: labels only, selected = ink fill, no pill / sub-line / pencil / Clone', () => {
+    const onCloneMenu = vi.fn();
+    const { onTabChange } = setup(
+      [menu({ id: 'lunch', name: 'Lunch' }), menu({ id: 'dinner', name: 'Dinner', active: false })],
+      { compact: true, activeMenuId: 'lunch', onCloneMenu },
+    );
+    const lunch = screen.getByTestId('menu-tab-lunch');
+    const dinner = screen.getByTestId('menu-tab-dinner');
+    expect(lunch.getAttribute('role')).toBe('tab');
+    expect(lunch.getAttribute('aria-selected')).toBe('true');
+    expect(dinner.getAttribute('aria-selected')).toBe('false');
+    expect(lunch.className).toContain('bg-ink');
+    expect(dinner.className).not.toContain('bg-ink');
+    expect(lunch.textContent).toBe('Lunch');
+    // The chrome the page header now owns is gone from the strip.
+    expect(screen.queryByTestId('menu-tab-lunch-sub')).toBeNull();
+    expect(screen.queryByTestId('menu-tab-status-active')).toBeNull();
+    expect(screen.queryByTestId('menu-tab-status-scheduled')).toBeNull();
+    expect(screen.queryByTestId('menu-tab-status-archived')).toBeNull();
+    expect(screen.queryByTestId('edit-menu-tab-lunch')).toBeNull();
+    expect(screen.queryByTestId('clone-menu-btn')).toBeNull();
+    fireEvent.click(dinner);
+    expect(onTabChange).toHaveBeenCalledWith('dinner');
+  });
+
   it('non-compact mode keeps its own layout (own page, not squeezed into a shared rail) unchanged', () => {
     const { container } = setup([menu({ id: 'lunch' })], { compact: false });
     const outer = container.firstChild as HTMLElement;

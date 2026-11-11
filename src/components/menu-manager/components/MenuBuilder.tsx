@@ -2,13 +2,14 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, Pencil, Trash2, Ban, RotateCcw, FolderInput, GripVertical, MoreHorizontal, Layers, Eye, EyeOff, ListTree } from 'lucide-react';
 import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping, ServingOption } from '../../../types/restaurant';
 import WineEnrichmentBanner from './WineEnrichmentBanner';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel, asArray } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
+import { ManageSectionsModal, type ManageSection } from './ManageSectionsModal';
 import { COLOR_WARNING } from '../../../constants/colors';
 import { countApprovedAddons } from '../lib/addonHelpers';
 import Select from '../../common/Select';
@@ -702,6 +703,130 @@ function RecInactiveChip({
   );
 }
 
+// ── Row chrome helpers (Owner Portal redesign, 2026-11-10) ───────────────────
+
+/** "Butter Chicken" → "BC"; "Kulfi" → "KU". The 36px tile the design draws
+ *  when a dish has no photo. Exported for unit tests only. */
+export function initialsOf(name: string): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '·';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/**
+ * The row's "⋯" menu: edit price & promotion (the editor drawer), hide/show
+ * to guests (the item's global availability — the same 86 the mobile row
+ * button toggles), Includes & choose-one (expands the per-menu zones), and
+ * Remove from this menu / this sub-category (the scoped trash that used to be
+ * the row's own red button; same ids, same title/aria contract).
+ */
+function RowMenu({
+  itemId,
+  itemName,
+  active,
+  subLabel,
+  showSides,
+  onEdit,
+  onToggleActive,
+  onSides,
+  onRemove,
+}: {
+  itemId: string;
+  itemName: string;
+  active: boolean;
+  /** Real raw sub-category the row sits under (scopes the remove action). */
+  subLabel?: string;
+  showSides: boolean;
+  onEdit: () => void;
+  onToggleActive?: () => void;
+  onSides: () => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const scoped = !!subLabel && subLabel !== UNGROUPED_KEY;
+  const entry = (
+    testId: string,
+    label: string,
+    icon: React.ReactNode,
+    onClick: () => void,
+    opts: { danger?: boolean; title?: string; ariaLabel?: string } = {},
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      data-testid={testId}
+      title={opts.title}
+      aria-label={opts.ariaLabel}
+      onClick={(e) => { e.stopPropagation(); setOpen(false); onClick(); }}
+      className={`w-full flex items-center gap-2.5 h-9 px-3 text-left text-[13px] bg-transparent border-0 rounded-ctl cursor-pointer hover:bg-surface2 ${opts.danger ? 'text-bad' : 'text-ink'}`}
+    >
+      {icon}{label}
+    </button>
+  );
+
+  return (
+    <div ref={rootRef} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        data-testid={`menu-row-menu-${itemId}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`More actions for ${itemName}`}
+        title="More actions"
+        onClick={() => setOpen((v) => !v)}
+        className="w-8 h-8 inline-flex items-center justify-center rounded-ctl border-0 bg-transparent text-ink-soft hover:bg-surface hover:text-ink cursor-pointer"
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          data-testid={`menu-row-menu-list-${itemId}`}
+          className="absolute right-0 top-[calc(100%+4px)] z-50 min-w-[230px] p-1.5 bg-surface border border-line rounded-card shadow-float"
+        >
+          {entry(`menu-row-edit-${itemId}`, 'Edit price & promotion', <Pencil size={14} aria-hidden="true" />, onEdit)}
+          {onToggleActive && entry(
+            `menu-row-visibility-${itemId}`,
+            active ? 'Hide from guests' : 'Show to guests',
+            active ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />,
+            onToggleActive,
+            { title: active ? '86 — hide on all menus' : 'Restore on all menus' },
+          )}
+          {showSides && entry(`menu-row-sides-${itemId}`, 'Includes & choose-one', <ListTree size={14} aria-hidden="true" />, onSides)}
+          {entry(
+            `remove-from-menu-${itemId}`,
+            scoped ? `Remove from “${subLabel}”` : 'Remove from this menu',
+            <Trash2 size={14} aria-hidden="true" />,
+            onRemove,
+            {
+              danger: true,
+              title: scoped ? `Remove from “${subLabel}”` : 'Remove from menu',
+              ariaLabel: scoped ? `Remove ${itemName} from sub-category ${subLabel}` : `Remove ${itemName} from menu`,
+            },
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MenuItemRow ───────────────────────────────────────────────────────────────
 
 function MenuItemRow({
@@ -1166,7 +1291,45 @@ function MenuItemRow({
   const groupings = asArray<Grouping>(item.groupings);
   const hasAnyGroupingChip = groupings.some((g) => visibleItems(g).length > 0);
 
-  const borderLeftColor = attention ? 'var(--red)' : 'transparent';
+  // Desktop row chrome (Owner Portal redesign, 2026-11-10): the design's row is
+  // grip · 36px tile · name · price · Visible/Hidden pill · ⋯ — the whole row
+  // opens the item editor (`edit-menu-item-<id>` is now the row body, not a
+  // pencil), the chevron still expands the per-menu settings (price / boost /
+  // chef's special / portion + Includes zones, which the E2E item-settings specs
+  // drive through `menu-item-expand-<id>`), and the row's edit / 86 / remove
+  // actions moved into the ⋯ menu. The mobile row (STR-858) is unchanged.
+  const badges = (
+    <>
+      {chefsSpecial && (
+        <Star size={12} fill={COLOR_WARNING} color={COLOR_WARNING} data-testid={`chefs-special-badge-${item.id}`} aria-label="Chef's special" />
+      )}
+      {boostLabel && (
+        <span className="inline-flex items-center h-5 px-1.5 rounded-full text-[11px] font-semibold bg-ok-bg text-ok whitespace-nowrap" data-testid={`boost-badge-${item.id}`}>
+          {boostLabel}
+        </span>
+      )}
+      {displayPrice && (
+        <span
+          className={`text-sm font-semibold whitespace-nowrap ${displayPriceIsOverride ? 'text-ink' : 'text-ink-soft'}`}
+          style={{ fontVariantNumeric: 'tabular-nums' }}
+          data-testid={`price-display-${item.id}`}
+          data-override={displayPriceIsOverride ? 'true' : undefined}
+          title={displayPriceIsOverride ? 'Price set on this menu' : 'Base price from the item library'}
+        >
+          {displayPrice}
+          {displayPriceIsOverride && <span className="text-[9px] ml-0.5" aria-hidden="true">↑</span>}
+        </span>
+      )}
+      {cat === 'Desserts' && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
+        <span className="inline-flex items-center h-5 px-1.5 rounded-full text-[11px] font-semibold bg-surface2 text-ink-soft whitespace-nowrap">
+          ✦ {item.food_tags.sweetness_label}
+        </span>
+      )}
+      {saving && (
+        <span className="text-xs text-ink-faint">saving…</span>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -1187,63 +1350,37 @@ function MenuItemRow({
           : undefined
       }
       onDragEnd={!disableDrag && !expanded ? onDragEnd : undefined}
-      className={`w-full border-b border-[var(--border)] ${expanded ? 'bg-[var(--bg)]' : ''}`}
+      className={`w-full border-b border-line-row ${expanded ? 'bg-surface2/40' : ''}`}
       style={{
-        borderLeft: `3px solid ${borderLeftColor}`,
+        borderLeft: `3px solid ${attention ? 'var(--bad)' : 'transparent'}`,
         // grab cursor signals a collapsed row is draggable (drag onto a course
         // to MOVE it, or into a sub-category to file it — PDD #6). Only when the
         // row is actually draggable, so editing/bulk-select rows keep default.
         cursor: !disableDrag && !expanded ? 'grab' : undefined,
       }}
     >
+      {isMobile ? (
       <div className="flex items-stretch w-full">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         data-testid={`menu-item-expand-${item.id}`}
         data-expand-btn="true"
-        className={`flex-1 min-w-0 bg-transparent border-none cursor-pointer text-left ${isMobile ? 'flex flex-col gap-1 px-2 py-2' : 'flex flex-row items-center gap-2 px-3 py-2'}`}
+        className="flex-1 min-w-0 bg-transparent border-none cursor-pointer text-left flex flex-col gap-1 px-2 py-2"
       >
-        {isMobile ? (
-          <>
             {/* Mobile row 1 — chevron + full-width name + badges */}
             <div className="flex items-center gap-1.5 w-full min-w-0">
-              <span className="text-[var(--text2)] shrink-0">
+              <span className="text-ink-soft shrink-0">
                 {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               </span>
-              <span className="text-sm font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">
+              <span className="text-sm font-semibold text-ink overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">
                 {item.name}
               </span>
               {/* Badges */}
               <div className="flex items-center gap-1 shrink-0">
-                {chefsSpecial && (
-                  <Star size={12} fill="#f59e0b" color="#f59e0b" data-testid={`chefs-special-badge-${item.id}`} />
-                )}
-                {boostLabel && (
-                  <span className="badge badge-green text-xs !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
-                    {boostLabel}
-                  </span>
-                )}
-                {displayPrice && (
-                  <span
-                    className={`text-xs font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                    data-testid={`price-display-${item.id}`}
-                  >
-                    {displayPrice}
-                    {displayPriceIsOverride && <span className="text-[9px] ml-0.5">↑</span>}
-                  </span>
-                )}
+                {badges}
                 {!item.active && (
-                  <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
-                )}
-                {cat === 'Desserts' && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
-                  <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
-                    ✦ {item.food_tags.sweetness_label}
-                  </span>
-                )}
-                {saving && (
-                  <span className="text-xs text-[var(--text2)]">saving…</span>
+                  <span className="inline-flex items-center h-5 px-1.5 rounded-full text-[11px] font-semibold bg-bad-bg text-bad">86'd</span>
                 )}
               </div>
             </div>
@@ -1268,100 +1405,20 @@ function MenuItemRow({
                 )}
               </div>
             )}
-          </>
-        ) : (
-          <>
-            <span className="text-[var(--text2)] shrink-0">
-              {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            </span>
-
-            {/* Thumbnail */}
-            <div className="w-8 h-8 rounded-[var(--r-xs)] bg-[var(--bg)] shrink-0 overflow-hidden flex items-center justify-center text-sm">
-              {item.thumbnail_url ? (
-                <img src={item.thumbnail_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                '🍽'
-              )}
-            </div>
-
-            {/* Name */}
-            <span className="text-sm font-medium text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-              {item.name}
-            </span>
-
-            {/* One chip per non-empty grouping. Recommendations grouping
-                renders as two chips (Active / Inactive) when the parent
-                provided `menus` so we can evaluate schedule windows. */}
-            <div className="flex flex-wrap items-center gap-1 shrink min-w-0 ml-1">
-              {groupings.map((g) =>
-                g.kind === 'recommendations' && menus ? (
-                  <RecGroupingChips
-                    key={g.id}
-                    grouping={g}
-                    owningItem={item}
-                    menuId={menuId}
-                    itemsById={itemsById}
-                    menus={menus}
-                    onBringIntoMenu={onBringIntoMenu}
-                  />
-                ) : (
-                  <GroupingChip key={g.id} grouping={g} />
-                ),
-              )}
-            </div>
-
-            <span className="flex-1" />
-
-            {/* Badges */}
-            <div className="flex items-center gap-1 shrink-0">
-              {chefsSpecial && (
-                <Star size={12} fill="#f59e0b" color="#f59e0b" data-testid={`chefs-special-badge-${item.id}`} />
-              )}
-              {boostLabel && (
-                <span className="badge badge-green text-xs !py-0 !px-1.5" data-testid={`boost-badge-${item.id}`}>
-                  {boostLabel}
-                </span>
-              )}
-              {displayPrice && (
-                <span
-                  className={`text-xs font-semibold ${displayPriceIsOverride ? 'text-[var(--blue)]' : 'text-[var(--text2)]'}`}
-                  style={{ fontVariantNumeric: 'tabular-nums' }}
-                  data-testid={`price-display-${item.id}`}
-                >
-                  {displayPrice}
-                  {displayPriceIsOverride && <span className="text-[9px] ml-0.5">↑</span>}
-                </span>
-              )}
-              {!item.active && (
-                <span className="badge badge-green text-xs !py-0 !px-1.5 !bg-[var(--red-bg)] !text-[var(--red)]">86'd</span>
-              )}
-              {cat === 'Desserts' && SWEETNESS_VISIBLE && item.food_tags?.sweetness_label && (
-                <span className="badge text-xs !py-0 !px-1.5" style={{ color: '#be185d', background: 'rgba(249,168,212,0.15)', border: '1px solid #f9a8d4' }}>
-                  ✦ {item.food_tags.sweetness_label}
-                </span>
-              )}
-            </div>
-
-            {saving && (
-              <span className="text-xs text-[var(--text2)] ml-1">saving…</span>
-            )}
-          </>
-        )}
       </button>
 
       {/* STR-858 — mobile-only 1-tap 86 / restore (the #1 in-shift action).
           A dedicated tap target outside the expand button, so it never expands
-          the row. Ban = 86 it (hide everywhere); RotateCcw = restore. Desktop
-          uses EditModal's Visible/Hidden, so this renders only when the mobile
-          handler is wired. 44px touch target. */}
-      {onToggleActive && isMobile && (
+          the row. Ban = 86 it (hide everywhere); RotateCcw = restore. 44px
+          touch target. */}
+      {onToggleActive && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
           data-testid={`menu-item-86-toggle-${item.id}`}
           aria-label={item.active ? `86 (hide) ${item.name} on all menus` : `Restore ${item.name}`}
           title={item.active ? '86 — hide on all menus' : 'Restore'}
-          className={`shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] cursor-pointer flex items-center justify-center ${item.active ? 'text-[var(--text2)] hover:text-[var(--red)]' : 'text-[var(--red)]'}`}
+          className={`shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-line cursor-pointer flex items-center justify-center ${item.active ? 'text-ink-soft hover:text-bad' : 'text-bad'}`}
         >
           {item.active ? <Ban size={16} /> : <RotateCcw size={16} />}
         </button>
@@ -1369,14 +1426,14 @@ function MenuItemRow({
 
       {/* STR-858 — mobile-only "Move to…" (re-file this row's course via the tap
           course picker; native drag is dead on touch). 44px target. */}
-      {onMove && isMobile && (
+      {onMove && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onMove(); }}
           data-testid={`menu-item-move-${item.id}`}
           aria-label={`Move ${item.name} to another course`}
           title="Move to another course"
-          className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]"
+          className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-line text-ink-soft cursor-pointer flex items-center justify-center hover:text-ink"
         >
           <FolderInput size={16} />
         </button>
@@ -1388,9 +1445,9 @@ function MenuItemRow({
         data-testid={`edit-menu-item-${item.id}`}
         aria-label={`Edit ${item.name}`}
         title="Edit item"
-        className={`shrink-0 ${isMobile ? 'w-11' : 'w-10'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--text2)] cursor-pointer flex items-center justify-center hover:text-[var(--text)]`}
+        className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-line text-ink-soft cursor-pointer flex items-center justify-center hover:text-ink"
       >
-        <Pencil size={isMobile ? 18 : 17} />
+        <Pencil size={18} />
       </button>
 
       {(() => {
@@ -1405,13 +1462,102 @@ function MenuItemRow({
             data-testid={`remove-from-menu-${item.id}`}
             aria-label={scoped ? `Remove ${item.name} from sub-category ${subLabel}` : `Remove ${item.name} from menu`}
             title={scoped ? `Remove from “${subLabel}”` : 'Remove from menu'}
-            className={`shrink-0 ${isMobile ? 'w-11' : 'w-10'} p-0 bg-transparent border-none border-l border-l-[var(--border)] text-[var(--red)] cursor-pointer flex items-center justify-center hover:opacity-70`}
+            className="shrink-0 w-11 p-0 bg-transparent border-none border-l border-l-line text-bad cursor-pointer flex items-center justify-center hover:opacity-70"
           >
-            <Trash2 size={isMobile ? 18 : 17} />
+            <Trash2 size={18} />
           </button>
         );
       })()}
       </div>
+      ) : (
+      <div className="flex items-center gap-2.5 min-h-[50px] w-full pl-1.5 pr-1 transition-colors hover:bg-surface2">
+        {/* Grip — the visual cue that a collapsed row can be dragged (the row
+            itself is the drag source, as before). */}
+        <span
+          aria-hidden="true"
+          data-testid={`menu-item-grip-${item.id}`}
+          className={`shrink-0 text-ink-faint ${!disableDrag && !expanded ? 'cursor-grab' : 'opacity-40'}`}
+        >
+          <GripVertical size={15} />
+        </span>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          data-testid={`menu-item-expand-${item.id}`}
+          data-expand-btn="true"
+          aria-expanded={expanded}
+          aria-label={expanded ? `Hide ${item.name} menu settings` : `Show ${item.name} menu settings`}
+          title="Per-menu price, boost, portion & includes"
+          className="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded-ctl border-0 bg-transparent text-ink-faint hover:text-ink hover:bg-surface cursor-pointer"
+        >
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          data-testid={`edit-menu-item-${item.id}`}
+          aria-label={`Edit ${item.name}`}
+          title="Open the item editor"
+          className="flex-1 min-w-0 flex items-center gap-3 py-1.5 bg-transparent border-0 text-left cursor-pointer text-ink"
+        >
+          {/* Tile — photo when the dish has one, initials otherwise. */}
+          <span
+            data-testid={`menu-item-tile-${item.id}`}
+            className="w-9 h-9 shrink-0 rounded-ctl bg-surface2 border border-line inline-flex items-center justify-center text-[11px] font-bold text-ink-faint overflow-hidden"
+          >
+            {item.thumbnail_url ? (
+              <img src={item.thumbnail_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              initialsOf(item.name)
+            )}
+          </span>
+          <span className="text-sm font-semibold text-ink overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
+            {item.name}
+          </span>
+          {/* One chip per non-empty grouping. Recommendations grouping
+              renders as two chips (Active / Inactive) when the parent
+              provided `menus` so we can evaluate schedule windows. */}
+          <span className="flex flex-wrap items-center gap-1 shrink min-w-0">
+            {groupings.map((g) =>
+              g.kind === 'recommendations' && menus ? (
+                <RecGroupingChips
+                  key={g.id}
+                  grouping={g}
+                  owningItem={item}
+                  menuId={menuId}
+                  itemsById={itemsById}
+                  menus={menus}
+                  onBringIntoMenu={onBringIntoMenu}
+                />
+              ) : (
+                <GroupingChip key={g.id} grouping={g} />
+              ),
+            )}
+          </span>
+          <span className="flex-1" />
+          <span className="flex items-center gap-2 shrink-0">{badges}</span>
+        </button>
+        <span
+          data-testid={`menu-item-visibility-${item.id}`}
+          data-tone={item.active ? 'ok' : 'tag'}
+          title={item.active ? 'Guests can see this item' : "86'd — hidden from guests on every menu"}
+          className={`inline-flex items-center h-[22px] px-2.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${item.active ? 'bg-ok-bg text-ok' : 'bg-surface2 text-ink-soft'}`}
+        >
+          {item.active ? 'Visible' : 'Hidden'}
+        </span>
+        <RowMenu
+          itemId={item.id}
+          itemName={item.name}
+          active={item.active !== false}
+          subLabel={subLabel}
+          showSides={showIncludeZones}
+          onEdit={onEdit}
+          onToggleActive={onToggleActive}
+          onSides={() => setExpanded(true)}
+          onRemove={onRemove}
+        />
+      </div>
+      )}
 
       {/* Expanded settings — info bar on top, three modifier panels below */}
       {expanded && (
@@ -1768,6 +1914,7 @@ function CategoryBucket({
   bulkSelectionEnabled = false,
   bulkSelection,
   onToggleBulkSelection,
+  selectMode = false,
   suppressEmptyAttention = false,
   scrollToItemId,
 }: {
@@ -1842,6 +1989,11 @@ function CategoryBucket({
   bulkSelectionEnabled?: boolean;
   bulkSelection?: Set<string>;
   onToggleBulkSelection?: (itemId: string) => void;
+  /** The builder header's "Select" toggle is on: row checkboxes render at full
+   *  strength and the section select-all appears. Off = the checkboxes are
+   *  still in the DOM (the bulk-actions canary clicks them straight away) but
+   *  faded until the row is hovered or already selected. */
+  selectMode?: boolean;
   /**
    * When true, an empty bucket is rendered neutrally instead of with the
    * red "needs attention" border + EMPTY pill. Set by the parent when the
@@ -1953,23 +2105,24 @@ function CategoryBucket({
 
   return (
     <div
-      className="mb-1"
+      // Section box (Owner Portal redesign, 2026-11-10): one bordered card per
+      // course, 44px header on the quiet surface, the rows inside.
+      // No overflow-hidden on the box: a row's ⋯ menu drops below the row and
+      // must not be clipped. The header clips its own corners instead.
+      className="mb-2.5 rounded-ctl border border-line bg-surface"
       data-testid={`category-bucket-${category}`}
       data-attention={bucketHasAttention ? 'true' : undefined}
     >
       {/* Bucket header — checkbox (when bulk enabled) + collapse button */}
-      <div className="flex items-stretch">
-        {bulkSelectionEnabled && bucketItems.length > 0 && (
+      <div className={`flex items-stretch overflow-hidden ${collapsed ? 'rounded-ctl' : 'rounded-t-ctl'}`}>
+        {bulkSelectionEnabled && bucketItems.length > 0 && (selectMode || bucketSelectedCount > 0) && (
           <label
-            className="flex items-center justify-center px-2 cursor-pointer"
-            style={{
-              width: 32,
-              background: 'var(--bg)',
-              borderRight: '1px solid var(--border)',
-            }}
+            className="flex items-center justify-center pl-3 pr-1 cursor-pointer bg-surface2/50"
+            title={`Select every item in ${displayLabel ?? category}`}
           >
             <input
               type="checkbox"
+              className="w-3.5 h-3.5 accent-ink cursor-pointer"
               data-testid={`menu-builder-bucket-select-${category}`}
               checked={allBucketSelected}
               ref={(el) => {
@@ -2045,19 +2198,19 @@ function CategoryBucket({
         // a full-width course row visibly "pressing" reads as layout jank,
         // not affordance (owner feedback 2026-07-21).
         data-no-press
-        // py-3 (was py-1.5) + text-sm label below — beefier course rows per
-        // owner feedback 2026-07-21.
-        className="flex-1 flex items-center gap-2 py-3 px-3 cursor-pointer text-left transition-colors duration-150"
+        // 44px header on the quiet surface (design: chevron · bold name · count
+        // right-aligned). A course that needs attention gets a crimson inset
+        // edge + the count pill below instead of the old red box.
+        className={`flex-1 flex items-center gap-2.5 min-h-[44px] py-1.5 px-3.5 cursor-pointer text-left transition-colors duration-150 ${isDragOver ? '' : 'bg-surface2/50'}`}
         style={{
-          background: isDragOver ? `${color.tab}cc` : 'var(--bg)',
-          border: bucketHasAttention ? '2px solid var(--red)' : 'none',
-          borderLeft: bucketHasAttention ? '4px solid var(--red)' : 'none',
+          background: isDragOver ? DROP_TARGET.fill : undefined,
+          boxShadow: bucketHasAttention ? 'inset 3px 0 0 var(--bad)' : undefined,
         }}
       >
-        <span className="text-[var(--text2)] shrink-0">
-          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        <span className="text-ink-soft shrink-0">
+          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
         </span>
-        <span className="text-sm font-bold text-[var(--text)] shrink-0">
+        <span className="text-[15px] font-bold text-ink shrink-0">
           {displayLabel ?? category}
         </span>
         <span
@@ -2077,7 +2230,7 @@ function CategoryBucket({
                 key={rc.label}
                 data-testid={`bucket-rawcat-chip-${category}-${rc.label}`}
                 title={`${rc.label} — ${rc.count} item${rc.count === 1 ? '' : 's'}`}
-                className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text2)] rounded border border-[var(--border)] bg-[var(--bg2)] px-1.5 py-px"
+                className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-ink-soft rounded-full border border-line bg-surface px-2 py-px"
                 style={{ maxWidth: 140 }}
               >
                 <span
@@ -2100,7 +2253,7 @@ function CategoryBucket({
                   .slice(MAX_RAWCAT_CHIPS)
                   .map((rc) => `${rc.label} (${rc.count})`)
                   .join(', ')}
-                className="shrink-0 text-[10px] font-semibold text-[var(--text2)] rounded-full bg-[var(--bg2)] px-1.5 py-px"
+                className="shrink-0 text-[11px] font-semibold text-ink-soft rounded-full bg-surface border border-line px-2 py-px"
               >
                 +{bucketRawCategories.length - MAX_RAWCAT_CHIPS}
               </span>
@@ -2119,7 +2272,7 @@ function CategoryBucket({
         {emptyIsAttention ? (
           <span
             data-testid={`bucket-attention-empty-${category}`}
-            className="text-xs font-bold text-white bg-[var(--red)] rounded-full px-2 py-px uppercase tracking-wide"
+            className="inline-flex items-center h-5 px-2 rounded-full text-[11px] font-semibold bg-bad-bg text-bad whitespace-nowrap"
             title="No items in this category yet"
           >
             Empty
@@ -2127,13 +2280,13 @@ function CategoryBucket({
         ) : attentionCount > 0 ? (
           <span
             data-testid={`bucket-attention-count-${category}`}
-            className="text-xs font-bold text-white bg-[var(--red)] rounded-full px-1.5 py-px inline-flex items-center gap-0.5"
+            className="inline-flex items-center gap-0.5 h-5 px-2 rounded-full text-[11px] font-semibold bg-bad-bg text-bad whitespace-nowrap"
             title={`${attentionCount} item${attentionCount === 1 ? '' : 's'} need attention`}
           >
             ⚠ {attentionCount}
           </span>
         ) : null}
-        <span className="text-xs font-semibold text-[var(--text2)] bg-[var(--bg)] rounded-full px-1.5 py-px">
+        <span className="text-sm text-ink-soft shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }} data-testid={`bucket-count-${category}`}>
           {bucketItems.length}
         </span>
       </div>
@@ -2152,20 +2305,18 @@ function CategoryBucket({
           onDragOver={(e) => e.preventDefault()}
           onDrop={reorderFrom ? undefined : onDrop}
           data-testid={`bucket-drop-${category}`}
-          className="min-h-10 transition-all duration-150"
+          className="min-h-10 transition-all duration-150 border-t border-line px-2.5 pt-1.5 pb-1.5"
           style={{
             // Consistent green = "valid drop target". A faint outline appears on
             // every droppable bucket the moment a drag starts (always-visible
             // labeled zones), filling in solid when you actually hover it. Both
             // suppressed while reordering sub-categories (not an item-refile).
             background: isDragOver && !reorderFrom ? DROP_TARGET.fill : 'transparent',
-            border: isDragOver && !reorderFrom
-              ? `2px dashed ${DROP_TARGET.border}`
+            ...(isDragOver && !reorderFrom
+              ? { border: `2px dashed ${DROP_TARGET.border}`, borderRadius: 'var(--r-ctl, 8px)', margin: '2px 4px' }
               : dragActive && !reorderFrom
-                ? `2px dashed ${DROP_TARGET.border}55`
-                : '2px dashed transparent',
-            borderRadius: (isDragOver || dragActive) && !reorderFrom ? 'var(--r-xs)' : 0,
-            margin: (isDragOver || dragActive) && !reorderFrom ? '2px 4px' : 0,
+                ? { border: `2px dashed ${DROP_TARGET.border}55`, borderRadius: 'var(--r-ctl, 8px)', margin: '2px 4px' }
+                : {}),
           }}
         >
           {/* Bucket-level drop hint. Visible for the whole drag (not just on
@@ -2189,8 +2340,8 @@ function CategoryBucket({
           {bucketItems.length === 0 && pendingEmptySubLabels.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
-              className="px-3 py-2.5 text-xs italic"
-              style={dragActive ? { color: DROP_TARGET.accent } : { color: 'var(--text2)' }}
+              className="px-3 py-2.5 text-[13px] text-ink-faint"
+              style={dragActive ? { color: DROP_TARGET.accent } : undefined}
             >
               {dragActive
                 ? `Drop here to add to ${displayLabel}`
@@ -2269,23 +2420,27 @@ function CategoryBucket({
               // the row still works because the drag handlers live on the
               // row's outer div, NOT the checkbox).
               const isSelected = bulkSelection?.has(item.id) ?? false;
+              // The checkbox is always in the DOM (the owner-menu-bulk-actions
+              // canary clicks `menu-builder-row-select-<id>` straight after
+              // opening a tab, with no Select toggle), but it is faded until the
+              // header's Select mode is on, the row is hovered, or the row is
+              // already selected — so the resting row reads like the design.
               return (
                 <div
                   key={item.id}
-                  className="flex items-stretch w-full"
-                  style={{
-                    background: isSelected ? 'rgba(17, 17, 17,0.05)' : undefined,
-                    borderLeft: isSelected
-                      ? '3px solid var(--brand)'
-                      : undefined,
-                  }}
+                  className={`flex items-stretch w-full group/row ${isSelected ? 'bg-surface2' : ''}`}
+                  data-selected={isSelected ? 'true' : undefined}
                 >
                   <div
-                    className="flex items-center justify-center px-2"
-                    style={{ width: 32, borderRight: '1px solid var(--border)' }}
+                    // Top-aligned at the row's 50px first line, so an expanded
+                    // row's settings block does not pull the box to its middle.
+                    className={`flex items-start justify-center pl-2 pr-0.5 pt-[18px] transition-opacity ${
+                      selectMode || isSelected ? 'opacity-100' : 'opacity-35 group-hover/row:opacity-100 focus-within:opacity-100'
+                    }`}
                   >
                     <input
                       type="checkbox"
+                      className="w-3.5 h-3.5 accent-ink cursor-pointer"
                       data-testid={`menu-builder-row-select-${item.id}`}
                       checked={isSelected}
                       onChange={() => onToggleBulkSelection?.(item.id)}
@@ -2511,6 +2666,11 @@ export default function MenuBuilder({
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
+  // Owner Portal redesign (2026-11-10): the card header's "Select" toggle
+  // (row checkboxes at full strength + section select-all) and the "Manage
+  // sections" modal. Both local — they are view state, not menu data.
+  const [selectMode, setSelectMode] = useState(false);
+  const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
 
   const handleRemoveItemFromMenuTracked = (itemId: string, menuId: string) => {
     trackAction('menu.menuBuilder.removeFromMenu', {
@@ -2566,6 +2726,8 @@ export default function MenuBuilder({
       : [];
     return {
       ...sec,
+      /** Every item in the section, before the search filter (Manage sections). */
+      allItemIds: ids,
       itemIds: searchActive
         ? ids.filter((id) => {
             const it = itemsById.get(id);
@@ -2576,6 +2738,32 @@ export default function MenuBuilder({
   });
 
   const totalItems = sectionBuckets.reduce((s, b) => s + b.itemIds.length, 0);
+
+  // Manage-sections view of the same data: each course with its sub-categories
+  // in owner order (the first-class structure's sort_order via
+  // `orderSubCategories`, else alphabetical), each with its distinct-item count.
+  // Drinks menus also list count-0 sub-categories (their items carry no
+  // raw_categories, so the structure is the only source) — mirrors the
+  // `showEmptySubCategoryChips` rule on the section header.
+  const manageSections: ManageSection[] = activeMenu
+    ? sectionBuckets.map((sec) => {
+        const sectionItems = sec.allItemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
+        const derived = deriveBucketRawCategories(sectionItems, (id) => getSettings(activeMenu.id, id).raw_categories);
+        const derivedLabels = derived.map((d) => d.label);
+        const countByKey = new Map(derived.map((d) => [normalizeSubcatKey(d.label), d.count]));
+        const ordered = orderSubCategories
+          ? orderSubCategories(activeMenu.id, sec.canonical, derivedLabels)
+          : sortedSubCategoryLabels(derivedLabels);
+        const includeEmpty = isDrinksMenu(activeMenu);
+        const labels = ordered.filter((l) => l !== UNGROUPED_KEY && (includeEmpty || countByKey.has(normalizeSubcatKey(l))));
+        return {
+          canonical: sec.canonical,
+          label: sec.label,
+          itemCount: sectionItems.length,
+          subcategories: labels.map((label) => ({ label, count: countByKey.get(normalizeSubcatKey(label)) ?? 0 })),
+        };
+      })
+    : [];
 
   // Deep-link (scrollToItemId): expand the COURSE that contains the target item
   // so its row renders + scrolls into view; the sub-category self-expands via
@@ -2596,75 +2784,89 @@ export default function MenuBuilder({
   if (menus.length === 0) {
     return (
       <div
-        className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] items-center justify-center gap-2 text-[var(--text2)]"
+        className="flex flex-col h-full bg-surface rounded-card border border-line shadow-card items-center justify-center gap-2 text-ink-soft"
         data-testid="menu-builder-panel"
       >
         <span className="text-2xl">🍽</span>
-        <span className="text-lg font-semibold">No menus yet</span>
+        <span className="text-lg font-semibold text-ink">No menus yet</span>
         <span className="text-xs">Create a menu to start organising items</span>
       </div>
     );
   }
 
+  const selectedCount = bulkSelection?.size ?? 0;
+  const secondaryBtn = 'inline-flex items-center gap-1.5 h-8 px-3 rounded-ctl border border-line bg-surface text-[13px] font-semibold text-ink whitespace-nowrap cursor-pointer hover:bg-surface2 disabled:opacity-40 disabled:cursor-not-allowed';
+
   return (
     <div
-      className="flex flex-col h-full bg-[var(--white)] rounded-[var(--r)] border border-[var(--border)] overflow-hidden"
+      // The design's ONE white card holding the course sections.
+      className="flex flex-col h-full bg-surface rounded-card border border-line shadow-card overflow-hidden"
       data-testid="menu-builder-panel"
     >
-      {/* Active menu header */}
+      {/* Card header: Manage sections · count · (Inactive) ··· Expand all · Select · Bulk actions */}
       {activeMenu && (
-        <div className="px-3.5 pt-2.5 pb-2 border-b border-[var(--border)] flex items-center gap-2 shrink-0">
-          <span className="text-sm font-bold text-[var(--text)] flex-1">
-            {activeMenu.name}
-          </span>
+        <div className="px-4 pt-4 pb-3 flex items-center gap-2 flex-wrap shrink-0">
+          <button
+            type="button"
+            onClick={() => setManageSectionsOpen(true)}
+            data-testid="menu-manage-sections-btn"
+            className={secondaryBtn}
+          >
+            <Layers size={15} aria-hidden="true" />
+            Manage sections
+          </button>
           <span
-            className="text-xs text-[var(--text2)] bg-[var(--bg)] rounded-full px-2 py-0.5"
+            className="text-[13px] text-ink-soft whitespace-nowrap"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
             data-testid="active-menu-item-count"
           >
             {totalItems} item{totalItems !== 1 ? 's' : ''}
           </span>
+          {!activeMenu.active && (
+            <span className="inline-flex items-center h-[22px] px-2 rounded-full text-xs font-semibold bg-surface2 text-ink" data-testid="menu-builder-inactive-pill">
+              Inactive
+            </span>
+          )}
+          <span className="flex-1" />
           {onCollapseAll && (
             <button
               type="button"
               onClick={() => onCollapseAll(!allCollapsed)}
               data-testid="collapse-expand-all-btn"
-              // Prominent, not ghosted (owner feedback 2026-07-21): full-
-              // opacity BLACK text on a bordered chip so it reads as a real
-              // control, not decoration.
-              className="text-xs font-bold text-[var(--text)] bg-[var(--bg)] border border-[var(--border)] rounded-lg px-2.5 py-1 cursor-pointer hover:bg-[var(--bg2)] transition-colors whitespace-nowrap"
+              className="h-8 px-2.5 rounded-ctl border-0 bg-transparent text-[13px] font-semibold text-ink whitespace-nowrap cursor-pointer hover:bg-surface2"
             >
-              {allCollapsed ? 'Expand All' : 'Collapse All'}
+              {allCollapsed ? 'Expand all' : 'Collapse all'}
             </button>
           )}
-          {!activeMenu.active && (
-            <span className="badge badge-green text-xs !bg-[var(--red-bg)] !text-[var(--red)]">
-              Inactive
-            </span>
-          )}
-          {/* PDD 2026-05-22 — bulk action button. Always visible when
-              bulk mode is enabled (disabled until ≥1 row selected). Uses
-              var(--blue) to match BulkActionsPanel's primary action color
-              and the active tab underline in the drawer chrome. */}
+          {/* PDD 2026-05-22 — bulk selection. "Select" reveals the row
+              checkboxes + section select-all; the bulk button opens the
+              existing BulkMenuSidesPanel once ≥1 row is selected. */}
           {bulkSelectionEnabled && (
-            <button
-              type="button"
-              data-testid="menu-builder-bulk-action"
-              onClick={onOpenBulkPanel}
-              disabled={!bulkSelection || bulkSelection.size === 0}
-              aria-label="Open bulk action panel"
-              style={{
-                background: bulkSelection && bulkSelection.size > 0
-                  ? 'var(--blue)' : '#f0f0f0',
-                color: bulkSelection && bulkSelection.size > 0
-                  ? '#ffffff' : 'var(--text2)',
-                border: 'none',
-                fontWeight: 700,
-                opacity: bulkSelection && bulkSelection.size > 0 ? 1 : 0.7,
-              }}
-              className="text-xs rounded-[var(--r-xs)] px-3 py-1.5 whitespace-nowrap disabled:cursor-not-allowed"
-            >
-              Bulk actions ({bulkSelection?.size ?? 0})
-            </button>
+            <>
+              <button
+                type="button"
+                data-testid="menu-builder-select-toggle"
+                aria-pressed={selectMode}
+                onClick={() => setSelectMode((v) => !v)}
+                className={`${secondaryBtn} ${selectMode ? '!bg-ink !text-on-ink !border-ink' : ''}`}
+              >
+                Select
+              </button>
+              <button
+                type="button"
+                data-testid="menu-builder-bulk-action"
+                onClick={onOpenBulkPanel}
+                disabled={selectedCount === 0}
+                aria-label="Open bulk action panel"
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-ctl text-[13px] font-semibold whitespace-nowrap border transition-colors ${
+                  selectedCount > 0
+                    ? 'bg-ink text-on-ink border-ink cursor-pointer hover:bg-ink-hover'
+                    : 'bg-surface text-ink-faint border-line cursor-not-allowed'
+                }`}
+              >
+                Bulk actions ({selectedCount})
+              </button>
+            </>
           )}
         </div>
       )}
@@ -2681,12 +2883,12 @@ export default function MenuBuilder({
           click. */}
       <div
         data-testid="menu-builder-scroll"
-        className="flex-1 overflow-y-auto py-2 [scrollbar-gutter:stable]"
+        className="flex-1 overflow-y-auto px-4 pb-4 [scrollbar-gutter:stable]"
       >
         {searchActive && totalItems === 0 && (
           <div
             data-testid="menu-builder-search-empty"
-            className="px-4 py-8 text-center text-xs text-[var(--text2)]"
+            className="px-4 py-8 text-center text-[13px] text-ink-faint"
           >
             No items in this menu match “{builderQuery}”.
           </div>
@@ -2760,6 +2962,7 @@ export default function MenuBuilder({
                 bulkSelectionEnabled={bulkSelectionEnabled}
                 bulkSelection={bulkSelection}
                 onToggleBulkSelection={onToggleBulkSelection}
+                selectMode={selectMode}
                 // Suppress per-bucket "EMPTY" red treatment while the menu
                 // has zero items overall. Covers both the brief loading
                 // window (items query lands after menus query) and a
@@ -2770,6 +2973,18 @@ export default function MenuBuilder({
             );
           })}
       </div>
+
+      {activeMenu && (
+        <ManageSectionsModal
+          open={manageSectionsOpen}
+          onClose={() => setManageSectionsOpen(false)}
+          menuId={activeMenu.id}
+          menuName={activeMenu.name}
+          sections={manageSections}
+          onReorderSubCategory={onReorderSubCategory}
+          onCreateSubCategory={onCreateSubCategory}
+        />
+      )}
     </div>
   );
 }
@@ -2780,7 +2995,7 @@ export default function MenuBuilder({
 export {
   deriveBucketRawCategories as _deriveBucketRawCategories,
   computeRowRemoval as _computeRowRemoval,
-  // Exported for unit tests only (the edit/delete row-control affordances —
-  // size + destructive-red trash). Not part of the public API.
+  // Exported for unit tests only (the row chrome — whole-row edit target, ⋯
+  // menu with the scoped remove, Visible/Hidden pill). Not part of the public API.
   MenuItemRow as _MenuItemRow,
 };

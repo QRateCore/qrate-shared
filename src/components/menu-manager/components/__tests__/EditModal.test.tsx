@@ -989,6 +989,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
       onComplete,
     });
 
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
@@ -1021,6 +1022,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
       </MenuManagerServiceProvider>,
     );
 
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
@@ -1108,14 +1110,16 @@ describe('EditModal — active toggle + save', () => {
 });
 
 
-describe('EditModal — heat/spice select (Dish Properties, STR-977)', () => {
-  it('renders the heat/spice <select> with an N/A option when the Dish Properties tab is active', () => {
+describe('EditModal — heat/spice select (Dietary & allergens, STR-977)', () => {
+  it('renders the heat/spice <select> with a Not-applicable option on the Dietary & allergens section', () => {
     renderModal({ item: makeDishItem() });
-    // The food_tags (Dish Properties) tab is active by default for dishes.
+    // Spice level sits in Dietary & allergens (Owner Portal redesign); Basics is the default.
+    expect(screen.queryByTestId('heat-spice-select')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     const select = screen.getByTestId('heat-spice-select') as HTMLSelectElement;
     expect(select).toBeInTheDocument();
-    // N/A (empty value) + the active heat labels are the options.
-    expect(within(select).getByRole('option', { name: 'N/A' })).toBeInTheDocument();
+    // Not applicable (empty value) + the active heat labels are the options.
+    expect(within(select).getByRole('option', { name: 'Not applicable' })).toBeInTheDocument();
   });
 
   it('includes selected heat_spice value in save payload', async () => {
@@ -1125,6 +1129,7 @@ describe('EditModal — heat/spice select (Dish Properties, STR-977)', () => {
     renderModal({ item: makeDishItem({ food_tags: {} }), service });
 
     // Choose "Hot" from the spice dropdown.
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     await user.selectOptions(screen.getByTestId('heat-spice-select'), 'Hot');
 
     await user.click(screen.getByTestId('edit-save-btn'));
@@ -1143,6 +1148,7 @@ describe('EditModal — heat/spice select (Dish Properties, STR-977)', () => {
       service,
     });
 
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     await user.selectOptions(screen.getByTestId('heat-spice-select'), '');
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => {
@@ -1153,6 +1159,7 @@ describe('EditModal — heat/spice select (Dish Properties, STR-977)', () => {
 
   it('initializes the heat/spice <select> value from item.food_tags.heat_spice', () => {
     renderModal({ item: makeDishItem({ food_tags: { heat_spice: 'Mild' } as unknown as ReturnType<typeof makeDishItem>['food_tags'] }) });
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     const select = screen.getByTestId('heat-spice-select') as HTMLSelectElement;
     expect(select.value).toBe('Mild');
   });
@@ -1168,6 +1175,7 @@ describe('EditModal — delete two-confirm gate', () => {
     const service = makeService();
     renderModal({ item: makeDishItem(), service });
 
+    await user.click(screen.getByTestId('edit-more-actions-btn'));
     await user.click(screen.getByTestId('delete-item-btn'));
     // After first click, confirmation UI appears
     expect(screen.getByTestId('delete-item-confirm')).toBeInTheDocument();
@@ -1182,6 +1190,7 @@ describe('EditModal — delete two-confirm gate', () => {
     const onComplete = vi.fn();
     renderModal({ item: makeDishItem(), service, onComplete });
 
+    await user.click(screen.getByTestId('edit-more-actions-btn'));
     await user.click(screen.getByTestId('delete-item-btn'));
     await user.click(screen.getByTestId('delete-item-confirm'));
 
@@ -1196,6 +1205,7 @@ describe('EditModal — delete two-confirm gate', () => {
     const service = makeService();
     renderModal({ item: makeDishItem(), service });
 
+    await user.click(screen.getByTestId('edit-more-actions-btn'));
     await user.click(screen.getByTestId('delete-item-btn'));
     await user.click(screen.getByTestId('delete-item-cancel'));
 
@@ -1213,6 +1223,7 @@ describe('EditModal — delete two-confirm gate', () => {
     });
     renderModal({ item: makeDishItem(), service });
 
+    await user.click(screen.getByTestId('edit-more-actions-btn'));
     await user.click(screen.getByTestId('delete-item-btn'));
     await user.click(screen.getByTestId('delete-item-confirm'));
 
@@ -1406,6 +1417,14 @@ describe('EditModal — deferred dish association for new addons', () => {
 // in JSONB. These tests pin the rendering contract on both sides of the
 // migration so a future refactor that "helpfully" remaps client-side would
 // be caught by the failing canonical test.
+// Dietary labels / allergens / spice live in the "Dietary & allergens" section
+// (Owner Portal redesign, 2026-11-10); Basics is the default, so open it.
+function renderDietary(opts: Parameters<typeof renderModal>[0]) {
+  const r = renderModal(opts);
+  fireEvent.click(screen.getByTestId('tab-dietary'));
+  return r;
+}
+
 describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
   function makeItemWithAllergens(allergens: string[]): MenuItemDisplay {
     return makeDishItem({
@@ -1424,7 +1443,7 @@ describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
   }
 
   it('marks Wheat chip selected when food_tags.allergens=["wheat"] (post-canonical)', () => {
-    renderModal({
+    renderDietary({
       item: makeItemWithAllergens(['wheat']),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -1439,7 +1458,7 @@ describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
     // chip exists in the FDA Big 9 set, so the value is dropped on render
     // — Wheat is NOT auto-selected. This is the user-reported bug state
     // that the SQL backfill resolves; the test is a regression guard.
-    renderModal({
+    renderDietary({
       item: makeItemWithAllergens(['gluten']),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -1449,7 +1468,7 @@ describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
   });
 
   it('renders no chips for any non-FDA value (made-up, nuts, milk-aliases)', () => {
-    renderModal({
+    renderDietary({
       item: makeItemWithAllergens(['gluten', 'milk', 'nuts', 'made-up']),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -1470,7 +1489,7 @@ describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
   });
 
   it('shows Wheat + Dairy as selected when food_tags.allergens=["wheat","dairy"]', () => {
-    renderModal({
+    renderDietary({
       item: makeItemWithAllergens(['wheat', 'dairy']),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -1480,7 +1499,7 @@ describe('EditModal — allergen chip rendering (canonical vs legacy)', () => {
   });
 
   it('renders zero selected chips when food_tags.allergens is empty', () => {
-    renderModal({
+    renderDietary({
       item: makeItemWithAllergens([]),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -1510,7 +1529,7 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
   }
 
   it('renders Allergens + Dietary Restrictions sections for new dish items', () => {
-    renderModal({
+    renderDietary({
       item: draftDish(),
       isNewItem: true,
       onSaveNewItem: makeSaveNewItem(),
@@ -1522,7 +1541,7 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
 
   it('does NOT call dietaryTagService.setItemTags while toggling pills on a draft', async () => {
     const dietary = makeDietaryTagService();
-    renderModal({
+    renderDietary({
       item: draftDish(),
       isNewItem: true,
       onSaveNewItem: makeSaveNewItem(),
@@ -1539,7 +1558,7 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
     const dietary = makeDietaryTagService();
     const onSaveNewItem = makeSaveNewItem('real-dish-42');
 
-    renderModal({
+    renderDietary({
       item: draftDish(),
       isNewItem: true,
       onSaveNewItem,
@@ -1550,7 +1569,8 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
     fireEvent.click(screen.getByTestId('dietary-pill-allergen-peanuts'));
     fireEvent.click(screen.getByTestId('dietary-pill-dietary-vegan'));
 
-    // Fill the required dish fields, then save
+    // Fill the required dish fields (on Basics), then save
+    fireEvent.click(screen.getByTestId('tab-food_tags'));
     await user.type(screen.getByTestId('edit-name-input'), 'Pad Thai');
     await user.type(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
     await user.click(screen.getByTestId('edit-save-btn'));
@@ -1588,10 +1608,12 @@ describe('EditModal — Clone flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
+    fireEvent.click(screen.getByTestId('edit-more-actions-btn'));
     expect(screen.getByTestId('edit-clone-btn')).toBeInTheDocument();
   });
 
   it('hides Clone button when onCloneRequest is not provided', () => {
+    // More actions still opens (Hide / Delete) — Clone alone is absent.
     render(
       <MenuManagerServiceProvider value={makeService()}>
         <EditModal
@@ -1604,6 +1626,7 @@ describe('EditModal — Clone flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
+    fireEvent.click(screen.getByTestId('edit-more-actions-btn'));
     expect(screen.queryByTestId('edit-clone-btn')).not.toBeInTheDocument();
   });
 
@@ -1664,6 +1687,7 @@ describe('EditModal — Clone flow', () => {
         />
       </MenuManagerServiceProvider>,
     );
+    await user.click(screen.getByTestId('edit-more-actions-btn'));
     await user.click(screen.getByTestId('edit-clone-btn'));
     expect(onCloneRequest).toHaveBeenCalledTimes(1);
     expect(onCloneRequest).toHaveBeenCalledWith(item);
@@ -2046,7 +2070,7 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
 
   it('hides a canonical dietary default the restaurant has hidden', () => {
     // Restaurant hid kosher + halal → dietaryDefaults excludes them.
-    renderModal({
+    renderDietary({
       item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
       dietaryTagService: makeDietaryTagService(),
       dietaryDefaults: ['vegetarian', 'vegan', 'gluten-free'],
@@ -2057,7 +2081,7 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
   });
 
   it('renders a custom dietary entry (e.g. jain) as a pickable pill', () => {
-    renderModal({
+    renderDietary({
       item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
       dietaryTagService: makeDietaryTagService(),
       dietaryDefaults: ['vegetarian', 'vegan', 'gluten-free'],
@@ -2070,7 +2094,7 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
   });
 
   it('renders a custom allergen as a pickable pill alongside the FDA-9', () => {
-    renderModal({
+    renderDietary({
       item: makeDishItem({ food_tags: { allergens: [] } as MenuItemDisplay['food_tags'] }),
       dietaryTagService: makeDietaryTagService(),
       customAllergens: ['msg'],
@@ -2080,7 +2104,7 @@ describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14
   });
 
   it('falls back to the hardcoded canonical 5 when no defaults prop is passed (waiter/admin)', () => {
-    renderModal({
+    renderDietary({
       item: makeDishItem({ food_tags: { dietary: [] } as MenuItemDisplay['food_tags'] }),
       dietaryTagService: makeDietaryTagService(),
     });
@@ -2234,10 +2258,10 @@ describe('EditModal — Recipe tab', () => {
   const groupingsSlot = <div data-testid="test-groupings-slot">modifiers</div>;
   const recipeSlot = <div data-testid="test-recipe-slot">recipe</div>;
 
-  it('puts Recipe right after Dish Properties when recipeSlot is provided', () => {
+  it('puts Recipe between Menu pricing and Advanced details when recipeSlot is provided', () => {
     renderModal({ item: makeDishItem({ id: 'r-1' }), groupingsSlot, recipeSlot });
     const tabs = Array.from(document.querySelectorAll('[data-testid^="tab-"]')).map(el => el.getAttribute('data-testid'));
-    expect(tabs.slice(0, 2)).toEqual(['tab-food_tags', 'tab-recipe']);
+    expect(tabs).toEqual(['tab-food_tags', 'tab-dietary', 'tab-groupings', 'tab-placements', 'tab-recipe', 'tab-advanced', 'tab-performance']);
     expect(screen.getByTestId('tab-recipe')).toHaveTextContent('Recipe');
   });
 
@@ -2258,5 +2282,125 @@ describe('EditModal — Recipe tab', () => {
     cleanup();
     renderModal({ item: makeDishItem({ id: 'r-5' }), forceAddon: true, recipeSlot });
     expect(screen.queryByTestId('tab-recipe')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Owner Portal redesign (2026-11-10) — section rail, scope band, Menu pricing
+// ---------------------------------------------------------------------------
+
+describe('EditModal — section rail + scope band', () => {
+  it('lists the design sections for a saved dish, retained tabs below the divider', () => {
+    renderModal({
+      item: makeDishItem({ menu_associations: [{ menu_id: 'm1', menu_name: 'Lunch', price: 10 }] as MenuItemDisplay['menu_associations'] }),
+      groupingsSlot: <div>mods</div>,
+      pairingsSlot: <div>pairs</div>,
+      recipeSlot: <div>recipe</div>,
+    });
+    const rail = screen.getByTestId('edit-section-rail');
+    const ids = Array.from(rail.querySelectorAll('[data-testid^="tab-"]')).map((el) => el.getAttribute('data-testid'));
+    expect(ids).toEqual(['tab-food_tags', 'tab-dietary', 'tab-groupings', 'tab-placements', 'tab-pairings', 'tab-recipe', 'tab-advanced', 'tab-performance']);
+    expect(screen.getByTestId('tab-food_tags')).toHaveTextContent('Basics');
+    expect(screen.getByTestId('tab-placements')).toHaveTextContent('Menu pricing');
+    expect(screen.getByTestId('tab-food_tags').getAttribute('aria-current')).toBe('page');
+    expect(within(rail).getByRole('separator')).toBeInTheDocument();
+  });
+
+  it('header band says how many menus a shared item edit reaches', () => {
+    renderModal({
+      item: makeDishItem({
+        menu_associations: [
+          { menu_id: 'm1', menu_name: 'Lunch', price: 10 },
+          { menu_id: 'm2', menu_name: 'Dinner', price: 12 },
+          { menu_id: 'm3', menu_name: 'Bar', price: null },
+        ] as MenuItemDisplay['menu_associations'],
+      }),
+    });
+    expect(screen.getByTestId('edit-item-eyebrow')).toHaveTextContent('Edit item');
+    expect(screen.getByTestId('edit-item-title')).toHaveTextContent('Grilled Chicken');
+    expect(screen.getByTestId('edit-scope-pill')).toHaveTextContent('Shared item');
+    expect(screen.getByTestId('edit-scope-line')).toHaveTextContent('Changes here update this item on all 3 menus it appears on.');
+    // Basics → "On 3 menus · see menu pricing" jumps to Menu pricing.
+    fireEvent.click(screen.getByTestId('edit-goto-pricing'));
+    expect(screen.getByTestId('tab-placements').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('edit-scope-pill')).toHaveTextContent('Lunch menu only');
+    expect(screen.getByTestId('edit-scope-line')).toHaveTextContent('Price, portion and promotion are set per menu.');
+  });
+
+  it('keeps Clone · Hide · Delete behind "More actions" on the footer', () => {
+    renderModal({ item: makeDishItem() });
+    expect(screen.queryByTestId('edit-more-actions-menu')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('edit-more-actions-btn'));
+    expect(screen.getByTestId('edit-visibility-action')).toHaveTextContent('Hide from guests');
+    fireEvent.click(screen.getByTestId('edit-visibility-action'));
+    expect(screen.getByTestId('edit-active-toggle').getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByTestId('edit-save-btn')).toHaveTextContent('Save shared item');
+  });
+});
+
+describe('EditModal — Menu pricing section', () => {
+  const placements = [
+    { menu_id: 'm1', menu_name: 'Lunch', price: 47, category_name: 'Drinks', raw_categories: ['Beer (Bottle)'] },
+    { menu_id: 'm2', menu_name: 'Dinner', price: 4, category_name: 'Drinks' },
+    { menu_id: 'm3', menu_name: 'Bar', price: null },
+  ] as unknown as MenuItemDisplay['menu_associations'];
+
+  it('shows every placement on the right, the first one selected, and the review banner', () => {
+    renderModal({ item: makeDishItem({ menu_associations: placements }) });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    expect(screen.getByTestId('placements-tab')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-pricing-row-m1').getAttribute('aria-current')).toBe('true');
+    expect(screen.getByTestId('menu-pricing-row-m3')).toHaveTextContent('base');
+    expect(screen.getByTestId('menu-pricing-divergence-banner'))
+      .toHaveTextContent('Lunch is $43.00 higher than Dinner, and Bar has no price. Review before saving.');
+    expect(screen.getByTestId('menu-pricing-path-m1')).toHaveTextContent('Lunch / Drinks / Beer (Bottle)');
+    expect(screen.getByText('Saving changes Lunch only.')).toBeInTheDocument();
+  });
+
+  it('switches the editor, band and footer to the chosen menu', () => {
+    renderModal({ item: makeDishItem({ menu_associations: placements }) });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    fireEvent.click(screen.getByTestId('menu-pricing-menu-m2'));
+    expect(screen.getByTestId('placements-tab-row-m2')).toBeInTheDocument();
+    expect(screen.queryByTestId('placements-tab-row-m1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('edit-scope-pill')).toHaveTextContent('Dinner menu only');
+    expect(screen.getByTestId('placements-tab-remove-m2')).toHaveTextContent('Remove from Dinner');
+    expect(screen.getByTestId('menu-pricing-save-btn')).toHaveTextContent('Save Dinner settings');
+    expect((screen.getByTestId('placements-tab-price-m2') as HTMLInputElement).value).toBe('4');
+  });
+
+  it('commits a per-menu price on blur and flushes a pending edit from "Save <Menu> settings"', async () => {
+    const user = userEvent.setup();
+    const service = makeService({ updateMenuItemInMenu: vi.fn().mockResolvedValue([]) });
+    renderModal({ item: makeDishItem({ menu_associations: placements }), service });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    const price = screen.getByTestId('placements-tab-price-m1') as HTMLInputElement;
+    await user.clear(price);
+    await user.type(price, '18.75');
+    fireEvent.click(screen.getByTestId('menu-pricing-save-btn'));
+    await waitFor(() => {
+      expect(service.updateMenuItemInMenu).toHaveBeenCalledWith('item-1', 'm1', { price: 18.75 });
+    });
+    expect(screen.getByTestId('menu-pricing-saved-note')).toHaveTextContent('Saved to Lunch.');
+  });
+
+  it('"Remove from <Menu>" unpublishes and drops the row', async () => {
+    const service = makeService({ removeItemFromMenu: vi.fn().mockResolvedValue([]) });
+    renderModal({ item: makeDishItem({ menu_associations: placements }), service });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    fireEvent.click(screen.getByTestId('placements-tab-remove-m1'));
+    await waitFor(() => {
+      expect(service.removeItemFromMenu).toHaveBeenCalledWith('item-1', 'm1');
+    });
+    expect(screen.queryByTestId('menu-pricing-row-m1')).not.toBeInTheDocument();
+    // The next placement takes over the editor.
+    expect(screen.getByTestId('placements-tab-row-m2')).toBeInTheDocument();
+  });
+
+  it('shows the empty state when the item is on no menu', () => {
+    renderModal({ item: makeDishItem({ menu_associations: [] }) });
+    fireEvent.click(screen.getByTestId('tab-placements'));
+    expect(screen.getByTestId('placements-tab-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-scope-pill')).toHaveTextContent('Not on any menu');
   });
 });

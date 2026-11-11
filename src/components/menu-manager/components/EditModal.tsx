@@ -3,7 +3,12 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
-import { X, Upload, Camera, Trash2, Eye, EyeOff, AlertCircle, ScanEye, Pencil, ChevronDown } from 'lucide-react';
+import {
+  X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert,
+  Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils,
+  type LucideIcon,
+} from 'lucide-react';
+import { itemScopeLine, menuPricingHint, placementPath } from '../lib/editModalScope';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings, ServingOption} from '../../../types/restaurant';
 import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, type BoostLabel } from '../lib/menuUtils';
@@ -506,7 +511,7 @@ function TagInput({
 
   return (
     <div>
-      <label className="section-header" style={{ display: 'block', marginBottom: 8 }}>
+      <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
         {icon && <span aria-hidden="true" style={{ marginRight: 6 }}>{icon}</span>}{label}
       </label>
       {/* Chips + inline input flow together directly on the card — no nested
@@ -614,12 +619,10 @@ function DietaryMultiSelect({
   onAcceptAi?: () => void;
 }) {
   const [busyTag, setBusyTag] = useState<string | null>(null);
-  // Allergens read red, dietary reads green — the food-tag category colours
-  // the design system already documents (DESIGN.md §2). Solids are darkened
-  // from the #ef4444 / #10b981 tokens so the white pill labels clear 4.5:1.
-  const selectedBg = type === 'allergen'
-    ? 'var(--editor-allergen-solid, #b91c1c)'
-    : 'var(--editor-affirm-solid, #1B7A4A)';
+  // Kar chips (Owner Portal redesign): a selected label is ink on both
+  // sections — the colour no longer encodes allergen-vs-dietary, the heading
+  // does. Unselected chips are outlined.
+  const selectedBg = 'var(--ink, #111)';
   const selectedBorder = selectedBg;
 
   const handleClick = async (tagName: string) => {
@@ -669,7 +672,7 @@ function DietaryMultiSelect({
           marginBottom: 6,
         }}
       >
-        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <label style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>
           {label}
           {!reviewed && (
             <span
@@ -712,7 +715,7 @@ function DietaryMultiSelect({
         )}
       </div>
       {(
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {options.map((name) => {
             const isSelected = selectedSet.has(name);
             const isBusy = busyTag === name;
@@ -721,20 +724,23 @@ function DietaryMultiSelect({
                 key={name}
                 type="button"
                 data-testid={`dietary-pill-${type}-${name.replace(/\s+/g, '-')}`}
+                aria-pressed={isSelected}
                 onClick={() => void handleClick(name)}
                 disabled={isBusy}
                 style={{
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  fontSize: 12,
-                  fontWeight: isSelected ? 600 : 400,
-                  border: `1.5px solid ${isSelected ? selectedBorder : 'rgba(0,0,0,0.15)'}`,
-                  background: isSelected ? selectedBg : 'transparent',
-                  color: isSelected ? 'var(--surface)' : 'var(--text3)',
+                  height: 34,
+                  padding: '0 14px',
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: isSelected ? 600 : 500,
+                  border: `1px solid ${isSelected ? selectedBorder : 'var(--line, #E4E0D9)'}`,
+                  background: isSelected ? selectedBg : 'var(--surface, #fff)',
+                  color: isSelected ? 'var(--on-ink, #fff)' : 'var(--ink, #111)',
                   cursor: isBusy ? 'wait' : 'pointer',
                   opacity: isBusy ? 0.5 : 1,
                   transition: 'all 0.12s ease',
                   whiteSpace: 'nowrap',
+                  fontFamily: 'inherit',
                 }}
               >
                 {labels[name] ?? name}
@@ -753,18 +759,18 @@ function DietaryMultiSelect({
             aria-pressed={naActive}
             onClick={onToggleNa}
             style={{
-              padding: '3px 10px',
-              borderRadius: 4,
-              fontSize: 12,
+              height: 34,
+              padding: '0 14px',
+              borderRadius: 999,
+              fontSize: 13,
               fontWeight: naActive ? 600 : 500,
-              border: `1.5px dashed ${naActive
-                ? 'var(--editor-affirm-ink, #1B7A4A)'
-                : 'rgba(0,0,0,0.25)'}`,
-              background: naActive ? 'var(--editor-affirm-surface, #E8F5EE)' : 'transparent',
-              color: naActive ? 'var(--editor-affirm-ink, #1B7A4A)' : 'var(--text3)',
+              border: `1px dashed ${naActive ? 'var(--ok, #177245)' : 'var(--line-input, #D6D1C7)'}`,
+              background: naActive ? 'var(--ok-bg, #EDF5EF)' : 'var(--surface, #fff)',
+              color: naActive ? 'var(--ok, #177245)' : 'var(--ink-soft, #5A554F)',
               cursor: 'pointer',
               transition: 'all 0.12s ease',
               whiteSpace: 'nowrap',
+              fontFamily: 'inherit',
             }}
           >
             N/A
@@ -782,75 +788,155 @@ function DietaryMultiSelect({
 // initialized directly from item.food_tags. No synthetic record shape
 // needed — DietaryMultiSelect reads the set via .has(name).
 
-// ── Mobile accordion header (STR-858) ─────────────────────────────────────────
-// Collapsible section header rendered ONLY in the mobile EditModal layout, to
-// replace the horizontal-scroll tab strip + long undifferentiated scroll.
-// Desktop is untouched (it keeps the tab bar + activeTab switching). The header
-// is a ≥52px tap target; the caller gates the body render on `open`, so lazy tab
-// content (and its guarded fetches) only mount once the owner expands a section.
-type EditModalTab = 'food_tags' | 'recipe' | 'placements' | 'addons' | 'recommendations' | 'groupings' | 'pairings' | 'dishes' | 'performance';
+// ── Editor sections ───────────────────────────────────────────────────────────
+// The ids are the historical TAB ids — 'food_tags' is the Basics section,
+// 'groupings' is Modifiers and 'placements' is Menu pricing — because E2E
+// specs and canaries across four repos select `tab-<id>`. 'addons' and
+// 'recommendations' are legacy ids that no section list produces any more
+// (both concerns live in the Modifiers / Pairings slots); their panels are
+// kept below for the consumers that still thread the handlers.
+type EditModalTab =
+  | 'food_tags'
+  | 'dietary'
+  | 'recipe'
+  | 'placements'
+  | 'addons'
+  | 'recommendations'
+  | 'groupings'
+  | 'pairings'
+  | 'dishes'
+  | 'performance'
+  | 'advanced';
 
-function MobileAccordionHeader({
-  id,
+interface EditModalSectionEntry {
+  key: EditModalTab;
+  label: string;
+  icon: LucideIcon;
+  /** 'more' entries sit below a divider — the retained tabs the design has no home for. */
+  group: 'main' | 'more';
+}
+
+// Kar switch (ink when on, --switch-off when off, white knob). Local to the
+// shared package: `apps/owner/components/shared/kar/Switch` cannot be imported
+// from here (waiter and admin mount this modal too), so this is the same
+// control with the same tokens and a fallback for consumers without them.
+function InkSwitch({
+  checked,
+  onChange,
+  disabled = false,
+  testId,
+  label,
   title,
-  subtitle,
-  open,
-  onToggle,
+  mirrorPressed = false,
 }: {
-  id: string;
-  title: string;
-  subtitle?: string;
-  open: boolean;
-  onToggle: (id: string) => void;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  testId?: string;
+  label: string;
+  title?: string;
+  /** Also expose `aria-pressed` — the visibility toggle's historical contract. */
+  mirrorPressed?: boolean;
 }) {
   return (
     <button
       type="button"
-      data-testid={`edit-mobile-section-header-${id}`}
-      aria-expanded={open}
-      onClick={() => onToggle(id)}
-      style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '14px 2px',
-        minHeight: 52,
-        background: 'transparent',
-        border: 'none',
-        borderTop: '1px solid var(--border)',
-        cursor: 'pointer',
-        textAlign: 'left',
-      }}
+      role="switch"
+      aria-checked={checked}
+      aria-pressed={mirrorPressed ? checked : undefined}
+      aria-label={label}
+      aria-disabled={disabled}
+      disabled={disabled}
+      title={title}
+      data-testid={testId}
+      onClick={() => { if (!disabled) onChange(!checked); }}
+      className={`relative inline-flex shrink-0 w-9 h-5 rounded-full border-0 p-0 transition-colors ${
+        checked ? 'bg-ink' : 'bg-[var(--switch-off,#CFCAC1)]'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
-      <ChevronDown
-        size={18}
-        style={{
-          flexShrink: 0,
-          color: 'var(--text3)',
-          transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
-          transition: 'transform 0.15s',
-        }}
+      <span
+        aria-hidden="true"
+        className="absolute top-0.5 w-4 h-4 rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,.2)] transition-[left] duration-150"
+        style={{ left: checked ? 18 : 2 }}
       />
-      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
-        {subtitle ? (
-          <span
-            style={{
-              fontSize: 12,
-              color: 'var(--text3)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {subtitle}
-          </span>
-        ) : null}
-      </span>
     </button>
   );
 }
+
+// A labelled switch row ("Visible to guests", "Show spice picker" …).
+function SwitchRow({
+  label,
+  hint,
+  children,
+  testId,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={testId} className="flex items-center gap-3 py-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-ink">{label}</div>
+        {hint && <div className="text-xs text-ink-soft">{hint}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Section heading inside the editor body (the design's 16px/700 titles).
+function SectionHeading({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
+  return (
+    <div className="mb-2">
+      <h2 className="text-base font-bold text-ink m-0">{children}</h2>
+      {sub && <div className="text-[13px] text-ink-soft">{sub}</div>}
+    </div>
+  );
+}
+
+// A collapsible card ("Serving sizes & prices", "Why prices differ" …).
+function Accordion({
+  title,
+  summary,
+  open,
+  onToggle,
+  testId,
+  children,
+}: {
+  title: string;
+  summary?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="border border-line rounded-ctl">
+      <button
+        type="button"
+        data-testid={testId}
+        aria-expanded={open}
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-3.5 py-3 bg-transparent border-0 cursor-pointer text-left text-ink"
+      >
+        <ChevronDown
+          size={15}
+          className={`shrink-0 text-ink-soft transition-transform ${open ? '' : '-rotate-90'}`}
+        />
+        <span className="font-bold">{title}</span>
+        {summary && <span className="text-[13px] text-ink-soft truncate">{summary}</span>}
+      </button>
+      {open && <div className="px-3.5 pb-3.5 text-sm text-ink">{children}</div>}
+    </div>
+  );
+}
+
+const FIELD_LABEL_CLS = 'block text-[13px] font-medium text-ink-soft mb-1.5';
+const FIELD_INPUT_CLS = 'w-full h-10 rounded-ctl border border-line-input bg-surface px-3 text-sm text-ink outline-none focus:border-ink disabled:bg-surface2 disabled:text-ink-soft';
+const SECONDARY_BTN_CLS = 'h-10 px-4 rounded-ctl border border-line bg-surface text-sm font-semibold text-ink cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed';
+const PRIMARY_BTN_CLS = 'h-10 px-[18px] rounded-ctl border-0 bg-ink text-on-ink text-sm font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed';
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
@@ -1305,41 +1391,41 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
 
-  // Tab state — Food Tags | Placements (saved dishes) | Add-ons | Recommendations | Groupings (BYO only) | Performance (dish items) or Performance | Dishes (addon items)
+  // Section state (Owner Portal redesign, 2026-11-10). The editor is ONE
+  // section at a time on every breakpoint — a 210px rail on desktop, a
+  // dropdown on phones — and both drive `activeTab`. Tab ids are unchanged
+  // ('food_tags' = Basics, 'groupings' = Modifiers, 'placements' = Menu
+  // pricing) so the E2E specs and canaries that key off `tab-<id>` keep
+  // working; only the labels and the layout changed.
+  //
+  // Available sections:
+  //   Dish            → Basics · Dietary · Modifiers · Menu pricing · Pairings · Recipe · Advanced | Performance
+  //   Existing add-on → Basics · Dietary · Advanced | Performance · Dishes
+  //   NEW item        → Basics · Dietary · Advanced (associations happen later)
+  // Every mode lands on Basics (the design opens on the item's name and
+  // photo); the section resets when the editor is reused for another item.
   const [activeTab, setActiveTab] = useState<EditModalTab>('food_tags');
-
-  // Mobile accordion (STR-858) — which sections are expanded on the mobile
-  // layout. Desktop ignores this entirely (it uses the tab bar + activeTab).
-  // "basics" + "image" are open by default; the heavier tab-backed sections
-  // collapse to tame density and eliminate the horizontal-scroll tab strip.
-  // Toggling a tab-backed section
-  // ALSO sets activeTab so the lazy per-tab fetches (performance/dishes) still
-  // fire on expand — the guarded effects key off activeTab.
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(['basics', 'image']));
-  const toggleSection = useCallback((id: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    if (id === 'food_tags' || id === 'recipe' || id === 'placements' || id === 'groupings' || id === 'pairings' || id === 'dishes' || id === 'performance') {
-      setActiveTab(id);
-    }
-  }, []);
-
-  // Land on a valid tab for the current mode. Available tab sets:
-  //   Dish            → [food_tags, placements, groupings, performance]
-  //   Existing add-on → [food_tags, performance, dishes]
-  //   NEW add-on/mod  → [food_tags] only (Dishes tab removed during creation,
-  //                      2026-07-18 — associations happen later via a dish's
-  //                      Groupings → Add member picker)
-  // Existing add-ons default to 'performance' (analytics-first); everything
-  // else (new add-on, dishes) defaults to 'food_tags'. Dep list is
-  // [isAddon, isNewItem] only — including activeTab would loop.
   useEffect(() => {
-    setActiveTab(isAddon && !isNewItem ? 'performance' : 'food_tags');
-  }, [isAddon, isNewItem]);
+    setActiveTab('food_tags');
+  }, [item.id, isAddon, isNewItem]);
+
+  // Footer "More actions ▾" menu (Clone · Hide/Show · Delete).
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  // Basics → "Flavor, ingredients & other details" accordion.
+  const [flavorOpen, setFlavorOpen] = useState(false);
+  // Menu pricing → which menu's price / portion / promotion is being edited.
+  // null = first placement. Also drives the header band ("<Menu> menu only")
+  // and the per-menu footer.
+  const [pricingMenuId, setPricingMenuId] = useState<string | null>(null);
+  // Menu pricing → "Save <Menu> settings" flushes the blur-committed text
+  // buffers inside the editor; the editor registers its flush here.
+  const pricingFlushRef = useRef<(() => void) | null>(null);
+  const [pricingSavedAt, setPricingSavedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (pricingSavedAt == null) return;
+    const t = setTimeout(() => setPricingSavedAt(null), 2500);
+    return () => clearTimeout(t);
+  }, [pricingSavedAt]);
 
   // Placements tab state — local mirror of menu_associations so per-row
   // inline edits (price, boost, chef's special, portion) and per-row
@@ -2433,985 +2519,353 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     removing:   'Removing…',
   };
 
-  // Desktop enter transition. Same mechanic BulkMenuSidesPanel and
-  // BulkActionsPanel use: mount off-screen, then flip to translateX(0) on the
-  // first frame after mount so the browser has something to animate FROM.
-  // Enter only — close is left exactly as it was, so nothing that waits on the
-  // modal disappearing has to learn a new timing.
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setDrawerOpen(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  // ── Section rail ──────────────────────────────────────────────────────────
+  const isWine = category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine';
+  // Dietary & allergens applies to dishes and add-ons alike; wine carries no
+  // dietary/allergen/spice facets so the section is hidden for it.
+  const showDietarySection = !isWine;
+  const placementsCount = placementsDraft.filter((a) => !!a.menu_id).length;
+  const sections: EditModalSectionEntry[] = [
+    { key: 'food_tags', label: 'Basics', icon: Tag, group: 'main' },
+    ...(showDietarySection ? [{ key: 'dietary', label: 'Dietary & allergens', icon: Leaf, group: 'main' } as const] : []),
+    ...(!isAddon && !isNewItem && groupingsSlot ? [{ key: 'groupings', label: 'Modifiers', icon: SlidersHorizontal, group: 'main' } as const] : []),
+    ...(!isAddon && !isNewItem ? [{ key: 'placements', label: 'Menu pricing', icon: Database, group: 'main' } as const] : []),
+    // Pairings is gated on the SAME condition as Modifiers (saved, non-addon
+    // dish with a groupings slot) — pairings-without-modifiers is incoherent.
+    ...(!isAddon && !isNewItem && groupingsSlot && pairingsSlot ? [{ key: 'pairings', label: 'Pairings', icon: Wine, group: 'main' } as const] : []),
+    ...(showRecipeTab ? [{ key: 'recipe', label: 'Recipe', icon: ChefHat, group: 'main' } as const] : []),
+    { key: 'advanced', label: 'Advanced details', icon: Settings, group: 'main' },
+    ...(!isNewItem ? [{ key: 'performance', label: 'Performance', icon: BarChart3, group: 'more' } as const] : []),
+    ...(isAddon && !isNewItem ? [{ key: 'dishes', label: `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`, icon: Utensils, group: 'more' } as const] : []),
+  ];
+  const isPricingSection = activeTab === 'placements';
+  const pricingMenu = isPricingSection
+    ? (placementsDraft.find((a) => a.menu_id === pricingMenuId) ?? placementsDraft[0] ?? null)
+    : null;
+  const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`;
 
-  // Container styles vary by displayMode. Inline mode fills its parent —
-  // no fixed position, no backdrop, no shadow — so the same body renders
-  // as the right panel of the Food Items page without changing any of the
-  // form internals.
-  const containerStyle: React.CSSProperties = isInline
-    ? {
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        background: EDITOR_GROUND,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
+  // Menu pricing — optimistic per-menu write with rollback. `patch` keys mirror
+  // MenuItemJunctionSettings; the local draft accepts the same shapes.
+  const persistPlacement = useCallback(
+    async (menuId: string, patch: Partial<MenuItemJunctionSettings>) => {
+      if (placementsSaving.has(menuId)) return;
+      const before = placementsDraft;
+      setPlacementsDraft((prev) => prev.map((a) =>
+        a.menu_id === menuId ? { ...a, ...patch } as MenuAssociation : a,
+      ));
+      setPlacementSaving(menuId, true);
+      try {
+        await service.updateMenuItemInMenu(item.id, menuId, patch);
+      } catch (err) {
+        console.error(`Failed to update menu placement ${menuId} for ${item.id}`, err);
+        setPlacementsDraft(before);
+      } finally {
+        setPlacementSaving(menuId, false);
       }
-    : isMobile
-      ? {
-          // Mobile: full-screen sheet with the existing dark backdrop preserved.
-          // `dvh` accounts for iOS Safari's collapsing URL bar.
-          position: 'fixed',
-          inset: 0,
-          zIndex: 70,
-          width: '100dvw',
-          maxWidth: '100dvw',
-          height: '100dvh',
-          maxHeight: '100dvh',
-          background: EDITOR_GROUND,
-          borderRadius: 0,
-          boxShadow: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }
-      : {
-          // Desktop: a RIGHT-SIDE DRAWER, not a centred box. It is reached from
-          // the Food Items list and should read as one — same geometry as the
-          // Pairings and bulk-action drawers (DESIGN.md §4). Full height and
-          // flush right means the list stays visible beside it, which a
-          // centred 90vh box sitting over the middle of the page did not.
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 70,
-          width: 960,
-          maxWidth: 'calc(100vw - 48px)',
-          background: EDITOR_GROUND,
-          borderRadius: 0,
-          boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
-          transform: drawerOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)',
-          willChange: 'transform',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        };
-
-  // Item image panel — extracted 2026-09-02 so ADD-ONS can have pictures too.
-  //
-  // It used to live inline inside the `!isAddon` two-column "dish-basic-info"
-  // section, which is why a modifier member could never be given an image:
-  // add-ons render a different single-column layout that simply had no image
-  // UI at all. Extracting it — rather than duplicating ~180 lines — keeps ONE
-  // implementation of upload / enhance / remove so the two layouts cannot drift.
-  const imagePanel = (
-              <div
-                data-testid="item-image-panel"
-                style={{
-                  width: '100%',
-                  display: isMobile && !expandedSections.has('image') ? 'none' : 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                {/* Image display */}
-                <div
-                  data-testid="edit-thumbnail"
-                  style={{
-                    width: '100%',
-                    height: 240,
-                    borderRadius: 'var(--r)',
-                    background: thumbnail ? undefined : 'var(--surface2)',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: thumbnail ? 'none' : '2px dashed var(--border)',
-                    position: 'relative',
-                  }}
-                >
-                  {imgBusy ? (
-                    <span className="text-caption" style={{ textAlign: 'center', padding: 12 }}>
-                      {imgBusyLabel[imgBusy]}
-                    </span>
-                  ) : thumbnail ? (
-                    <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ textAlign: 'center', color: 'var(--text2)' }}>
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>🍽</div>
-                      <div className="text-caption">Add an image</div>
-                    </div>
-                  )}
-                </div>
-  
-                {/* Image action buttons */}
-                {/* "Upload photo" — pure file picker (no capture attribute).
-                    On mobile this opens the device photo library; the
-                    separate "Take Photo" button below opens the camera. */}
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleUpload}
-                  style={{ display: 'none' }}
-                  data-testid="edit-image-file-input"
-                />
-                {/* Mobile-only: separate file input pinned to the rear camera. */}
-                {isMobile && (
-                  <input
-                    ref={cameraRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleUpload}
-                    style={{ display: 'none' }}
-                    data-testid="edit-image-camera-input"
-                  />
-                )}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {isMobile && (
-                    <button
-                      type="button"
-                      onClick={() => cameraRef.current?.click()}
-                      disabled={!!imgBusy}
-                      data-testid="edit-take-photo-btn"
-                      style={imgActionStyle('blue')}
-                    >
-                      <Camera size={12} />
-                      {imgBusy === 'uploading' ? 'Uploading…' : 'Take Photo'}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    disabled={!!imgBusy}
-                    data-testid="edit-upload-btn"
-                    style={imgActionStyle()}
-                  >
-                    <Upload size={12} />
-                    {imgBusy === 'uploading' ? 'Uploading…' : 'Upload'}
-                  </button>
-                  {!thumbnail && imageLibrarySlot && imageLibrarySlot({
-                    itemId: item.id,
-                    itemName: name,
-                    onPicked: (url) => setThumbnail(url),
-                  })}
-                  {thumbnail && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        disabled={!!imgBusy}
-                        data-testid="edit-remove-image-btn"
-                        style={imgActionStyle('red')}
-                      >
-                        <Trash2 size={12} />
-                        {imgBusy === 'removing' ? 'Removing…' : 'Remove'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPreviewOpen(true)}
-                        disabled={!!imgBusy}
-                        data-testid="preview-button"
-                        style={imgActionStyle()}
-                      >
-                        <ScanEye size={12} />
-                        Preview
-                      </button>
-                    </>
-                  )}
-                </div>
-  
-                {/* Choose from Gallery — opens an in-place picker that
-                    takes over the right-side tab content. Distinct from
-                    imageLibrarySlot (external modal): this is a sibling
-                    of Upload that swaps the right pane with a gallery
-                    view (Yelp / Google / Drive tabs). */}
-                {galleryPanelSlot && (
-                  <button
-                    type="button"
-                    data-testid="edit-choose-from-gallery-btn"
-                    onClick={() => setGalleryOpen(true)}
-                    disabled={!!imgBusy}
-                    style={{
-                      width: '100%',
-                      height: 38,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface)',
-                      color: 'var(--text)',
-                      borderRadius: 'var(--r-xs)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: imgBusy ? 'not-allowed' : 'pointer',
-                      fontFamily: 'inherit',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      transition: 'background 0.15s, border-color 0.15s',
-                    }}
-                  >
-                    <Eye size={13} />
-                    Choose from Gallery
-                  </button>
-                )}
-  
-                {/* Image error */}
-                {imgError && (
-                  <div className="text-caption" style={{ color: 'var(--bad)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <AlertCircle size={11} />
-                    {imgError}
-                  </div>
-                )}
-  
-                {/* Soft warning when no image */}
-                {!thumbnail && !imgBusy && (
-                  <div
-                    data-testid="no-image-warning"
-                    className="text-caption"
-                    style={{
-                      color: 'var(--warn)',
-                      background: 'var(--warn-bg)',
-                      border: '1px solid #EBDDC2',
-                      borderRadius: 6,
-                      padding: '6px 8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 5,
-                    }}
-                  >
-                    <AlertCircle size={11} />
-                    Add an image to complete this item
-                  </div>
-                )}
-              </div>
+    },
+    [placementsDraft, placementsSaving, setPlacementSaving, service, item.id],
+  );
+  const removePlacement = useCallback(
+    async (menuId: string) => {
+      if (placementsSaving.has(menuId)) return;
+      const before = placementsDraft;
+      setPlacementsDraft((prev) => prev.filter((a) => a.menu_id !== menuId));
+      setPlacementSaving(menuId, true);
+      try {
+        await service.removeItemFromMenu(item.id, menuId);
+      } catch (err) {
+        console.error(`Failed to unpublish ${item.id} from menu ${menuId}`, err);
+        setPlacementsDraft(before);
+      } finally {
+        setPlacementSaving(menuId, false);
+      }
+    },
+    [placementsDraft, placementsSaving, setPlacementSaving, service, item.id],
   );
 
-  return (
-    <>
-      {/* Backdrop — modal mode only */}
-      {!isInline && (
-        <div
-          onClick={onClose}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            background: 'rgba(0,0,0,0.4)',
-          }}
-          data-testid="edit-modal-backdrop"
+  // Header title — live from the Name field so a rename reads back at once.
+  const headerTitle = name.trim() || (isAddon ? 'New add-on' : 'New item');
+  const scopeLine = isNewItem
+    ? 'Saved to the library; add it to menus from Menu pricing once saved.'
+    : isAddon
+      ? 'Changes here update this add-on on every dish that offers it.'
+      : itemScopeLine(placementsCount);
+
+  // ── Item image panel — shared by the dish and add-on Basics layouts ───────
+  const imagePanel = (
+    <div data-testid="item-image-panel" className="w-full flex flex-col gap-2">
+      <div
+        data-testid="edit-thumbnail"
+        className={`w-full aspect-square rounded-ctl overflow-hidden flex items-center justify-center relative ${
+          thumbnail ? '' : 'bg-surface2 border-2 border-dashed border-line'
+        }`}
+      >
+        {imgBusy ? (
+          <span className="text-xs text-ink-soft text-center p-3">{imgBusyLabel[imgBusy]}</span>
+        ) : thumbnail ? (
+          <img src={thumbnail} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="text-center text-ink-faint">
+            <Images size={26} className="mx-auto mb-1" aria-hidden="true" />
+            <div className="text-xs">item photo</div>
+          </div>
+        )}
+      </div>
+
+      {/* "Change / Upload" — pure file picker (no capture attribute). On
+          mobile this opens the device photo library; the separate "Take
+          photo" button opens the camera. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUpload}
+        style={{ display: 'none' }}
+        data-testid="edit-image-file-input"
+      />
+      {isMobile && (
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleUpload}
+          style={{ display: 'none' }}
+          data-testid="edit-image-camera-input"
         />
       )}
-
-      {/* Modal / inline editor — same body in both modes */}
-      <div
-        data-testid="edit-item-modal"
-        data-mobile={isMobile ? 'true' : undefined}
-        data-display-mode={displayMode}
-        style={containerStyle}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: '12px 16px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexShrink: 0,
-            flexWrap: 'wrap',
-          }}
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={!!imgBusy}
+          data-testid="edit-upload-btn"
+          className="flex-1 h-8 rounded-ctl border border-ink bg-surface text-xs font-semibold text-ink cursor-pointer inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
         >
-          {/* Item name — inline-editable. The title in the EditModal
-              header IS the canonical Name field; the duplicate input
-              that lived in Basic Info has been removed. The pencil
-              affordance to the right is the visible cue that the
-              title is editable — clicking it focuses the input and
-              selects all text for fast rename. Errors render below
-              the header in the body so the layout stays compact. */}
-          <div style={{ flex: isMobile ? '1 1 100%' : 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input
-              ref={nameInputRef}
-              id="edit-name"
-              type="text"
-              value={name}
-              placeholder={modifierTypeName
-                ? (item.name || `${modifierTypeName} name`)
-                : isAddon
-                  ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
-                  : (isNewItem ? (item.name || 'Item name') : 'Item name')}
-              onChange={(e) => { setName(e.target.value); setNameError(false); }}
-              aria-label="Item name"
-              aria-required="true"
-              aria-invalid={(nameError || showNameInvalid) || undefined}
-              data-testid="edit-name-input"
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: 'var(--text)',
-                // Amber-yellow tint when the clone draft is in its initial
-                // (must-rename) state so the field reads as "this needs
-                // your attention" rather than a passive title. New items
-                // and clone drafts get an explicit red border whenever
-                // the rename rules aren't satisfied yet. Existing-item
-                // edits stay transparent unless a save attempt failed.
-                // The title IS a text box, so it gets the input surface like
-                // every other field — it was `transparent`, which meant it
-                // showed the ground behind it and did not read as editable.
-                // The amber clone-draft tint still wins.
-                background: (cloneMode && _nameUnchangedFromSource)
-                  ? 'var(--editor-ai-surface, #FFFBF5)'
-                  : EDITOR_INPUT,
-                // 1.5px solid, not transparent: on the white drawer shell a
-                // transparent border made the canonical Name INPUT read as a
-                // heading. The outline plus the inset shadow is what says
-                // "you can type here".
-                border: (nameError || showNameInvalid)
-                  ? '2px solid #b91c1c'
-                  : '1.5px solid var(--border)',
-                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.04)',
-                borderRadius: 6,
-                padding: '4px 8px',
-                margin: '-4px 0 -4px -8px',
-                flex: 1,
-                minWidth: 0,
-                outline: 'none',
-                fontFamily: 'inherit',
-                transition: 'border-color 0.12s ease, background 0.12s ease',
-              }}
-              onFocus={(e) => {
-                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'var(--border)';
-                e.currentTarget.style.background = EDITOR_INPUT;
-              }}
-              onBlur={(e) => {
-                // Restore the RESTING style, not `transparent`. Blurring used to
-                // strip both the border and the surface, so the field lost its
-                // box after the very first focus and went back to looking like a
-                // heading — a pre-existing bug the white shell makes obvious.
-                if (!nameError && !showNameInvalid) e.currentTarget.style.borderColor = 'var(--border)';
-                if (!(cloneMode && _nameUnchangedFromSource)) {
-                  e.currentTarget.style.background = EDITOR_INPUT;
-                }
-              }}
-            />
+          <Upload size={12} aria-hidden="true" />
+          {imgBusy === 'uploading' ? 'Uploading…' : thumbnail ? 'Change' : 'Upload'}
+        </button>
+        {galleryPanelSlot && (
+          <button
+            type="button"
+            data-testid="edit-choose-from-gallery-btn"
+            onClick={() => setGalleryOpen(true)}
+            disabled={!!imgBusy}
+            className="flex-1 h-8 rounded-ctl border border-line bg-surface text-xs font-semibold text-ink cursor-pointer inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
+          >
+            <Eye size={12} aria-hidden="true" />
+            Gallery
+          </button>
+        )}
+      </div>
+      {(isMobile || thumbnail || (!thumbnail && imageLibrarySlot)) && (
+        <div className="flex flex-wrap gap-1.5">
+          {isMobile && (
             <button
               type="button"
-              data-testid="edit-name-pencil"
-              aria-label="Edit name"
-              onClick={() => {
-                const el = nameInputRef.current;
-                if (!el) return;
-                el.focus();
-                el.select();
-              }}
-              style={{
-                flexShrink: 0,
-                width: isMobile ? 44 : 28,
-                height: isMobile ? 44 : 28,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 6,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'background 0.12s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-neutral-gray-100, #f3f4f6)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => cameraRef.current?.click()}
+              disabled={!!imgBusy}
+              data-testid="edit-take-photo-btn"
+              className="h-8 px-2.5 rounded-ctl border border-line bg-surface text-xs font-semibold text-ink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60"
             >
-              <Pencil size={14} strokeWidth={2.25} />
+              <Camera size={12} aria-hidden="true" />
+              {imgBusy === 'uploading' ? 'Uploading…' : 'Take photo'}
             </button>
-          </div>
-
-          {/* Active / visibility toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsActive((v) => {
-                trackAction('menu.editModal.toggleActive', {
-                  restaurantId,
-                  metadata: { itemId: item.id, next: !v },
-                });
-                return !v;
-              });
-            }}
-            data-testid="edit-active-toggle"
-            aria-pressed={isActive}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontWeight: 600, padding: isMobile ? '0 12px' : '4px 10px',
-              minHeight: isMobile ? 44 : undefined,
-              borderRadius: 4,
-              border: `1px solid ${isActive
-                ? 'var(--editor-affirm-border, #b6ecd2)'
-                : '#fca5a5'}`,
-              background: isActive
-                ? 'var(--editor-affirm-surface, #E8F5EE)'
-                : '#fee2e2',
-              color: isActive
-                ? 'var(--editor-affirm-ink, #1B7A4A)'
-                : 'var(--editor-allergen-ink, #b91c1c)',
-              cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            {isActive ? <Eye size={12} /> : <EyeOff size={12} />}
-            {isActive ? 'Visible' : 'Hidden'}
-          </button>
-
-          {/* Divider — hidden on mobile where the header reflows into rows. */}
-          <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, display: isMobile ? 'none' : undefined }} />
-
-          {/* Delete / confirmation — DESKTOP header only. On mobile (STR-858)
-              the destructive Delete is relocated out of the header to the bottom
-              of the scroll (behind the same 2-step confirm) so it's never a
-              stray thumb-tap next to the everyday controls. */}
-          {!isMobile && deleteConfirming ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                Delete permanently?
-              </span>
-              <button
-                type="button"
-                onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
-                data-testid="delete-item-cancel"
-                disabled={deleteLoading}
-                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                data-testid="delete-item-confirm"
-                disabled={deleteLoading}
-                style={{ padding: isMobile ? '0 14px' : '5px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 12, fontWeight: 700, color: 'var(--on-ink)', background: 'var(--bad)', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
-              >
-                {deleteLoading ? 'Deleting…' : 'Confirm'}
-              </button>
-            </div>
-          ) : (
+          )}
+          {!thumbnail && imageLibrarySlot && imageLibrarySlot({
+            itemId: item.id,
+            itemName: name,
+            onPicked: (url) => setThumbnail(url),
+          })}
+          {thumbnail && (
             <>
-              {!isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirming(true)}
-                  disabled={saving}
-                  data-testid="delete-item-btn"
-                  style={{ fontSize: 12, fontWeight: 600, color: 'var(--bad)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                >
-                  Delete
-                </button>
-              )}
-              {/* Admin-only Enrich button — appears when onEnrichItem prop
-                  is wired by the consumer (admin-webapp). Owner-webapp does
-                  NOT pass the prop, so owners see no button (their enrich
-                  flow is auto-on-save, per the PDD). Hidden for new items
-                  whose id isn't in the DB yet. */}
-              {onEnrichItem && !isNewItem && item.id && (
-                <button
-                  type="button"
-                  onClick={handleEnrichClick}
-                  disabled={saving || enriching}
-                  data-testid="edit-enrich-btn"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 600, color: 'var(--ink)',
-                    background: 'var(--surface2)', border: '1px solid var(--line)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
-                    cursor: (saving || enriching) ? 'not-allowed' : 'pointer',
-                    opacity: (saving || enriching) ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
-                  }}
-                >
-                  {enriching ? 'Enriching…' : 'Enrich with AI'}
-                </button>
-              )}
-              {/* Clone — opens a clone draft of this item. Opt-in via
-                  onCloneRequest from the consumer; hidden during create
-                  flows (isNewItem) and during the clone flow itself
-                  (cloneMode). The consumer is responsible for closing
-                  this modal and reopening it in cloneMode with the
-                  source item seeded as `{ ...source, name: source.name +
-                  ' (Copy)' }`. */}
-              {onCloneRequest && !isNewItem && !cloneMode && item.id && (
-                <button
-                  type="button"
-                  onClick={() => onCloneRequest(item)}
-                  disabled={saving || cloneSaving}
-                  data-testid="edit-clone-btn"
-                  style={{
-                    fontSize: 12, fontWeight: 600,
-                    color: 'var(--editor-secondary-ink, #374151)',
-                    background: 'var(--editor-secondary-bg, #f3f4f6)',
-                    border: '1px solid var(--editor-secondary-border, #e5e7eb)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '6px 12px', minHeight: isMobile ? 44 : undefined,
-                    cursor: (saving || cloneSaving) ? 'not-allowed' : 'pointer',
-                    opacity: (saving || cloneSaving) ? 0.7 : 1,
-                    whiteSpace: 'nowrap', flexShrink: 0,
-                  }}
-                >
-                  Clone
-                </button>
-              )}
-              {cloneMode && onCloneSave ? (
-                <button
-                  type="button"
-                  onClick={handleCloneSave}
-                  disabled={cloneSaving || showNameInvalid}
-                  data-testid="edit-clone-save-btn"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 700, color: 'var(--on-ink)',
-                    background: 'var(--brand)',
-                    border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
-                    // Mobile: primary action spans the last row for a clear,
-                    // thumb-friendly commit target.
-                    order: isMobile ? 2 : undefined,
-                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
-                    // so it never conflicts with flexShrink on rerender (React warns
-                    // when shorthand + longhand for the same value are mixed).
-                    flexGrow: isMobile ? 1 : 0,
-                    flexShrink: isMobile ? 1 : 0,
-                    flexBasis: isMobile ? '100%' : 'auto',
-                    justifyContent: isMobile ? 'center' : undefined,
-                    cursor: (cloneSaving || showNameInvalid) ? 'not-allowed' : 'pointer',
-                    opacity: (cloneSaving || showNameInvalid) ? 0.7 : 1,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {cloneSaving ? 'Saving…' : 'Save Copy'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  data-testid="edit-save-btn"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 12, fontWeight: 700, color: 'var(--on-ink)',
-                    background: 'var(--brand)',
-                    border: 'none', borderRadius: 'var(--r-xs)',
-                    padding: '6px 14px', minHeight: isMobile ? 44 : undefined,
-                    // Mobile: primary action spans the last row for a clear,
-                    // thumb-friendly commit target.
-                    order: isMobile ? 2 : undefined,
-                    // Longhand (grow/shrink/basis) — NOT the `flex` shorthand —
-                    // so it never conflicts with flexShrink on rerender (React warns
-                    // when shorthand + longhand for the same value are mixed).
-                    flexGrow: isMobile ? 1 : 0,
-                    flexShrink: isMobile ? 1 : 0,
-                    flexBasis: isMobile ? '100%' : 'auto',
-                    justifyContent: isMobile ? 'center' : undefined,
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.7 : 1,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                disabled={!!imgBusy}
+                data-testid="preview-button"
+                className="h-8 px-2.5 rounded-ctl border border-line bg-surface text-xs font-semibold text-ink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60"
+              >
+                <ScanEye size={12} aria-hidden="true" />
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                disabled={!!imgBusy}
+                data-testid="edit-remove-image-btn"
+                className="h-8 px-2.5 rounded-ctl border border-line bg-surface text-xs font-semibold text-bad cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60"
+              >
+                <Trash2 size={12} aria-hidden="true" />
+                {imgBusy === 'removing' ? 'Removing…' : 'Remove'}
+              </button>
             </>
           )}
+        </div>
+      )}
+      {imgError && (
+        <div className="text-xs text-bad flex items-center gap-1">
+          <AlertCircle size={11} aria-hidden="true" />
+          {imgError}
+        </div>
+      )}
+      {!thumbnail && !imgBusy && (
+        <div
+          data-testid="no-image-warning"
+          className="text-xs text-warn bg-warn-bg rounded-ctl px-2 py-1.5 flex items-center gap-1.5"
+        >
+          <AlertCircle size={11} aria-hidden="true" />
+          Add an image to complete this item
+        </div>
+      )}
+    </div>
+  );
 
-          {/* Close — also serves as cancel */}
+  // ── Name field (Basics) — the canonical Name input ────────────────────────
+  const nameField = (
+    <div>
+      <label className={FIELD_LABEL_CLS} htmlFor="edit-name">Name</label>
+      <input
+        ref={nameInputRef}
+        id="edit-name"
+        type="text"
+        value={name}
+        placeholder={modifierTypeName
+          ? (item.name || `${modifierTypeName} name`)
+          : isAddon
+            ? (isNewItem ? (item.name || 'Add-on name, e.g. Extra Chicken, Sub Beef') : 'Add-on name')
+            : (isNewItem ? (item.name || 'Item name') : 'Item name')}
+        onChange={(e) => { setName(e.target.value); setNameError(false); }}
+        aria-label="Item name"
+        aria-required="true"
+        aria-invalid={(nameError || showNameInvalid) || undefined}
+        data-testid="edit-name-input"
+        className={`${FIELD_INPUT_CLS} ${(nameError || showNameInvalid) ? 'border-bad' : ''} ${
+          cloneMode && _nameUnchangedFromSource ? 'bg-warn-bg' : ''
+        }`}
+      />
+      {/* Helper-text precedence: (1) nameError after a failed Save click,
+          (2) showNameInvalid — live derived state for new-item / clone-draft
+          modes ("Name is required" / "cannot contain 'Copy'" / "must differ"). */}
+      {showNameInvalid && nameHelperText ? (
+        <div className="text-xs text-bad mt-1" data-testid="edit-name-error">{nameHelperText}</div>
+      ) : nameError ? (
+        <div className="text-xs text-bad mt-1" data-testid="edit-name-error">Name is required</div>
+      ) : null}
+    </div>
+  );
+
+  // ── Visible-to-guests row — the active flag ───────────────────────────────
+  const visibilityRow = (
+    <div className="flex items-center gap-3 flex-wrap py-3">
+      <InkSwitch
+        checked={isActive}
+        mirrorPressed
+        label="Visible to guests"
+        testId="edit-active-toggle"
+        onChange={(next) => {
+          trackAction('menu.editModal.toggleActive', {
+            restaurantId,
+            metadata: { itemId: item.id, next },
+          });
+          setIsActive(next);
+        }}
+      />
+      <span className="font-semibold text-ink">Visible to guests</span>
+      {!isActive && <span className="text-[13px] text-ink-soft">Hidden from every menu until switched back on.</span>}
+      {!isAddon && !isNewItem && (
+        <span className="text-ink-soft border-l border-line pl-3">
+          On {placementsCount} {placementsCount === 1 ? 'menu' : 'menus'} ·{' '}
           <button
             type="button"
-            onClick={onClose}
-            data-testid="edit-cancel-btn"
-            aria-label="Close"
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'var(--text2)', padding: 4, borderRadius: 4,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined,
-              // Mobile: sits at the right end of the secondary row (order 1 keeps
-              // it ahead of the full-width Save at order 2).
-              order: isMobile ? 1 : undefined, marginLeft: isMobile ? 'auto' : undefined,
-            }}
+            data-testid="edit-goto-pricing"
+            onClick={() => setActiveTab('placements')}
+            className="bg-transparent border-0 p-0 font-semibold text-ink cursor-pointer"
           >
-            <X size={isMobile ? 20 : 16} />
+            see menu pricing
           </button>
-        </div>
+        </span>
+      )}
+    </div>
+  );
 
-        {/* Body — flex column: fixed top (banners + basic info + tabs) + scrollable tab content */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '20px', paddingBottom: 0 }}>
+  const tasteSummary = (tags.taste_profile ?? []).slice(0, 3).join(' · ');
 
-          {/* Clone-mode banner — appears whenever the modal is in a clone
-              draft, so the owner immediately understands they're creating
-              a new copy of an existing dish, not editing the original.
-              The Save Copy button in the header is the only commit path. */}
-          {cloneMode && (
-            <div
-              data-testid="edit-clone-banner"
-              style={{
-                background: 'var(--editor-ai-surface, #FFFBF5)',
-                border: '1px solid var(--editor-ai-border, #FFE8CC)',
-                color: 'var(--editor-ai-ink, #A05A00)',
-                borderRadius: 6,
-                padding: '8px 12px',
-                marginBottom: 16,
-                fontSize: 12,
-                lineHeight: 1.45,
-              }}
-            >
-              <strong>Cloning {cloneSourceName ? `“${cloneSourceName}”` : 'this item'}.</strong>{' '}
-              All other fields are copied verbatim — only the name needs to
-              change. Rename the dish above (it must differ from the source
-              and cannot contain “Copy”), then click <em>Save Copy</em>.
-            </div>
-          )}
-          {/* Error banners */}
-          {saveError && (
-            <div
-              data-testid="edit-save-error"
-              className="text-caption"
-              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
-            >
-              <AlertCircle size={12} />
-              {saveError}
-            </div>
-          )}
-          {cloneError && (
-            <div
-              data-testid="edit-clone-error"
-              className="text-caption"
-              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
-            >
-              <AlertCircle size={12} />
-              {cloneError}
-            </div>
-          )}
-          {deleteError && (
-            <div
-              className="text-caption"
-              style={{ color: 'var(--bad)', background: 'var(--bad-bg)', borderRadius: 4, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}
-            >
-              <AlertCircle size={12} />
-              {deleteError}
-            </div>
-          )}
-
-          {/* Layout container — for dish mode on desktop the basic-info
-              column (image + description + category + appears-in) sits
-              beside the tabs section in a 280px-1fr grid. Mobile and
-              addon mode collapse to flex-column so everything stacks
-              naturally. The body wrapper above stays flex-column either
-              way; this nested container localises the dish-side grid. */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              // STR-963: the WHOLE dish editor is ONE scroll column on every
-              // breakpoint (image → basic info → tabs → tab content), matching
-              // the redesign mockup's single-page scroll. Previously only mobile
-              // did this; desktop boxed the tab content in its own inner scroller
-              // (the cramped Food-Tags scrollbar the owner rejected). Now the
-              // container owns the scroll and every pane flows at natural height.
-              // paddingBottom keeps the last content clear (of the Crisp bubble
-              // on mobile).
-              overflowY: 'auto',
-              WebkitOverflowScrolling: 'touch',
-              paddingBottom: isMobile ? 88 : 20,
-              ...(!isAddon && !isMobile
-                ? {
-                    display: 'grid',
-                    gridTemplateColumns: '280px 1fr',
-                    columnGap: 20,
-                    // start-align so each column keeps its own height and the
-                    // container scrolls to the taller (right / tabs) column.
-                    alignItems: 'start',
-                  }
-                : {
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }),
-            }}
-          >
-          {/* ── Body — layout branches on isAddon (STR-303) ───────────────────
-              Dishes mode: full two-column (image + basic info + food-tag fields via tabs)
-              Add-ons mode: simplified single-column (Name + Price + Description) */}
-          {!isAddon && (
-          <section
-            data-testid="dish-basic-info"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              // STR-963: no inner scroll on the left rail — it flows inside the
-              // single dish-editor scroll owned by the parent layout container.
-              ...(!isMobile ? { paddingRight: 4, paddingBottom: 4 } : { marginBottom: 20 }),
-            }}
-          >
-
-            {/* Mobile (STR-858): the 240px image block is the biggest
-                real-estate hog and lowest in-shift value — collapse it into an
-                accordion section (closed by default). Desktop always shows it. */}
-            {isMobile && (
-              <MobileAccordionHeader
-                id="image"
-                title="Image"
-                open={expandedSections.has('image')}
-                onToggle={toggleSection}
-              />
-            )}
-            {/* Image panel — image + buttons + warnings */}
-            {imagePanel}
-
-            {/* Name field moved to the modal header — see the
-                inline-editable title at the top of EditModal. The
-                error state surfaces here as a single row so layout
-                doesn't shift when the user blanks the field.
-
-                Helper-text precedence:
-                  1. nameError (set after a failed Save click) → "Name is
-                     required" — kept for back-compat with existing-item
-                     edits that don't pass cloneMode or isNewItem.
-                  2. showNameInvalid (live derived state for new-item or
-                     clone-draft modes) → the validation-specific copy
-                     ("Name is required" / "cannot contain 'Copy'" /
-                     "must differ from the source"). */}
-            {showNameInvalid && nameHelperText ? (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
-                {nameHelperText}
-              </div>
-            ) : nameError ? (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
-                Name is required
-              </div>
-            ) : null}
-
-            {/* STR-963 P2 — Dietary Info card (left rail). Dietary + Allergens
-                relocated out of the Food Tags tab into the rail for dishes
-                (redesign). Same DietaryMultiSelect instances / state / testids;
-                add-ons keep these in the Food Tags tab (they have no rail), so
-                exactly one copy renders per mode — no duplicate testids.
-                Hidden for wine items — dietary/allergen info doesn't apply. */}
-            {dietaryTagService && restaurantId && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (
-              <div
-                data-testid="dietary-info-card"
-                style={{
-                  background: EDITOR_PANEL,
-                  boxShadow: EDITOR_PANEL_SHADOW,
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  padding: 12,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
+  // ── Basics section ────────────────────────────────────────────────────────
+  const basicsSection = isAddon ? (
+    <section data-testid="addon-basic-info" className="flex flex-col gap-4">
+      <div className="flex gap-[18px] flex-wrap">
+        <div className="shrink-0 w-[150px]">{imagePanel}</div>
+        <div className="flex-1 min-w-[240px] flex flex-col gap-3.5">
+          {nameField}
+          {/* Price — shown for every add-on, including modifier-type options.
+              For a modifier option the price is OPTIONAL (no required
+              asterisk, no validation, and it can be cleared); a plain new
+              add-on keeps price required. */}
+          <div className="max-w-[200px]">
+            <label className={FIELD_LABEL_CLS} htmlFor="edit-price-input">
+              Price{isNewItem && isAddon && !modifierTypeName && <span className="text-bad ml-0.5">*</span>}
+            </label>
+            <div className={`flex items-center gap-1 h-10 rounded-ctl border bg-surface px-3 ${priceError ? 'border-bad' : 'border-line-input'}`}>
+              <span aria-hidden="true" className="text-ink-soft font-semibold">{currencySymbol}</span>
+              <input
+                id="edit-price-input"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                value={price === null ? '' : price}
+                onChange={(e) => {
+                  setPriceError(null);
+                  const raw = e.target.value;
+                  if (raw === '') { setPrice(null); return; }
+                  const n = parseFloat(raw);
+                  setPrice(Number.isFinite(n) && n >= 0 ? n : null);
                 }}
-              >
-                <div className="section-header" style={{ display: 'block' }}>
-                  <span aria-hidden="true" style={{ marginRight: 6 }}>🍽️</span>Dietary Info
-                </div>
-                <DietaryMultiSelect
-                  label="Dietary Restrictions"
-                  options={dietaryOptions}
-                  labels={dietaryLabelsMerged}
-                  type="dietary"
-                  selectedSet={dietarySet}
-                  onToggle={(name) => isNewItem
-                    ? setDietarySet((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(name)) next.delete(name); else next.add(name);
-                        return next;
-                      })
-                    : void handleDietaryToggle(name, 'dietary')}
-                  reviewed={isNewItem ? true : dietaryReviewed}
-                  onToggleNa={() => isNewItem
-                    ? setDietarySet(new Set())
-                    : void handleClickNa('dietary')}
-                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
-                />
-                <DietaryMultiSelect
-                  label="Allergens"
-                  options={allergenOptions}
-                  labels={allergenLabelsMerged}
-                  type="allergen"
-                  selectedSet={allergenSet}
-                  onToggle={(name) => isNewItem
-                    ? setAllergenSet((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(name)) next.delete(name); else next.add(name);
-                        return next;
-                      })
-                    : void handleDietaryToggle(name, 'allergen')}
-                  reviewed={isNewItem ? true : allergensReviewed}
-                  onToggleNa={() => isNewItem
-                    ? setAllergenSet(new Set())
-                    : void handleClickNa('allergens')}
-                  onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
-                />
-              </div>
-            )}
-
-            {/* Description / Raw Category / Appears-in moved to the top card zone (STR-963 P3). */}
-          </section>
-          )}
-
-          {/* Add-on form — simplified single-column layout (STR-303).
-              Renders instead of the dish two-column section when the header toggle
-              is on Add-ons. No image upload (add-ons never have images), no food tags
-              (surfaced via tabs only when editing a dish), just Name + Price + Description. */}
-          {isAddon && (
-          <section
-            data-testid="addon-basic-info"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              marginBottom: 20,
-            }}
-          >
-            {/* Modifier members can carry a picture too (2026-09-02). The same
-                panel the dish layout uses — a beer recommended alongside a
-                curry is shown to the diner as a card, and a card with no
-                image is a worse pairing than one with. */}
-            {imagePanel}
-
-            <SectionLabel>Basic Info</SectionLabel>
-
-            {/* Name lives in the modal header — see inline-editable
-                title at the top. Surface its error state here so the
-                user sees it adjacent to the rest of Basic Info. */}
-            {nameError && (
-              <div className="text-caption" data-testid="edit-name-error" style={{ color: 'var(--bad)' }}>
-                Name is required
-              </div>
-            )}
-
-            {/* Price — shown for every add-on, including modifier-type options.
-                For a modifier option the price is OPTIONAL (no required
-                asterisk, no validation, and it can be cleared); a plain new
-                add-on keeps price required. */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ flex: '0 0 160px' }}>
-                <label style={labelStyle} htmlFor="edit-price-input">
-                  Price{isNewItem && isAddon && !modifierTypeName && <span style={{ color: 'var(--bad)', marginLeft: 2 }}>*</span>}
-                </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    border: priceError ? '1px solid var(--bad)' : '1px solid var(--border)',
-                    borderRadius: 'var(--r-xs)',
-                    padding: '0 8px',
-                    background: 'var(--white)',
-                    height: 36,
-                  }}
+                data-testid="edit-price-input"
+                className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-ink p-0"
+              />
+              {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
+                <button
+                  type="button"
+                  aria-label="Clear price"
+                  onClick={() => { setPrice(null); setPriceError(null); }}
+                  data-testid="edit-price-clear"
+                  className="bg-transparent border-0 text-xs text-ink-soft cursor-pointer whitespace-nowrap p-0.5"
                 >
-                  <span aria-hidden="true" style={{ color: 'var(--text2)', fontWeight: 600 }}>{currencySymbol}</span>
-                  <input
-                    id="edit-price-input"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="0.01"
-                    value={price === null ? '' : price}
-                    onChange={(e) => {
-                      setPriceError(null);
-                      const raw = e.target.value;
-                      if (raw === '') { setPrice(null); return; }
-                      const n = parseFloat(raw);
-                      setPrice(Number.isFinite(n) && n >= 0 ? n : null);
-                    }}
-                    data-testid="edit-price-input"
-                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, padding: 0, minWidth: 0 }}
-                  />
-                  {price !== null && !(isNewItem && isAddon && !modifierTypeName) && (
-                    <button
-                      type="button"
-                      aria-label="Clear price"
-                      onClick={() => { setPrice(null); setPriceError(null); }}
-                      data-testid="edit-price-clear"
-                      className="text-xs"
-                      style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', padding: 2, whiteSpace: 'nowrap' }}
-                    >
-                      × clear
-                    </button>
-                  )}
-                </div>
-                {priceError && (
-                  <div className="text-caption" style={{ color: 'var(--bad)', marginTop: 3 }}>{priceError}</div>
-                )}
-              </div>
+                  × clear
+                </button>
+              )}
             </div>
-
-            {/* Memo — owner/staff-facing free-text note (≤500 chars).
-                Same field that surfaces as subtext in the Add Member
-                picker and gets edited via blur-to-save on the Setup
-                Guide → Add-ons page. Here it saves with the rest of
-                the form on Save. */}
-            <div>
-              <label style={labelStyle} htmlFor="edit-memo-input">
-                Memo
-              </label>
-              <textarea
-                id="edit-memo-input"
-                data-testid="edit-memo-input"
-                value={memo}
-                maxLength={500}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder={modifierTypeName
-                  ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
-                  : 'Optional note — shown to staff when picking this add-on'}
-                rows={2}
-                style={{
-                  width: '100%',
-                  fontSize: 14,
-                  padding: '8px 10px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-xs)',
-                  background: 'var(--white)',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  minHeight: 36,
-                }}
-              />
-            </div>
-
-          </section>
-          )}
-
-          {/* Tabs section wrapper — groups bar + content as a single
-              flex-column block. In dish + desktop mode the parent
-              layout container lays this out as the right column of a
-              grid; in addon mode (or mobile) it sits as a flex item
-              filling the remaining vertical space below basic-info. */}
-          <div
-            data-testid="edit-modal-tabs-section"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-              // STR-963: natural height so it flows inside the single dish-editor
-              // scroll (the parent layout container owns the scroll on every
-              // breakpoint now). No more fill-and-inner-scroll on desktop.
-              flex: 'none',
-            }}
-          >
-          {/* STR-963 P3 — Top card zone: always-visible essentials above
-              the tabs (Description, Raw Category, Appears-in, Heat/Spice,
-              Spice Modifier, BYO), relocated from the left rail + Food Tags
-              tab per the redesign. Dish-only — add-ons keep their own
-              single-column basic-info; each moved block keeps its original
-              conditional guard + data-testid (rendered here exactly once). */}
-          {!isAddon && (
-          <div
-            data-testid="edit-modal-top-zone"
-            style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: isMobile ? 12 : '12px 20px', alignItems: 'start', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}
-          >
-            {/* Column 1 — Description, Raw Category, Appears-in */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+            {priceError && <div className="text-xs text-bad mt-1">{priceError}</div>}
+          </div>
+        </div>
+      </div>
+      {/* Memo — owner/staff-facing free-text note (≤500 chars). Same field that
+          surfaces as subtext in the Add Member picker; saves with the form. */}
+      <div>
+        <label className={FIELD_LABEL_CLS} htmlFor="edit-memo-input">Memo</label>
+        <textarea
+          id="edit-memo-input"
+          data-testid="edit-memo-input"
+          value={memo}
+          maxLength={500}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder={modifierTypeName
+            ? `Optional note — shown to staff when picking this ${modifierTypeName.toLowerCase()} option`
+            : 'Optional note — shown to staff when picking this add-on'}
+          rows={2}
+          className="w-full min-h-[60px] rounded-ctl border border-line-input bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-ink resize-y"
+        />
+      </div>
+      <div className="border-t border-line-row">{visibilityRow}</div>
+    </section>
+  ) : (
+    <section data-testid="dish-basic-info" className="flex flex-col gap-4">
+      <div className="flex gap-[18px] flex-wrap">
+        <div className="shrink-0 w-[150px]">{imagePanel}</div>
+        <div className="flex-1 min-w-[240px] flex flex-col gap-3.5">
+          {nameField}
             {/* Description — sits right under the image so the owner
                 can scan the dish then immediately confirm/edit copy. */}
             <div>
@@ -3523,13 +2977,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   </div>
                 )}
             </div>
-
-            </div>
-            {/* Column 2 — Heat/Spice, Spice Modifier, BYO */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                {/* Heat / Spice relocated to the "Dish Properties" tab as an
-                    N/A-default dropdown (STR-977). */}
-
+        </div>
+      </div>
+      <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
             {/* Raw Category (moved here 2026-07-26, replacing the old
                 "On menus" tiles — the Menus tab is now the menu surface). */}
             {/* Raw Category — edits the item's original scraped category label
@@ -3539,7 +2989,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 this restaurant's menu, plus an Uncategorized escape hatch. */}
             <div>
               <label style={labelStyle} htmlFor="edit-category">
-                Raw Category
+                Category
               </label>
               <RawCategorySelect
                 id="edit-category"
@@ -3557,548 +3007,89 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 placeholder="— Select category —"
               />
             </div>
-            </div>
-            {/* Column 3 — Spice Modifier + BYO (compact toggle cards) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                {/* Spice Modifier — two compact toggles (origin a0ef241 split,
-                    kept through the STR-963 relayout): (1) "Show spice picker"
-                    (spice_modifier_enabled) renders the patron spice picker;
-                    (2) "Require a spice selection" (spice_selection_required)
-                    gates "Add to order" and is only meaningful while the picker
-                    is shown — disabled + greyed when visibility is off (the
-                    backend force-reverts it to false in that case). Hidden for
-                    add-ons (never reach composition page), Desserts, and wine
-                    items (spice doesn't apply). */}
-                {!isAddon && category !== 'Desserts' && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: '1px solid',
-                      // Brand orange = interactive/on, the same signal every
-                      // other toggle in the dashboard uses. Rose meant nothing
-                      // here beyond "spice".
-                      borderColor: spiceModifierEnabled ? 'var(--orange-border)' : 'var(--border)',
-                      background: spiceModifierEnabled ? 'var(--orange-bg)' : 'transparent',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {/* Row 1 — visibility */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Show spice picker</span>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={spiceModifierEnabled}
-                        aria-label="Toggle Show spice picker"
-                        data-testid="spice-modifier-toggle"
-                        onClick={() => setSpiceModifierEnabled((v: boolean) => !v)}
-                        style={{
-                          position: 'relative',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          height: 24,
-                          width: 42,
-                          flexShrink: 0,
-                          borderRadius: 999,
-                          border: 'none',
-                          cursor: 'pointer',
-                          background: spiceModifierEnabled ? 'var(--brand-s)' : 'var(--line-input)',
-                          transition: 'background-color 0.15s',
-                          padding: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            height: 18,
-                            width: 18,
-                            borderRadius: '50%',
-                            background: 'var(--surface)',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                            transform: spiceModifierEnabled ? 'translateX(21px)' : 'translateX(3px)',
-                            transition: 'transform 0.15s',
-                          }}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Divider */}
-                    <div style={{ height: 1, background: spiceModifierEnabled ? 'var(--orange-border)' : 'var(--border)' }} />
-
-                    {/* Row 2 — required (disabled + greyed when the picker is hidden) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: spiceModifierEnabled ? 1 : 0.5, transition: 'opacity 0.15s' }}>
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require a spice selection</span>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={spiceModifierEnabled && spiceSelectionRequired}
-                        aria-label="Toggle Require a spice selection"
-                        aria-disabled={!spiceModifierEnabled}
-                        disabled={!spiceModifierEnabled}
-                        title={!spiceModifierEnabled ? 'Turn on the spice picker to require a selection.' : undefined}
-                        data-testid="spice-required-toggle"
-                        onClick={() => {
-                          if (!spiceModifierEnabled) return;
-                          setSpiceSelectionRequired((v: boolean) => !v);
-                        }}
-                        style={{
-                          position: 'relative',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          height: 24,
-                          width: 42,
-                          flexShrink: 0,
-                          borderRadius: 999,
-                          border: 'none',
-                          cursor: spiceModifierEnabled ? 'pointer' : 'not-allowed',
-                          background: spiceModifierEnabled && spiceSelectionRequired ? 'var(--brand-s)' : 'var(--line-input)',
-                          transition: 'background-color 0.15s',
-                          padding: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            height: 18,
-                            width: 18,
-                            borderRadius: '50%',
-                            background: 'var(--surface)',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                            transform: spiceModifierEnabled && spiceSelectionRequired ? 'translateX(21px)' : 'translateX(3px)',
-                            transition: 'transform 0.15s',
-                          }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* BYO (Build-Your-Own) classification — PDD 2026-05-26.
-                    Disabled when the dish has zero groupings: the API
-                    hard-blocks is_byo=true on items without customization
-                    options, so we mirror that state in the UI. Mobile-
-                    friendly: an inline hint below the toggle (NOT just a
-                    tooltip) per Plan v2 UX-Reviewer tactical condition.
-                    Hidden for add-ons (an add-on cannot be BYO itself) and
-                    wine items (BYO doesn't apply). */}
-                {!isAddon && !(category === 'Beverages' && (bevDraft.beverage_type?.trim() || '') === 'wine') && (() => {
-                  const hasGroupings = (groupingsCount ?? 0) > 0;
-                  const toggleDisabled = !hasGroupings;
-                  return (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: '1px solid',
-                        borderColor: isByo ? 'var(--orange-border)' : 'var(--border)',
-                        background: isByo ? 'var(--orange-bg)' : 'transparent',
-                        opacity: toggleDisabled ? 0.6 : 1,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Build Your Own</span>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={isByo}
-                          aria-label="Toggle Build Your Own"
-                          aria-disabled={toggleDisabled}
-                          data-testid="byo-toggle"
-                          disabled={toggleDisabled}
-                          title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
-                          onClick={() => { if (!toggleDisabled) setIsByo((v: boolean) => !v); }}
-                          style={{
-                            position: 'relative',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            height: 24,
-                            width: 42,
-                            flexShrink: 0,
-                            borderRadius: 999,
-                            border: 'none',
-                            cursor: toggleDisabled ? 'not-allowed' : 'pointer',
-                            background: isByo ? 'var(--brand-s)' : 'var(--line-input)',
-                            transition: 'background-color 0.15s',
-                            padding: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              height: 18,
-                              width: 18,
-                              borderRadius: '50%',
-                              background: 'var(--surface)',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                              transform: isByo ? 'translateX(21px)' : 'translateX(3px)',
-                              transition: 'transform 0.15s',
-                            }}
-                          />
-                        </button>
-                      </div>
-                      {toggleDisabled && (
-                        <div
-                          data-testid="byo-disabled-hint"
-                          style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 32 }}
-                        >
-                          Add a customization group so diners can build this dish.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-
-            </div>
-          </div>
-          )}
-
-          {/* When the owner clicked "Choose from Gallery", the tab bar +
-              content are replaced by the consumer-provided picker. The
-              slot owns its own header (back chevron, title) — calling
-              `onClose` returns to the tab view; `onPicked(url)` updates
-              the local thumbnail and dismisses. */}
-          {galleryOpen && galleryPanelSlot ? (
-            galleryPanelSlot({
-              itemId: item.id,
-              itemName: name,
-              onPicked: (url) => { setThumbnail(url); setGalleryOpen(false); },
-              onClose: () => setGalleryOpen(false),
-            })
-          ) : (<>
-          {/* ── Tab bar: context-aware based on toggle state ───────────
-              Dishes mode:   Food Tags | Add-ons | Performance
-              Add-ons mode:  Performance | Dishes                  */}
-          <div
-            style={{
-              // Desktop: horizontal tab bar. Mobile (STR-858): hidden — the tabs
-              // become a vertical accordion (a MobileAccordionHeader is rendered
-              // before each tab body below), eliminating the horizontal-scroll
-              // strip the manager flagged as un-mobile.
-              display: isMobile ? 'none' : 'flex',
-              alignItems: 'flex-end',
-              gap: 0,
-              borderBottom: '1px solid var(--border)',
-              flexShrink: 0,
-            }}
-          >
-            {((isAddon
-              // Add-ons get a slimmed-down Food Tags tab (allergens +
-              // dietary only — heat/spice and free-text fields are
-              // suppressed inside the section). Modifiers / sides
-              // / sauces still need allergen + dietary capture so the
-              // diner-side recommender + filter UI honours per-addon
-              // restrictions.
-              ? (isNewItem
-                // New add-on / modifier option: Food Tags only. The Dishes tab
-                // (dish-association picker) is removed during creation — the
-                // owner links the add-on to dishes afterwards via a dish's
-                // Groupings → Add member picker (owner request 2026-07-18).
-                ? (['food_tags'] as const)
-                : (['food_tags', 'performance', 'dishes'] as const))
-              // PDD 2026-05-10 collapse-addons-recs Phase E Step 13 —
-              // Add-ons + Recommendations tabs removed from dish editing.
-              // Both concerns now live in the Groupings tab (the
-              // `addons` and `recommendations` default groupings created
-              // by the backend at item creation). The Groupings tab's
-              // pinned-default UX + AI-suggestion banner + per-member
-              // approve action (shipped in Step 12) are the load-bearing
-              // replacements for the workflows that lived in the
-              // legacy tabs. Existing dish items always get groupingsSlot
-              // (FoodItemsManagerClient threads it unconditionally), so
-              // the second variant is the practical-zero edge case.
-              : (isNewItem
-                ? (['food_tags'] as const)
-                // 2026-09-02: 'groupings' now renders as "Modifiers" and
-                // carries only the modifier surface; the recommendations
-                // default grouping moved to its own 'pairings' tab. The tab
-                // ID stays 'groupings' so existing testids, mobile accordion
-                // state and canary selectors keep working — only the label
-                // and the slot's contents changed.
-                : (groupingsSlot
-                  ? (pairingsSlot
-                    ? (['food_tags', 'placements', 'groupings', 'pairings', 'performance'] as const)
-                    : (['food_tags', 'placements', 'groupings', 'performance'] as const))
-                  : (['food_tags', 'placements', 'performance'] as const)))
-            ) as readonly EditModalTab[])
-              // Recipe sits right after Dish Properties, for saved dishes
-              // whose consumer supplies the slot.
-              .flatMap((t): EditModalTab[] => (t === 'food_tags' && showRecipeTab ? ['food_tags', 'recipe'] : [t]))
-              .map((tab) => {
-              const isActive = activeTab === tab;
-              const placementsCount = item.menu_associations?.length ?? 0;
-              const label =
-                tab === 'food_tags'
-                  ? (isAddon ? 'Food Tags' : 'Dish Properties')
-                  : tab === 'recipe'
-                    ? 'Recipe'
-                  : tab === 'placements'
-                    ? `Menus${placementsCount > 0 ? ` (${placementsCount})` : ''}`
-                    : tab === 'groupings'
-                      ? 'Modifiers'
-                      : tab === 'pairings'
-                        ? 'Pairings'
-                        : tab === 'dishes'
-                          ? `Dishes${associatedDishIds.size > 0 ? ` (${associatedDishIds.size})` : ''}`
-                          : 'Performance';
+        <div>
+          <label className={FIELD_LABEL_CLS} htmlFor="edit-item-type">Item type</label>
+          {/* Fixed by the calling context (the Food Items tab that opened the
+              editor, or the stored item_type) — the in-editor toggle was
+              removed 2026-07-18, so this reads back rather than edits. */}
+          <input
+            id="edit-item-type"
+            data-testid="edit-item-type"
+            readOnly
+            disabled
+            value={category === 'Beverages' ? 'Beverage' : 'Food'}
+            title="Set when the item is created"
+            className={FIELD_INPUT_CLS}
+          />
+        </div>
+      </div>
+      <div className="border-y border-line-row">
+        {visibilityRow}
+        {/* Dish settings — spice picker visibility + required, and Build Your
+            Own. Hidden for Desserts (no spice) and wine (neither applies). */}
+        {!isWine && (
+          <div className="border-t border-line-row divide-y divide-line-row" data-testid="edit-dish-settings">
+            {category !== 'Desserts' && (
+              <>
+                <SwitchRow label="Show spice picker" hint="Guests choose a spice level when they add this dish.">
+                  <InkSwitch
+                    checked={spiceModifierEnabled}
+                    label="Toggle Show spice picker"
+                    testId="spice-modifier-toggle"
+                    onChange={(next) => setSpiceModifierEnabled(next)}
+                  />
+                </SwitchRow>
+                <SwitchRow label="Require a spice selection" hint="Guests must pick a level before adding to the order.">
+                  <InkSwitch
+                    checked={spiceModifierEnabled && spiceSelectionRequired}
+                    disabled={!spiceModifierEnabled}
+                    title={!spiceModifierEnabled ? 'Turn on the spice picker to require a selection.' : undefined}
+                    label="Toggle Require a spice selection"
+                    testId="spice-required-toggle"
+                    onChange={(next) => { if (spiceModifierEnabled) setSpiceSelectionRequired(next); }}
+                  />
+                </SwitchRow>
+              </>
+            )}
+            {(() => {
+              // BYO (Build-Your-Own) classification — PDD 2026-05-26. Disabled
+              // when the dish has zero groupings: the API hard-blocks
+              // is_byo=true on items without customization options.
+              const hasGroupings = (groupingsCount ?? 0) > 0;
+              const toggleDisabled = !hasGroupings;
               return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  aria-pressed={isActive}
-                  data-testid={`tab-${tab}`}
-                  style={{
-                    padding: isMobile ? '13px 16px' : '12px 14px',
-                    minHeight: isMobile ? 44 : undefined,
-                    flexShrink: 0,
-                    fontSize: 14,
-                    fontWeight: isActive ? 600 : 500,
-                    color: isActive ? 'var(--brand-s)' : 'var(--text2)',
-                    background: isActive ? 'rgba(17, 17, 17,0.05)' : 'transparent',
-                    border: 'none',
-                    borderBottom: isActive ? '2px solid var(--brand-s)' : '2px solid transparent',
-                    marginBottom: -1,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Scrollable tab content ── */}
-          <div style={{ flex: 'none', overflowY: 'visible', minHeight: 0, paddingTop: 16, paddingBottom: 20 }}>
-
-          {/* ── Food Tags tab ──
-              For dishes: full set of fields (heat/spice, sweetness,
-              allergens, dietary, free-text). For add-ons: just allergens
-              + dietary — modifiers inherit heat/spice from their parent
-              dish and don't need their own free-text tags. */}
-          {isMobile && (
-            <MobileAccordionHeader
-              id="food_tags"
-              title="Food tags"
-              subtitle="Allergens, dietary, heat & sweetness"
-              open={expandedSections.has('food_tags')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('food_tags') : activeTab === 'food_tags') && (
-            <section style={{ marginBottom: 4 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-                {/* AI enrichment in-progress banner — Groupings Dietary/
-                    Allergen Filter PDD (2026-05-18, Step 11 reframed).
-                    When a new item is saved, owner-webapp fires the
-                    /recommendation/menu-items/{id}/enrich call in the
-                    background and flags enrichment_status='enriching' on
-                    the local item. This banner stays visible until the
-                    async call completes (status flips to 'enriched' or
-                    'failed'). Owners cannot manually trigger enrichment;
-                    once tags arrive they can edit them by hand. */}
-                {item.enrichment_status === 'enriching' && (
-                  <div
-                    data-testid="edit-modal-enrichment-in-progress"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'var(--editor-ai-surface, #FFFBF5)',
-                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
-                      color: 'var(--editor-ai-ink, #A05A00)',
-                      fontSize: 13,
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        background: 'var(--brand-s)',
-                        animation: 'pulse 1.4s ease-in-out infinite',
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span>Enrichment in progress — AI is analysing this item to suggest tags. You'll be able to review and edit them in a few seconds.</span>
-                  </div>
-                )}
-                {item.enrichment_status === 'failed' && (
-                  <div
-                    data-testid="edit-modal-enrichment-failed"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'var(--bad-bg)',
-                      border: '1px solid #F3D3CF',
-                      color: 'var(--bad)',
-                      fontSize: 13,
-                    }}
-                  >
-                    Enrichment didn't complete. You can still edit tags manually below.
-                  </div>
-                )}
-                {/* One-shot notice for admin Enrich click outcomes (skipped /
-                    error). Cleared on next click. Distinct from the
-                    in-progress banner above which is driven by the item's
-                    enrichment_status field from the parent state. */}
-                {enrichNotice && (
-                  <div
-                    data-testid="edit-modal-enrich-notice"
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      // Was its own blue. It says the same kind of thing as
-                      // the banner above it, so it wears the same amber rather
-                      // than adding a tenth hue for one transient notice.
-                      background: 'var(--editor-ai-surface, #FFFBF5)',
-                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
-                      color: 'var(--editor-ai-ink, #A05A00)',
-                      fontSize: 12,
-                    }}
-                  >
-                    {enrichNotice}
-                  </div>
-                )}
-
-                {/* POS product link (PDD 2026-08-31). Rendered only when the
-                    host supplies onOpenPosLink — the owner dashboard. Waiter
-                    and admin mount this same modal and pass nothing.
-                    
-                    Placed with the notices above rather than in a tab: on a
-                    POS restaurant an unlinked dish is NOT ORDERABLE AT ALL, so
-                    it belongs where the owner cannot miss it while editing the
-                    dish they think they are publishing. */}
-                {onOpenPosLink && (() => {
-                  const linked = posLinkStatus === 'confirmed';
-                  const suggested = posLinkStatus === 'suggested';
-                  // Three states, not two — a suggestion is the importer's
-                  // unapproved guess and the dish is STILL unsellable.
-                  // Collapsing it into "linked" hides the cheapest fix there is.
-                  const label = linked ? 'Linked' : suggested ? 'Suggested' : 'Not linked';
-                  const tone = linked
-                    ? {
-                        fg: 'var(--editor-affirm-ink, #1B7A4A)',
-                        bg: 'var(--editor-affirm-surface, #E8F5EE)',
-                      }
-                    : suggested
-                      ? {
-                          fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FDF0EE)',
-                        }
-                      : {
-                          fg: 'var(--editor-accent-ink, #9A3412)',
-                          bg: 'var(--orange-bg, #FDF0EE)',
-                        };
-                  return (
-                    <div
-                      data-testid="edit-modal-pos-link-row"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 12px', borderRadius: 6,
-                        background: 'var(--bg2, #f8fafc)',
-                        border: '1px solid var(--border, #e2e8f0)',
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
-                        POS product
-                      </span>
-                      <span
-                        data-testid="edit-modal-pos-link-status"
-                        data-pos-link={posLinkStatus ?? 'none'}
-                        style={{
-                          fontSize: 11, fontWeight: 700, letterSpacing: '0.02em',
-                          padding: '3px 8px', borderRadius: 999,
-                          color: tone.fg, background: tone.bg, whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {label}
-                      </span>
-                      {/* WHICH product. Without it "Linked" is unfalsifiable —
-                          a dish pointed at the wrong Clover item renders
-                          identically to a correct one, and the owner can only
-                          find out by opening the picker. Shown for a
-                          SUGGESTION too: that is the name they are being asked
-                          to accept or reject, so hiding it makes the decision
-                          impossible to take from here.
-
-                          The name can be absent while the link exists (the
-                          provider id left the staged catalogue since the last
-                          import). That is worth saying out loud rather than
-                          falling back to the bare badge, because a link to a
-                          product Clover no longer has still blocks the gate. */}
-                      {(linked || suggested) && (
-                        <span
-                          data-testid="edit-modal-pos-link-name"
-                          title={posLinkName ?? undefined}
-                          style={{
-                            fontSize: 12, color: 'var(--text2)', minWidth: 0,
-                            overflow: 'hidden', textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {posLinkName
-                            ? posLinkName
-                            : 'product no longer in the POS catalogue'}
-                          {posLinkName && typeof posLinkPrice === 'number' && (
-                            // Price is what an owner actually reconciles
-                            // against — it is the till's number, and the reason
-                            // to read this line at all.
-                            <span
-                              data-testid="edit-modal-pos-link-price"
-                              style={{ marginLeft: 6, color: 'var(--text3, #94a3b8)' }}
-                            >
-                              {currencySymbol}{posLinkPrice.toFixed(2)}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                      {linked && posSellable === false && (
-                        // Confirmed but still blocked: saying "Linked" alone
-                        // would tell an owner the dish is live when a diner
-                        // cannot order it.
-                        <span style={{ fontSize: 11, color: 'var(--ink)' }}>
-                          not yet sellable
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={onOpenPosLink}
-                        data-testid="edit-modal-pos-link-button"
-                        style={{
-                          marginLeft: 'auto', fontSize: 12, fontWeight: 600,
-                          padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
-                          border: '1px solid var(--border, #e2e8f0)',
-                          background: 'var(--surface)', color: 'var(--text)',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {linked || suggested ? 'Change' : 'Link'}
-                      </button>
+                <div className="py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-ink">Build Your Own</div>
+                      <div className="text-xs text-ink-soft">Guests compose this dish from its modifier groups.</div>
                     </div>
-                  );
-                })()}
+                    <InkSwitch
+                      checked={isByo}
+                      disabled={toggleDisabled}
+                      title={toggleDisabled ? 'Add a customization group so diners can build this dish.' : undefined}
+                      label="Toggle Build Your Own"
+                      testId="byo-toggle"
+                      onChange={(next) => { if (!toggleDisabled) setIsByo(next); }}
+                    />
+                  </div>
+                  {toggleDisabled && (
+                    <div data-testid="byo-disabled-hint" className="text-xs text-ink-soft mt-1.5">
+                      Add a customization group so diners can build this dish.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
 
+      {/* Beverage details — owner-editable form for food_tags.beverage.
+          Shows for Beverages-category items only. Persists as part of the
+          food_tags payload on Save (normalizeBeverage in handleSave drops
+          type-inapplicable fields before the PUT). */}
+      {category === 'Beverages' && <SectionHeading>Beverage details</SectionHeading>}
                 {/* Beverage Profile — owner-editable form for food_tags.beverage.
                     Shows for Beverages-category items only; takes the same
                     vertical slot Heat/Spice occupies for dishes. Persists as
@@ -4198,7 +3189,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
 
                   return (
                     <div data-testid="edit-modal-beverage-profile">
-                      <label style={labelStyle}>Beverage Profile</label>
                       <div
                         style={{
                           padding: 12,
@@ -4861,7 +3851,97 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   );
                 })()}
 
-                {/* Heat/Spice, Spice Modifier, BYO moved to the top card zone (STR-963 P3). */}
+      <Accordion
+        title="Flavor, ingredients & other details"
+        summary={tasteSummary || undefined}
+        open={flavorOpen}
+        onToggle={() => setFlavorOpen((v) => !v)}
+        testId="edit-flavor-accordion"
+      >
+        <span className="text-ink-soft">
+          {tasteSummary ? `Taste profile: ${tasteSummary}. ` : 'No flavor details yet. '}
+          Ingredients, preparation and the other specialist fields are in{' '}
+        </span>
+        <button
+          type="button"
+          data-testid="edit-goto-advanced"
+          onClick={() => setActiveTab('advanced')}
+          className="bg-transparent border-0 p-0 font-semibold text-ink cursor-pointer"
+        >
+          Advanced details
+        </button>
+        .
+      </Accordion>
+    </section>
+  );
+
+  // ── Dietary & allergens section ───────────────────────────────────────────
+  const dietarySection = (
+    <section data-testid="dietary-info-card" className="flex flex-col gap-5">
+      {dietaryTagService && restaurantId && (
+        <>
+          <DietaryMultiSelect
+            label="Dietary labels"
+            options={dietaryOptions}
+            labels={dietaryLabelsMerged}
+            type="dietary"
+            selectedSet={dietarySet}
+            onToggle={(name) => isNewItem
+              ? setDietarySet((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(name)) next.delete(name); else next.add(name);
+                  return next;
+                })
+              : void handleDietaryToggle(name, 'dietary')}
+            reviewed={isNewItem ? true : dietaryReviewed}
+            onToggleNa={() => isNewItem
+              ? setDietarySet(new Set())
+              : void handleClickNa('dietary')}
+            onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
+          />
+          <DietaryMultiSelect
+            label="Contains allergens"
+            options={allergenOptions}
+            labels={allergenLabelsMerged}
+            type="allergen"
+            selectedSet={allergenSet}
+            onToggle={(name) => isNewItem
+              ? setAllergenSet((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(name)) next.delete(name); else next.add(name);
+                  return next;
+                })
+              : void handleDietaryToggle(name, 'allergen')}
+            reviewed={isNewItem ? true : allergensReviewed}
+            onToggleNa={() => isNewItem
+              ? setAllergenSet(new Set())
+              : void handleClickNa('allergens')}
+            onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
+          />
+        </>
+      )}
+
+      {/* Spice level — dish-only; hidden for Beverages / Desserts / add-ons.
+          N/A = no spice set. The per-restaurant scale can carry up to five
+          labels, so it stays a native select (the specs drive selectOption). */}
+      {!isAddon && category !== 'Beverages' && category !== 'Desserts' && (
+        <div>
+          <SectionHeading>Spice level</SectionHeading>
+          <select
+            id="heat-spice-select"
+            data-testid="heat-spice-select"
+            aria-label="Spice level"
+            value={heatSpice ?? ''}
+            onChange={(e) => setHeatSpice(e.target.value === '' ? null : e.target.value)}
+            className="h-10 min-w-[200px] rounded-ctl border border-line-input bg-surface px-2.5 text-sm text-ink cursor-pointer"
+          >
+            <option value="">Not applicable</option>
+            {activeHeatLabels.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
                 {/* Sweetness — predefined pill selector (shown only for Desserts; not for add-ons).
                     Gated behind SWEETNESS_VISIBLE per STR-480 (2026-05-09 leadership decision).
@@ -4895,178 +3975,619 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   </div>
                 </div>}
 
-                {/* Dietary restrictions — multi-select pills, food_tags-backed.
-                    Rendered ABOVE Allergens per STR-589 (cross-app parity with
-                    the patron DietaryStep): dietary identity first, allergens
-                    second. New items: same Set drives the deferred-creation
-                    flow, the save handler flushes via setItemTags after the
-                    DB row is created. */}
-                {/* STR-963 P2: dishes show Dietary/Allergens in the left-rail
-                    Dietary Info card; only add-ons (no rail) keep them here. */}
-                {isAddon && dietaryTagService && restaurantId && (
-                  <DietaryMultiSelect
-                    label="Dietary Restrictions"
-                    options={dietaryOptions}
-                    labels={dietaryLabelsMerged}
-                    type="dietary"
-                    selectedSet={dietarySet}
-                    onToggle={(name) => isNewItem
-                      ? setDietarySet((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(name)) next.delete(name); else next.add(name);
-                          return next;
-                        })
-                      : void handleDietaryToggle(name, 'dietary')}
-                    reviewed={isNewItem ? true : dietaryReviewed}
-                    onToggleNa={() => isNewItem
-                      ? setDietarySet(new Set())
-                      : void handleClickNa('dietary')}
-                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
-                  />
-                )}
+      <p className="text-[13px] text-ink-soft m-0">
+        Guests filter menus by these labels, so they apply wherever the item appears.
+      </p>
+    </section>
+  );
 
-                {/* Allergens — same pattern (add-on-only per STR-963 P2). */}
-                {isAddon && dietaryTagService && restaurantId && (
-                  <DietaryMultiSelect
-                    label="Allergens"
-                    options={allergenOptions}
-                    labels={allergenLabelsMerged}
-                    type="allergen"
-                    selectedSet={allergenSet}
-                    onToggle={(name) => isNewItem
-                      ? setAllergenSet((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(name)) next.delete(name); else next.add(name);
-                          return next;
-                        })
-                      : void handleDietaryToggle(name, 'allergen')}
-                    reviewed={isNewItem ? true : allergensReviewed}
-                    onToggleNa={() => isNewItem
-                      ? setAllergenSet(new Set())
-                      : void handleClickNa('allergens')}
-                    onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
-                  />
-                )}
-
-                {/* Tag fields — same set shown for dishes and add-ons.
-                    The historical slim-down (hide these for add-ons because
-                    modifiers "inherit from the parent dish") proved wrong
-                    in practice: enrichment writes ingredients/textures/
-                    taste_profile/etc. directly to addon menu_items, and
-                    the dietary/allergen filter relies on those values being
-                    visible + editable. Admin staff also need to review the
-                    AI-suggested tags on addons. Per Avi 2026-05-19. */}
-                {/* STR-963 P1 — Food Tags card grid. Emoji-titled cards,
-                    2-col desktop / 1-col mobile; Ingredients + Taste span full
-                    width. Scoped strictly to TAG_FIELDS (the beverage profile,
-                    enrichment banner, and dessert sweetness siblings above are
-                    untouched). tag-input-* / remove-tag-* testids unchanged. */}
-                {/* Spice level — relocated from the top band (STR-977). Dish-only;
-                    hidden for Beverages / Desserts / add-ons. N/A = no spice set. */}
-                {!isAddon && category !== 'Beverages' && category !== 'Desserts' && (
-                  <div style={{ ...EDITOR_CARD_STYLE, marginBottom: isMobile ? 10 : 12 }}>
-                    <label htmlFor="heat-spice-select" style={labelStyle}>Spice level 🌶️</label>
-                    <select
-                      id="heat-spice-select"
-                      data-testid="heat-spice-select"
-                      value={heatSpice ?? ''}
-                      onChange={(e) => setHeatSpice(e.target.value === '' ? null : e.target.value)}
-                      style={{ ...inputStyle, cursor: 'pointer' }}
-                    >
-                      <option value="">N/A</option>
-                      {activeHeatLabels.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
+  // ── Advanced details section ──────────────────────────────────────────────
+  const advancedSection = (
+    <section data-testid="edit-advanced-section" className="flex flex-col gap-4">
+                {/* AI enrichment in-progress banner — Groupings Dietary/
+                    Allergen Filter PDD (2026-05-18, Step 11 reframed).
+                    When a new item is saved, owner-webapp fires the
+                    /recommendation/menu-items/{id}/enrich call in the
+                    background and flags enrichment_status='enriching' on
+                    the local item. This banner stays visible until the
+                    async call completes (status flips to 'enriched' or
+                    'failed'). Owners cannot manually trigger enrichment;
+                    once tags arrive they can edit them by hand. */}
+                {item.enrichment_status === 'enriching' && (
+                  <div
+                    data-testid="edit-modal-enrichment-in-progress"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      background: 'var(--editor-ai-surface, #FFFBF5)',
+                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
+                      color: 'var(--editor-ai-ink, #A05A00)',
+                      fontSize: 13,
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: 'var(--brand-s)',
+                        animation: 'pulse 1.4s ease-in-out infinite',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>Enrichment in progress — AI is analysing this item to suggest tags. You'll be able to review and edit them in a few seconds.</span>
                   </div>
                 )}
-                <div
-                  data-testid="food-tags-card-grid"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: isMobile ? 10 : '12px 16px',
-                  }}
-                >
-                  {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
+                {item.enrichment_status === 'failed' && (
+                  <div
+                    data-testid="edit-modal-enrichment-failed"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      background: 'var(--bad-bg)',
+                      border: '1px solid #F3D3CF',
+                      color: 'var(--bad)',
+                      fontSize: 13,
+                    }}
+                  >
+                    Enrichment didn't complete. You can still edit tags manually below.
+                  </div>
+                )}
+                {/* One-shot notice for admin Enrich click outcomes (skipped /
+                    error). Cleared on next click. Distinct from the
+                    in-progress banner above which is driven by the item's
+                    enrichment_status field from the parent state. */}
+                {enrichNotice && (
+                  <div
+                    data-testid="edit-modal-enrich-notice"
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      // Was its own blue. It says the same kind of thing as
+                      // the banner above it, so it wears the same amber rather
+                      // than adding a tenth hue for one transient notice.
+                      background: 'var(--editor-ai-surface, #FFFBF5)',
+                      border: '1px solid var(--editor-ai-border, #FFE8CC)',
+                      color: 'var(--editor-ai-ink, #A05A00)',
+                      fontSize: 12,
+                    }}
+                  >
+                    {enrichNotice}
+                  </div>
+                )}
+                {/* POS product link (PDD 2026-08-31). Rendered only when the
+                    host supplies onOpenPosLink — the owner dashboard. Waiter
+                    and admin mount this same modal and pass nothing.
+                    
+                    Placed with the notices above rather than in a tab: on a
+                    POS restaurant an unlinked dish is NOT ORDERABLE AT ALL, so
+                    it belongs where the owner cannot miss it while editing the
+                    dish they think they are publishing. */}
+                {onOpenPosLink && (() => {
+                  const linked = posLinkStatus === 'confirmed';
+                  const suggested = posLinkStatus === 'suggested';
+                  // Three states, not two — a suggestion is the importer's
+                  // unapproved guess and the dish is STILL unsellable.
+                  // Collapsing it into "linked" hides the cheapest fix there is.
+                  const label = linked ? 'Linked' : suggested ? 'Suggested' : 'Not linked';
+                  const tone = linked
+                    ? {
+                        fg: 'var(--editor-affirm-ink, #1B7A4A)',
+                        bg: 'var(--editor-affirm-surface, #E8F5EE)',
+                      }
+                    : suggested
+                      ? {
+                          fg: 'var(--editor-accent-ink, #9A3412)',
+                          bg: 'var(--orange-bg, #FDF0EE)',
+                        }
+                      : {
+                          fg: 'var(--editor-accent-ink, #9A3412)',
+                          bg: 'var(--orange-bg, #FDF0EE)',
+                        };
+                  return (
                     <div
-                      key={key}
+                      data-testid="edit-modal-pos-link-row"
                       style={{
-                        ...EDITOR_CARD_STYLE,
-                        gridColumn: full && !isMobile ? '1 / -1' : 'auto',
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px', borderRadius: 6,
+                        background: 'var(--bg2, #f8fafc)',
+                        border: '1px solid var(--border, #e2e8f0)',
                       }}
                     >
-                      <TagInput
-                        fieldKey={key}
-                        label={label}
-                        icon={icon}
-                        values={tags[key] ?? []}
-                        placeholder={placeholder}
-                        onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
-                      />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+                        POS product
+                      </span>
+                      <span
+                        data-testid="edit-modal-pos-link-status"
+                        data-pos-link={posLinkStatus ?? 'none'}
+                        style={{
+                          fontSize: 11, fontWeight: 700, letterSpacing: '0.02em',
+                          padding: '3px 8px', borderRadius: 999,
+                          color: tone.fg, background: tone.bg, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {label}
+                      </span>
+                      {/* WHICH product. Without it "Linked" is unfalsifiable —
+                          a dish pointed at the wrong Clover item renders
+                          identically to a correct one, and the owner can only
+                          find out by opening the picker. Shown for a
+                          SUGGESTION too: that is the name they are being asked
+                          to accept or reject, so hiding it makes the decision
+                          impossible to take from here.
+
+                          The name can be absent while the link exists (the
+                          provider id left the staged catalogue since the last
+                          import). That is worth saying out loud rather than
+                          falling back to the bare badge, because a link to a
+                          product Clover no longer has still blocks the gate. */}
+                      {(linked || suggested) && (
+                        <span
+                          data-testid="edit-modal-pos-link-name"
+                          title={posLinkName ?? undefined}
+                          style={{
+                            fontSize: 12, color: 'var(--text2)', minWidth: 0,
+                            overflow: 'hidden', textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {posLinkName
+                            ? posLinkName
+                            : 'product no longer in the POS catalogue'}
+                          {posLinkName && typeof posLinkPrice === 'number' && (
+                            // Price is what an owner actually reconciles
+                            // against — it is the till's number, and the reason
+                            // to read this line at all.
+                            <span
+                              data-testid="edit-modal-pos-link-price"
+                              style={{ marginLeft: 6, color: 'var(--text3, #94a3b8)' }}
+                            >
+                              {currencySymbol}{posLinkPrice.toFixed(2)}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {linked && posSellable === false && (
+                        // Confirmed but still blocked: saying "Linked" alone
+                        // would tell an owner the dish is live when a diner
+                        // cannot order it.
+                        <span style={{ fontSize: 11, color: 'var(--ink)' }}>
+                          not yet sellable
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onOpenPosLink}
+                        data-testid="edit-modal-pos-link-button"
+                        style={{
+                          marginLeft: 'auto', fontSize: 12, fontWeight: 600,
+                          padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
+                          border: '1px solid var(--border, #e2e8f0)',
+                          background: 'var(--surface)', color: 'var(--text)',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {linked || suggested ? 'Change' : 'Link'}
+                      </button>
                     </div>
+                  );
+                })()}
+      <div
+        data-testid="food-tags-card-grid"
+        className="grid gap-3.5"
+        style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))' }}
+      >
+        {TAG_FIELDS.map(({ key, label, placeholder, icon, full }) => (
+          <div
+            key={key}
+            className="border border-line rounded-ctl p-3.5"
+            style={{ gridColumn: full && !isMobile ? '1 / -1' : 'auto' }}
+          >
+            <TagInput
+              fieldKey={key}
+              label={label}
+              icon={icon}
+              values={tags[key] ?? []}
+              placeholder={placeholder}
+              onChange={(vals) => setTags((prev) => ({ ...prev, [key]: vals }))}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const canShowMoreActions = !isNewItem && !cloneMode && !!item.id;
+  // Phone: the primary action spans its own last row so it never wraps
+  // behind the floating Sage button at the bottom-left.
+  const primaryFooterCls = isMobile ? `${PRIMARY_BTN_CLS} w-full order-last` : PRIMARY_BTN_CLS;
+  const dangerFooterCls = `h-10 px-[18px] rounded-ctl border-0 bg-bad text-on-ink text-sm font-semibold cursor-pointer disabled:opacity-60${isMobile ? ' w-full order-last' : ''}`;
+  const footer = isPricingSection ? (
+    <div className="px-6 pt-3 pb-3.5 border-t border-line shrink-0" data-testid="edit-pricing-footer">
+      {pricingMenu ? (
+        <>
+          <div className="mb-2.5 text-sm">
+            <strong>Saving changes {pricingMenu.menu_name} only.</strong>{' '}
+            <span className="text-ink-soft">Shared item details and other menus stay unchanged.</span>
+            {pricingSavedAt != null && (
+              <span className="text-ok font-semibold ml-2" data-testid="menu-pricing-saved-note">Saved to {pricingMenu.menu_name}.</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              type="button"
+              data-testid={`placements-tab-remove-${pricingMenu.menu_id}`}
+              aria-label={`Remove from ${pricingMenu.menu_name}`}
+              disabled={placementsSaving.has(pricingMenu.menu_id)}
+              onClick={() => void removePlacement(pricingMenu.menu_id)}
+              className="bg-transparent border-0 p-0 font-semibold text-bad cursor-pointer disabled:opacity-60"
+            >
+              Remove from {pricingMenu.menu_name}
+            </button>
+            <span className="flex-1" />
+            <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+            <button
+              type="button"
+              data-testid="menu-pricing-save-btn"
+              onClick={() => { pricingFlushRef.current?.(); setPricingSavedAt(Date.now()); }}
+              className={primaryFooterCls}
+            >
+              Save {pricingMenu.menu_name} settings
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-2.5">
+          <span className="text-[13px] text-ink-soft">Add this item to a menu from the Menu builder to set a price.</span>
+          <span className="flex-1" />
+          <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="px-6 py-3.5 border-t border-line flex items-center gap-2.5 flex-wrap shrink-0" data-testid="edit-footer">
+      {canShowMoreActions && !deleteConfirming && (
+        <div className="relative">
+          <button
+            type="button"
+            data-testid="edit-more-actions-btn"
+            aria-haspopup="menu"
+            aria-expanded={moreActionsOpen}
+            title="Clone · Hide · Delete"
+            disabled={saving || cloneSaving}
+            onClick={() => setMoreActionsOpen((v) => !v)}
+            className={`${SECONDARY_BTN_CLS} inline-flex items-center gap-2`}
+          >
+            More actions
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+          {moreActionsOpen && (
+            <div
+              role="menu"
+              data-testid="edit-more-actions-menu"
+              className="absolute left-0 bottom-full mb-1 min-w-[200px] bg-surface border border-line rounded-ctl shadow-float py-1 z-10"
+            >
+              {onCloneRequest && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="edit-clone-btn"
+                  onClick={() => { setMoreActionsOpen(false); onCloneRequest(item); }}
+                  className="w-full text-left px-3.5 py-2 bg-transparent border-0 text-sm text-ink cursor-pointer hover:bg-surface2"
+                >
+                  Clone item
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="edit-visibility-action"
+                onClick={() => {
+                  setMoreActionsOpen(false);
+                  trackAction('menu.editModal.toggleActive', {
+                    restaurantId,
+                    metadata: { itemId: item.id, next: !isActive },
+                  });
+                  setIsActive((v) => !v);
+                }}
+                className="w-full text-left px-3.5 py-2 bg-transparent border-0 text-sm text-ink cursor-pointer hover:bg-surface2"
+              >
+                {isActive ? 'Hide from guests' : 'Show to guests'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="delete-item-btn"
+                onClick={() => { setMoreActionsOpen(false); setDeleteConfirming(true); }}
+                className="w-full text-left px-3.5 py-2 bg-transparent border-0 text-sm text-bad cursor-pointer hover:bg-surface2"
+              >
+                Delete item
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Admin-only Enrich button — appears when onEnrichItem prop is wired by
+          the consumer (admin-webapp). Owner-webapp does NOT pass the prop. */}
+      {onEnrichItem && !isNewItem && item.id && !deleteConfirming && (
+        <button
+          type="button"
+          onClick={handleEnrichClick}
+          disabled={saving || enriching}
+          data-testid="edit-enrich-btn"
+          className={SECONDARY_BTN_CLS}
+        >
+          {enriching ? 'Enriching…' : 'Enrich with AI'}
+        </button>
+      )}
+      <span className="flex-1" />
+      {deleteConfirming ? (
+        <>
+          <span className="text-sm font-semibold text-ink">Delete this item permanently?</span>
+          {deleteError && <span className="text-xs text-bad">{deleteError}</span>}
+          <button
+            type="button"
+            onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
+            data-testid="delete-item-cancel"
+            disabled={deleteLoading}
+            className={SECONDARY_BTN_CLS}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            data-testid="delete-item-confirm"
+            disabled={deleteLoading}
+            className={dangerFooterCls}
+          >
+            {deleteLoading ? 'Deleting…' : 'Delete permanently'}
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" onClick={onClose} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+          {cloneMode && onCloneSave ? (
+            <button
+              type="button"
+              onClick={handleCloneSave}
+              disabled={cloneSaving || showNameInvalid}
+              data-testid="edit-clone-save-btn"
+              className={primaryFooterCls}
+            >
+              {cloneSaving ? 'Saving…' : 'Save copy'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="edit-save-btn"
+              className={primaryFooterCls}
+            >
+              {saving ? 'Saving…' : isNewItem ? (isAddon ? 'Save add-on' : 'Save item') : isAddon ? 'Save shared add-on' : 'Save shared item'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  // Container: modal mode = the design's centred 960px box over a scrim
+  // (full-screen on phones); inline mode fills its parent (the owner Item
+  // library mounts it inside its own centred box with the same geometry).
+  const containerClass = isInline
+    ? 'relative w-full h-full bg-surface flex flex-col overflow-hidden'
+    : isMobile
+      ? 'fixed inset-0 z-[70] bg-surface flex flex-col overflow-hidden'
+      : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-[min(960px,calc(100vw-40px))] max-h-[calc(100vh-40px)] bg-surface rounded-2xl shadow-float flex flex-col overflow-hidden';
+
+  return (
+    <>
+      {/* Backdrop — modal mode only */}
+      {!isInline && (
+        <div
+          onClick={onClose}
+          className="fixed inset-0 z-[60] bg-ink/45"
+          data-testid="edit-modal-backdrop"
+        />
+      )}
+
+      {/* Modal / inline editor — same body in both modes */}
+      <div
+        data-testid="edit-item-modal"
+        data-mobile={isMobile ? 'true' : undefined}
+        data-display-mode={displayMode}
+        data-section={activeTab}
+        role={isInline ? undefined : 'dialog'}
+        aria-modal={isInline ? undefined : true}
+        aria-label={headerTitle}
+        className={containerClass}
+      >
+        {/* ── Header: eyebrow · item name · scope band · close ── */}
+        <div className="px-6 pt-5 pb-4 border-b border-line flex items-start gap-3 shrink-0">
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold tracking-[.06em] uppercase text-accent" data-testid="edit-item-eyebrow">
+              {cloneMode ? 'Clone item' : isNewItem ? (isAddon ? 'New add-on' : 'New item') : (isAddon ? 'Edit add-on' : 'Edit item')}
+            </div>
+            <div className="text-[22px] font-bold leading-tight text-ink truncate" data-testid="edit-item-title">
+              {headerTitle}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap" data-testid="edit-scope-band">
+              {isPricingSection ? (
+                <>
+                  <span className="text-xs font-bold bg-warn-bg text-warn rounded-full px-2.5 py-[3px]" data-testid="edit-scope-pill">
+                    {pricingMenu ? `${pricingMenu.menu_name} menu only` : 'Not on any menu'}
+                  </span>
+                  <span className="text-[13px] text-ink-soft" data-testid="edit-scope-line">
+                    {pricingMenu ? 'Price, portion and promotion are set per menu.' : 'Add it to a menu from the Menu builder.'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs font-bold bg-ink text-on-ink rounded-full px-2.5 py-[3px]" data-testid="edit-scope-pill">
+                    {isNewItem ? 'New item' : isAddon ? 'Shared add-on' : 'Shared item'}
+                  </span>
+                  <span className="text-[13px] text-ink-soft" data-testid="edit-scope-line">{scopeLine}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="edit-close-btn"
+            aria-label="Close"
+            className="w-9 h-9 shrink-0 rounded-ctl border-0 bg-transparent text-ink cursor-pointer inline-flex items-center justify-center hover:bg-surface2"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* ── Body: rail (desktop) / dropdown (phone) + scrollable section ── */}
+        {galleryOpen && galleryPanelSlot ? (
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+            {galleryPanelSlot({
+              itemId: item.id,
+              itemName: name,
+              onPicked: (url) => { setThumbnail(url); setGalleryOpen(false); },
+              onClose: () => setGalleryOpen(false),
+            })}
+          </div>
+        ) : (
+          <div className={`flex-1 min-h-0 flex overflow-hidden ${isMobile ? 'flex-col' : ''}`}>
+            {isMobile ? (
+              <div className="px-4 pt-3 shrink-0">
+                <label className="sr-only" htmlFor="edit-section-select">Section</label>
+                <select
+                  id="edit-section-select"
+                  data-testid="edit-section-select"
+                  value={activeTab}
+                  onChange={(e) => setActiveTab(e.target.value as EditModalTab)}
+                  className="w-full h-10 rounded-ctl border border-line-input bg-surface px-2.5 text-sm font-semibold text-ink"
+                >
+                  {sections.map((s) => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
-                </div>
+                </select>
               </div>
-            </section>
-          )}
+            ) : (
+              <nav
+                data-testid="edit-section-rail"
+                aria-label="Item editor sections"
+                className="w-[210px] shrink-0 border-r border-line p-3 flex flex-col gap-0.5 overflow-y-auto"
+              >
+                {sections.map((s, idx) => {
+                  const isActiveSection = activeTab === s.key;
+                  const Icon = s.icon;
+                  const firstMore = s.group === 'more' && (idx === 0 || sections[idx - 1].group !== 'more');
+                  return (
+                    <Fragment key={s.key}>
+                      {firstMore && <div className="border-t border-line-row my-1.5" role="separator" />}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab(s.key)}
+                        aria-current={isActiveSection ? 'page' : undefined}
+                        aria-pressed={isActiveSection}
+                        data-testid={`tab-${s.key}`}
+                        className={`flex items-center gap-[11px] min-h-[38px] px-2.5 rounded-ctl border-0 border-l-[3px] cursor-pointer text-left text-sm text-ink ${
+                          isActiveSection ? 'bg-surface2 font-bold border-accent' : 'bg-transparent font-medium border-transparent hover:bg-surface2'
+                        }`}
+                      >
+                        <Icon size={16} aria-hidden="true" className="shrink-0" />
+                        <span className="truncate">{s.label}</span>
+                      </button>
+                    </Fragment>
+                  );
+                })}
+              </nav>
+            )}
 
-          {/* ── Recipe tab (content provided by consumer) ───────────────── */}
-          {isMobile && showRecipeTab && (
-            <MobileAccordionHeader
-              id="recipe"
-              title="Recipe"
-              subtitle="Linked recipe, cost & nutrition"
-              open={expandedSections.has('recipe')}
-              onToggle={toggleSection}
-            />
-          )}
-          {showRecipeTab && (isMobile ? expandedSections.has('recipe') : activeTab === 'recipe') && (
-            <section style={{ marginBottom: 4 }} data-testid="edit-modal-recipe-panel">
-              {recipeSlot}
-            </section>
-          )}
+            <div data-testid="edit-section-content" className="flex-1 min-w-0 overflow-y-auto px-5 py-4 md:px-6 md:py-5">
+              {/* Clone-mode banner — the owner immediately understands they're
+                  creating a new copy of an existing dish, not editing the
+                  original. The Save copy button is the only commit path. */}
+              {cloneMode && (
+                <div
+                  data-testid="edit-clone-banner"
+                  className="bg-warn-bg text-warn rounded-ctl px-3 py-2 mb-4 text-xs leading-relaxed"
+                >
+                  <strong>Cloning {cloneSourceName ? `“${cloneSourceName}”` : 'this item'}.</strong>{' '}
+                  All other fields are copied verbatim — only the name needs to
+                  change. Rename the item (it must differ from the source and
+                  cannot contain “Copy”), then click <em>Save copy</em>.
+                </div>
+              )}
+              {saveError && (
+                <div data-testid="edit-save-error" className="text-xs text-bad bg-bad-bg rounded-ctl px-2.5 py-1.5 flex items-center gap-1.5 mb-4">
+                  <AlertCircle size={12} aria-hidden="true" />
+                  {saveError}
+                </div>
+              )}
+              {cloneError && (
+                <div data-testid="edit-clone-error" className="text-xs text-bad bg-bad-bg rounded-ctl px-2.5 py-1.5 flex items-center gap-1.5 mb-4">
+                  <AlertCircle size={12} aria-hidden="true" />
+                  {cloneError}
+                </div>
+              )}
+              {deleteError && !deleteConfirming && (
+                <div className="text-xs text-bad bg-bad-bg rounded-ctl px-2.5 py-1.5 flex items-center gap-1.5 mb-4">
+                  <AlertCircle size={12} aria-hidden="true" />
+                  {deleteError}
+                </div>
+              )}
 
-          {/* ── Placements tab ────────────────────────────────────────────
-              Per-placement editor: every menu this dish is published in
-              renders a card with editable price / boost / chef's special
-              / portion fields plus an unpublish action. Each field saves
-              inline via service.updateMenuItemInMenu; removals call
-              service.removeItemFromMenu. Local state mirrors the
-              associations and rolls back on failure.
+              {activeTab === 'food_tags' && basicsSection}
+              {activeTab === 'dietary' && showDietarySection && dietarySection}
+              {activeTab === 'advanced' && advancedSection}
 
-              `placementsOverlapSlot` is rendered above the placement
-              cards when wired by the parent — owner-webapp surfaces the
-              overlap comparison panel + rationale composer here so the
-              cross-menu diff information lives next to the placements
-              that produced it. Other consumers (waiter, admin) don't
-              pass the slot and get the bare cards. */}
-          {isMobile && !isAddon && !isNewItem && (
-            <MobileAccordionHeader
-              id="placements"
-              title="Menus"
-              subtitle="Per-menu price & availability"
-              open={expandedSections.has('placements')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('placements') : activeTab === 'placements') && (
-            <PlacementsTabPanel
-              menus={menus}
-              placementsDraft={placementsDraft}
-              setPlacementsDraft={setPlacementsDraft}
-              placementsSaving={placementsSaving}
-              setPlacementSaving={setPlacementSaving}
-              itemId={item.id}
-              overlapSlot={placementsOverlapSlot}
-              onUpdate={async (menuId, patch) => {
-                await service.updateMenuItemInMenu(item.id, menuId, patch);
-              }}
-              onRemove={async (menuId) => {
-                await service.removeItemFromMenu(item.id, menuId);
-              }}
-            />
-          )}
+              {/* ── Modifiers (content provided by consumer) ── */}
+              {activeTab === 'groupings' && groupingsSlot && (
+                <section data-testid="edit-modifiers-section" className="flex flex-col gap-3">
+                  <SectionHeading>Modifier groups</SectionHeading>
+                  {groupingsSlot}
+                  <p className="text-[13px] text-ink-soft m-0">
+                    Groups are reusable. Editing a group changes it for every item that uses it.
+                  </p>
+                </section>
+              )}
+
+              {/* ── Pairings (dish-to-dish recommendations, consumer slot) ── */}
+              {activeTab === 'pairings' && pairingsSlot && (
+                <section data-testid="edit-pairings-section" className="flex flex-col gap-3">
+                  <SectionHeading>Pairs well with</SectionHeading>
+                  {pairingsSlot}
+                </section>
+              )}
+
+              {/* ── Recipe (consumer slot) ── */}
+              {showRecipeTab && activeTab === 'recipe' && (
+                <section data-testid="edit-modal-recipe-panel">{recipeSlot}</section>
+              )}
+
+              {/* ── Menu pricing — per-menu price / portion / promotion ── */}
+              {isPricingSection && (
+                <MenuPricingPanel
+                  placementsDraft={placementsDraft}
+                  placementsSaving={placementsSaving}
+                  selectedMenuId={pricingMenu?.menu_id ?? null}
+                  onSelectMenu={setPricingMenuId}
+                  itemId={item.id}
+                  itemBasePrice={item.price ?? null}
+                  currencySymbol={currencySymbol}
+                  getMenuHref={getMenuHref}
+                  overlapSlot={placementsOverlapSlot}
+                  servingOptions={servingRows.map((r) => ({ id: r.id, label: r.label, volume_ml: r.volume_ml, price: r.price }))}
+                  onGoToServingSizes={() => setActiveTab('food_tags')}
+                  onUpdate={persistPlacement}
+                  flushRef={pricingFlushRef}
+                />
+              )}
 
           {/* ── Add-ons tab ───────────────────────────────────────────── */}
           {activeTab === 'addons' && (
@@ -5430,49 +4951,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             </section>
           )}
 
-          {/* ── Modifiers tab (content provided by consumer) ──────────
-              Tab ID remains 'groupings' — see the tab-list comment above. */}
-          {isMobile && !isAddon && !isNewItem && groupingsSlot && (
-            <MobileAccordionHeader
-              id="groupings"
-              title="Modifiers"
-              subtitle="Add-ons & choices the diner can make"
-              open={expandedSections.has('groupings')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('groupings') : activeTab === 'groupings') && groupingsSlot && (
-            <section style={{ marginBottom: 4 }}>
-              {groupingsSlot}
-            </section>
-          )}
-
-          {/* ── Pairings tab (dish-to-dish recommendations) ───────────── */}
-          {isMobile && !isAddon && !isNewItem && pairingsSlot && (
-            <MobileAccordionHeader
-              id="pairings"
-              title="Pairings"
-              subtitle="Dishes recommended alongside this one"
-              open={expandedSections.has('pairings')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('pairings') : activeTab === 'pairings') && pairingsSlot && (
-            <section style={{ marginBottom: 4 }}>
-              {pairingsSlot}
-            </section>
-          )}
-
-          {/* ── Dishes tab (shown when editing an addon item) ─────────── */}
-          {isMobile && isAddon && (
-            <MobileAccordionHeader
-              id="dishes"
-              title="Used by dishes"
-              open={expandedSections.has('dishes')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('dishes') : activeTab === 'dishes') && (
+              {/* ── Dishes (add-on editor: which dishes offer this add-on) ── */}
+              {activeTab === 'dishes' && (
             <section style={{ marginBottom: 4 }}>
               {!allItems || allItems.length === 0 ? (
                 <div className="text-caption" style={{ padding: '20px 0', textAlign: 'center' }}>
@@ -5717,19 +5197,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </>
               )}
             </section>
-          )}
+              )}
 
-          {/* ── Performance tab ───────────────────────────────────────── */}
-          {isMobile && !isNewItem && (
-            <MobileAccordionHeader
-              id="performance"
-              title="Performance"
-              subtitle="How this item is selling"
-              open={expandedSections.has('performance')}
-              onToggle={toggleSection}
-            />
-          )}
-          {(isMobile ? expandedSections.has('performance') : activeTab === 'performance') && (
+              {/* ── Performance ── */}
+              {activeTab === 'performance' && (
             <section style={{ marginBottom: 4 }}>
               {/* Period selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -5779,60 +5250,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               )}
             </section>
-          )}
-          {/* Mobile (STR-858): destructive Delete relocated here — the very
-              bottom of the scroll, behind the same 2-step confirm — so it is
-              never a stray thumb-tap next to the everyday header controls. */}
-          {isMobile && !isNewItem && !cloneMode && item.id && (
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
-              {deleteConfirming ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>
-                    Delete this item permanently?
-                  </span>
-                  {deleteError && (
-                    <span style={{ fontSize: 12, color: 'var(--bad)' }}>{deleteError}</span>
-                  )}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
-                      data-testid="delete-item-cancel"
-                      disabled={deleteLoading}
-                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', border: 'none', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      data-testid="delete-item-confirm"
-                      disabled={deleteLoading}
-                      style={{ flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700, color: 'var(--on-ink)', background: 'var(--bad)', border: 'none', borderRadius: 'var(--r-xs)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.7 : 1 }}
-                    >
-                      {deleteLoading ? 'Deleting…' : 'Delete permanently'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirming(true)}
-                  disabled={saving}
-                  data-testid="delete-item-btn"
-                  style={{ width: '100%', minHeight: 44, fontSize: 13, fontWeight: 600, color: 'var(--bad)', background: 'none', border: '1px solid #E5A9A2', borderRadius: 'var(--r-xs)', cursor: 'pointer' }}
-                >
-                  Delete item
-                </button>
               )}
             </div>
-          )}
-          </div>{/* end scrollable tab content */}
-          </>)}{/* end gallery / tabs branch */}
-          </div>{/* end tabs section wrapper */}
-          </div>{/* end layout container */}
-        </div>
+          </div>
+        )}
 
+        {footer}
       </div>
 
       {/* Food item patron preview overlay */}
@@ -6039,9 +5462,6 @@ function PerfCard({ testId, label, value, highlight }: { testId?: string; label:
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="section-header">{children}</div>;
-}
 // The editor's three-level surface hierarchy (2026-09-02).
 //
 // It used to be flat: the modal shell, every card, and every input were all
@@ -6061,19 +5481,18 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // by owner, waiter and admin — a consumer that has not defined the token still
 // gets the intended colour, and one that has can retheme without forking this
 // file.
-const EDITOR_GROUND = 'var(--editor-ground, #eceef1)';
-const EDITOR_PANEL = 'var(--editor-panel, #f6f7f9)';
-const EDITOR_INPUT = 'var(--editor-input, #ffffff)';
-const EDITOR_PANEL_SHADOW =
-  'var(--shadow-subtle, 0 1px 3px 0 rgba(0,0,0,.06), 0 1px 2px -1px rgba(0,0,0,.04))';
+const EDITOR_GROUND = 'var(--surface, #ffffff)';
+const EDITOR_PANEL = 'var(--surface, #ffffff)';
+const EDITOR_INPUT = 'var(--surface, #ffffff)';
+const EDITOR_PANEL_SHADOW = 'none';
 
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: 'var(--text2)',
+  fontSize: 13,
+  fontWeight: 500,
+  color: 'var(--ink-soft)',
   display: 'block',
-  marginBottom: 4,
+  marginBottom: 6,
 };
 
 const inputStyle: React.CSSProperties = {
@@ -6084,9 +5503,10 @@ const inputStyle: React.CSSProperties = {
   // contrast is what makes an editable field look editable. Do not move this
   // to a panel token; it would flatten the editor again.
   background: EDITOR_INPUT,
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-xs)',
-  padding: '7px 10px',
+  border: '1px solid var(--line-input)',
+  borderRadius: 'var(--r-ctl, 8px)',
+  padding: '8px 12px',
+  minHeight: 40,
   outline: 'none',
   boxSizing: 'border-box',
 };
@@ -6097,35 +5517,14 @@ const inputStyle: React.CSSProperties = {
 // panel surface, 1px hairline border, radius 8, 14px padding.
 const EDITOR_CARD_STYLE: React.CSSProperties = {
   background: EDITOR_PANEL,
-  border: '1px solid var(--border)',
-  borderRadius: 8,
+  border: '1px solid var(--line)',
+  borderRadius: 'var(--r-ctl, 8px)',
   padding: 14,
   boxShadow: EDITOR_PANEL_SHADOW,
 };
 
-function imgActionStyle(variant?: 'blue' | 'red'): React.CSSProperties {
-  const colors =
-    variant === 'blue'
-      ? { bg: 'var(--blue-bg)', border: 'var(--blue)', color: 'var(--blue)' }
-      : variant === 'red'
-        ? { bg: 'var(--bad-bg)', border: '#E5A9A2', color: 'var(--bad)' }
-        : { bg: 'var(--surface2)', border: 'var(--border)', color: 'var(--text2)' };
-  return {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 5,
-    fontSize: 11,
-    fontWeight: 600,
-    padding: '5px 10px',
-    borderRadius: 4,
-    border: `1px solid ${colors.border}`,
-    background: colors.bg,
-    color: colors.color,
-    cursor: 'pointer',
-  };
-}
 
-// ── Placements tab ────────────────────────────────────────────────────────────
+// ── Menu pricing section ──────────────────────────────────────────────────────
 // boost_level is persisted on the menu_item_menus junction as the string
 // "1" / "2" / "3" (BulkActionsPanel writes the same shape). Convert to the
 // human BoostLabel for display, and back to its numeric string on save.
@@ -6141,143 +5540,178 @@ function labelToBoostLevel(label: BoostLabel | null): string | null {
   return idx < 0 ? null : String(idx + 1);
 }
 
-interface PlacementsTabPanelProps {
-  menus?: MenuSummary[];
-  placementsDraft: MenuAssociation[];
-  setPlacementsDraft: React.Dispatch<React.SetStateAction<MenuAssociation[]>>;
-  placementsSaving: Set<string>;
-  setPlacementSaving: (menuId: string, on: boolean) => void;
-  itemId: string;
-  /** Owner-webapp menu-page href builder — makes each card's menu name a link
-   *  that opens that menu in a new tab. Absent for waiter/admin (plain text). */
-  getMenuHref?: (menuId: string, itemId: string) => string;
-  /** Optional overlap surface rendered above the placement cards.
-   *  Owner-webapp wires this with the cross-menu comparison panel +
-   *  rationale composer; other consumers leave it undefined and get
-   *  just the cards. */
-  overlapSlot?: ReactNode;
-  onUpdate: (menuId: string, patch: Partial<MenuItemJunctionSettings>) => Promise<void>;
-  onRemove: (menuId: string) => Promise<void>;
+interface PricingServingOption {
+  id: string;
+  label: string;
+  volume_ml: string;
+  /** Item-level price in DOLLARS as typed ('' = none). */
+  price: string;
 }
 
-function PlacementsTabPanel({
-  menus: _menus,
+interface MenuPricingPanelProps {
+  placementsDraft: MenuAssociation[];
+  placementsSaving: Set<string>;
+  selectedMenuId: string | null;
+  onSelectMenu: (menuId: string) => void;
+  itemId: string;
+  /** The item's own base price — what a menu with no price falls back to. */
+  itemBasePrice: number | null;
+  currencySymbol: string;
+  /** Owner-webapp menu-page href builder — "Open in Menu builder" link. */
+  getMenuHref?: (menuId: string, itemId: string) => string;
+  /** Optional overlap surface rendered above the pricing columns. */
+  overlapSlot?: ReactNode;
+  /** Item-level (wine) serving sizes; per-menu PRICE overrides are edited here. */
+  servingOptions: PricingServingOption[];
+  onGoToServingSizes: () => void;
+  onUpdate: (menuId: string, patch: Partial<MenuItemJunctionSettings>) => Promise<void>;
+  /** The footer's "Save <Menu> settings" flushes the blur-committed buffers through this. */
+  flushRef: React.MutableRefObject<(() => void) | null>;
+}
+
+function MenuPricingPanel({
   placementsDraft,
-  setPlacementsDraft,
   placementsSaving,
-  setPlacementSaving,
+  selectedMenuId,
+  onSelectMenu,
   itemId,
+  itemBasePrice,
+  currencySymbol,
   getMenuHref,
   overlapSlot,
+  servingOptions,
+  onGoToServingSizes,
   onUpdate,
-  onRemove,
-}: PlacementsTabPanelProps) {
-  // Apply `patch` optimistically to the draft, call onUpdate, roll back on
-  // failure. `patch` keys mirror MenuItemJunctionSettings; we cast it onto
-  // MenuAssociation for the local mirror — the assoc accepts the same
-  // shapes (price/boost_level/chefs_special/portion_*).
-  const persist = useCallback(
-    async (menuId: string, patch: Partial<MenuItemJunctionSettings>) => {
-      if (placementsSaving.has(menuId)) return;
-      const before = placementsDraft;
-      setPlacementsDraft((prev) => prev.map((a) =>
-        a.menu_id === menuId ? { ...a, ...patch } as MenuAssociation : a,
-      ));
-      setPlacementSaving(menuId, true);
-      try {
-        await onUpdate(menuId, patch);
-      } catch (err) {
-        console.error(`Failed to update menu placement ${menuId} for ${itemId}`, err);
-        setPlacementsDraft(before);
-      } finally {
-        setPlacementSaving(menuId, false);
-      }
-    },
-    [placementsDraft, placementsSaving, setPlacementsDraft, setPlacementSaving, onUpdate, itemId],
-  );
+  flushRef,
+}: MenuPricingPanelProps) {
+  const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`;
+  const placements = placementsDraft.filter((a) => !!a.menu_id);
+  const selected = placements.find((a) => a.menu_id === selectedMenuId) ?? placements[0] ?? null;
+  const hint = menuPricingHint(placements, money);
 
-  const unpublish = useCallback(
-    async (menuId: string) => {
-      if (placementsSaving.has(menuId)) return;
-      const before = placementsDraft;
-      setPlacementsDraft((prev) => prev.filter((a) => a.menu_id !== menuId));
-      setPlacementSaving(menuId, true);
-      try {
-        await onRemove(menuId);
-      } catch (err) {
-        console.error(`Failed to unpublish ${itemId} from menu ${menuId}`, err);
-        setPlacementsDraft(before);
-      } finally {
-        setPlacementSaving(menuId, false);
-      }
-    },
-    [placementsDraft, placementsSaving, setPlacementsDraft, setPlacementSaving, onRemove, itemId],
-  );
-
-  if (placementsDraft.length === 0) {
+  if (placements.length === 0 || !selected) {
     return (
-      <section data-testid="placements-tab-empty" style={{ marginBottom: 4 }}>
+      <section data-testid="placements-tab-empty" className="flex flex-col gap-4">
         {overlapSlot}
-        <div
-          style={{
-            padding: '24px 16px',
-            textAlign: 'center',
-            color: 'var(--text2)',
-            fontSize: 13,
-            border: '1px dashed var(--border)',
-            borderRadius: 8,
-            background: 'var(--surface-sunk)',
-          }}
-        >
-          This item is not published on any menu yet.
-          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text3)' }}>
-            Add it to a menu from the Menu Builder.
-          </div>
+        <div className="text-center py-8 text-ink-soft">
+          <Database size={30} className="mx-auto text-ink-faint" aria-hidden="true" />
+          <div className="font-semibold text-ink mt-2">Not on any menu yet</div>
+          <div className="text-sm">Add it to a menu from the Menu builder, then set its price here.</div>
         </div>
       </section>
     );
   }
 
   return (
-    <section data-testid="placements-tab" style={{ marginBottom: 4 }}>
+    <section data-testid="placements-tab" className="flex flex-col gap-5">
       {overlapSlot}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, alignItems: 'start' }}>
-        {placementsDraft.map((assoc) => (
-          <MenuPlacementCard
-            key={assoc.menu_id}
-            assoc={assoc}
-            saving={placementsSaving.has(assoc.menu_id)}
-            menuHref={getMenuHref ? getMenuHref(assoc.menu_id, itemId) : null}
-            onChange={(patch) => void persist(assoc.menu_id, patch)}
-            onRemove={() => void unpublish(assoc.menu_id)}
+      <div className="flex gap-5 flex-wrap">
+        {/* Left — the selected menu's price & placement */}
+        <div className="flex-1 basis-[320px] min-w-0">
+          <SectionHeading sub="Prices and promotions can differ by menu.">Price &amp; placement</SectionHeading>
+          <div className="inline-flex border border-line rounded-ctl overflow-hidden mb-2.5 max-w-full flex-wrap" role="tablist" aria-label="Menu">
+            {placements.map((p) => {
+              const on = p.menu_id === selected.menu_id;
+              return (
+                <button
+                  key={p.menu_id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  data-testid={`menu-pricing-menu-${p.menu_id}`}
+                  onClick={() => onSelectMenu(p.menu_id)}
+                  className={`h-9 px-[18px] border-0 text-[13px] font-semibold cursor-pointer ${on ? 'bg-ink text-on-ink' : 'bg-surface text-ink'}`}
+                >
+                  {p.menu_name}
+                </button>
+              );
+            })}
+          </div>
+          <MenuPricingEditor
+            key={selected.menu_id}
+            assoc={selected}
+            saving={placementsSaving.has(selected.menu_id)}
+            money={money}
+            currencySymbol={currencySymbol}
+            menuHref={getMenuHref ? getMenuHref(selected.menu_id, itemId) : null}
+            servingOptions={servingOptions}
+            onGoToServingSizes={onGoToServingSizes}
+            onChange={(patch) => void onUpdate(selected.menu_id, patch)}
+            flushRef={flushRef}
           />
-        ))}
+        </div>
+
+        {/* Right — where this item appears */}
+        <div className="flex-[0_1_250px] min-w-[210px] md:border-l md:border-line md:pl-5" data-testid="menu-pricing-appears">
+          <div className="text-[15px] font-bold text-ink mb-2.5">Where this item appears</div>
+          <div className="border border-line rounded-ctl overflow-hidden mb-3">
+            {placements.map((p) => {
+              const on = p.menu_id === selected.menu_id;
+              const effective = p.price != null ? money(p.price) : itemBasePrice != null ? `${money(itemBasePrice)} base` : 'No price';
+              return (
+                <button
+                  key={p.menu_id}
+                  type="button"
+                  data-testid={`menu-pricing-row-${p.menu_id}`}
+                  aria-current={on ? 'true' : undefined}
+                  onClick={() => onSelectMenu(p.menu_id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 border-0 border-b border-line-row last:border-b-0 text-left text-sm cursor-pointer ${
+                    on ? 'bg-surface2 font-bold' : 'bg-transparent font-normal'
+                  } ${p.price == null && itemBasePrice == null ? 'text-ink-soft' : 'text-ink'}`}
+                >
+                  <span className="flex-1 truncate">{p.menu_name}</span>
+                  <span className="tabular-nums">{effective}</span>
+                  <Check size={13} aria-hidden="true" className={on ? 'visible' : 'invisible'} />
+                </button>
+              );
+            })}
+          </div>
+          {hint && (
+            <div
+              data-testid="menu-pricing-divergence-banner"
+              className="flex gap-2.5 bg-warn-bg rounded-ctl px-3 py-2.5 text-[13px] text-ink"
+            >
+              <TriangleAlert size={15} className="text-warn shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{hint}</span>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
 }
 
-interface MenuPlacementCardProps {
+interface MenuPricingEditorProps {
   assoc: MenuAssociation;
   saving: boolean;
-  /** Menu-page URL for this card's menu (opens in a new tab); null → plain text. */
+  money: (n: number) => string;
+  currencySymbol: string;
   menuHref: string | null;
+  servingOptions: PricingServingOption[];
+  onGoToServingSizes: () => void;
   onChange: (patch: Partial<MenuItemJunctionSettings>) => void;
-  onRemove: () => void;
+  flushRef: React.MutableRefObject<(() => void) | null>;
 }
 
-function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: MenuPlacementCardProps) {
-  // Price + portion_serves use uncontrolled-ish state — local string buffer
-  // so the owner can clear the field mid-typing without the parent dropping
-  // the value. We commit on blur (or Enter). Selects/toggles commit on
-  // every change since their value space is small.
-  const [priceText, setPriceText] = useState<string>(
-    assoc.price == null ? '' : String(assoc.price),
-  );
+// One menu's price / portion / promotion. Price + serves + serving overrides
+// are blur-committed text buffers (so the owner can clear a field mid-typing);
+// selects and switches commit on every change since their value space is
+// small. Keyed by menu id from the parent, so switching menus resets buffers.
+function MenuPricingEditor({
+  assoc,
+  saving,
+  money,
+  currencySymbol,
+  menuHref,
+  servingOptions,
+  onGoToServingSizes,
+  onChange,
+  flushRef,
+}: MenuPricingEditorProps) {
+  const [priceText, setPriceText] = useState<string>(assoc.price == null ? '' : String(assoc.price));
   useEffect(() => {
     setPriceText(assoc.price == null ? '' : String(assoc.price));
   }, [assoc.price]);
-
   const [priceError, setPriceError] = useState<string | null>(null);
   const [servesText, setServesText] = useState<string>(
     assoc.portion_serves == null ? '' : String(assoc.portion_serves),
@@ -6285,15 +5719,13 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
   useEffect(() => {
     setServesText(assoc.portion_serves == null ? '' : String(assoc.portion_serves));
   }, [assoc.portion_serves]);
+  const [servingOpen, setServingOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
 
   const commitPrice = () => {
-    // STR-1274: `Number(priceText)` read "1,200" as NaN, and the old branch
-    // below then snapped the field back to the saved value with NO message —
-    // so a grouped price looked like it simply refused to type. Worse, on the
-    // sibling surfaces the NaN was coerced to null and PATCHed, wiping the
-    // price while the UI reported success. Parse properly and SHOW the error.
-    // An empty field stays meaningful here: null means "charge the dish's own
-    // price", so this field is deliberately NOT `required`.
+    // STR-1274: parse properly ("1,200" → 1200) and SHOW the error rather than
+    // snapping back silently. An empty field is meaningful: null means
+    // "charge the item's own price", so it is deliberately NOT required.
     const parsed = parsePriceInput(priceText);
     if (!parsed.ok) {
       setPriceError(parsed.error);
@@ -6301,8 +5733,6 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
     }
     setPriceError(null);
     const nextPrice = parsed.value;
-    // Re-render the normalized form so the owner sees what was stored
-    // ("1,200" becomes 1200) rather than being left with ambiguous text.
     setPriceText(nextPrice == null ? '' : String(nextPrice));
     if (nextPrice === assoc.price) return;
     onChange({ price: nextPrice });
@@ -6319,145 +5749,69 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
     onChange({ portion_serves: nextServes });
   };
 
+  // The footer's "Save <Menu> settings" commits whatever is still buffered.
+  useEffect(() => {
+    flushRef.current = () => { commitPrice(); commitServes(); };
+    return () => { flushRef.current = null; };
+  });
+
   const currentBoost = boostLevelToLabel(assoc.boost_level);
   const portionType: 'single' | 'shared' = assoc.portion_type ?? 'single';
+  const overrides = assoc.serving_price_overrides ?? {};
+  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      (e.target as HTMLInputElement).blur();
+    }
+  };
 
   return (
-    <div
-      data-testid={`placements-tab-row-${assoc.menu_id}`}
-      style={{
-        ...EDITOR_CARD_STYLE,
-        opacity: saving ? 0.7 : 1,
-        transition: 'opacity 0.15s',
-      }}
-    >
-      {/* Orange-tinged, clickable header: the whole title area links to this
-          item ON this menu in the Menu Builder (new tab), which expands the
-          item's course + sub-category and scrolls to it. The Remove button is
-          carved out as a sibling so it never triggers navigation. */}
-      <div
-        style={{
-          display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 8,
-          marginBottom: 10, borderRadius: 8, overflow: 'hidden',
-          background: 'var(--orange-bg, #FDF0EE)',
-          border: '1px solid var(--orange-300, #FFB48A)',
-        }}
-      >
-        {menuHref ? (
+    <div data-testid={`placements-tab-row-${assoc.menu_id}`} className={saving ? 'opacity-70 transition-opacity' : 'transition-opacity'}>
+      <div className="text-[13px] text-ink-soft mb-3 flex items-center gap-2 flex-wrap">
+        <span data-testid={`menu-pricing-path-${assoc.menu_id}`}>{placementPath(assoc)}</span>
+        {menuHref && (
           <a
             href={menuHref}
             target="_blank"
             rel="noopener noreferrer"
             data-testid={`placements-tab-menu-link-${assoc.menu_id}`}
-            title={`Open ${assoc.menu_name} in the Menu Builder (new tab) — jumps to this item with its course & sub-category expanded`}
-            style={{
-              flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2,
-              padding: '8px 10px', textDecoration: 'none', color: 'var(--orange-text, #B83B00)',
-              transition: 'background 0.1s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--orange-100, #FFE3D1)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            title={`Open ${assoc.menu_name} in the Menu builder (new tab) — jumps to this item`}
+            className="font-semibold text-ink no-underline"
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', fontSize: 14, fontWeight: 700 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assoc.menu_name}</span>
-              <span aria-hidden style={{ fontSize: 11, flexShrink: 0 }}>↗</span>
-            </span>
-            {assoc.category_name && (
-              <span style={{ fontSize: 11, color: 'var(--orange-text, #B83B00)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {assoc.category_name}
-              </span>
-            )}
+            Open in Menu builder ↗
           </a>
-        ) : (
-          <div style={{ flex: 1, minWidth: 0, padding: '8px 10px' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {assoc.menu_name}
-            </div>
-            {assoc.category_name && (
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                {assoc.category_name}
-              </div>
-            )}
-          </div>
         )}
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={saving}
-          data-testid={`placements-tab-remove-${assoc.menu_id}`}
-          aria-label={`Remove from ${assoc.menu_name}`}
-          title="Remove from this menu"
-          style={{
-            ...imgActionStyle('red'),
-            alignSelf: 'center', marginRight: 8, flexShrink: 0,
-            cursor: saving ? 'wait' : 'pointer',
-          }}
-        >
-          <Trash2 size={12} aria-hidden />
-          Remove
-        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="grid grid-cols-2 gap-3 pb-4 border-b border-line-row">
         <div>
-          <label style={labelStyle} htmlFor={`menus-price-${assoc.menu_id}`}>Price</label>
-          <input
-            id={`menus-price-${assoc.menu_id}`}
-            data-testid={`placements-tab-price-${assoc.menu_id}`}
-            // STR-1274: type="text", not "number". A number input applies the
-            // HTML value-sanitization algorithm, so "1,200" never reaches
-            // state at all — it arrives as '' and reads as "cleared". step/min
-            // are inert on a text input; parsePriceInput enforces both.
-            type="text"
-            inputMode="decimal"
-            value={priceText}
-            disabled={saving}
-            onChange={(e) => { setPriceError(null); setPriceText(e.target.value); }}
-            onBlur={commitPrice}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            style={{
-              ...inputStyle,
-              ...(priceError ? { border: '1px solid var(--bad)' } : null),
-            }}
-          />
+          <label className={FIELD_LABEL_CLS} htmlFor={`menus-price-${assoc.menu_id}`}>Price on {assoc.menu_name}</label>
+          <div className={`flex items-center gap-1 h-10 rounded-ctl border bg-surface px-3 ${priceError ? 'border-bad' : 'border-line-input'}`}>
+            <span aria-hidden="true" className="text-ink-soft font-semibold">{currencySymbol}</span>
+            <input
+              id={`menus-price-${assoc.menu_id}`}
+              data-testid={`placements-tab-price-${assoc.menu_id}`}
+              // STR-1274: type="text", not "number" — a number input's value
+              // sanitisation drops "1,200" before it reaches state.
+              type="text"
+              inputMode="decimal"
+              value={priceText}
+              disabled={saving}
+              placeholder={assoc.price == null ? 'uses item price' : undefined}
+              onChange={(e) => { setPriceError(null); setPriceText(e.target.value); }}
+              onBlur={commitPrice}
+              onKeyDown={blurOnEnter}
+              className="flex-1 min-w-0 border-0 outline-none bg-transparent text-base font-semibold tabular-nums text-ink p-0"
+            />
+          </div>
           {priceError && (
-            <div
-              role="alert"
-              data-testid={`placements-tab-price-error-${assoc.menu_id}`}
-              className="text-caption"
-              style={{ color: 'var(--bad)', marginTop: 3 }}
-            >
+            <div role="alert" data-testid={`placements-tab-price-error-${assoc.menu_id}`} className="text-xs text-bad mt-1">
               {priceError}
             </div>
           )}
         </div>
         <div>
-          <label style={labelStyle} htmlFor={`menus-boost-${assoc.menu_id}`}>Boost level</label>
-          <select
-            id={`menus-boost-${assoc.menu_id}`}
-            data-testid={`placements-tab-boost-${assoc.menu_id}`}
-            value={currentBoost ?? ''}
-            disabled={saving}
-            onChange={(e) => {
-              const nextLabel = (e.target.value || null) as BoostLabel | null;
-              onChange({ boost_level: labelToBoostLevel(nextLabel) });
-            }}
-            style={inputStyle}
-          >
-            <option value="">None</option>
-            {BOOST_LABELS.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label style={labelStyle} htmlFor={`menus-portion-type-${assoc.menu_id}`}>Portion</label>
+          <label className={FIELD_LABEL_CLS} htmlFor={`menus-portion-type-${assoc.menu_id}`}>Portion</label>
           <select
             id={`menus-portion-type-${assoc.menu_id}`}
             data-testid={`placements-tab-portion-type-${assoc.menu_id}`}
@@ -6465,16 +5819,12 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
             disabled={saving}
             onChange={(e) => {
               const next = e.target.value as 'single' | 'shared';
-              // Switching to single clears serves; switching to shared
-              // leaves the current serves value (or null) — owner sets it
-              // explicitly in the adjacent field.
-              if (next === 'single') {
-                onChange({ portion_type: 'single', portion_serves: null });
-              } else {
-                onChange({ portion_type: 'shared' });
-              }
+              // Switching to single clears serves; switching to shared leaves
+              // the current serves value (or null) for the adjacent field.
+              if (next === 'single') onChange({ portion_type: 'single', portion_serves: null });
+              else onChange({ portion_type: 'shared' });
             }}
-            style={inputStyle}
+            className={FIELD_INPUT_CLS}
           >
             <option value="single">Serves one</option>
             <option value="shared">Shared</option>
@@ -6482,7 +5832,7 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
         </div>
         {portionType === 'shared' && (
           <div>
-            <label style={labelStyle} htmlFor={`menus-portion-serves-${assoc.menu_id}`}>Serves how many</label>
+            <label className={FIELD_LABEL_CLS} htmlFor={`menus-portion-serves-${assoc.menu_id}`}>Serves how many</label>
             <input
               id={`menus-portion-serves-${assoc.menu_id}`}
               data-testid={`placements-tab-portion-serves-${assoc.menu_id}`}
@@ -6495,40 +5845,149 @@ function MenuPlacementCard({ assoc, saving, menuHref, onChange, onRemove }: Menu
               placeholder="e.g. 2"
               onChange={(e) => setServesText(e.target.value)}
               onBlur={commitServes}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-              style={inputStyle}
+              onKeyDown={blurOnEnter}
+              className={FIELD_INPUT_CLS}
             />
           </div>
         )}
       </div>
 
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginTop: 12,
-          fontSize: 13,
-          color: 'var(--text)',
-          cursor: saving ? 'wait' : 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        <input
-          type="checkbox"
-          data-testid={`placements-tab-chefs-special-${assoc.menu_id}`}
+      <div className="text-base font-bold text-ink mt-3.5 mb-2.5">Promotion on {assoc.menu_name}</div>
+      <div className="grid grid-cols-[1fr_auto] gap-x-3.5 gap-y-3 items-center mb-4">
+        <span className="text-sm text-ink">Featured dish <span className="text-ink-soft">(chef&apos;s special)</span></span>
+        <InkSwitch
           checked={!!assoc.chefs_special}
           disabled={saving}
-          onChange={(e) => onChange({ chefs_special: e.target.checked })}
-          style={{ cursor: saving ? 'wait' : 'pointer' }}
+          label={`Featured dish on ${assoc.menu_name}`}
+          testId={`placements-tab-chefs-special-${assoc.menu_id}`}
+          onChange={(next) => onChange({ chefs_special: next })}
         />
-        Chef&apos;s special
-      </label>
+        <label className="text-sm text-ink" htmlFor={`menus-boost-${assoc.menu_id}`}>Menu prominence</label>
+        <select
+          id={`menus-boost-${assoc.menu_id}`}
+          data-testid={`placements-tab-boost-${assoc.menu_id}`}
+          value={currentBoost ?? ''}
+          disabled={saving}
+          onChange={(e) => {
+            const nextLabel = (e.target.value || null) as BoostLabel | null;
+            onChange({ boost_level: labelToBoostLevel(nextLabel) });
+          }}
+          className="h-10 min-w-[180px] rounded-ctl border border-line-input bg-surface px-2.5 text-sm text-ink"
+        >
+          <option value="">None</option>
+          {BOOST_LABELS.map((b) => (
+            <option key={b} value={b}>Boost · {b}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {servingOptions.length > 0 && (
+          <Accordion
+            title="Serving sizes & prices"
+            open={servingOpen}
+            onToggle={() => setServingOpen((v) => !v)}
+            testId={`menu-pricing-serving-sizes-${assoc.menu_id}`}
+          >
+            <div className="flex flex-col">
+              {servingOptions.map((opt) => (
+                <ServingOverrideRow
+                  key={opt.id}
+                  menuId={assoc.menu_id}
+                  option={opt}
+                  overrideCents={overrides[opt.id]}
+                  saving={saving}
+                  money={money}
+                  currencySymbol={currencySymbol}
+                  onCommit={(cents) => {
+                    const next: Record<string, number> = { ...overrides };
+                    if (cents == null) delete next[opt.id];
+                    else next[opt.id] = cents;
+                    onChange({ serving_price_overrides: next });
+                  }}
+                />
+              ))}
+              <button
+                type="button"
+                data-testid={`menu-pricing-add-serving-${assoc.menu_id}`}
+                onClick={onGoToServingSizes}
+                className="self-start mt-2 bg-transparent border-0 p-0 text-[13px] font-semibold text-ink cursor-pointer"
+              >
+                + Add serving size (Basics › Beverage details)
+              </button>
+            </div>
+          </Accordion>
+        )}
+        <Accordion
+          title="Why prices differ"
+          open={whyOpen}
+          onToggle={() => setWhyOpen((v) => !v)}
+          testId={`menu-pricing-why-${assoc.menu_id}`}
+        >
+          Guests are charged, in order: <strong>1.</strong> the serving-size price, if one is set ·{' '}
+          <strong>2.</strong> otherwise this menu&apos;s price · <strong>3.</strong> otherwise the item&apos;s
+          base price. A menu with no price shows {money(0)} until you set one.
+        </Accordion>
+      </div>
+    </div>
+  );
+}
+
+// One serving size's per-menu price override (cents on the wire, dollars in
+// the box). Empty = "uses item price".
+function ServingOverrideRow({
+  menuId,
+  option,
+  overrideCents,
+  saving,
+  money,
+  currencySymbol,
+  onCommit,
+}: {
+  menuId: string;
+  option: PricingServingOption;
+  overrideCents: number | undefined;
+  saving: boolean;
+  money: (n: number) => string;
+  currencySymbol: string;
+  onCommit: (cents: number | null) => void;
+}) {
+  const fromCents = (c: number | undefined) => (c == null ? '' : (c / 100).toFixed(2));
+  const [text, setText] = useState<string>(fromCents(overrideCents));
+  useEffect(() => { setText(fromCents(overrideCents)); }, [overrideCents]);
+  const [error, setError] = useState<string | null>(null);
+  const itemPrice = option.price.trim() === '' ? null : Number(option.price);
+  const commit = () => {
+    const parsed = parsePriceInput(text);
+    if (!parsed.ok) { setError(parsed.error); return; }
+    setError(null);
+    const cents = parsed.value == null ? null : Math.round(parsed.value * 100);
+    setText(cents == null ? '' : (cents / 100).toFixed(2));
+    if (cents === (overrideCents ?? null)) return;
+    onCommit(cents);
+  };
+  return (
+    <div className="flex items-center gap-3 py-1.5" data-testid={`menu-pricing-serving-row-${menuId}-${option.id}`}>
+      <span className="flex-1 text-sm text-ink">
+        {option.label || 'Serving'}{option.volume_ml ? ` · ${option.volume_ml} ml` : ''}
+        <span className="text-ink-soft"> — {itemPrice != null && Number.isFinite(itemPrice) ? `item price ${money(itemPrice)}` : 'uses menu price'}</span>
+      </span>
+      <div className={`flex items-center gap-1 h-9 w-[120px] rounded-ctl border bg-surface px-2.5 ${error ? 'border-bad' : 'border-line-input'}`}>
+        <span aria-hidden="true" className="text-ink-soft text-xs font-semibold">{currencySymbol}</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          aria-label={`${option.label || 'Serving'} price on this menu`}
+          data-testid={`menu-pricing-serving-price-${menuId}-${option.id}`}
+          value={text}
+          disabled={saving}
+          placeholder="override"
+          onChange={(e) => { setError(null); setText(e.target.value); }}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+          className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm tabular-nums text-ink p-0"
+        />
+      </div>
     </div>
   );
 }

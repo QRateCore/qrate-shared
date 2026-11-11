@@ -1,5 +1,5 @@
 export { default as MenuManagerClient } from './MenuManagerClient';
-export type { BulkMode, DragState } from './MenuManagerClient';
+export type { BulkMode, DragState, MenuManagerActions } from './MenuManagerClient';
 export { default as EditModal } from './components/EditModal';
 export type { DietaryTagService } from './components/EditModal';
 export { default as BulkActionsPanel } from './components/BulkActionsPanel';
@@ -37,6 +37,8 @@ export type { RulePresetKind } from './components/SelectionRuleEditor';
 export { default as ItemPool } from './components/ItemPool';
 export { getMenuColor, CANONICAL_CATEGORIES, toCanonical, UNGROUPED_KEY, MENU_SECTIONS, sectionForCanonical, DRINK_TYPE_SECTIONS, DRINK_TYPE_SECTION_KEYS, DRINK_UNCLASSIFIED_KEY, isDrinksMenu, sectionsForMenu } from './lib/menuUtils';
 export type { MenuColor, MenuColorName, CanonicalCategory, MenuSection } from './lib/menuUtils';
+export { analyseMenuPricing, itemScopeLine, menuPricingHint, placementPath } from './lib/editModalScope';
+export type { PricedPlacement, MenuPricingHint, MoneyFormatter } from './lib/editModalScope';
 
 // Unified drag-drop placement modal (replaces SubCategoryPickModal +
 // the owner-app CategorySelectionModal).

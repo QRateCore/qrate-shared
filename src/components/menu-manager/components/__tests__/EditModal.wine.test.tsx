@@ -276,8 +276,9 @@ describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
     expect(screen.queryByTestId('byo-toggle')).not.toBeInTheDocument();
   });
 
-  it('hides the Dietary Info card for a wine item', () => {
+  it('hides the Dietary & allergens section for a wine item', () => {
     renderModal({ dietaryTagService: makeDietaryTagService() });
+    expect(screen.queryByTestId('tab-dietary')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dietary-info-card')).not.toBeInTheDocument();
   });
 
@@ -291,6 +292,7 @@ describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
     expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('spice-required-toggle')).toBeInTheDocument();
     expect(screen.getByTestId('byo-toggle')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-dietary'));
     expect(screen.getByTestId('dietary-info-card')).toBeInTheDocument();
   });
 });

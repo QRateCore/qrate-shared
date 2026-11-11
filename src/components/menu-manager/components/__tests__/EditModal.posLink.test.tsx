@@ -21,7 +21,7 @@
  *     feature exists to prevent.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EditModal from '../EditModal';
@@ -55,7 +55,7 @@ const service = {
 } as never;
 
 function renderModal(props: Record<string, unknown> = {}) {
-  return render(
+  const r = render(
     <MenuManagerServiceProvider value={service}>
       <EditModal
         item={ITEM}
@@ -66,6 +66,9 @@ function renderModal(props: Record<string, unknown> = {}) {
       />
     </MenuManagerServiceProvider>,
   );
+  // The POS row lives in Advanced details (Owner Portal redesign); open it.
+  fireEvent.click(screen.getByTestId('tab-advanced'));
+  return r;
 }
 
 describe('EditModal — POS row visibility', () => {

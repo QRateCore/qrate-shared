@@ -138,10 +138,7 @@ export function SubCategoryGroup({
     <div
       data-testid={`subcategory-group-${category}-${label}`}
       data-sub-label={label}
-      className="ml-1 border-l-2"
-      // Green = "valid drop target", consistent with the course buckets and
-      // modifier zones (see DROP_TARGET in MenuBuilder).
-      style={{ borderColor: isDragOver ? 'var(--ok)' : 'var(--border)' }}
+      className="mt-1.5 first:mt-0"
     >
       {/* Insertion line above this row while a reorder drag hovers its top half. */}
       {insertionLine === 'before' && (
@@ -211,13 +208,16 @@ export function SubCategoryGroup({
         // header in MenuBuilder.tsx — same owner feedback 2026-07-21).
         data-no-press
         data-testid={`subcategory-drop-${category}-${label}`}
-        // font-semibold + var(--text) (was font-medium + gray --text2):
-        // high-contrast black sub-category labels per owner feedback
-        // 2026-07-21 — gray read as disabled inside expanded courses.
-        className="flex items-center gap-1 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors"
+        // The design's sub-category band: quiet surface2 fill, 13px bold, the
+        // controls (grip · chevron · count · ▲▼ · rename · delete) on the same
+        // row. Green = "valid drop target", consistent with the course buckets
+        // and modifier zones (see DROP_TARGET in MenuBuilder).
+        className="flex items-center gap-1.5 rounded-ctl px-3 py-1.5 text-[13px] font-bold text-ink transition-colors"
         style={{
-          color: isDragOver ? 'var(--ok)' : 'var(--text)',
-          background: isDragOver ? 'var(--ok-bg)' : 'transparent',
+          color: isDragOver ? 'var(--ok)' : undefined,
+          background: isDragOver ? 'var(--ok-bg)' : 'var(--surface2)',
+          outline: isDragOver ? '2px dashed var(--ok)' : undefined,
+          outlineOffset: -2,
           // grab cursor when reorder is armed; pointer otherwise (row is clickable)
           cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),
           opacity: isReorderDragging ? 0.4 : undefined,
@@ -227,8 +227,8 @@ export function SubCategoryGroup({
           <span
             aria-hidden="true"
             data-testid={`subcategory-reorder-grip-${category}-${label}`}
-            className="flex items-center justify-center shrink-0"
-            style={{ cursor: 'grab', opacity: 0.55, width: 18, height: 18 }}
+            className="flex items-center justify-center shrink-0 text-ink-faint"
+            style={{ cursor: 'grab', width: 18, height: 18 }}
           >
             <GripVertical size={14} />
           </span>
@@ -238,9 +238,9 @@ export function SubCategoryGroup({
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
           data-testid={`subcategory-toggle-${category}-${label}`}
-          className="flex items-center"
+          className="flex items-center text-ink-soft bg-transparent border-0 p-0 cursor-pointer"
         >
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
         </button>
 
         {renaming ? (
@@ -260,8 +260,7 @@ export function SubCategoryGroup({
               maxLength={60}
               disabled={busy}
               data-testid={`subcategory-rename-input-${category}-${label}`}
-              className="flex-1 min-w-0 rounded border px-1 py-0.5 text-[11px] normal-case"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+              className="flex-1 min-w-0 rounded-ctl border border-line bg-surface px-2 py-0.5 text-[13px] font-semibold text-ink normal-case outline-none focus:border-ink"
             />
             <button
               type="button"
@@ -289,8 +288,8 @@ export function SubCategoryGroup({
               {display}
             </span>
             <span
-              className="rounded-full px-1.5"
-              style={{ background: color.chip, color: color.chipText }}
+              className="text-[12px] font-semibold text-ink-soft"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
               data-testid={`subcategory-count-${category}-${label}`}
             >
               {itemCount}
@@ -303,9 +302,9 @@ export function SubCategoryGroup({
                   disabled={!canMoveUp}
                   aria-label={`Move ${display} up`}
                   data-testid={`subcategory-move-up-${category}-${label}`}
-                  className={`opacity-60 hover:opacity-100 disabled:opacity-20 ${mobileTapClass}`}
+                  className={`text-ink-soft bg-transparent border-0 p-0 cursor-pointer hover:text-ink disabled:opacity-20 disabled:cursor-not-allowed ${mobileTapClass}`}
                 >
-                  <ChevronUp size={isMobile ? 18 : 12} />
+                  <ChevronUp size={isMobile ? 18 : 13} />
                 </button>
                 <button
                   type="button"
@@ -313,9 +312,9 @@ export function SubCategoryGroup({
                   disabled={!canMoveDown}
                   aria-label={`Move ${display} down`}
                   data-testid={`subcategory-move-down-${category}-${label}`}
-                  className={`opacity-60 hover:opacity-100 disabled:opacity-20 ${mobileTapClass}`}
+                  className={`text-ink-soft bg-transparent border-0 p-0 cursor-pointer hover:text-ink disabled:opacity-20 disabled:cursor-not-allowed ${mobileTapClass}`}
                 >
-                  <ChevronDown size={isMobile ? 18 : 12} />
+                  <ChevronDown size={isMobile ? 18 : 13} />
                 </button>
               </>
             )}
@@ -328,9 +327,9 @@ export function SubCategoryGroup({
                 }}
                 aria-label={`Rename ${display}`}
                 data-testid={`subcategory-rename-${category}-${label}`}
-                className="opacity-70 hover:opacity-100"
+                className="text-ink-soft bg-transparent border-0 p-0 ml-1 cursor-pointer hover:text-ink"
               >
-                <Pencil size={15} />
+                <Pencil size={14} />
               </button>
             )}
             {canManage && onDelete && !confirmingDelete && (
@@ -339,14 +338,14 @@ export function SubCategoryGroup({
                 onClick={() => setConfirmingDelete(true)}
                 aria-label={`Delete ${display}`}
                 data-testid={`subcategory-delete-${category}-${label}`}
-                className="text-[var(--red)] opacity-100 hover:opacity-80"
+                className="text-bad bg-transparent border-0 p-0 cursor-pointer hover:opacity-80"
               >
-                <Trash2 size={15} />
+                <Trash2 size={14} />
               </button>
             )}
             {canManage && onDelete && confirmingDelete && (
               <span className="flex items-center gap-1 normal-case" data-testid={`subcategory-delete-confirm-${category}-${label}`}>
-                <span className="text-[10px]" style={{ color: 'var(--text2)' }}>
+                <span className="text-[11px] font-medium text-ink-soft">
                   {itemCount === 0
                     ? 'Delete this sub-category?'
                     : `Delete + remove ${itemCount} item${itemCount === 1 ? '' : 's'} from this menu?`}
@@ -359,7 +358,7 @@ export function SubCategoryGroup({
                   }}
                   aria-label={`Confirm delete ${display}`}
                   data-testid={`subcategory-delete-yes-${category}-${label}`}
-                  style={{ color: 'var(--danger, #dc2626)' }}
+                  className="text-bad bg-transparent border-0 p-0 cursor-pointer"
                 >
                   <Check size={12} />
                 </button>
@@ -386,7 +385,7 @@ export function SubCategoryGroup({
         />
       )}
 
-      {!collapsed && <div>{children}</div>}
+      {!collapsed && <div className="pl-1">{children}</div>}
     </div>
   );
 }

@@ -206,20 +206,58 @@ export interface MenuTabBarProps {
   onCreateMenu?: (name: string) => Promise<void>;
   onCloneMenu?: () => void;
   /**
-   * Render tight enough to sit inside the 56px owner top bar, on the same row
-   * as the search field (PDD 2026-08-30).
+   * Compact = the Owner Portal redesign's segmented menu switch (2026-11-10):
+   * ONE bordered strip of plain label buttons, the selected one ink-filled.
+   * No status pill, no schedule sub-line, no pencil, no Clone — the page
+   * header beside it shows the menu's Active/Inactive pill and schedule, and
+   * "Menu settings" / "Clone menu" live in the page's ⋯ actions menu (the
+   * host wires them through MenuManagerClient.onMenuActionsReady).
    *
-   * Both text lines are KEPT. The obvious way to fit was to drop the schedule
-   * sublabel, but that line is the only place a tab says WHEN a menu runs —
-   * losing it would trade a layout preference for real information, and
-   * MenuTabBar.test.tsx asserts it by text. So this only tightens padding and
-   * type; the tab is ~35px instead of ~48px, which clears 56px with room for
-   * the bar's own vertical centring.
+   * Keeps `menu-tab-bar`, `menu-tab-<id>`, `role="tab"` and `aria-selected`,
+   * which the E2E specs and the owner-menu-bulk-actions canary drive.
    *
    * Opt-in and defaulted off: waiter and admin vendor this same package and
-   * must be untouched by an owner layout change.
+   * keep the two-line tab layout (status pill + schedule sub-line + pencil +
+   * Clone) byte-for-byte.
    */
   compact?: boolean;
+}
+
+/**
+ * The compact strip. Kept as its own component so the non-compact tab layout
+ * below stays untouched for the other consumers of this package.
+ */
+function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBarProps, 'menus' | 'activeMenuId' | 'onTabChange'>) {
+  return (
+    <div className="flex items-stretch min-w-0" data-compact="true">
+      <div
+        className="flex items-stretch overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+        aria-label="Menus"
+        data-testid="menu-tab-bar"
+      >
+        {menus.map((menu) => {
+          const isActive = menu.id === activeMenuId;
+          return (
+            <button
+              key={menu.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              data-testid={`menu-tab-${menu.id}`}
+              onClick={() => onTabChange(menu.id)}
+              title={menu.name}
+              className={`h-[30px] shrink-0 px-3 border-0 text-[13px] font-semibold leading-none whitespace-nowrap cursor-pointer transition-colors ${
+                isActive ? 'bg-ink text-on-ink' : 'bg-transparent text-ink hover:bg-surface2'
+              }`}
+            >
+              {menu.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function MenuTabBar({
@@ -239,34 +277,21 @@ export default function MenuTabBar({
     return () => clearInterval(id);
   }, []);
 
+  if (compact) {
+    return <CompactMenuTabBar menus={menus} activeMenuId={activeMenuId} onTabChange={onTabChange} />;
+  }
+
   return (
     <div
-      // `shrink-0` here (compact mode) was forcing this wrapper to its
-      // max-content width -- the sum of every tab button -- inside
-      // .owner-topbar-rail (flex: 1 1 auto; overflow: hidden). Since the
-      // wrapper refused to shrink, the inner overflow-x-auto region below
-      // never actually became narrower than its content, so it never had
-      // anything to scroll: the rail's own overflow:hidden silently clipped
-      // the excess instead. Dropping shrink-0 lets this wrapper compress to
-      // whatever width the rail actually allocates it, so the inner
-      // `flex-1 min-w-0 overflow-x-auto` div (line below) becomes the real
-      // scrollable viewport, matching book-keeping/page.tsx's tab-strip
-      // pattern. Non-compact mode is a different layout context (its own
-      // page, not squeezed into a shared top-bar rail) and isn't affected
-      // by this bug, so it's left as-is.
-      className={compact
-        ? 'flex items-stretch min-w-0'
-        : 'flex items-stretch border-b border-[var(--border)] shrink-0'}
+      className="flex items-stretch border-b border-[var(--border)] shrink-0"
       // Match the food-library tab strip: no white background — sit on the
       // grey page surface so the active-tab brand-orange underline reads
       // crisply against the same canvas as the rest of the chrome.
-      // Compact drops both: the top bar already draws its own bottom border
-      // and white background, and a second border would double the hairline.
-      style={compact ? undefined : { background: 'var(--bg, #f9fafb)' }}
+      style={{ background: 'var(--bg, #f9fafb)' }}
     >
       <div
         className="flex items-stretch overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={compact ? { gap: 2, paddingLeft: 0 } : { gap: 4, paddingLeft: 8 }}
+        style={{ gap: 4, paddingLeft: 8 }}
         data-testid="menu-tab-bar"
       >
         {menus.map((menu) => {
@@ -285,8 +310,8 @@ export default function MenuTabBar({
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
-                gap: compact ? 0 : 2,
-                padding: compact ? '2px 10px 3px' : '8px 12px 10px',
+                gap: 2,
+                padding: '8px 12px 10px',
                 marginBottom: -1,
                 background: 'transparent',
                 border: 'none',
@@ -301,7 +326,7 @@ export default function MenuTabBar({
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <span
                   style={{
-                    fontSize: compact ? 12.5 : 13,
+                    fontSize: 13,
                     fontWeight: isActive ? 700 : 600,
                     color: isActive ? 'var(--brand-s)' : 'var(--text2)',
                     letterSpacing: '-0.005em',
@@ -337,10 +362,10 @@ export default function MenuTabBar({
               <span
                 data-testid={`menu-tab-${menu.id}-sub`}
                 style={{
-                  fontSize: compact ? 9.5 : 10,
+                  fontSize: 10,
                   color: 'var(--text3, #9ca3af)',
                   letterSpacing: '0.02em',
-                  lineHeight: compact ? 1.1 : 1.2,
+                  lineHeight: 1.2,
                 }}
               >
                 {sub}
@@ -354,7 +379,7 @@ export default function MenuTabBar({
       {/* Clone Existing — small secondary affordance, frozen to the right
           edge so it stays visible even when the menu list overflows. */}
       {onCloneMenu && (
-        <div className={compact ? 'shrink-0 pl-2 flex items-center' : 'shrink-0 px-2 py-1.5 flex items-center'}>
+        <div className="shrink-0 px-2 py-1.5 flex items-center">
           <Button
             variant="secondary"
             size="sm"

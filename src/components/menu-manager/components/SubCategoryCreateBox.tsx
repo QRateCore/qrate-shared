@@ -13,6 +13,16 @@ export interface SubCategoryCreateBoxProps {
    * empty box appears. Reject to keep the input open for a retry.
    */
   onCreate: (menuId: string, category: string, name: string) => void | Promise<void>;
+  /**
+   * Prefix for the two testids (`<prefix>subcategory-create-add-<course>` and
+   * `<prefix>subcategory-create-input-<course>`). Default '' keeps the ids the
+   * E2E specs use on the section header; the Manage-sections dialog passes its
+   * own prefix so both boxes can be mounted at once without colliding.
+   */
+  testIdPrefix?: string;
+  /** `md` = a 28px box for the Manage-sections dialog; `sm` (default) = the 16px
+   *  header affordance. */
+  size?: 'sm' | 'md';
 }
 
 /**
@@ -26,6 +36,8 @@ export function SubCategoryCreateBox({
   menuId,
   category,
   onCreate,
+  testIdPrefix = '',
+  size = 'sm',
 }: SubCategoryCreateBoxProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -59,16 +71,18 @@ export function SubCategoryCreateBox({
     return (
       <button
         type="button"
-        data-testid={`subcategory-create-add-${category}`}
+        data-testid={`${testIdPrefix}subcategory-create-add-${category}`}
         onClick={(e) => {
           stop(e);
           setCreating(true);
         }}
         title="Add a sub-category"
         aria-label="Add a sub-category"
-        className="shrink-0 inline-flex h-4 w-4 items-center justify-center rounded border border-dashed border-[var(--border)] text-[var(--text2)] hover:bg-[var(--bg2)]"
+        className={`shrink-0 inline-flex items-center justify-center rounded-ctl border border-dashed border-line text-ink-soft hover:bg-surface2 hover:text-ink cursor-pointer ${
+          size === 'md' ? 'h-7 w-7' : 'h-4 w-4'
+        }`}
       >
-        <Plus size={11} aria-hidden />
+        <Plus size={size === 'md' ? 14 : 11} aria-hidden />
       </button>
     );
   }
@@ -81,7 +95,7 @@ export function SubCategoryCreateBox({
       disabled={busy}
       maxLength={60}
       placeholder="New sub-category…"
-      data-testid={`subcategory-create-input-${category}`}
+      data-testid={`${testIdPrefix}subcategory-create-input-${category}`}
       onClick={stop}
       onMouseDown={stop}
       onChange={(e) => setName(e.target.value)}
@@ -96,7 +110,9 @@ export function SubCategoryCreateBox({
         }
       }}
       onBlur={() => void submit()}
-      className="w-32 shrink-0 rounded border border-[var(--border)] bg-[var(--bg)] px-1 py-px text-[10px] normal-case"
+      className={`shrink-0 rounded-ctl border border-line bg-surface text-ink normal-case outline-none focus:border-ink ${
+        size === 'md' ? 'w-48 h-7 px-2 text-[13px]' : 'w-32 px-1 py-px text-[10px]'
+      }`}
     />
   );
 }

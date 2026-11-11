@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 /**
- * Mobile-branch tests for EditModal (STR-858).
+ * Mobile-branch tests for EditModal (STR-858 → Owner Portal redesign 2026-11-10).
  *
  * The rest of the EditModal suite mocks useIsMobile → false, so it only ever
- * exercises the DESKTOP layout. This file mocks useIsMobile → true and locks
- * the mobile accordion IA:
- *  - the desktop horizontal tab strip is replaced by vertical accordion headers
- *  - tab-backed sections are COLLAPSED by default (Basics content stays visible)
- *  - expanding an accordion header reveals its body
- *  - Delete is relocated out of the header to a single bottom control (behind
- *    the same 2-step confirm)
+ * exercises the DESKTOP layout (the 210px section rail). This file mocks
+ * useIsMobile → true and locks the phone IA:
+ *  - the rail is replaced by a full-width section <select>
+ *  - one section renders at a time (Basics by default) — no accordion stack
+ *  - the camera "Take photo" affordance only exists on phones
+ *  - Delete lives behind More actions → 2-step confirm, same as desktop
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -103,50 +102,54 @@ function renderMobile(config: { item?: MenuItemDisplay; service?: MenuManagerSer
   );
 }
 
-describe('EditModal — mobile accordion (STR-858)', () => {
+describe('EditModal — phone layout (section dropdown)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders vertical accordion headers instead of the desktop tab strip', () => {
+  it('replaces the desktop rail with a section <select>', () => {
     renderMobile();
-    // Food tags + Performance are valid for an existing dish → headers present.
-    expect(screen.getByTestId('edit-mobile-section-header-food_tags')).toBeTruthy();
-    expect(screen.getByTestId('edit-mobile-section-header-performance')).toBeTruthy();
-    // Image gets its own collapsible header too.
-    expect(screen.getByTestId('edit-mobile-section-header-image')).toBeTruthy();
+    expect(screen.queryByTestId('edit-section-rail')).toBeNull();
+    const select = screen.getByTestId('edit-section-select') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    // Every section an existing dish has, in rail order.
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(['food_tags', 'dietary', 'placements', 'advanced', 'performance']);
+    expect(screen.getByTestId('edit-item-modal').getAttribute('data-mobile')).toBe('true');
   });
 
-  it('collapses tab-backed sections by default (aria-expanded=false)', () => {
+  it('opens on Basics — name + description visible, other sections not mounted', () => {
     renderMobile();
-    const foodTags = screen.getByTestId('edit-mobile-section-header-food_tags');
-    expect(foodTags.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  it('opens the Image section by default', () => {
-    renderMobile();
-    const image = screen.getByTestId('edit-mobile-section-header-image');
-    expect(image.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('expands a section when its header is tapped', () => {
-    renderMobile();
-    const foodTags = screen.getByTestId('edit-mobile-section-header-food_tags');
-    fireEvent.click(foodTags);
-    expect(foodTags.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('keeps Basics content (description) visible without expanding anything', () => {
-    renderMobile();
-    // Description input is part of always-visible Basics on mobile.
+    expect((screen.getByTestId('edit-section-select') as HTMLSelectElement).value).toBe('food_tags');
+    expect(screen.getByTestId('edit-name-input')).toBeTruthy();
     expect(screen.getByTestId('edit-description-input')).toBeTruthy();
+    expect(screen.queryByTestId('heat-spice-select')).toBeNull();
+    expect(screen.queryByTestId('perf-period-select')).toBeNull();
   });
 
-  it('relocates Delete to a single bottom control behind the 2-step confirm', () => {
+  it('switches section through the dropdown', () => {
     renderMobile();
-    // Exactly one delete trigger (the header one is hidden on mobile).
+    fireEvent.change(screen.getByTestId('edit-section-select'), { target: { value: 'dietary' } });
+    expect(screen.getByTestId('dietary-info-card')).toBeTruthy();
+    expect(screen.getByTestId('heat-spice-select')).toBeTruthy();
+    expect(screen.queryByTestId('edit-name-input')).toBeNull();
+    fireEvent.change(screen.getByTestId('edit-section-select'), { target: { value: 'performance' } });
+    expect(screen.getByTestId('perf-period-select')).toBeTruthy();
+  });
+
+  it('offers the camera capture only on phones', () => {
+    renderMobile();
+    expect(screen.getByTestId('edit-take-photo-btn')).toBeTruthy();
+    expect(screen.getByTestId('edit-image-camera-input')).toBeTruthy();
+  });
+
+  it('keeps Delete behind More actions → 2-step confirm', () => {
+    renderMobile();
+    expect(screen.queryByTestId('delete-item-btn')).toBeNull();
+    fireEvent.click(screen.getByTestId('edit-more-actions-btn'));
     const triggers = screen.getAllByTestId('delete-item-btn');
     expect(triggers.length).toBe(1);
     fireEvent.click(triggers[0]);
-    // 2-step confirm surfaces the destructive confirm button.
     expect(screen.getByTestId('delete-item-confirm')).toBeTruthy();
+    expect(screen.getByTestId('delete-item-cancel')).toBeTruthy();
+    expect(screen.queryByTestId('edit-save-btn')).toBeNull();
   });
 });

@@ -44,24 +44,26 @@ function renderGroup(props: Partial<React.ComponentProps<typeof SubCategoryGroup
 const svgSize = (el: HTMLElement | null) => el?.querySelector('svg')?.getAttribute('width') ?? null;
 
 describe('SubCategoryGroup — delete/rename icon affordances', () => {
-  it('renders the trash in the destructive red var (always visible, not hover-gated)', () => {
+  it('renders the trash in the destructive Kar tone (always visible, not hover-gated)', () => {
     renderGroup();
     const btn = screen.getByTestId(del);
-    expect(btn.className).toContain('text-[var(--red)]');
-    // Fully opaque baseline so it's easy to spot — never the old opacity-60.
-    expect(btn.className).toContain('opacity-100');
+    // Owner Portal redesign (2026-11-10): Kar `text-bad`, never the legacy
+    // `text-[var(--red)]`. Fully opaque baseline so it's easy to spot — never
+    // the old opacity-60.
+    expect(btn.className).toContain('text-bad');
     expect(btn.className).not.toContain('opacity-60');
   });
 
   it('keeps the rename (pencil) neutral — NOT red — so red reads as "destructive"', () => {
     renderGroup();
-    expect(screen.getByTestId(rename).className).not.toContain('text-[var(--red)]');
+    expect(screen.getByTestId(rename).className).not.toContain('text-bad');
+    expect(screen.getByTestId(rename).className).toContain('text-ink-soft');
   });
 
-  it('bumps both icons to 15px for spot-ability (was 11px)', () => {
+  it('keeps both icons at a spot-able size (14px on the 13px band)', () => {
     renderGroup();
-    expect(svgSize(screen.getByTestId(del))).toBe('15');
-    expect(svgSize(screen.getByTestId(rename))).toBe('15');
+    expect(svgSize(screen.getByTestId(del))).toBe('14');
+    expect(svgSize(screen.getByTestId(rename))).toBe('14');
   });
 
   it('both icons render unconditionally in the header (no hover reveal → no layout shift)', () => {

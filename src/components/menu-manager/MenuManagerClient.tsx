@@ -57,6 +57,21 @@ export interface DragState {
   fromCat: string | null;
 }
 
+/**
+ * Menu-level actions the host can trigger from its own chrome (Owner Portal
+ * redesign, 2026-11-10: the page's ⋯ menu carries "Menu settings" and
+ * "Clone menu" now that the compact tab strip has no pencil / Clone button).
+ * Published through `onMenuActionsReady`; both open the same MenuEditPanel /
+ * CloneMenuModal the tab bar used, so the write paths are unchanged.
+ */
+export interface MenuManagerActions {
+  /** Open the menu settings panel (`menu-edit-panel`) for this menu. */
+  openMenuSettings: (menuId: string) => void;
+  /** Open the Clone-menu dialog (`clone-menu-modal`). No-op when the service
+   *  has no `cloneMenu`. */
+  openCloneMenu: () => void;
+}
+
 interface Props {
   service: MenuManagerService;
   restaurantId: string;
@@ -495,6 +510,12 @@ interface Props {
    */
   tabBarPortalTarget?: Element | null;
   /**
+   * Receives the menu-level actions (open settings / clone) once this client
+   * has mounted, and `null` on unmount. Pass a STABLE callback (a useState
+   * setter is ideal) — it is an effect dependency.
+   */
+  onMenuActionsReady?: (actions: MenuManagerActions | null) => void;
+  /**
    * Wine-enrichment status/retry — a SEPARATE flow from the wizard and item
    * editor (PDD: parallelize + batch-commit + status banner, 2026-09-01).
    * Both optional: owner-webapp wires them to @qrate/owner-api's
@@ -534,7 +555,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -738,6 +759,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   // CloneMenuModal lives at this level (was inside MenuBuilder) so the open
   // trigger from MenuTabBar (which spans both panels) can drive it directly.
   const [cloneOpen, setCloneOpen] = useState(false);
+  // Publish the menu-level actions to the host (see MenuManagerActions). The
+  // setters are stable, so this only re-runs when the host's callback changes.
+  const canClone = !!service.cloneMenu;
+  useEffect(() => {
+    if (!onMenuActionsReady) return;
+    onMenuActionsReady({
+      openMenuSettings: (menuId: string) => setEditMenuId(menuId),
+      openCloneMenu: () => { if (canClone) setCloneOpen(true); },
+    });
+    return () => onMenuActionsReady(null);
+  }, [onMenuActionsReady, canClone]);
   const [bulkMode, setBulkMode] = useState<BulkMode | null>(null);
   const [bulkModifiersOpen, setBulkModifiersOpen] = useState(false);
   const [dragging, setDragging] = useState<DragState | null>(null);
@@ -3368,6 +3400,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onEditMenu={setEditMenuId}
             onRemoveItemFromMenu={handleRemoveItemFromMenu}
             onEditItem={setEditItemId}
+            // The desktop row's ⋯ menu offers "Hide from guests / Show to
+            // guests" — the same global 86 the mobile row button toggles.
+            onToggleItemActive={handleToggleItemActive}
             onUpdateModifiers={handleUpdateModifiers}
             onConfirmRecommendationDrop={onConfirmRecommendationDrop}
             onBringIntoMenu={onBringIntoMenu}
@@ -3474,18 +3509,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           />
           </div>
           </div>
-
-          {service.cloneMenu && cloneOpen && (
-            <CloneMenuModal
-              sourceMenus={menus}
-              onClose={() => setCloneOpen(false)}
-              onConfirm={async (sourceMenuId, name) => {
-                await handleCloneMenu(sourceMenuId, name);
-                setCloneOpen(false);
-              }}
-            />
-          )}
         </div>
+      )}
+
+      {/* Clone-menu dialog — outside the desktop/mobile branch so the page's
+          ⋯ menu ("Clone menu", via onMenuActionsReady) can open it on a phone
+          too. */}
+      {service.cloneMenu && cloneOpen && (
+        <CloneMenuModal
+          sourceMenus={menus}
+          onClose={() => setCloneOpen(false)}
+          onConfirm={async (sourceMenuId, name) => {
+            await handleCloneMenu(sourceMenuId, name);
+            setCloneOpen(false);
+          }}
+        />
       )}
 
       {/* PDD 2026-05-22 — Menu Builder bulk Includes drawer.
