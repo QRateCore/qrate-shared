@@ -25,15 +25,6 @@ import { useCurrencySymbol } from '../../../context/CurrencyContext';
 export type { ModifierUpdatePayload };
 export type { ModifierEntry };
 
-// ── Attention rules ──────────────────────────────────────────────────────────
-// An item-in-menu "needs attention" when its displayed price would be empty —
-// i.e. neither the per-menu price override nor the base item price is set.
-// Used to paint a red border on the MenuItemRow + a count badge on the bucket
-// header. STR-251 round 3.
-//
-// Exported so MenuManagerClient can drive the "X items missing price" pill on
-// the menu-stats banner with the same predicate the bucket attention badge
-// uses — keeping the banner count and the bucket badges in lock-step.
 /**
  * What a custom row chrome (MenuBuilder `rowChrome`) gets: the row's data and
  * its already-wired handlers, so the consumer only draws. Desktop only.
@@ -70,8 +61,21 @@ export interface MenuRowChromeProps {
   };
   /** The default ⋯ menu (Edit, 86 / restore, Sides, Remove) for this row. */
   rowMenu: React.ReactNode;
+  /** The row's pairing chips (Active / Inactive recommendations, with the
+   *  Inactive popover's "Bring into menu"), exactly as the default row draws
+   *  them; null when the dish has no recommendations grouping. */
+  pairingsChips: React.ReactNode;
 }
 
+// ── Attention rules ──────────────────────────────────────────────────────────
+// An item-in-menu "needs attention" when its displayed price would be empty —
+// i.e. neither the per-menu price override nor the base item price is set.
+// Used to paint a red border on the MenuItemRow + a count badge on the bucket
+// header. STR-251 round 3.
+//
+// Exported so MenuManagerClient can drive the "X items missing price" pill on
+// the menu-stats banner with the same predicate the bucket attention badge
+// uses — keeping the banner count and the bucket badges in lock-step.
 export function itemHasAttention(item: MenuItemDisplay, settings: MenuItemJunctionSettings): boolean {
   if (settings.price != null) return false;
   if (item.price != null) return false;
@@ -1548,6 +1552,23 @@ function MenuItemRow({
             commit: () => (multiCat ? handleCategoryPriceBlur(cat) : handlePriceBlur()),
             invalid: priceInvalid,
           },
+          pairingsChips: groupings.some((g) => g.kind === 'recommendations') ? (
+            <>
+              {groupings.filter((g) => g.kind === 'recommendations').map((g) => (menus ? (
+                <RecGroupingChips
+                  key={g.id}
+                  grouping={g}
+                  owningItem={item}
+                  menuId={menuId}
+                  itemsById={itemsById}
+                  menus={menus}
+                  onBringIntoMenu={onBringIntoMenu}
+                />
+              ) : (
+                <GroupingChip key={g.id} grouping={g} />
+              )))}
+            </>
+          ) : null,
           rowMenu: (
             <RowMenu
               itemId={item.id}
