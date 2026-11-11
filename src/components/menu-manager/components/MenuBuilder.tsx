@@ -34,6 +34,44 @@ export type { ModifierEntry };
 // Exported so MenuManagerClient can drive the "X items missing price" pill on
 // the menu-stats banner with the same predicate the bucket attention badge
 // uses — keeping the banner count and the bucket badges in lock-step.
+/**
+ * What a custom row chrome (MenuBuilder `rowChrome`) gets: the row's data and
+ * its already-wired handlers, so the consumer only draws. Desktop only.
+ */
+export interface MenuRowChromeProps {
+  item: MenuItemDisplay;
+  menuId: string;
+  /** The canonical bucket the row is rendered under. */
+  cat: string;
+  settings: MenuItemJunctionSettings;
+  saving: boolean;
+  expanded: boolean;
+  toggleExpanded: () => void;
+  onEdit: () => void;
+  active: boolean;
+  onToggleActive?: () => void;
+  /** 'Low' | 'Moderate' | 'High', or null for no boost (this bucket). */
+  boost: string | null;
+  onBoostChange: (label: string | null) => void;
+  chefsSpecial: boolean;
+  onToggleChefsSpecial: () => void;
+  portionType: 'single' | 'shared';
+  onPortionType: (t: 'single' | 'shared') => void;
+  /** Inline price for this bucket. `editable` is false for wine / serving
+   *  prices — those are edited in the expanded settings. */
+  price: {
+    display: string | null;
+    isOverride: boolean;
+    editable: boolean;
+    value: string;
+    setValue: (v: string) => void;
+    commit: () => void;
+    invalid: string | null;
+  };
+  /** The default ⋯ menu (Edit, 86 / restore, Sides, Remove) for this row. */
+  rowMenu: React.ReactNode;
+}
+
 export function itemHasAttention(item: MenuItemDisplay, settings: MenuItemJunctionSettings): boolean {
   if (settings.price != null) return false;
   if (item.price != null) return false;
@@ -147,6 +185,11 @@ interface MenuBuilderProps {
    * "unchanged" for every consumer that has not wired the flag.
    */
   showIncludeZones?: boolean;
+  /** Optional desktop row chrome (owner Menu workspace, 2026-11-11). When set,
+   *  a collapsed desktop row renders this instead of the default grip · tile ·
+   *  name · price · Visible · ⋯ line; the row keeps its drag source, expanded
+   *  settings panel and handlers. Admin and waiter leave it unset. */
+  rowChrome?: (p: MenuRowChromeProps) => React.ReactNode;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   /** When set, scroll to + expand the first occurrence of this item in the active menu */
   scrollToItemId?: string | null;
@@ -847,6 +890,7 @@ function MenuItemRow({
   showAddGrouping = true,
   perMenuSides,
   showIncludeZones = true,
+  rowChrome,
   onConfirmIncludeDrop,
   onDragStart,
   onDragEnd,
@@ -893,6 +937,11 @@ function MenuItemRow({
   /** `menu_include_zones` flag — when false the desktop ItemModifierZones
    *  block is not rendered at all. Default true. */
   showIncludeZones?: boolean;
+  /** Optional desktop row chrome (owner Menu workspace, 2026-11-11). When set,
+   *  a collapsed desktop row renders this instead of the default grip · tile ·
+   *  name · price · Visible · ⋯ line; the row keeps its drag source, expanded
+   *  settings panel and handlers. Admin and waiter leave it unset. */
+  rowChrome?: (p: MenuRowChromeProps) => React.ReactNode;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   onDragStart: (e: React.DragEvent, itemId: string, menuId: string, cat: string) => void;
   onDragEnd: () => void;
@@ -1470,6 +1519,50 @@ function MenuItemRow({
       })()}
       </div>
       ) : (
+      rowChrome ? (
+        <>{rowChrome({
+          item,
+          menuId,
+          cat,
+          settings,
+          saving,
+          expanded,
+          toggleExpanded: () => setExpanded((v) => !v),
+          onEdit,
+          active: item.active !== false,
+          onToggleActive,
+          boost: boostLabel,
+          onBoostChange: handleBoostChange,
+          chefsSpecial,
+          onToggleChefsSpecial: handleChefsSpecial,
+          portionType,
+          onPortionType: handlePortionType,
+          price: {
+            display: displayPrice,
+            isOverride: displayPriceIsOverride,
+            editable: !hasServingOptions && !useWineFallback,
+            value: multiCat ? (categoryPriceStrs[cat] ?? '') : priceStr,
+            setValue: (v: string) => (multiCat
+              ? setCategoryPriceStrs((prev) => ({ ...prev, [cat]: v }))
+              : setPriceStr(v)),
+            commit: () => (multiCat ? handleCategoryPriceBlur(cat) : handlePriceBlur()),
+            invalid: priceInvalid,
+          },
+          rowMenu: (
+            <RowMenu
+              itemId={item.id}
+              itemName={item.name}
+              active={item.active !== false}
+              subLabel={subLabel}
+              showSides={showIncludeZones}
+              onEdit={onEdit}
+              onToggleActive={onToggleActive}
+              onSides={() => setExpanded(true)}
+              onRemove={onRemove}
+            />
+          ),
+        })}</>
+      ) : (
       <div className="flex items-center gap-2.5 min-h-[50px] w-full pl-1.5 pr-1 transition-colors hover:bg-surface2">
         {/* Grip — the visual cue that a collapsed row can be dragged (the row
             itself is the drag source, as before). */}
@@ -1557,6 +1650,7 @@ function MenuItemRow({
           onRemove={onRemove}
         />
       </div>
+      )
       )}
 
       {/* Expanded settings — info bar on top, three modifier panels below */}
@@ -1887,6 +1981,7 @@ function CategoryBucket({
   showAddGrouping = true,
   perMenuSides,
   showIncludeZones = true,
+  rowChrome,
   onConfirmIncludeDrop,
   isDragOver,
   dragActive = false,
@@ -1947,6 +2042,11 @@ function CategoryBucket({
   perMenuSides?: import('./ItemModifierZones').PerMenuSidesAdapter;
   /** `menu_include_zones` flag — forwarded to MenuItemRow. Default true. */
   showIncludeZones?: boolean;
+  /** Optional desktop row chrome (owner Menu workspace, 2026-11-11). When set,
+   *  a collapsed desktop row renders this instead of the default grip · tile ·
+   *  name · price · Visible · ⋯ line; the row keeps its drag source, expanded
+   *  settings panel and handlers. Admin and waiter leave it unset. */
+  rowChrome?: (p: MenuRowChromeProps) => React.ReactNode;
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
   isDragOver: boolean;
   /** True while a drag is in progress anywhere — drives always-visible drop hints. */
@@ -2375,6 +2475,7 @@ function CategoryBucket({
                   showAddGrouping={showAddGrouping}
                   perMenuSides={perMenuSides}
                   showIncludeZones={showIncludeZones}
+                  rowChrome={rowChrome}
                   onConfirmIncludeDrop={onConfirmIncludeDrop}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
@@ -2649,6 +2750,7 @@ export default function MenuBuilder({
   showAddGrouping = true,
   perMenuSides,
   showIncludeZones = true,
+  rowChrome,
   onConfirmIncludeDrop,
   scrollToItemId,
   onScrollComplete,
@@ -2935,6 +3037,7 @@ export default function MenuBuilder({
                 showAddGrouping={showAddGrouping}
                 perMenuSides={perMenuSides}
                 showIncludeZones={showIncludeZones}
+                rowChrome={rowChrome}
                 onConfirmIncludeDrop={onConfirmIncludeDrop}
                 isDragOver={isDragOverBucket}
                 dragActive={dragging !== null}

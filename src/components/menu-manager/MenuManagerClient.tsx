@@ -178,6 +178,11 @@ interface Props {
    * keep its existing behaviour.
    */
   showIncludeZones?: boolean;
+  /** Optional desktop row chrome (owner Menu workspace, 2026-11-11). When set,
+   *  a collapsed desktop row renders this instead of the default grip · tile ·
+   *  name · price · Visible · ⋯ line; the row keeps its drag source, expanded
+   *  settings panel and handlers. Admin and waiter leave it unset. */
+  rowChrome?: (p: import('./components/MenuBuilder').MenuRowChromeProps) => React.ReactNode;
   /**
    * Off-menu drop gate for Includes (sides_and) / Choose-One (sides_or)
    * zones. PDD 2026-05-20 v2 — when the dropped item is not on the
@@ -555,7 +560,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3430,6 +3435,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             showAddGrouping={showAddGrouping}
             perMenuSides={perMenuSides}
             showIncludeZones={showIncludeZones}
+            rowChrome={rowChrome}
             missingPriceFilter={missingPriceFilter}
             bulkSelectionEnabled={bulkMenuActionsEnabled}
             bulkSelection={bulkMenuSelection}
