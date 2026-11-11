@@ -2498,12 +2498,12 @@ describe('EditModal — exits are locked while a save is in flight (G4)', () => 
         <EditModal item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]} onClose={onClose} onComplete={vi.fn()} onSavingChange={onSavingChange} />
       </MenuManagerServiceProvider>,
     );
-    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(false));
 
     fireEvent.click(screen.getByTestId('edit-save-btn'));
     const closeBtn = screen.getByTestId('edit-close-btn') as HTMLButtonElement;
     await waitFor(() => expect(closeBtn.disabled).toBe(true));
-    expect(onSavingChange).toHaveBeenLastCalledWith(true);
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(true));
     expect((screen.getByTestId('edit-cancel-btn') as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(closeBtn);
@@ -2513,7 +2513,7 @@ describe('EditModal — exits are locked while a save is in flight (G4)', () => 
 
     resolveSave(makeDishItem({ name: 'Saved' }));
     await waitFor(() => expect(closeBtn.disabled).toBe(false));
-    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(false));
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

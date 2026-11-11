@@ -6,7 +6,8 @@
  * band go" question routes through here so the Schedule panel, the tab status
  * pill and the gap warning agree with what the kitchen is actually serving.
  *
- * The rule core applies, encoded exactly:
+ * The window math core applies, mirrored here (precedence between a `schedule` entry and the
+ * row-level window still differs slightly in getMenuTabStatus / resolveDayWindow):
  *  - At (clock, dow) core reads ONLY that day's entry (`schedule[dow]`, or the
  *    row-level window when `dow in days_of_week`). The previous day's entry is
  *    never consulted.
