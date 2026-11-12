@@ -46,6 +46,11 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **B8 Money.** Option prices clamped ≥ 0 server-side; patron never sees a negative price; no tax
   unless `payments_enabled` or `features.upi` AND rate > 0 (memory `no_silent_tax`).
 - **B9 Tests run from `backend/`** (conftest puts the shared layer on `sys.path`).
+- **B10 Schema ships BEFORE the code that reads it — across release trains too** (2026-11-12, Avi).
+  The deploy runs `cdk deploy` (new code live) BEFORE db-init (migration), so a commit that adds a column
+  AND reads it 500s in that window. Split it: the schema commit `[DEPLOY FIRST]`, the code `[DEPLOY SECOND]`,
+  and a prod release train must carry the schema commit in an EARLIER train than the code (or prove prod
+  already has the column before approving).
 
 ## C. Webapps (owner / admin / patron / waiter / wine / landing)
 
@@ -56,6 +61,13 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **C4 E2E tables ≥ 9900**; owner E2E pinned to Farm+Oak; cleanup restores shared state.
 - **C5 Fonts self-hosted** — no `next/font/google` or Google `/l/font?kit=` (CodeBuild flake).
 - **C6 Submodule pointer.** `packages/shared` bump is intentional and the turbo input override still exists.
+- **C7 A control that changes what it does or what it covers ⇒ every E2E that drives it moves in the same
+  commit** (2026-11-12, Avi; `stale-e2e-assert-after-ui-change`, recurring). When a shared control changes
+  behaviour, renders something new on top (a dropdown, an overlay), or loses/renames a testid, grep `e2e/`
+  (and the canary repo) for every spec and helper that drives it and confirm each later click/assert still
+  works — e.g. a header search that now opens a results list over the page needs every "type, then click a
+  row" spec to close the list first. A spec that switches editor sections must re-select the section before
+  using a field that lives in another one.
 
 ## D. Cross-repo contracts
 
@@ -143,3 +155,13 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   Save replays the old value and undoes the side-write. Require a test that does BOTH steps in one
   render — side-write, then Save — and asserts the side-written value is not written back (mutation-check
   it: remove the rebase, the test must go red).
+- **G11 Esc / outside-click guards are tested against the REAL popovers** (2026-11-12, Avi). A window that
+  closes on Esc or outside click must leave Esc to whatever inside it owns it (an open menu, listbox,
+  combobox, a search box with text, a nested window) — and the test must open the REAL popover component
+  (not a stub div) and press Esc / mousedown on it, asserting only the innermost layer closes.
+- **G12 A restaurant-wide write is decided on the UNFILTERED list of every kind** (2026-11-12, Avi;
+  `beverage-subcategory-persisted-as-food`, `filtered-view-drives-global-write`). A rename / merge / delete
+  that the server applies to every matching row (e.g. the library category rename) must compute "is it
+  empty", the item count, the destinations and name-uniqueness from ALL items of every kind with no search
+  applied — never from the panel's current kind or search — and must never target a synthetic bucket
+  (the "Other" row for uncategorised items).
