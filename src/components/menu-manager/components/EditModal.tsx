@@ -1307,11 +1307,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // errors back to the owner inline (banner above the action bar).
   const [cloneSaving, setCloneSaving] = useState(false);
   const [cloneError, setCloneError]   = useState<string | null>(null);
-  const savingInFlight = saving || cloneSaving;
-  useEffect(() => {
-    onSavingChange?.(savingInFlight);
-    return () => onSavingChange?.(false);
-  }, [savingInFlight, onSavingChange]);
 
   // Name validation derived state — covers BOTH the new-item rename gate
   // and the clone-rename gate, so the name field shows a red border + a
@@ -1377,6 +1372,15 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [deleteLoading, setDeleteLoading]       = useState(false);
   const [deleteError, setDeleteError]           = useState<string | null>(null);
+  // G4: a save, a clone or a delete in flight locks every exit (footer Cancel /
+  // Save, ×, backdrop) — and the host's scrim / Esc via onSavingChange — so a
+  // PUT can never race the DELETE (the v5 footer keeps Save visible while the
+  // inline delete bar is open).
+  const savingInFlight = saving || cloneSaving || deleteLoading;
+  useEffect(() => {
+    onSavingChange?.(savingInFlight);
+    return () => onSavingChange?.(false);
+  }, [savingInFlight, onSavingChange]);
 
   // Section state (Owner Portal redesign, 2026-11-10). The editor is ONE
   // section at a time on every breakpoint — a 210px rail on desktop, a
@@ -4148,7 +4152,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               Remove from {pricingMenu.menu_name}
             </button>
             <span className="flex-1" />
-            <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+            <button type="button" onClick={onClose} disabled={savingInFlight} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
             <button
               type="button"
               data-testid="menu-pricing-save-btn"
@@ -4163,7 +4167,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         <div className="flex items-center gap-2.5">
           <span className="text-[13px] text-ink-soft">Add this item to a menu from the Menu builder to set a price.</span>
           <span className="flex-1" />
-          <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+          <button type="button" onClick={onClose} disabled={savingInFlight} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
         </div>
       )}
     </div>
@@ -4194,7 +4198,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         </>
       )}
       {v5 && deleteConfirming && (
-        <div className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[var(--mw-accent-tint,var(--bad-bg))] pl-3 pr-1.5 text-[13.5px] text-[var(--mw-accent-hover,var(--bad))]" role="alert" data-testid="delete-item-confirm-bar">
+        <div className="inline-flex min-h-10 max-w-full flex-wrap items-center gap-2 rounded-[8px] bg-[var(--mw-accent-tint,var(--bad-bg))] py-1 pl-3 pr-1.5 text-[13.5px] text-[var(--mw-accent-hover,var(--bad))]" role="alert" data-testid="delete-item-confirm-bar">
           <TriangleAlert size={15} aria-hidden="true" />
           <span>Delete {item.name || 'this item'} from your library?</span>
           <button
@@ -4318,7 +4322,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         </>
       ) : (
         <>
-          <button type="button" onClick={onClose} disabled={saving || cloneSaving} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
+          <button type="button" onClick={onClose} disabled={savingInFlight} data-testid="edit-cancel-btn" className={SECONDARY_BTN_CLS}>Cancel</button>
           {cloneMode && onCloneSave ? (
             <button
               type="button"
@@ -4333,7 +4337,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || deleteLoading}
               data-testid="edit-save-btn"
               className={primaryFooterCls}
             >
@@ -4359,7 +4363,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       {/* Backdrop — modal mode only */}
       {!isInline && (
         <div
-          onClick={saving || cloneSaving ? undefined : onClose}
+          onClick={savingInFlight ? undefined : onClose}
           className="fixed inset-0 z-[60] bg-ink/45"
           data-testid="edit-modal-backdrop"
         />
@@ -4414,7 +4418,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             // footer Cancel are gated the same way, and the owner host
             // (FoodItemsManagerClient) ignores its scrim/Escape via
             // `onSavingChange`.
-            disabled={saving || cloneSaving}
+            disabled={savingInFlight}
             data-testid="edit-close-btn"
             aria-label="Close"
             className="w-9 h-9 shrink-0 rounded-ctl border-0 bg-transparent text-ink cursor-pointer inline-flex items-center justify-center hover:bg-surface2 disabled:opacity-50 disabled:cursor-not-allowed"

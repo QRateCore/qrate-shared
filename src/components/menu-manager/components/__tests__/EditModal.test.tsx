@@ -2587,3 +2587,25 @@ describe('EditModal — v5 shell (owner Menu workspace)', () => {
     expect(screen.getByTestId('edit-save-btn')).toHaveTextContent('Save shared item');
   });
 });
+
+describe('EditModal — v5: a delete in flight locks every exit (G4)', () => {
+  it('Save, Cancel, × and the host (onSavingChange) are locked until the DELETE settles', async () => {
+    let resolveDelete: () => void = () => {};
+    const service = makeService({ deleteMenuItem: vi.fn(() => new Promise<void>((r) => { resolveDelete = r; })) });
+    const onSavingChange = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="v5" item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]}
+          onClose={vi.fn()} onComplete={vi.fn()} onSavingChange={onSavingChange} />
+      </MenuManagerServiceProvider>,
+    );
+    fireEvent.click(screen.getByTestId('delete-item-btn'));
+    fireEvent.click(screen.getByTestId('delete-item-confirm'));
+    await waitFor(() => expect(screen.getByTestId('edit-save-btn')).toBeDisabled());
+    expect(screen.getByTestId('edit-cancel-btn')).toBeDisabled();
+    expect(screen.getByTestId('edit-close-btn')).toBeDisabled();
+    expect(onSavingChange).toHaveBeenLastCalledWith(true);
+    resolveDelete();
+    await waitFor(() => expect(service.deleteMenuItem).toHaveBeenCalled());
+  });
+});
