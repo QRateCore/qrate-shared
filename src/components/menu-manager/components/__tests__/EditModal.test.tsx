@@ -2529,3 +2529,61 @@ describe('EditModal — exits are locked while a save is in flight (G4)', () => 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('EditModal — v5 shell (owner Menu workspace)', () => {
+  function renderV5(extra: Partial<React.ComponentProps<typeof EditModal>> = {}, service = makeService()) {
+    const onComplete = vi.fn();
+    const onCloneRequest = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="v5" item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]}
+          onClose={vi.fn()} onComplete={onComplete} onCloneRequest={onCloneRequest} {...extra} />
+      </MenuManagerServiceProvider>,
+    );
+    return { onComplete, onCloneRequest, service };
+  }
+
+  it('no "Shared item" band, primary button reads "Save", Clone item + Delete item buttons, no More actions', () => {
+    const { onCloneRequest } = renderV5();
+    expect(screen.queryByTestId('edit-scope-band')).toBeNull();
+    expect(screen.getByTestId('edit-save-btn')).toHaveTextContent(/^Save$/);
+    expect(screen.queryByTestId('edit-more-actions-btn')).toBeNull();
+    expect(screen.queryByTestId('edit-visibility-action')).toBeNull();
+    fireEvent.click(screen.getByTestId('edit-clone-btn'));
+    expect(onCloneRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-1' }));
+    expect(screen.getByTestId('delete-item-btn')).toHaveTextContent('Delete item');
+  });
+
+  it('Delete item → inline "Delete <name> from your library?" with Delete / Keep; Save stays', async () => {
+    const { service, onComplete } = renderV5();
+    fireEvent.click(screen.getByTestId('delete-item-btn'));
+    expect(screen.getByTestId('delete-item-confirm-bar')).toHaveTextContent('Delete Grilled Chicken from your library?');
+    expect(screen.getByTestId('delete-item-cancel')).toHaveTextContent('Keep');
+    expect(screen.queryByTestId('delete-item-btn')).toBeNull();
+    expect(screen.getByTestId('edit-save-btn')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('delete-item-cancel'));
+    expect(screen.getByTestId('delete-item-btn')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('delete-item-btn'));
+    fireEvent.click(screen.getByTestId('delete-item-confirm'));
+    await waitFor(() => expect(service.deleteMenuItem).toHaveBeenCalledWith('item-1'));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ _deleted: true }));
+  });
+
+  it('a new (unsaved) item has no Clone item / Delete item', () => {
+    renderV5({ isNewItem: true, item: makeDishItem({ id: '' } as Partial<MenuItemDisplay>) });
+    expect(screen.queryByTestId('edit-clone-btn')).toBeNull();
+    expect(screen.queryByTestId('delete-item-btn')).toBeNull();
+    expect(screen.getByTestId('edit-save-btn')).toHaveTextContent(/^Save$/);
+  });
+
+  it('the default (classic) shell is unchanged for other hosts', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]} onClose={vi.fn()} onComplete={vi.fn()} />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.getByTestId('edit-scope-band')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-more-actions-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-save-btn')).toHaveTextContent('Save shared item');
+  });
+});

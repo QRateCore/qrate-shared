@@ -5,7 +5,7 @@ import { useTrackAction } from '../track-action-context';
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert,
+  X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert, Copy,
   Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils,
   type LucideIcon,
 } from 'lucide-react';
@@ -313,6 +313,14 @@ interface EditModalProps {
    * a pre-filled rename UI.
    */
   onCloneRequest?: (item: MenuItemDisplay) => void;
+  /**
+   * 'v5' = the owner Menu workspace design (QRate_Menu_handoff_v5.0): no
+   * "Shared item" scope band, primary button "Save", footer "Clone item" +
+   * "Delete item" (inline "Delete <name> from your library?" Delete / Keep)
+   * instead of the More actions menu, 900px wide. 'classic' (default) is
+   * unchanged for the other consumers (admin).
+   */
+  shell?: 'classic' | 'v5';
   /**
    * Clone-draft state. When true, the Save Changes button is replaced by
    * a "Save Copy" button that calls `onCloneSave` with the source item
@@ -913,7 +921,8 @@ const PRIMARY_BTN_CLS = 'h-10 px-[18px] rounded-ctl border-0 bg-ink text-on-ink 
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
+  const v5 = shell === 'v5';
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
     ? heatLabels
@@ -4160,7 +4169,56 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     </div>
   ) : (
     <div className="px-6 py-3.5 border-t border-line flex items-center gap-2.5 flex-wrap shrink-0" data-testid="edit-footer">
-      {canShowMoreActions && !deleteConfirming && (
+      {v5 && canShowMoreActions && !deleteConfirming && (
+        <>
+          {onCloneRequest && (
+            <button
+              type="button"
+              data-testid="edit-clone-btn"
+              disabled={saving || cloneSaving}
+              onClick={() => onCloneRequest(item)}
+              className="inline-flex h-10 items-center gap-[7px] rounded-[8px] border border-line bg-surface px-3.5 text-sm text-ink cursor-pointer hover:border-ink disabled:opacity-60"
+            >
+              <Copy size={15} aria-hidden="true" />Clone item
+            </button>
+          )}
+          <button
+            type="button"
+            data-testid="delete-item-btn"
+            disabled={saving || cloneSaving}
+            onClick={() => setDeleteConfirming(true)}
+            className="inline-flex h-10 items-center gap-[7px] rounded-[8px] border border-line bg-surface px-3.5 text-sm text-[var(--mw-accent,var(--bad))] cursor-pointer hover:bg-[var(--mw-accent-tint,var(--bad-bg))] disabled:opacity-60"
+          >
+            <Trash2 size={15} aria-hidden="true" />Delete item
+          </button>
+        </>
+      )}
+      {v5 && deleteConfirming && (
+        <div className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[var(--mw-accent-tint,var(--bad-bg))] pl-3 pr-1.5 text-[13.5px] text-[var(--mw-accent-hover,var(--bad))]" role="alert" data-testid="delete-item-confirm-bar">
+          <TriangleAlert size={15} aria-hidden="true" />
+          <span>Delete {item.name || 'this item'} from your library?</span>
+          <button
+            type="button"
+            onClick={handleDelete}
+            data-testid="delete-item-confirm"
+            disabled={deleteLoading}
+            className="h-[30px] rounded-[7px] border-0 bg-[var(--mw-accent,var(--bad))] px-3 text-[13px] font-semibold text-white cursor-pointer hover:bg-[var(--mw-accent-hover,var(--bad))] disabled:opacity-60"
+          >
+            {deleteLoading ? 'Deleting…' : 'Delete'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDeleteConfirming(false); setDeleteError(null); }}
+            data-testid="delete-item-cancel"
+            disabled={deleteLoading}
+            className="h-[30px] rounded-[7px] border-0 bg-transparent px-3 text-[13px] font-semibold text-[var(--mw-accent-hover,var(--bad))] cursor-pointer hover:bg-white/60"
+          >
+            Keep
+          </button>
+          {deleteError && <span className="text-xs text-bad" data-testid="delete-item-error">{deleteError}</span>}
+        </div>
+      )}
+      {!v5 && canShowMoreActions && !deleteConfirming && (
         <div className="relative">
           <button
             type="button"
@@ -4235,7 +4293,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         </button>
       )}
       <span className="flex-1" />
-      {deleteConfirming ? (
+      {deleteConfirming && !v5 ? (
         <>
           <span className="text-sm font-semibold text-ink">Delete this item permanently?</span>
           {deleteError && <span className="text-xs text-bad">{deleteError}</span>}
@@ -4279,7 +4337,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               data-testid="edit-save-btn"
               className={primaryFooterCls}
             >
-              {saving ? 'Saving…' : isNewItem ? (isAddon ? 'Save add-on' : 'Save item') : isAddon ? 'Save shared add-on' : 'Save shared item'}
+              {saving ? 'Saving…' : v5 ? 'Save' : isNewItem ? (isAddon ? 'Save add-on' : 'Save item') : isAddon ? 'Save shared add-on' : 'Save shared item'}
             </button>
           )}
         </>
@@ -4294,7 +4352,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     ? 'relative w-full h-full bg-surface flex flex-col overflow-hidden'
     : isMobile
       ? 'fixed inset-0 z-[70] bg-surface flex flex-col overflow-hidden'
-      : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-[min(960px,calc(100vw-40px))] max-h-[calc(100vh-40px)] bg-surface rounded-2xl shadow-float flex flex-col overflow-hidden';
+      : `fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] ${v5 ? 'w-[min(900px,calc(100vw-40px))]' : 'w-[min(960px,calc(100vw-40px))]'} max-h-[calc(100vh-40px)] bg-surface rounded-2xl shadow-float flex flex-col overflow-hidden`;
 
   const tree = (
     <>
@@ -4327,6 +4385,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <div className="text-[22px] font-bold leading-tight text-ink truncate" data-testid="edit-item-title">
               {headerTitle}
             </div>
+            {(!v5 || isPricingSection) && (
             <div className="flex items-center gap-2 mt-1.5 flex-wrap" data-testid="edit-scope-band">
               {isPricingSection ? (
                 <>
@@ -4346,6 +4405,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </>
               )}
             </div>
+            )}
           </div>
           <button
             type="button"

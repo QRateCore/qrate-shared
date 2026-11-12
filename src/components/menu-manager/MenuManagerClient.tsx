@@ -565,6 +565,8 @@ interface Props {
    *  MenuManagerActions.startPoolDrag (owner Menu workspace, 2026-11-11).
    *  Admin / waiter leave it unset. */
   hidePool?: boolean;
+  /** EditModal shell for this host ('v5' = owner Menu workspace design; default classic). */
+  editModalShell?: 'classic' | 'v5';
   /**
    * Receives the menu-level actions (open settings / clone) once this client
    * has mounted, and `null` on unmount. Pass a STABLE callback (a useState
@@ -616,7 +618,7 @@ function isOnMenu(item: MenuItemDisplay, menuId: string | null | undefined): boo
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, editModalShell = 'classic', onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3118,6 +3120,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         if (editItemId && !editItem) return null;
         const cloneEditor = (cloneDraftSource && cloneMenuItem) ? (
           <EditModal
+            shell={editModalShell}
             key={`clone-${cloneDraftSource.id}`}
             item={{
               ...cloneDraftSource,
@@ -3158,6 +3161,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         ) : null;
         const regularEditor = editItem ? (
           <EditModal
+            shell={editModalShell}
             item={editItem}
             restaurantId={restaurantId}
             menus={menus}
