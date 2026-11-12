@@ -106,4 +106,32 @@ describe('compact MenuTabBar overflow', () => {
     for (const id of ['a', 'b', 'c', 'd']) expect(screen.getByTestId(`menu-tab-${id}`)).toBeTruthy();
     expect(screen.queryByTestId('menu-tab-overflow-btn')).toBeNull();
   });
+
+  it('the measuring copy lists every menu, sits in a clipped invisible box, and is not in the menu-tab- testid family', () => {
+    renderBar('a');
+    const meas = screen.getByTestId('menu-tabs-measure');
+    expect(meas.children.length).toBe(4);
+    for (const id of ['a', 'b', 'c', 'd']) expect(screen.getByTestId(`menu-tabs-measure-item-${id}`)).toBeTruthy();
+    const box = meas.parentElement!;
+    expect(box.className).toContain('overflow-hidden');
+    expect(box.className).toContain('invisible');
+    expect(box.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelectorAll('[data-testid^="menu-tab-"][aria-hidden="true"]').length).toBe(0);
+  });
+
+  it('keyboard: ↓ on ⋯ opens the list with focus on the first menu; ↑/↓ move; Escape closes and returns focus', () => {
+    renderBar('a');
+    const btn = screen.getByTestId('menu-tab-overflow-btn');
+    btn.focus();
+    fireEvent.keyDown(btn, { key: 'ArrowDown' });
+    const first = screen.getByTestId('menu-tab-overflow-item-c');
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('menu-tab-overflow-item-d'));
+    fireEvent.keyDown(screen.getByTestId('menu-tab-overflow-item-d'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(first); // wraps
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('menu-tab-overflow-menu')).toBeNull();
+    expect(document.activeElement).toBe(btn);
+  });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, MoreHorizontal, Pencil } from 'lucide-react';
 import type { MenuSummary } from '../../../types/restaurant';
 import Button from '../../common/Button';
@@ -295,6 +295,22 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
   const moreRef = useRef<HTMLDivElement | null>(null);
   const [fit, setFit] = useState<{ visible: number[]; hidden: number[] } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreBtnRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // Opening the list moves focus to its first menu (menu-button pattern).
+  useEffect(() => {
+    if (moreOpen) listRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [moreOpen]);
+  const onListKey = (e: React.KeyboardEvent) => {
+    const items = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const go = (i: number) => { e.preventDefault(); items[(i + items.length) % items.length]?.focus(); };
+    if (e.key === 'ArrowDown') go(at + 1);
+    else if (e.key === 'ArrowUp') go(at - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(items.length - 1);
+    else if (e.key === 'Tab') setMoreOpen(false);
+  };
   const activeIdx = menus.findIndex((m) => m.id === activeMenuId);
 
   const recompute = useCallback(() => {
@@ -313,13 +329,17 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
     if (!wrap || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => recompute());
     ro.observe(wrap);
+    // Tab widths change when the web font finishes loading.
+    if (measureRef.current) ro.observe(measureRef.current);
     return () => ro.disconnect();
   }, [recompute]);
 
   useEffect(() => {
     if (!moreOpen) return;
     const onDown = (e: MouseEvent) => { if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMoreOpen(false); moreBtnRef.current?.focus(); }
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
@@ -330,15 +350,20 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
 
   return (
     <div ref={wrapRef} className="relative flex min-w-0 flex-1 items-stretch" data-compact="true">
-      {/* Off-screen measuring copy of every tab (+ the ⋯ button) — widths only. */}
-      <div ref={measureRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 flex whitespace-nowrap" data-testid="menu-tab-measure">
-        {menus.map((menu) => (
-          <span key={menu.id} className={`${COMPACT_TAB_CLS} font-semibold`}><CompactTabInner menu={menu} /></span>
-        ))}
+      {/* Measuring copy of every tab (+ the ⋯ button) — widths only. Inside a
+          clipped, invisible box so its full width never widens the page.
+          `menu-tabs-measure` (not `menu-tab-…`) keeps it out of the tab
+          testid family; `menu-tabs-measure-item-<id>` lists EVERY menu. */}
+      <div aria-hidden="true" className="pointer-events-none invisible absolute inset-0 overflow-hidden">
+        <div ref={measureRef} className="absolute left-0 top-0 flex whitespace-nowrap" data-testid="menu-tabs-measure">
+          {menus.map((menu) => (
+            <span key={menu.id} className={`${COMPACT_TAB_CLS} font-semibold`} data-testid={`menu-tabs-measure-item-${menu.id}`}><CompactTabInner menu={menu} /></span>
+          ))}
+        </div>
+        <span ref={moreMeasureRef} className="absolute left-0 top-0 inline-flex h-9 items-center gap-1 px-2.5 text-[12.5px] font-semibold">
+          <MoreHorizontal size={16} />{hidden.length || 9}
+        </span>
       </div>
-      <span ref={moreMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 inline-flex h-9 items-center gap-1 px-2.5 text-[12.5px] font-semibold">
-        <MoreHorizontal size={16} />{hidden.length || 9}
-      </span>
       <div
         className="flex min-w-0 items-stretch overflow-hidden"
         role="tablist"
@@ -376,7 +401,9 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
             aria-expanded={moreOpen}
             aria-label={`More menus (${hidden.length})`}
             title={`${hidden.length} more menu${hidden.length === 1 ? '' : 's'}`}
+            ref={moreBtnRef}
             onClick={() => setMoreOpen((o) => !o)}
+            onKeyDown={(e) => { if (e.key === 'ArrowDown' && !moreOpen) { e.preventDefault(); setMoreOpen(true); } }}
             data-testid="menu-tab-overflow-btn"
             className={`inline-flex h-8 items-center gap-1 rounded-ctl border border-line px-2.5 text-[12.5px] font-semibold cursor-pointer ${
               moreOpen ? 'bg-surface2 text-ink' : 'bg-surface text-ink-soft hover:text-ink hover:bg-surface2'
@@ -387,8 +414,10 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
           </button>
           {moreOpen && (
             <div
+              ref={listRef}
               role="menu"
               aria-label="More menus"
+              onKeyDown={onListKey}
               data-testid="menu-tab-overflow-menu"
               className="absolute left-0 top-[calc(100%+6px)] z-50 min-w-[220px] max-h-[60vh] overflow-y-auto rounded-card border border-line bg-surface p-1.5 shadow-float"
             >
@@ -399,9 +428,10 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
                     key={menu.id}
                     type="button"
                     role="menuitem"
+                    tabIndex={-1}
                     data-testid={`menu-tab-overflow-item-${menu.id}`}
                     data-menu-status={menu.active ? 'active' : 'inactive'}
-                    onClick={() => { setMoreOpen(false); onTabChange(menu.id); }}
+                    onClick={() => { setMoreOpen(false); onTabChange(menu.id); moreBtnRef.current?.focus(); }}
                     title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
                     className="flex h-9 w-full items-center gap-1.5 rounded-ctl border-0 bg-transparent px-2.5 text-left text-[13.5px] font-medium text-ink whitespace-nowrap cursor-pointer hover:bg-surface2"
                   >
