@@ -135,3 +135,11 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   and every variant of it ("title row", "beside the (page) title", "under the title", "status row",
   "toolbar") — not only its `data-testid` — and fix each one. Bump `DOC_VERSION` and add a CHANGELOG line
   in the same commit.
+- **G10 A side-write inside an editor must rebase what Save compares against** (2026-11-12;
+  `save-baseline-stale-after-side-write`, recurring). When a window writes something on the side (edit or
+  delete a library entry, rename a shared resource) while still offering Save, the snapshot Save diffs
+  against — in the window AND in the host that opened it — must be patched by the SAME rule the server write
+  used, applied to the CURRENT state (functional `setState`), and only for writes that landed. Otherwise
+  Save replays the old value and undoes the side-write. Require a test that does BOTH steps in one
+  render — side-write, then Save — and asserts the side-written value is not written back (mutation-check
+  it: remove the rebase, the test must go red).
