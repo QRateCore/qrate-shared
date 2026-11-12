@@ -113,3 +113,11 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   any id a canary or E2E spec asserts) must have, in the same commit, a unit test that mounts the page or
   component and finds that id — including its gated/disabled states. A manual browser run is not evidence;
   only a test keeps the contract honest when the control is later moved or renamed.
+- **G7 A recommendation fallback applies the same eligibility as the primary path** (2026-11-11;
+  `served-fallback-ranker-ignores-course`, recurring). Any fallback that answers a Sage / recommendation ask
+  from a different source than the stored buckets (`rank()`/`candidates()`, a relaxed or widened query, a
+  "served now" re-rank) must apply the SAME course, combo and restriction eligibility as `build_buckets`:
+  protein groups are mains and starters only, a course ask answers only that course, restrictions are never
+  relaxed. The diff needs a test in which an off-course dish (a protein bread, side or dessert; a main for a
+  "desserts" ask) is on the menu and is never picked, and the fallback must not present a widened answer under
+  the plain, un-relaxed lead.
