@@ -922,6 +922,11 @@ const PRIMARY_BTN_CLS = 'h-10 px-[18px] rounded-ctl border-0 bg-ink text-on-ink 
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
+/** A stored value outside a filtered option list stays selectable (never shown as "Select" while a hidden value saves). */
+function withStored<T extends string>(list: readonly T[], stored: string | null | undefined): T[] {
+  return stored && !list.includes(stored as T) ? [...list, stored as T] : [...list];
+}
+
 export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
   const v5 = shell === 'v5';
   const isInline = displayMode === 'inline';
@@ -2052,7 +2057,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       };
       setOrDrop('beverage_type', type);
       setOrDrop('alcoholic', typeof bevDraft.alcoholic === 'boolean' ? bevDraft.alcoholic : undefined);
-      setOrDrop('base_spirit', bevDraft.base_spirit, type === 'cocktail' || type === 'spirit');
+      setOrDrop('base_spirit', bevDraft.base_spirit, type === 'cocktail' || (v5 && type === 'spirit'));
       // 'rosé' → 'rose': the accented value was UI-side drift from the
       // backend canonical vocabulary — normalized on every save (M5 fix).
       setOrDrop(
@@ -2427,7 +2432,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         // it explicitly so local state is correct even if the echo is stale.
         category: rawCategory.trim(),
         // canonical_category: no longer edited here — preserve the stored value.
-        canonical_category: item.canonical_category,
+        // After a v5 kind switch the saved course is the new one.
+        canonical_category: kindTouched ? (category.trim() || null) : item.canonical_category,
         // food_tags: re-merges heat_spice / sweetness_label written via the
         // separate /spice and /sweetness endpoints (not present in `saved`).
         food_tags: mergedFoodTags,
@@ -2758,7 +2764,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
     const first = labels.find((l) => (toCanonical(l) === 'Beverages') === toBeverage);
     setKindTouched(true);
     setRawCategory(first ?? (toBeverage ? 'Beverages' : ''));
-    setCategory(toBeverage ? 'Beverages' : (first ? (toCanonical(first) ?? 'Mains') : 'Mains'));
+    // Food falls back to the canonical course 'Entrees' ("Mains" is only a
+    // section LABEL, never a canonical_category value).
+    const foodCourse = first ? toCanonical(first) : null;
+    setCategory(toBeverage ? 'Beverages' : (foodCourse && foodCourse !== 'Beverages' ? foodCourse : 'Entrees'));
   };
   const nameField = (
     <div>
@@ -3323,7 +3332,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         </div>
 
                         {/* Conditional: cocktail (Base spirit) / spirit (Spirit) */}
-                        {(bevType === 'cocktail' || bevType === 'spirit') && (
+                        {(bevType === 'cocktail' || (v5 && bevType === 'spirit')) && (
                           <div>
                             <label style={fieldLabel}>{bevType === 'spirit' ? 'Spirit' : 'Base spirit'}</label>
                             <Select
@@ -3777,9 +3786,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         )}
 
                         {/* Served + Strength — each only when the drink type offers it */}
-                        {(!bevCfg || bevCfg.served.length > 0 || bevCfg.strength.length > 0) && (
+                        {(!bevCfg || bevCfg.served.length > 0 || bevCfg.strength.length > 0 || Boolean(bevDraft.served) || Boolean(bevDraft.strength)) && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                          {(!bevCfg || bevCfg.served.length > 0) && <div>
+                          {(!bevCfg || bevCfg.served.length > 0 || Boolean(bevDraft.served)) && <div>
                             <label style={fieldLabel}>Served</label>
                             <Select
                               fullWidth
@@ -3789,11 +3798,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               placeholder="Select"
                               options={[
                                 { value: '', label: 'Select' },
-                                ...(bevCfg ? bevCfg.served : SERVING_STYLES).map((s) => ({ value: s, label: (v5 ? SERVED_LABEL[s] : undefined) ?? (s.charAt(0).toUpperCase() + s.slice(1)) })),
+                                ...withStored(bevCfg ? bevCfg.served : SERVING_STYLES, bevDraft.served).map((s) => ({ value: s, label: (v5 ? SERVED_LABEL[s] : undefined) ?? (s.charAt(0).toUpperCase() + s.slice(1)) })),
                               ]}
                             />
                           </div>}
-                          {(!bevCfg || bevCfg.strength.length > 0) && <div>
+                          {(!bevCfg || bevCfg.strength.length > 0 || Boolean(bevDraft.strength)) && <div>
                             <label style={fieldLabel}>Strength</label>
                             <Select
                               fullWidth
@@ -3803,7 +3812,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               placeholder="Select"
                               options={[
                                 { value: '', label: 'Select' },
-                                ...(bevCfg ? bevCfg.strength : DRINK_STRENGTHS).map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
+                                ...withStored(bevCfg ? bevCfg.strength : DRINK_STRENGTHS, bevDraft.strength).map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
                               ]}
                             />
                           </div>}

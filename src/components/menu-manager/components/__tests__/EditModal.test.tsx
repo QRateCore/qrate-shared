@@ -2712,3 +2712,34 @@ describe('EditModal — v5 Basics', () => {
     expect(screen.getByTestId('beverage-input-alcoholic-yes')).toHaveTextContent(/^Yes$/);
   });
 });
+
+describe('EditModal — v5 Basics: kind switch writes a real course', () => {
+  function renderV5(item: MenuItemDisplay, allItems: MenuItemDisplay[], service = makeService()) {
+    const onComplete = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="v5" item={item} restaurantId="rest-1" menus={[]} allItems={allItems} onClose={vi.fn()} onComplete={onComplete} />
+      </MenuManagerServiceProvider>,
+    );
+    return { service, onComplete };
+  }
+
+  it('the kind toggle and the Availability block render (App-Doc selectors)', () => {
+    renderV5(makeDishItem(), []);
+    expect(screen.getByTestId('edit-kind-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-availability')).toBeInTheDocument();
+  });
+
+  it('Beverage → Food with a first food label toCanonical cannot map saves "Entrees" (never "Mains"), and hands the host the new course', async () => {
+    const bev = makeDishItem({ category: 'Cocktails', canonical_category: 'Beverages' } as Partial<MenuItemDisplay>);
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(bev) });
+    const { onComplete } = renderV5(bev, [makeDishItem({ id: 'z', category: 'Aaa Chef Plates', canonical_category: 'Entrees' } as Partial<MenuItemDisplay>)], service);
+    fireEvent.click(screen.getByTestId('edit-kind-food'));
+    fireEvent.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(service.updateMenuItem).toHaveBeenCalled());
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates.canonical_category).toBe('Entrees');
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    expect(onComplete.mock.calls[0][0].canonical_category).toBe('Entrees');
+  });
+});
