@@ -3032,7 +3032,9 @@ export default function MenuBuilder({
               >
                 Select
               </button>}
-              <button
+              {/* Workspace (Avi 2026-11-12): no header button — the floating bulk bar's
+                  "More bulk tools" opens the same panel (keeps this testid). */}
+              {!workspaceMode && <button
                 type="button"
                 data-testid="menu-builder-bulk-action"
                 onClick={onOpenBulkPanel}
@@ -3045,7 +3047,7 @@ export default function MenuBuilder({
                 }`}
               >
                 Bulk actions ({selectedCount})
-              </button>
+              </button>}
             </>
           )}
         </div>

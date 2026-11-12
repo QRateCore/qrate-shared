@@ -84,6 +84,10 @@ export interface MenuManagerActions {
    * so a write made outside the builder must be applied here to show.
    */
   applyMenuSettings: (menuId: string, patches: Array<{ itemId: string; patch: Partial<MenuItemJunctionSettings> }>) => void;
+  /** Open the older bulk panel (sides · item info · price incl. wine glass/bottle · boost ·
+   *  chef's special · portion) on the current selection — the owner Menu workspace's
+   *  floating bar "More bulk tools" (the builder header button is gone there). */
+  openBulkPanel: () => void;
 }
 
 interface Props {
@@ -813,6 +817,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [bulkSelectionControlled, onExternalBulkSelectionChange],
   );
   const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
+  // Published to the host as MenuManagerActions.openBulkPanel (below).
+  const openBulkPanelRef = useRef<() => void>(() => {});
+  openBulkPanelRef.current = () => setBulkMenuSidesOpen(true);
   useEffect(() => { onBulkPanelOpenChange?.(bulkMenuSidesOpen); }, [bulkMenuSidesOpen, onBulkPanelOpenChange]);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
@@ -862,6 +869,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       openCloneMenu: () => { if (canClone) setCloneOpen(true); },
       startPoolDrag: (e: React.DragEvent, itemIds: string[]) => poolDragRef.current?.start(e, itemIds),
       endPoolDrag: () => poolDragRef.current?.end(),
+      openBulkPanel: () => openBulkPanelRef.current(),
       applyMenuSettings: (menuId, patches) => {
         setJunctionSettings((prev) => {
           const next = { ...prev };
