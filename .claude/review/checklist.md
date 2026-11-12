@@ -121,3 +121,17 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   relaxed. The diff needs a test in which an off-course dish (a protein bread, side or dessert; a main for a
   "desserts" ask) is on the menu and is never picked, and the fallback must not present a widened answer under
   the plain, un-relaxed lead.
+- **G8 An E2E never passes without exercising its journey** (2026-11-11; `e2e-conditional-early-return`,
+  `e2e-fixture-feature-flag-off`, recurring). A new or changed spec must not go green by annotating and
+  returning, or by skipping a step, when its precondition data or flag is absent. Either seed what it needs
+  (self-contained, ids recorded the moment each create returns, cleaned up in afterAll), pin a fixture that
+  has it, or route-mock the reads — and then ASSERT the precondition with a message that names the fixture
+  gap (`expect(count, 'no sub-categories on the seeded menu').toBeGreaterThan(0)`), after waiting for a
+  terminal render state (not during a loading skeleton). Check the fixture's feature flags (e.g. Farm + Oak)
+  before asserting a flag-gated surface.
+- **G9 App-Doc prose moves with the control** (2026-11-11; `app-doc-prose-stale-after-ui-change`,
+  recurring). When a commit moves, hides or removes a visible owner-page element, grep ALL of App-Doc
+  (`execution.ts`, `manifest.ts` and the `page.tsx` prose) for every phrase that described its OLD place
+  and every variant of it ("title row", "beside the (page) title", "under the title", "status row",
+  "toolbar") — not only its `data-testid` — and fix each one. Bump `DOC_VERSION` and add a CHANGELOG line
+  in the same commit.
