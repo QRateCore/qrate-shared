@@ -139,8 +139,10 @@ async function save(service: MenuManagerService) {
 }
 
 /** v3: the spice-picker switches moved from Basics to Advanced details. */
-function spiceEl(id: string) { openAdvanced(); return screen.getByTestId(id); }
-function spiceQ(id: string) { openAdvanced(); return screen.queryByTestId(id); }
+// Spice switches: Basics in the classic shell, Advanced details in v5 — look
+// where they are first, then open Advanced.
+function spiceEl(id: string) { const here = screen.queryByTestId(id); if (here) return here; openAdvanced(); return screen.getByTestId(id); }
+function spiceQ(id: string) { const here = screen.queryByTestId(id); if (here) return here; openAdvanced(); return screen.queryByTestId(id); }
 function openAdvanced() {
   const tab = screen.queryByTestId('tab-advanced');
   if (tab) fireEvent.click(tab);

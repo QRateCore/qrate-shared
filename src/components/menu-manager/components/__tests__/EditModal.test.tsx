@@ -236,8 +236,10 @@ function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): Diet
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 /** v3: the spice-picker switches moved from Basics to Advanced details. */
-function spiceEl(id: string) { openAdvanced(); return screen.getByTestId(id); }
-function spiceQ(id: string) { openAdvanced(); return screen.queryByTestId(id); }
+// Spice switches: Basics in the classic shell, Advanced details in v5 — look
+// where they are first, then open Advanced.
+function spiceEl(id: string) { const here = screen.queryByTestId(id); if (here) return here; openAdvanced(); return screen.getByTestId(id); }
+function spiceQ(id: string) { const here = screen.queryByTestId(id); if (here) return here; openAdvanced(); return screen.queryByTestId(id); }
 function openAdvanced() {
   const tab = screen.queryByTestId('tab-advanced');
   if (tab) fireEvent.click(tab);
@@ -2647,5 +2649,66 @@ describe('EditModal — v5: one write at a time', () => {
     expect(screen.getByTestId('edit-close-btn')).not.toBeDisabled();
     expect(onSavingChange).toHaveBeenLastCalledWith(false);
     expect(screen.getByTestId('tab-food_tags')).not.toBeDisabled();
+  });
+});
+
+describe('EditModal — v5 Basics', () => {
+  function renderShell(shell: 'v5' | 'classic', extra: Partial<React.ComponentProps<typeof EditModal>> = {}, service = makeService()) {
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell={shell} item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]}
+          onClose={vi.fn()} onComplete={vi.fn()} {...extra} />
+      </MenuManagerServiceProvider>,
+    );
+    return service;
+  }
+
+  it('v5: Food / Beverage toggle beside Name, "Availability" heading, no read-only Item type', () => {
+    renderShell('v5');
+    expect(screen.getByTestId('edit-kind-food')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('edit-kind-beverage')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('edit-item-type')).toBeNull();
+    expect(screen.getByText('Availability')).toBeInTheDocument();
+  });
+
+  it('classic: no kind toggle; the read-only Item type and the spice switches stay in Basics', () => {
+    renderShell('classic');
+    expect(screen.queryByTestId('edit-kind-toggle')).toBeNull();
+    expect(screen.getByTestId('edit-item-type')).toBeInTheDocument();
+    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+  });
+
+  it('v5: the spice switches live in Advanced details, not Basics', () => {
+    renderShell('v5');
+    expect(screen.queryByTestId('spice-modifier-toggle')).toBeNull();
+    fireEvent.click(screen.getByTestId('tab-advanced'));
+    expect(screen.getByTestId('edit-advanced-spice')).toBeInTheDocument();
+    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+  });
+
+  it('v5: switching to Beverage moves the dish to the first beverage category and saves the course', async () => {
+    const saved = makeDishItem();
+    const service = renderShell('v5', {
+      allItems: [makeDishItem({ id: 'x', category: 'Cocktails', canonical_category: 'Beverages' } as Partial<MenuItemDisplay>)],
+    }, makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) }));
+    fireEvent.click(screen.getByTestId('edit-kind-beverage'));
+    expect(screen.getByTestId('edit-kind-beverage')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(service.updateMenuItem).toHaveBeenCalled());
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates).toMatchObject({ canonical_category: 'Beverages' });
+  });
+
+  it('v5 beverage: Alcoholic / Non-alcoholic wording; classic keeps Yes / No', () => {
+    const bev = makeDishItem({ category: 'Cocktails', canonical_category: 'Beverages', food_tags: { beverage: { beverage_type: 'cocktail', alcoholic: true } } } as unknown as Partial<MenuItemDisplay>);
+    renderShell('v5', { item: bev });
+    const open = screen.queryByTestId('tab-beverage') ?? screen.queryByTestId('tab-food_tags');
+    if (open) fireEvent.click(open);
+    expect(screen.getByTestId('beverage-input-alcoholic-yes')).toHaveTextContent('Alcoholic');
+    cleanup();
+    renderShell('classic', { item: bev });
+    const open2 = screen.queryByTestId('tab-beverage') ?? screen.queryByTestId('tab-food_tags');
+    if (open2) fireEvent.click(open2);
+    expect(screen.getByTestId('beverage-input-alcoholic-yes')).toHaveTextContent(/^Yes$/);
   });
 });
