@@ -209,8 +209,9 @@ describe('<MenuTabBar />', () => {
     expect(outer).toBe(container.firstChild);
     expect(outer.className).not.toContain('shrink-0');
     expect(outer.className).toContain('min-w-0');
-    expect(inner.className).toContain('overflow-x-auto');
-    expect(inner.className).toContain('flex-1');
+    // Since 2026-11-12 tabs that don't fit go behind a "⋯" button rather than
+    // scrolling (MenuTabBar.overflow.test.tsx) — the strip clips, never scrolls.
+    expect(inner.className).toContain('overflow-hidden');
     expect(inner.className).toContain('min-w-0');
   });
 

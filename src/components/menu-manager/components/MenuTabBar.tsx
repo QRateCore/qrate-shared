@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Copy, Pencil } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Copy, MoreHorizontal, Pencil } from 'lucide-react';
 import type { MenuSummary } from '../../../types/restaurant';
 import Button from '../../common/Button';
 import { isMinuteInWindow } from '../../../utils/menuWindow';
@@ -232,19 +232,121 @@ export interface MenuTabBarProps {
 }
 
 /**
+ * Which compact tabs fit (owner Menu workspace, Avi 2026-11-12): tabs keep
+ * their order and fill the row; the rest go behind a "⋯" button. The
+ * selected menu is always on show — if it would be hidden it takes the last
+ * visible slot (dropping trailing tabs until it fits). Pure, for tests.
+ */
+export function fitMenuTabs(
+  widths: readonly number[],
+  available: number,
+  moreWidth: number,
+  activeIdx: number,
+): { visible: number[]; hidden: number[] } {
+  const n = widths.length;
+  const all = Array.from({ length: n }, (_, i) => i);
+  const total = widths.reduce((a, b) => a + b, 0);
+  if (n === 0 || total <= available) return { visible: all, hidden: [] };
+  const room = available - moreWidth;
+  let used = 0;
+  let k = 0;
+  while (k < n && used + widths[k]! <= room) { used += widths[k]!; k++; }
+  let visible = all.slice(0, Math.max(k, 1));
+  if (activeIdx >= 0 && !visible.includes(activeIdx)) {
+    let w = visible.reduce((a, i) => a + widths[i]!, 0) + widths[activeIdx]!;
+    while (visible.length > 0 && w > room) { w -= widths[visible[visible.length - 1]!]!; visible = visible.slice(0, -1); }
+    visible = [...visible, activeIdx];
+  }
+  const shown = new Set(visible);
+  return { visible, hidden: all.filter((i) => !shown.has(i)) };
+}
+
+const COMPACT_TAB_CLS = 'relative inline-flex h-9 shrink-0 items-center gap-1.5 border-0 bg-transparent px-3 text-[13.5px] leading-none whitespace-nowrap';
+
+function CompactTabInner({ menu }: { menu: MenuSummary }) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
+      />
+      <span>{menu.name}</span>
+      {/* The dot is the menu's only status cue on the owner Menu page. */}
+      <span className="sr-only">{menu.active ? ' (Active)' : ' (Inactive)'}</span>
+      {typeof menu.item_count === 'number' && (
+        <span className="text-[12px] font-normal text-ink-faint tabular-nums">
+          {menu.item_count}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
  * The compact strip. Kept as its own component so the non-compact tab layout
- * below stays untouched for the other consumers of this package.
+ * below stays untouched for the other consumers of this package. Tabs that
+ * do not fit go behind a "⋯" button right after the last visible tab, which
+ * lists them (`menu-tab-overflow-btn` / `menu-tab-overflow-item-<id>`).
  */
 function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBarProps, 'menus' | 'activeMenuId' | 'onTabChange'>) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const moreMeasureRef = useRef<HTMLSpanElement | null>(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const [fit, setFit] = useState<{ visible: number[]; hidden: number[] } | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const activeIdx = menus.findIndex((m) => m.id === activeMenuId);
+
+  const recompute = useCallback(() => {
+    const wrap = wrapRef.current;
+    const meas = measureRef.current;
+    if (!wrap || !meas) return;
+    const widths = Array.from(meas.children).map((c) => (c as HTMLElement).offsetWidth);
+    const moreW = moreMeasureRef.current?.offsetWidth ?? 48;
+    const next = fitMenuTabs(widths, wrap.clientWidth, moreW, activeIdx);
+    setFit((prev) => (prev && prev.visible.join() === next.visible.join() && prev.hidden.join() === next.hidden.join() ? prev : next));
+  }, [activeIdx]);
+
+  useLayoutEffect(() => { recompute(); }, [recompute, menus]);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => recompute());
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [recompute]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: MouseEvent) => { if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [moreOpen]);
+
+  const visible = fit?.visible ?? menus.map((_, i) => i);
+  const hidden = fit?.hidden ?? [];
+
   return (
-    <div className="flex items-stretch min-w-0" data-compact="true">
+    <div ref={wrapRef} className="relative flex min-w-0 flex-1 items-stretch" data-compact="true">
+      {/* Off-screen measuring copy of every tab (+ the ⋯ button) — widths only. */}
+      <div ref={measureRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 flex whitespace-nowrap" data-testid="menu-tab-measure">
+        {menus.map((menu) => (
+          <span key={menu.id} className={`${COMPACT_TAB_CLS} font-semibold`}><CompactTabInner menu={menu} /></span>
+        ))}
+      </div>
+      <span ref={moreMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 inline-flex h-9 items-center gap-1 px-2.5 text-[12.5px] font-semibold">
+        <MoreHorizontal size={16} />{hidden.length || 9}
+      </span>
       <div
-        className="flex items-stretch overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex min-w-0 items-stretch overflow-hidden"
         role="tablist"
         aria-label="Menus"
         data-testid="menu-tab-bar"
       >
-        {menus.map((menu) => {
+        {visible.map((i) => {
+          const menu = menus[i]!;
           const isActive = menu.id === activeMenuId;
           return (
             <button
@@ -256,27 +358,61 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
               data-menu-status={menu.active ? 'active' : 'inactive'}
               onClick={() => onTabChange(menu.id)}
               title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
-              className={`relative inline-flex h-9 shrink-0 items-center gap-1.5 border-0 bg-transparent px-3 text-[13.5px] leading-none whitespace-nowrap cursor-pointer transition-colors ${
+              className={`${COMPACT_TAB_CLS} cursor-pointer transition-colors ${
                 isActive ? 'font-semibold text-ink' : 'font-medium text-ink-soft hover:text-ink'
               }`}
             >
-              <span
-                aria-hidden="true"
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
-              />
-              <span>{menu.name}</span>
-              {/* The dot is the menu's only status cue on the owner Menu page. */}
-              <span className="sr-only">{menu.active ? ' (Active)' : ' (Inactive)'}</span>
-              {typeof menu.item_count === 'number' && (
-                <span className="text-[12px] font-normal text-ink-faint tabular-nums">
-                  {menu.item_count}
-                </span>
-              )}
+              <CompactTabInner menu={menu} />
               {isActive && <span aria-hidden="true" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-ink" />}
             </button>
           );
         })}
       </div>
+      {hidden.length > 0 && (
+        <div ref={moreRef} className="relative flex flex-none items-center">
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            aria-label={`More menus (${hidden.length})`}
+            title={`${hidden.length} more menu${hidden.length === 1 ? '' : 's'}`}
+            onClick={() => setMoreOpen((o) => !o)}
+            data-testid="menu-tab-overflow-btn"
+            className={`inline-flex h-8 items-center gap-1 rounded-ctl border border-line px-2.5 text-[12.5px] font-semibold cursor-pointer ${
+              moreOpen ? 'bg-surface2 text-ink' : 'bg-surface text-ink-soft hover:text-ink hover:bg-surface2'
+            }`}
+          >
+            <MoreHorizontal size={16} aria-hidden="true" />
+            <span className="tabular-nums">{hidden.length}</span>
+          </button>
+          {moreOpen && (
+            <div
+              role="menu"
+              aria-label="More menus"
+              data-testid="menu-tab-overflow-menu"
+              className="absolute left-0 top-[calc(100%+6px)] z-50 min-w-[220px] max-h-[60vh] overflow-y-auto rounded-card border border-line bg-surface p-1.5 shadow-float"
+            >
+              {hidden.map((i) => {
+                const menu = menus[i]!;
+                return (
+                  <button
+                    key={menu.id}
+                    type="button"
+                    role="menuitem"
+                    data-testid={`menu-tab-overflow-item-${menu.id}`}
+                    data-menu-status={menu.active ? 'active' : 'inactive'}
+                    onClick={() => { setMoreOpen(false); onTabChange(menu.id); }}
+                    title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
+                    className="flex h-9 w-full items-center gap-1.5 rounded-ctl border-0 bg-transparent px-2.5 text-left text-[13.5px] font-medium text-ink whitespace-nowrap cursor-pointer hover:bg-surface2"
+                  >
+                    <CompactTabInner menu={menu} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
