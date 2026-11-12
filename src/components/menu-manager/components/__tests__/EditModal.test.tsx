@@ -2609,3 +2609,35 @@ describe('EditModal — v5: a delete in flight locks every exit (G4)', () => {
     await waitFor(() => expect(service.deleteMenuItem).toHaveBeenCalled());
   });
 });
+
+describe('EditModal — v5: one write at a time', () => {
+  it('Save is unavailable while the delete bar is open, so a save never starts alongside a delete', () => {
+    render(
+      <MenuManagerServiceProvider value={makeService()}>
+        <EditModal shell="v5" item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]} onClose={vi.fn()} onComplete={vi.fn()} />
+      </MenuManagerServiceProvider>,
+    );
+    fireEvent.click(screen.getByTestId('delete-item-btn'));
+    expect(screen.getByTestId('edit-save-btn')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('delete-item-cancel'));
+    expect(screen.getByTestId('edit-save-btn')).not.toBeDisabled();
+  });
+
+  it('a failed DELETE unlocks every exit again and tells the host it is no longer busy', async () => {
+    const service = makeService({ deleteMenuItem: vi.fn().mockRejectedValue(new Error('Cannot delete')) });
+    const onSavingChange = vi.fn();
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="v5" item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]}
+          onClose={vi.fn()} onComplete={vi.fn()} onSavingChange={onSavingChange} />
+      </MenuManagerServiceProvider>,
+    );
+    fireEvent.click(screen.getByTestId('delete-item-btn'));
+    fireEvent.click(screen.getByTestId('delete-item-confirm'));
+    await waitFor(() => expect(screen.getByTestId('delete-item-error')).toHaveTextContent('Cannot delete'));
+    expect(screen.getByTestId('edit-cancel-btn')).not.toBeDisabled();
+    expect(screen.getByTestId('edit-close-btn')).not.toBeDisabled();
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    expect(screen.getByTestId('tab-food_tags')).not.toBeDisabled();
+  });
+});

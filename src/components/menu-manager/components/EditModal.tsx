@@ -2477,6 +2477,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // ── Delete ──────────────────────────────────────────────────────────────
 
   async function handleDelete() {
+    // One write at a time (G4): never DELETE while a save / clone is in flight.
+    if (saving || cloneSaving || deleteLoading) return;
     const start = Date.now();
     setDeleteLoading(true);
     setDeleteError(null);
@@ -4195,6 +4197,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           >
             <Trash2 size={15} aria-hidden="true" />Delete item
           </button>
+          {deleteError && <span className="text-xs text-bad" role="alert" data-testid="delete-item-error">{deleteError}</span>}
         </>
       )}
       {v5 && deleteConfirming && (
@@ -4205,7 +4208,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             type="button"
             onClick={handleDelete}
             data-testid="delete-item-confirm"
-            disabled={deleteLoading}
+            disabled={deleteLoading || saving || cloneSaving}
             className="h-[30px] rounded-[7px] border-0 bg-[var(--mw-accent,var(--bad))] px-3 text-[13px] font-semibold text-white cursor-pointer hover:bg-[var(--mw-accent-hover,var(--bad))] disabled:opacity-60"
           >
             {deleteLoading ? 'Deleting…' : 'Delete'}
@@ -4219,7 +4222,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           >
             Keep
           </button>
-          {deleteError && <span className="text-xs text-bad" data-testid="delete-item-error">{deleteError}</span>}
         </div>
       )}
       {!v5 && canShowMoreActions && !deleteConfirming && (
@@ -4314,7 +4316,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             type="button"
             onClick={handleDelete}
             data-testid="delete-item-confirm"
-            disabled={deleteLoading}
+            disabled={deleteLoading || saving || cloneSaving}
             className={dangerFooterCls}
           >
             {deleteLoading ? 'Deleting…' : 'Delete permanently'}
@@ -4337,7 +4339,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || deleteLoading}
+              disabled={saving || deleteLoading || (v5 && deleteConfirming)}
               data-testid="edit-save-btn"
               className={primaryFooterCls}
             >
@@ -4447,6 +4449,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   data-testid="edit-section-select"
                   value={activeTab}
                   onChange={(e) => setActiveTab(e.target.value as EditModalTab)}
+                  disabled={deleteLoading}
                   className="w-full h-10 rounded-ctl border border-line-input bg-surface px-2.5 text-sm font-semibold text-ink"
                 >
                   {sections.map((s) => (
@@ -4470,6 +4473,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                       <button
                         type="button"
                         onClick={() => setActiveTab(s.key)}
+                        disabled={deleteLoading}
                         aria-current={isActiveSection ? 'page' : undefined}
                         aria-pressed={isActiveSection}
                         data-testid={`tab-${s.key}`}
