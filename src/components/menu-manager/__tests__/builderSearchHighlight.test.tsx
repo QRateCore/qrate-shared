@@ -3,7 +3,7 @@
  * Builder search HIGHLIGHT mode (owner Menu workspace, handoff v2): the Item
  * library's search marks matching rows instead of filtering. Pinned:
  *  - markMatches wraps every case-insensitive hit in <mark>;
- *  - MenuManagerClient provides the matches (name / description) only while a
+ *  - MenuManagerClient provides the matches (by name) only while a
  *    highlight query is set, and leaves the header search's filter alone;
  *  - a row is "match" / "dim" under a search and unmarked without one, and the
  *    row chrome gets the query only for a match;
@@ -76,10 +76,11 @@ describe('MenuManagerClient builderHighlightQuery', () => {
   const menu = { id: 'menu-1', name: 'Menu 1', active: true, schedule: null, items: [] } as unknown as MenuSummary;
   const items = [makeItem('a', 'Paneer Tikka'), makeItem('b', 'Dal', 'slow-cooked with paneer'), makeItem('c', 'Naan')];
 
-  it('provides the matches (name or description) while a highlight query is set', () => {
+  it('provides the matches by NAME (as the Item library filters) while a highlight query is set', () => {
     render(<MenuManagerClient service={service} restaurantId="r1" initialItems={items} initialMenus={[menu]} builderHighlightQuery="  paneer " />);
     expect(seen?.query).toBe('paneer');
-    expect([...(seen?.matchIds ?? [])].sort()).toEqual(['a', 'b']);
+    // 'b' mentions paneer only in its description → not a match (no <mark> to show, not in the library).
+    expect([...(seen?.matchIds ?? [])].sort()).toEqual(['a']);
     // The header search (filter mode) is untouched.
     expect(lastBuilderQuery).toBeUndefined();
   });
@@ -158,5 +159,21 @@ describe('SubCategoryGroup forceOpen', () => {
     rerender(group(true));
     rerender(group(false));
     expect(screen.getByTestId('sub-child')).toBeInTheDocument();
+  });
+});
+
+describe('SubCategoryGroup — chevron while the search holds it open', () => {
+  const group = (forceOpen: boolean) => (
+    <SubCategoryGroup label="Curries" category="Entrees" menuId="menu-1" itemCount={1} color="#000" forceOpen={forceOpen}>
+      <div data-testid="sub-child">Dal</div>
+    </SubCategoryGroup>
+  );
+
+  it('clicking it does nothing, so clearing the search restores the owner’s own (collapsed) state', () => {
+    const { rerender } = render(group(true));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Collapse Curries' })[0]!);
+    expect(screen.getByTestId('sub-child')).toBeInTheDocument(); // still held open
+    rerender(group(false));
+    expect(screen.queryByTestId('sub-child')).toBeNull(); // back to collapsed, not flipped open
   });
 });

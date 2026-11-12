@@ -8,6 +8,7 @@ import WineEnrichmentBanner from './WineEnrichmentBanner';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel, asArray } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { useBuilderSearchHighlight } from '../builderSearchHighlight';
+import { BuilderWorkspaceContext, useBuilderWorkspace, selectionState, type BuilderWorkspaceMode } from '../builderWorkspace';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { ManageSectionsModal, type ManageSection } from './ManageSectionsModal';
@@ -238,6 +239,9 @@ interface MenuBuilderProps {
    */
   wineEnrichmentJob?: import('../../../types/restaurant').WineEnrichmentJob | null;
   onRetryWineEnrichment?: () => Promise<void> | void;
+  /** Owner Menu workspace (handoff v3): slim header, Expand all opens
+   *  sub-categories too, tri-state select-alls, drag-only sub-category reorder. */
+  workspaceMode?: boolean;
 }
 
 // ── GroupingChip ──────────────────────────────────────────────────────────────
@@ -2228,6 +2232,7 @@ function CategoryBucket({
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
   // when SOME (but not all) are selected.
+  const workspace = useBuilderWorkspace();
   const bucketSelectedCount = bulkSelectionEnabled && bulkSelection
     ? bucketItems.filter((it) => bulkSelection.has(it.id)).length
     : 0;
@@ -2249,10 +2254,12 @@ function CategoryBucket({
     >
       {/* Bucket header — checkbox (when bulk enabled) + collapse button */}
       <div className={`flex items-stretch overflow-hidden ${collapsed ? 'rounded-ctl' : 'rounded-t-ctl'}`}>
-        {bulkSelectionEnabled && bucketItems.length > 0 && (selectMode || bucketSelectedCount > 0) && (
+        {bulkSelectionEnabled && bucketItems.length > 0 && (workspace ? !collapsed : (selectMode || bucketSelectedCount > 0)) && (
           <label
             className="flex items-center justify-center pl-3 pr-1 cursor-pointer bg-surface2/50"
-            title={`Select every item in ${displayLabel ?? category}`}
+            title={workspace
+              ? (allBucketSelected ? `Deselect all in ${displayLabel ?? category}` : `Select all ${bucketItems.length} items in ${displayLabel ?? category}`)
+              : `Select every item in ${displayLabel ?? category}`}
           >
             <input
               type="checkbox"
@@ -2570,7 +2577,7 @@ function CategoryBucket({
                     // Top-aligned at the row's 50px first line, so an expanded
                     // row's settings block does not pull the box to its middle.
                     className={`flex items-start justify-center pl-2 pr-0.5 pt-[18px] transition-opacity ${
-                      selectMode || isSelected ? 'opacity-100' : 'opacity-35 group-hover/row:opacity-100 focus-within:opacity-100'
+                      workspace || selectMode || isSelected ? 'opacity-100' : 'opacity-35 group-hover/row:opacity-100 focus-within:opacity-100'
                     }`}
                   >
                     <input
@@ -2725,6 +2732,17 @@ function CategoryBucket({
                   onMoveDown={() => moveLabel(label, reorderIdx + 1)}
                   canMoveUp={reorderIdx > 0}
                   canMoveDown={reorderIdx >= 0 && reorderIdx < reorderableLabels.length - 1}
+                  selectAll={workspace && bulkSelectionEnabled && groupItems.length > 0 ? {
+                    state: selectionState(groupItems.map((it) => it.id), bulkSelection),
+                    total: groupItems.length,
+                    onToggle: () => {
+                      const all = selectionState(groupItems.map((it) => it.id), bulkSelection) === 'all';
+                      for (const it of groupItems) {
+                        const isSel = bulkSelection?.has(it.id) ?? false;
+                        if (all ? isSel : !isSel) onToggleBulkSelection?.(it.id);
+                      }
+                    },
+                  } : undefined}
                 >
                   {groupItems.map((item) => (
                     <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>
@@ -2800,6 +2818,7 @@ export default function MenuBuilder({
   onOpenBulkPanel,
   wineEnrichmentJob = null,
   onRetryWineEnrichment,
+  workspaceMode = false,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -2808,6 +2827,12 @@ export default function MenuBuilder({
   // sections" modal. Both local — they are view state, not menu data.
   const [selectMode, setSelectMode] = useState(false);
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
+  // Workspace mode: Expand all / Collapse all reach every sub-category too.
+  const [subcatSignal, setSubcatSignal] = useState<{ open: boolean; n: number }>({ open: false, n: 0 });
+  const workspace = useMemo<BuilderWorkspaceMode | null>(
+    () => (workspaceMode ? { subcatSignal } : null),
+    [workspaceMode, subcatSignal],
+  );
 
   const handleRemoveItemFromMenuTracked = (itemId: string, menuId: string) => {
     trackAction('menu.menuBuilder.removeFromMenu', {
@@ -2956,6 +2981,7 @@ export default function MenuBuilder({
       {/* Card header: Manage sections · count · (Inactive) ··· Expand all · Select · Bulk actions */}
       {activeMenu && (
         <div className="px-4 pt-4 pb-3 flex items-center gap-2 flex-wrap shrink-0">
+          {!workspaceMode && (
           <button
             type="button"
             onClick={() => setManageSectionsOpen(true)}
@@ -2965,6 +2991,7 @@ export default function MenuBuilder({
             <Layers size={15} aria-hidden="true" />
             Manage sections
           </button>
+          )}
           <span
             className="text-[13px] text-ink-soft whitespace-nowrap"
             style={{ fontVariantNumeric: 'tabular-nums' }}
@@ -2981,7 +3008,10 @@ export default function MenuBuilder({
           {onCollapseAll && (
             <button
               type="button"
-              onClick={() => onCollapseAll(!allCollapsed)}
+              onClick={() => {
+                onCollapseAll(!allCollapsed);
+                if (workspaceMode) setSubcatSignal((s) => ({ open: allCollapsed, n: s.n + 1 }));
+              }}
               data-testid="collapse-expand-all-btn"
               className="h-8 px-2.5 rounded-ctl border-0 bg-transparent text-[13px] font-semibold text-ink whitespace-nowrap cursor-pointer hover:bg-surface2"
             >
@@ -2993,7 +3023,7 @@ export default function MenuBuilder({
               existing BulkMenuSidesPanel once ≥1 row is selected. */}
           {bulkSelectionEnabled && (
             <>
-              <button
+              {!workspaceMode && <button
                 type="button"
                 data-testid="menu-builder-select-toggle"
                 aria-pressed={selectMode}
@@ -3001,7 +3031,7 @@ export default function MenuBuilder({
                 className={`${secondaryBtn} ${selectMode ? '!bg-ink !text-on-ink !border-ink' : ''}`}
               >
                 Select
-              </button>
+              </button>}
               <button
                 type="button"
                 data-testid="menu-builder-bulk-action"
@@ -3031,6 +3061,7 @@ export default function MenuBuilder({
           scrollbar on/off — that toggle was shifting every right-aligned
           control (count badges, edit/delete icons) left and right on each
           click. */}
+      <BuilderWorkspaceContext.Provider value={workspace}>
       <div
         ref={builderScrollRef}
         data-testid="menu-builder-scroll"
@@ -3061,6 +3092,7 @@ export default function MenuBuilder({
             // Bucket general-area highlight only when NOT hovering a sub-group.
             const isDragOverBucket = dragOverHere !== null && dragOverHere.label === undefined;
             const subCatDragOverLabel = dragOverHere?.label ?? null;
+            const highlightHolds = !!highlight && sec.allItemIds.some((id) => highlight.matchIds.has(id));
 
             return (
               <CategoryBucket
@@ -3072,12 +3104,14 @@ export default function MenuBuilder({
                 menus={menus}
                 menuId={activeMenu!.id}
                 scrollToItemId={scrollToItemId}
-                collapsed={searchActive || (!!highlight && sec.allItemIds.some((id) => highlight.matchIds.has(id)))
+                collapsed={searchActive || highlightHolds
                   ? false
                   : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}
-                onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}
+                // Held open by the library search → the chevron waits for the
+                // search to clear (the owner's own state is what comes back).
+                onToggleCollapse={() => { if (!highlightHolds) handleToggleCollapseTracked(collapseKey); }}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
@@ -3127,6 +3161,7 @@ export default function MenuBuilder({
             );
           })}
       </div>
+      </BuilderWorkspaceContext.Provider>
 
       {activeMenu && (
         <ManageSectionsModal

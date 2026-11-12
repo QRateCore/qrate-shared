@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { MenuColor } from '../lib/menuUtils';
+import { useBuilderWorkspace } from '../builderWorkspace';
 import { UNGROUPED_KEY } from '../lib/menuUtils';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 
@@ -65,6 +66,9 @@ export interface SubCategoryGroupProps {
   /** Holds an Item-library search match — shown open while the search runs,
    *  without changing the owner's own open/closed state (restored on clear). */
   forceOpen?: boolean;
+  /** Owner Menu workspace: tri-state select-all on the bar (shown while it is
+   *  expanded and has items). */
+  selectAll?: { state: 'none' | 'some' | 'all'; total: number; onToggle: () => void };
 }
 
 export function SubCategoryGroup({
@@ -94,14 +98,29 @@ export function SubCategoryGroup({
   canMoveDown = false,
   containsScrollTarget = false,
   forceOpen = false,
+  selectAll,
 }: SubCategoryGroupProps) {
+  const workspace = useBuilderWorkspace();
   const isUngrouped = label === UNGROUPED_KEY;
   const display = isUngrouped ? 'Ungrouped' : label;
   // Sub-accordions start collapsed when their parent canonical/section bucket
   // is expanded (2026-06-11) — the owner drills in one level at a time.
-  const [ownCollapsed, setCollapsed] = useState(!containsScrollTarget);
+  // Workspace mode: a sub-category mounted after "Expand all" starts open.
+  const [ownCollapsed, setCollapsed] = useState(!containsScrollTarget && !workspace?.subcatSignal.open);
+  // …and every press of Expand all / Collapse all reaches the mounted ones.
+  const signalN = workspace?.subcatSignal.n ?? 0;
+  const signalOpen = workspace?.subcatSignal.open ?? false;
+  const seenSignal = React.useRef(signalN);
+  useEffect(() => {
+    if (signalN === seenSignal.current) return;
+    seenSignal.current = signalN;
+    setCollapsed(!signalOpen);
+  }, [signalN, signalOpen]);
   // A search match holds it open; the owner's own state comes back on clear.
   const collapsed = forceOpen ? false : ownCollapsed;
+  // While a search holds it open the chevron does nothing — flipping the
+  // hidden own state would change what comes back when the search clears.
+  const toggle = () => { if (!forceOpen) setCollapsed((c) => !c); };
   // Auto-expand when a deep-link (scrollToItemId) targets an item in THIS
   // sub-category, so "open this item on the menu" lands with its sub-category
   // open (the course is expanded by MenuBuilder in tandem).
@@ -194,7 +213,7 @@ export function SubCategoryGroup({
           // every click. Native <button>/<input>/<a> descendants are what
           // we actually want to bail on.
           if (target?.closest('button, input, a')) return;
-          setCollapsed((c) => !c);
+          toggle();
         }}
         // Keyboard equivalent — Enter or Space on the row toggles too.
         onKeyDown={(e) => {
@@ -203,7 +222,7 @@ export function SubCategoryGroup({
             const target = e.target as HTMLElement | null;
             if (target?.closest('button, input, a')) return;
             e.preventDefault();
-            setCollapsed((c) => !c);
+            toggle();
           }
         }}
         role="button"
@@ -226,7 +245,7 @@ export function SubCategoryGroup({
           outlineOffset: -2,
           // grab cursor when reorder is armed; pointer otherwise (row is clickable)
           cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),
-          opacity: isReorderDragging ? 0.4 : undefined,
+          opacity: isReorderDragging ? (workspace ? 0.45 : 0.4) : undefined,
         }}
       >
         {reorderEnabled && (
@@ -239,9 +258,21 @@ export function SubCategoryGroup({
             <GripVertical size={14} />
           </span>
         )}
+        {selectAll && !collapsed && (
+          <input
+            type="checkbox"
+            className="w-3.5 h-3.5 accent-ink cursor-pointer shrink-0"
+            data-testid={`subcategory-select-${category}-${label}`}
+            checked={selectAll.state === 'all'}
+            ref={(el) => { if (el) el.indeterminate = selectAll.state === 'some'; }}
+            onChange={selectAll.onToggle}
+            title={selectAll.state === 'all' ? `Deselect all in ${display}` : `Select all ${selectAll.total} items in ${display}`}
+            aria-label={selectAll.state === 'all' ? `Deselect all in ${display}` : `Select all ${selectAll.total} items in ${display}`}
+          />
+        )}
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={toggle}
           aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
           data-testid={`subcategory-toggle-${category}-${label}`}
           className="flex items-center text-ink-soft bg-transparent border-0 p-0 cursor-pointer"
@@ -300,7 +331,7 @@ export function SubCategoryGroup({
             >
               {itemCount}
             </span>
-            {reorderEnabled && (
+            {reorderEnabled && !workspace && (
               <>
                 <button
                   type="button"
