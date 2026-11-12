@@ -3786,7 +3786,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                         )}
 
                         {/* Served + Strength — each only when the drink type offers it */}
-                        {(!bevCfg || bevCfg.served.length > 0 || bevCfg.strength.length > 0 || Boolean(bevDraft.served) || Boolean(bevDraft.strength)) && (
+                        {(!bevCfg || bevCfg.served.length > 0 || bevCfg.strength.length > 0 || Boolean(bevDraft.served) || Boolean(bevDraft.strength && bevDraft.strength !== 'none')) && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                           {(!bevCfg || bevCfg.served.length > 0 || Boolean(bevDraft.served)) && <div>
                             <label style={fieldLabel}>Served</label>
@@ -3802,7 +3802,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               ]}
                             />
                           </div>}
-                          {(!bevCfg || bevCfg.strength.length > 0 || Boolean(bevDraft.strength)) && <div>
+                          {(!bevCfg || bevCfg.strength.length > 0 || Boolean(bevDraft.strength && bevDraft.strength !== 'none')) && <div>
                             <label style={fieldLabel}>Strength</label>
                             <Select
                               fullWidth

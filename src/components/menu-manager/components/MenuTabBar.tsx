@@ -292,8 +292,16 @@ function CompactTabInner({ menu, dotPx }: { menu: MenuSummary; dotPx?: number })
 
 /** v5: every menu tab, wrapping onto extra lines (no overflow button). */
 function WrappingMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBarProps, 'menus' | 'activeMenuId' | 'onTabChange'>) {
+  // The host may cap the tab area's height and scroll it (many menus): keep the
+  // selected tab in view.
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeMenuId]);
   return (
     <div
+      ref={barRef}
       className="flex min-w-0 flex-1 flex-wrap items-end gap-1"
       role="tablist"
       aria-label="Menus"
