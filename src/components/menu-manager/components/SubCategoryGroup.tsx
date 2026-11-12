@@ -62,6 +62,9 @@ export interface SubCategoryGroupProps {
   /** A deep-link (scrollToItemId) targets an item inside this sub-category —
    *  force it open so the item is visible. Set by MenuBuilder. */
   containsScrollTarget?: boolean;
+  /** Holds an Item-library search match — shown open while the search runs,
+   *  without changing the owner's own open/closed state (restored on clear). */
+  forceOpen?: boolean;
 }
 
 export function SubCategoryGroup({
@@ -90,12 +93,15 @@ export function SubCategoryGroup({
   canMoveUp = false,
   canMoveDown = false,
   containsScrollTarget = false,
+  forceOpen = false,
 }: SubCategoryGroupProps) {
   const isUngrouped = label === UNGROUPED_KEY;
   const display = isUngrouped ? 'Ungrouped' : label;
   // Sub-accordions start collapsed when their parent canonical/section bucket
   // is expanded (2026-06-11) — the owner drills in one level at a time.
-  const [collapsed, setCollapsed] = useState(!containsScrollTarget);
+  const [ownCollapsed, setCollapsed] = useState(!containsScrollTarget);
+  // A search match holds it open; the owner's own state comes back on clear.
+  const collapsed = forceOpen ? false : ownCollapsed;
   // Auto-expand when a deep-link (scrollToItemId) targets an item in THIS
   // sub-category, so "open this item on the menu" lands with its sub-category
   // open (the course is expanded by MenuBuilder in tandem).

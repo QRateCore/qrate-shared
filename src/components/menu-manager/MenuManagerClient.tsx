@@ -28,6 +28,8 @@ import {
 } from './lib/menuUtils';
 import { mergePendingWriteItems } from './lib/mergePendingWriteItems';
 import ItemPool from './components/ItemPool';
+import { BuilderSearchHighlightContext, type BuilderSearchHighlight } from './builderSearchHighlight';
+import { matchesItemText } from './filterItemsByText';
 import MenuBuilder, { type ModifierUpdatePayload, itemHasAttention } from './components/MenuBuilder';
 import WineEnrichmentBanner from './components/WineEnrichmentBanner';
 import { filterItemsByText } from './filterItemsByText';
@@ -512,6 +514,13 @@ interface Props {
    */
   builderSearchQuery?: string;
   /**
+   * Owner Menu workspace (handoff v2): the Item library's search HIGHLIGHTS
+   * matching rows on the builder — matches tinted + <mark>ed, the rest faded,
+   * sections / sub-categories holding a match opened — instead of filtering.
+   * Independent of `builderSearchQuery` (the header search keeps filtering).
+   */
+  builderHighlightQuery?: string;
+  /**
    * When supplied, the menu tab rail is PORTALED here instead of rendering
    * above the two panels (PDD 2026-08-30 — owner Menu: tabs share the search
    * row). The host owns the element; this component only fills it.
@@ -571,7 +580,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -589,6 +598,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // Core data
   const [items, setItems] = useState<MenuItemDisplay[]>(initialItems);
+  const highlightQuery = (builderHighlightQuery ?? '').trim();
+  const builderHighlight = useMemo<BuilderSearchHighlight | null>(
+    () => (highlightQuery
+      ? { query: highlightQuery, matchIds: new Set(items.filter((i) => matchesItemText(i, highlightQuery)).map((i) => i.id)) }
+      : null),
+    [items, highlightQuery],
+  );
   const [menus, setMenus] = useState<MenuSummary[]>(initialMenus);
   // Track when parent finishes a refresh so we can adopt the new data.
   // Without this, items added via external callbacks (e.g. recommendation
@@ -3400,6 +3416,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           >
           {/* Right panel — MenuBuilder (flex fills remaining space) */}
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, order: 3 }}>
+          <BuilderSearchHighlightContext.Provider value={builderHighlight}>
           <MenuBuilder
             items={items}
             menus={menus}
@@ -3468,6 +3485,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             }
             onOpenBulkPanel={() => setBulkMenuSidesOpen(true)}
           />
+          </BuilderSearchHighlightContext.Provider>
           </div>
 
           {!hidePool && (<>

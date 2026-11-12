@@ -1,6 +1,7 @@
 export { default as MenuManagerClient } from './MenuManagerClient';
 export type { BulkMode, DragState, MenuManagerActions } from './MenuManagerClient';
 export type { MenuRowChromeProps } from './components/MenuBuilder';
+export { markMatches } from './builderSearchHighlight';
 export { default as EditModal } from './components/EditModal';
 export type { DietaryTagService } from './components/EditModal';
 export { default as BulkActionsPanel } from './components/BulkActionsPanel';

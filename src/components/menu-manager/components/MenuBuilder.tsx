@@ -7,6 +7,7 @@ import type { MenuItemDisplay, MenuSummary, MenuItemJunctionSettings, Grouping, 
 import WineEnrichmentBanner from './WineEnrichmentBanner';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel, asArray } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
+import { useBuilderSearchHighlight } from '../builderSearchHighlight';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { ManageSectionsModal, type ManageSection } from './ManageSectionsModal';
@@ -31,6 +32,8 @@ export type { ModifierEntry };
  */
 export interface MenuRowChromeProps {
   item: MenuItemDisplay;
+  /** Set while the Item library search highlights this row (mark the name with it). */
+  searchQuery?: string;
   menuId: string;
   /** The canonical bucket the row is rendered under. */
   cat: string;
@@ -962,6 +965,9 @@ function MenuItemRow({
    *  selection UX. */
   disableDrag?: boolean;
 }) {
+  // Item library search (highlight mode): null = no search running.
+  const highlight = useBuilderSearchHighlight();
+  const searchMatch: boolean | null = highlight ? highlight.matchIds.has(item.id) : null;
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const isMobile = useIsMobile();
@@ -1388,6 +1394,7 @@ function MenuItemRow({
     <div
       data-testid={`menu-item-row-${item.id}`}
       data-item-row-id={item.id}
+      data-search={searchMatch === null ? undefined : searchMatch ? 'match' : 'dim'}
       data-expanded={expanded ? 'true' : 'false'}
       data-attention={attention ? 'true' : undefined}
       data-approved-addons={approvedAddons > 0 ? approvedAddons : undefined}
@@ -1403,7 +1410,11 @@ function MenuItemRow({
           : undefined
       }
       onDragEnd={!disableDrag && !expanded ? onDragEnd : undefined}
-      className={`w-full border-b border-line-row ${expanded ? 'bg-surface2/40' : ''}`}
+      className={`w-full border-b border-line-row ${expanded ? 'bg-surface2/40' : ''} ${
+        searchMatch === true
+          ? 'bg-[var(--surface-sunk)] shadow-[inset_3px_0_0_var(--accent)]'
+          : searchMatch === false ? 'opacity-45 transition-opacity' : ''
+      }`}
       style={{
         borderLeft: `3px solid ${attention ? 'var(--bad)' : 'transparent'}`,
         // grab cursor signals a collapsed row is draggable (drag onto a course
@@ -1526,6 +1537,7 @@ function MenuItemRow({
       rowChrome ? (
         <>{rowChrome({
           item,
+          searchQuery: searchMatch ? highlight!.query : undefined,
           menuId,
           cat,
           settings,
@@ -2126,6 +2138,7 @@ function CategoryBucket({
    */
   suppressEmptyAttention?: boolean;
 }) {
+  const highlight = useBuilderSearchHighlight();
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
   // STR-858 — mobile "86 whole course" (bulk-hide a downed course, e.g. fryer
@@ -2655,6 +2668,7 @@ function CategoryBucket({
                   itemCount={groupItems.length}
                   color={color}
                   containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
+                  forceOpen={!!highlight && groupItems.some((it) => highlight.matchIds.has(it.id))}
                   isDragOver={subCatDragOverLabel === label}
                   onDragEnter={
                     onDragEnterSubCategory
@@ -2839,6 +2853,19 @@ export default function MenuBuilder({
   // `itemsById` map (used for id lookups / rec classification) untouched.
   const builderQuery = (builderSearchQuery ?? '').trim();
   const searchActive = builderQuery.length > 0;
+  const highlight = useBuilderSearchHighlight();
+  // Highlight search: once typing settles, bring the first match into view in
+  // THIS scroll area (a matching section opens with its faded rows above it).
+  const builderScrollRef = useRef<HTMLDivElement | null>(null);
+  const highlightQuery = highlight?.query ?? '';
+  useEffect(() => {
+    if (!highlightQuery) return;
+    const t = setTimeout(() => {
+      const first = builderScrollRef.current?.querySelector<HTMLElement>('[data-search="match"]');
+      first?.scrollIntoView?.({ block: 'nearest' });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [highlightQuery]);
   // Sections depend on the menu: food courses (Drinks/Starters/Mains/Desserts)
   // for a normal menu, drink types (Beer/Wine/Cocktails/…) for a drinks menu.
   // buildAssignments keys a drinks menu's buckets by drink_subcategory_key to
@@ -3005,6 +3032,7 @@ export default function MenuBuilder({
           control (count badges, edit/delete icons) left and right on each
           click. */}
       <div
+        ref={builderScrollRef}
         data-testid="menu-builder-scroll"
         className="flex-1 overflow-y-auto px-4 pb-4 [scrollbar-gutter:stable]"
       >
@@ -3044,7 +3072,9 @@ export default function MenuBuilder({
                 menus={menus}
                 menuId={activeMenu!.id}
                 scrollToItemId={scrollToItemId}
-                collapsed={searchActive ? false : (collapsed[collapseKey] ?? true)}
+                collapsed={searchActive || (!!highlight && sec.allItemIds.some((id) => highlight.matchIds.has(id)))
+                  ? false
+                  : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}
                 onToggleCollapse={() => handleToggleCollapseTracked(collapseKey)}
