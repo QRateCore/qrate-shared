@@ -269,14 +269,16 @@ export function fitMenuTabs(
 
 const COMPACT_TAB_CLS = 'relative inline-flex h-9 shrink-0 items-center gap-1.5 border-0 bg-transparent px-3 text-[13.5px] leading-none whitespace-nowrap';
 
-function CompactTabInner({ menu }: { menu: MenuSummary }) {
+function CompactTabInner({ menu, dotPx }: { menu: MenuSummary; dotPx?: number }) {
   return (
     <>
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
+        className={`${dotPx ? '' : 'h-1.5 w-1.5 '}shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
+        style={dotPx ? { width: dotPx, height: dotPx } : undefined}
       />
-      <span>{menu.name}</span>
+      {/* Truncated so one very long name can never spill past the tab row. */}
+      <span className="min-w-0 max-w-[320px] truncate">{menu.name}</span>
       {/* The dot is the menu's only status cue on the owner Menu page. */}
       <span className="sr-only">{menu.active ? ' (Active)' : ' (Inactive)'}</span>
       {typeof menu.item_count === 'number' && (
@@ -292,7 +294,7 @@ function CompactTabInner({ menu }: { menu: MenuSummary }) {
 function WrappingMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBarProps, 'menus' | 'activeMenuId' | 'onTabChange'>) {
   return (
     <div
-      className="flex min-w-0 flex-1 flex-wrap items-stretch"
+      className="flex min-w-0 flex-1 flex-wrap items-end gap-1"
       role="tablist"
       aria-label="Menus"
       data-testid="menu-tab-bar"
@@ -311,12 +313,15 @@ function WrappingMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBa
             data-menu-status={menu.active ? 'active' : 'inactive'}
             onClick={() => onTabChange(menu.id)}
             title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
-            className={`${COMPACT_TAB_CLS} cursor-pointer transition-colors ${
-              isActive ? 'font-semibold text-ink' : 'font-medium text-ink-soft hover:text-ink'
+            // v5 underline tab: 40px, 14px / 500, 7px dot, count; the active tab
+            // gets a full-width 2px ink bottom border, idle tabs are muted.
+            className={`relative inline-flex h-10 max-w-full shrink-0 cursor-pointer items-center gap-2 border-0 border-b-2 border-solid bg-transparent px-3 text-[14px] font-medium leading-none whitespace-nowrap transition-colors ${
+              isActive
+                ? 'border-[var(--mw-ink,var(--ink))] text-[var(--mw-ink,var(--ink))]'
+                : 'border-transparent text-[var(--mw-muted,var(--ink-soft))] hover:text-[var(--mw-ink,var(--ink))]'
             }`}
           >
-            <CompactTabInner menu={menu} />
-            {isActive && <span aria-hidden="true" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-ink" />}
+            <CompactTabInner menu={menu} dotPx={7} />
           </button>
         );
       })}
