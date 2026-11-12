@@ -218,6 +218,12 @@ export function SubCategoryGroup({
         // Keyboard equivalent — Enter or Space on the row toggles too.
         onKeyDown={(e) => {
           if (renaming) return;
+          if (reorderEnabled && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+            if (e.key === 'ArrowUp' && canMoveUp) onMoveUp?.();
+            if (e.key === 'ArrowDown' && canMoveDown) onMoveDown?.();
+            return;
+          }
           if (e.key === 'Enter' || e.key === ' ') {
             const target = e.target as HTMLElement | null;
             if (target?.closest('button, input, a')) return;
@@ -229,6 +235,8 @@ export function SubCategoryGroup({
         tabIndex={renaming ? -1 : 0}
         aria-expanded={!collapsed}
         aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
+        aria-keyshortcuts={reorderEnabled ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+        title={reorderEnabled && workspace && !isMobile ? 'Drag to reorder (or Alt+↑ / Alt+↓)' : undefined}
         // Full-width row: opt out of the global press-scale (see the course
         // header in MenuBuilder.tsx — same owner feedback 2026-07-21).
         data-no-press
@@ -331,7 +339,10 @@ export function SubCategoryGroup({
             >
               {itemCount}
             </span>
-            {reorderEnabled && !workspace && (
+            {/* Workspace mode reorders by drag — except on a phone, where drag
+                does not work and ▲▼ stay the touch control. Desktop keyboard:
+                Alt+↑ / Alt+↓ on the focused bar. */}
+            {reorderEnabled && (!workspace || isMobile) && (
               <>
                 <button
                   type="button"

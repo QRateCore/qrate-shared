@@ -253,8 +253,9 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
               role="tab"
               aria-selected={isActive}
               data-testid={`menu-tab-${menu.id}`}
+              data-menu-status={menu.active ? 'active' : 'inactive'}
               onClick={() => onTabChange(menu.id)}
-              title={menu.name}
+              title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
               className={`relative inline-flex h-9 shrink-0 items-center gap-1.5 border-0 bg-transparent px-3 text-[13.5px] leading-none whitespace-nowrap cursor-pointer transition-colors ${
                 isActive ? 'font-semibold text-ink' : 'font-medium text-ink-soft hover:text-ink'
               }`}
@@ -264,6 +265,8 @@ function CompactMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBar
                 className={`h-1.5 w-1.5 shrink-0 rounded-full ${menu.active ? 'bg-ok' : 'bg-line-input'}`}
               />
               <span>{menu.name}</span>
+              {/* The dot is the menu's only status cue on the owner Menu page. */}
+              <span className="sr-only">{menu.active ? ' (Active)' : ' (Inactive)'}</span>
               {typeof menu.item_count === 'number' && (
                 <span className="text-[12px] font-normal text-ink-faint tabular-nums">
                   {menu.item_count}

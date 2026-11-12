@@ -3,6 +3,7 @@ import { useMenuManagerService } from '../context';
 import { useTrackAction } from '../track-action-context';
 
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert,
   Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils,
@@ -4295,7 +4296,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       ? 'fixed inset-0 z-[70] bg-surface flex flex-col overflow-hidden'
       : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-[min(960px,calc(100vw-40px))] max-h-[calc(100vh-40px)] bg-surface rounded-2xl shadow-float flex flex-col overflow-hidden';
 
-  return (
+  const tree = (
     <>
       {/* Backdrop — modal mode only */}
       {!isInline && (
@@ -5180,6 +5181,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       )}
     </>
   );
+  // Modal mode renders at the document root: an ancestor with a transform
+  // (the workspace's load animation) or containment would otherwise become
+  // the containing block of `position: fixed`, and the window would centre on
+  // that panel instead of the page (Avi, 2026-11-11). Context still flows
+  // through the portal.
+  if (isInline || typeof document === 'undefined') return tree;
+  return createPortal(tree, document.body);
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────

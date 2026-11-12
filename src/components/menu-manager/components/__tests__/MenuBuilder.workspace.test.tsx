@@ -18,6 +18,9 @@ import MenuBuilder from '../MenuBuilder';
 import { selectionState } from '../../builderWorkspace';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
+let mobile = false;
+vi.mock('../../../../hooks/useIsMobile', () => ({ useIsMobile: () => mobile }));
+const reorder = vi.fn();
 
 const MENU = {
   id: 'menu-1', name: 'Dinner', slug: 'dinner', display_order: 0, active: true,
@@ -62,7 +65,7 @@ function Harness({ workspaceMode, selected: initial = [] }: { workspaceMode: boo
       onDragEnterBucket={vi.fn()}
       onDragLeaveBucket={vi.fn()}
       onDropBucket={vi.fn()}
-      onReorderSubCategory={vi.fn()}
+      onReorderSubCategory={reorder}
       onCreateMenu={vi.fn().mockResolvedValue(undefined)}
       onEditMenu={vi.fn()}
       onRemoveItemFromMenu={vi.fn()}
@@ -192,5 +195,35 @@ describe('MenuBuilder — workspace sub-category reorder', () => {
     render(<Harness workspaceMode={false} />);
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
     expect(screen.getAllByTestId(/^subcategory-move-up-/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('MenuBuilder — workspace reorder without a mouse', () => {
+  it('desktop keyboard: Alt+↑ on a focused sub-category bar moves it up', () => {
+    mobile = false;
+    reorder.mockClear();
+    render(<Harness workspaceMode />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    const bars = screen.getAllByTestId(/^subcategory-drop-/);
+    const second = bars[1]!;
+    const label = second.getAttribute('data-testid')!.replace(/^subcategory-drop-[^-]+-/, '');
+    expect(second.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowUp Alt+ArrowDown');
+    fireEvent.keyDown(second, { key: 'ArrowUp', altKey: true });
+    expect(reorder).toHaveBeenCalledTimes(1);
+    expect(reorder.mock.calls[0]![2][0]).toBe(label);
+    // Plain ↑ (no Alt) does not reorder.
+    fireEvent.keyDown(second, { key: 'ArrowUp' });
+    expect(reorder).toHaveBeenCalledTimes(1);
+  });
+
+  it('phone: ▲▼ stay as the touch reorder control in workspace mode', () => {
+    mobile = true;
+    try {
+      render(<Harness workspaceMode />);
+      fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+      expect(screen.getAllByTestId(/^subcategory-move-up-/).length).toBeGreaterThan(0);
+    } finally {
+      mobile = false;
+    }
   });
 });

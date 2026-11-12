@@ -308,6 +308,17 @@ describe('EditModal — form initialization', () => {
   });
 });
 
+describe('EditModal — page-centred (portal)', () => {
+  it('modal mode renders the window and its scrim at the document root, outside any transformed panel', () => {
+    renderModal();
+    // An ancestor with a transform (the workspace load animation) would
+    // otherwise be the containing block of position:fixed and centre the
+    // window on that panel (Avi, 2026-11-11).
+    expect(screen.getByTestId('edit-item-modal').parentElement).toBe(document.body);
+    expect(screen.getByTestId('edit-modal-backdrop').parentElement).toBe(document.body);
+  });
+});
+
 describe('EditModal — tab defaults', () => {
   it('shows food_tags tab by default for dish items', () => {
     renderModal({ item: makeDishItem() });

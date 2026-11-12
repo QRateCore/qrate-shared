@@ -229,7 +229,11 @@ describe('<MenuTabBar />', () => {
     expect(lunch.className).toContain('font-semibold');
     expect(dinner.className).toContain('text-ink-soft');
     // Name + item count; the dot is green for an active menu, neutral otherwise.
-    expect(lunch.textContent).toBe(`Lunch${menu({ id: 'lunch' }).item_count}`);
+    // Visible: name + count; the status rides on an sr-only word, a title and a data attribute
+    // (the owner Menu page has no other status cue since the status row went, 2026-11-11).
+    expect(lunch.textContent).toBe(`Lunch (Active)${menu({ id: 'lunch' }).item_count}`);
+    expect(lunch.getAttribute('data-menu-status')).toBe('active');
+    expect(lunch.getAttribute('title')).toBe('Lunch · Active');
     expect(lunch.querySelector('.bg-ok')).not.toBeNull();
     expect(dinner.querySelector('.bg-ok')).toBeNull();
     // Only the selected tab carries the underline.
