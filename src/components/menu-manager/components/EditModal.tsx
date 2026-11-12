@@ -4,9 +4,10 @@ import { useTrackAction } from '../track-action-context';
 
 import { Fragment, useRef, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { applyAlcoholic, applyDrinkType, drinkTypeConfig, drinkTypesFor, SERVED_LABEL } from '../drinkConfig';
 import {
   X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert, Copy,
-  Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils,
+  Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils, CupSoda,
   type LucideIcon,
 } from 'lucide-react';
 import { itemScopeLine, menuPricingHint, placementPath } from '../lib/editModalScope';
@@ -953,6 +954,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // (menu_items.category_name, surfaced as `category`). This is now the
   // owner-editable category field on the item, replacing Mapped Course.
   const [rawCategory, setRawCategory] = useState(item.category ?? '');
+  // Basics Food / Beverage toggle (Menu workspace v3): switching kind moves the
+  // dish to the first category of that kind and — once touched — saves the
+  // canonical course too (the Item library sorts Food vs Beverage by it).
+  const [kindTouched, setKindTouched] = useState(false);
   // Raw Category dropdown options are derived by the shared <RawCategorySelect>
   // (single source of truth across the food-item EditModal + bulk-actions
   // drawer): items[].category ∪ ownerFoodCategories ∪ current value, so a
@@ -2047,7 +2052,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       };
       setOrDrop('beverage_type', type);
       setOrDrop('alcoholic', typeof bevDraft.alcoholic === 'boolean' ? bevDraft.alcoholic : undefined);
-      setOrDrop('base_spirit', bevDraft.base_spirit, type === 'cocktail');
+      setOrDrop('base_spirit', bevDraft.base_spirit, type === 'cocktail' || type === 'spirit');
       // 'rosé' → 'rose': the accented value was UI-side drift from the
       // backend canonical vocabulary — normalized on every save (M5 fix).
       setOrDrop(
@@ -2283,6 +2288,9 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         name: name.trim(),
         description: description.trim(),
         category: rawCategory.trim(),
+        // Food ↔ Beverage switched in Basics: the course follows (food_tags.beverage
+        // is only written for Beverages, so switching to Food drops the drink block).
+        ...(kindTouched ? { canonical_category: category.trim() || null } : {}),
         food_tags: foodTags,
         item_type: isAddon ? 'addon' : 'dish',
         // STR-303: add-on mode is the sole per-item price surface in this modal.
@@ -2715,9 +2723,39 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   );
 
   // ── Name field (Basics) — the canonical Name input ────────────────────────
+  const kindIsBeverage = category === 'Beverages';
+  const switchKind = (toBeverage: boolean) => {
+    if (toBeverage === kindIsBeverage) return;
+    // The first category of the new kind (design: "Switching kind resets Category
+    // to the first category of the new kind"), from this restaurant's own labels.
+    const labels = Array.from(new Set([
+      ...(ownerFoodCategories ?? []),
+      ...(allItems ?? []).map((i) => i.category ?? '').filter(Boolean),
+    ])).sort((a, b) => a.localeCompare(b));
+    const first = labels.find((l) => (toCanonical(l) === 'Beverages') === toBeverage);
+    setKindTouched(true);
+    setRawCategory(first ?? (toBeverage ? 'Beverages' : ''));
+    setCategory(toBeverage ? 'Beverages' : (first ? (toCanonical(first) ?? 'Mains') : 'Mains'));
+  };
   const nameField = (
     <div>
-      <label className={FIELD_LABEL_CLS} htmlFor="edit-name">Name</label>
+      <div className="flex items-center justify-between gap-2">
+        <label className={FIELD_LABEL_CLS} htmlFor="edit-name">Name</label>
+        {!isAddon && (
+          <div role="group" aria-label="Food or beverage" className="mb-1 inline-flex rounded-full bg-surface2 p-[3px]" data-testid="edit-kind-toggle">
+            {([['food', 'Food', Utensils], ['beverage', 'Beverage', CupSoda]] as const).map(([key, label, Icon]) => {
+              const on = (key === 'beverage') === kindIsBeverage;
+              return (
+                <button key={key} type="button" aria-pressed={on} onClick={() => switchKind(key === 'beverage')}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-full border-0 px-3 text-[12.5px] font-semibold ${on ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.1)]' : 'bg-transparent text-ink-soft'}`}
+                  data-testid={`edit-kind-${key}`}>
+                  <Icon size={13} aria-hidden /> {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <input
         ref={nameInputRef}
         id="edit-name"
@@ -3016,34 +3054,13 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           />
         </div>
       </div>
-      <div className="border-y border-line-row">
+      <SectionHeading>Availability</SectionHeading>
+      <div className="border-y border-line-row -mt-2" data-testid="edit-availability">
         {visibilityRow}
         {/* Dish settings — spice picker visibility + required, and Build Your
             Own. Hidden for Desserts (no spice) and wine (neither applies). */}
         {!isWine && (
           <div className="border-t border-line-row divide-y divide-line-row" data-testid="edit-dish-settings">
-            {category !== 'Desserts' && (
-              <>
-                <SwitchRow label="Show spice picker" hint="Guests choose a spice level when they add this dish.">
-                  <InkSwitch
-                    checked={spiceModifierEnabled}
-                    label="Toggle Show spice picker"
-                    testId="spice-modifier-toggle"
-                    onChange={(next) => setSpiceModifierEnabled(next)}
-                  />
-                </SwitchRow>
-                <SwitchRow label="Require a spice selection" hint="Guests must pick a level before adding to the order.">
-                  <InkSwitch
-                    checked={spiceModifierEnabled && spiceSelectionRequired}
-                    disabled={!spiceModifierEnabled}
-                    title={!spiceModifierEnabled ? 'Turn on the spice picker to require a selection.' : undefined}
-                    label="Toggle Require a spice selection"
-                    testId="spice-required-toggle"
-                    onChange={(next) => { if (spiceModifierEnabled) setSpiceSelectionRequired(next); }}
-                  />
-                </SwitchRow>
-              </>
-            )}
             {(() => {
               // BYO (Build-Your-Own) classification — PDD 2026-05-26. Disabled
               // when the dish has zero groupings: the API hard-blocks
@@ -3094,6 +3111,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                     setBevDraft((prev) => ({ ...prev, [field]: value }));
                   };
                   const bevType = bevDraft.beverage_type ?? '';
+                  // v3 DRINK_CFG: types follow Alcoholic / Non-alcoholic; Served,
+                  // Strength and the spirit field follow the type (drinkConfig).
+                  const bevCfg = drinkTypeConfig(bevType);
+                  const typeChoices = drinkTypesFor(bevDraft.alcoholic);
                   // Defensive filter — strip nulls/empties/non-strings that
                   // may leak in from upstream enrichment writes so we don't
                   // render or persist garbage chips. Filter is applied at
@@ -3218,18 +3239,22 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               fullWidth
                               data-testid="beverage-input-type"
                               value={bevType}
-                              onChange={(e) => updateBev('beverage_type', (e.target.value || undefined) as BeverageTags['beverage_type'])}
+                              onChange={(e) => setBevDraft((prev) => applyDrinkType(prev, (e.target.value || undefined) as BeverageTags['beverage_type']))}
                               placeholder="Select type"
                               options={[
                                 { value: '', label: 'Select type' },
-                                ...BEVERAGE_TYPES.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) })),
+                                ...typeChoices.map((t) => ({ value: t.value, label: t.label })),
+                                // A stored type outside the list stays visible (never silently relabelled).
+                                ...(bevType && !typeChoices.some((t) => t.value === bevType)
+                                  ? [{ value: bevType, label: bevType.charAt(0).toUpperCase() + bevType.slice(1) }]
+                                  : []),
                               ]}
                             />
                           </div>
                           <div>
                             <label style={fieldLabel}>Alcoholic</label>
                             <div style={{ display: 'flex', gap: 6 }}>
-                              {[{ label: 'Yes', value: true }, { label: 'No', value: false }].map((opt) => {
+                              {[{ label: 'Yes', text: 'Alcoholic', value: true }, { label: 'No', text: 'Non-alcoholic', value: false }].map((opt) => {
                                 const active = bevDraft.alcoholic === opt.value;
                                 return (
                                   <button
@@ -3237,7 +3262,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                     type="button"
                                     data-testid={`beverage-input-alcoholic-${opt.label.toLowerCase()}`}
                                     aria-pressed={active}
-                                    onClick={() => updateBev('alcoholic', active ? undefined : opt.value)}
+                                    onClick={() => setBevDraft((prev) => applyAlcoholic(prev, active ? undefined : opt.value))}
                                     style={{
                                       flex: 1,
                                       padding: '7px 0',
@@ -3252,7 +3277,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                                       transition: 'all 0.1s',
                                     }}
                                   >
-                                    {opt.label}
+                                    {opt.text}
                                   </button>
                                 );
                               })}
@@ -3260,10 +3285,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           </div>
                         </div>
 
-                        {/* Conditional: cocktail */}
-                        {bevType === 'cocktail' && (
+                        {/* Conditional: cocktail (Base spirit) / spirit (Spirit) */}
+                        {(bevType === 'cocktail' || bevType === 'spirit') && (
                           <div>
-                            <label style={fieldLabel}>Base spirit</label>
+                            <label style={fieldLabel}>{bevType === 'spirit' ? 'Spirit' : 'Base spirit'}</label>
                             <Select
                               fullWidth
                               data-testid="beverage-input-base-spirit"
@@ -3714,9 +3739,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                           </div>
                         )}
 
-                        {/* Served + Strength */}
+                        {/* Served + Strength — each only when the drink type offers it */}
+                        {(!bevCfg || bevCfg.served.length > 0 || bevCfg.strength.length > 0) && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                          <div>
+                          {(!bevCfg || bevCfg.served.length > 0) && <div>
                             <label style={fieldLabel}>Served</label>
                             <Select
                               fullWidth
@@ -3726,11 +3752,11 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               placeholder="Select"
                               options={[
                                 { value: '', label: 'Select' },
-                                ...SERVING_STYLES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                                ...(bevCfg ? bevCfg.served : SERVING_STYLES).map((s) => ({ value: s, label: SERVED_LABEL[s] ?? (s.charAt(0).toUpperCase() + s.slice(1)) })),
                               ]}
                             />
-                          </div>
-                          <div>
+                          </div>}
+                          {(!bevCfg || bevCfg.strength.length > 0) && <div>
                             <label style={fieldLabel}>Strength</label>
                             <Select
                               fullWidth
@@ -3740,11 +3766,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                               placeholder="Select"
                               options={[
                                 { value: '', label: 'Select' },
-                                ...DRINK_STRENGTHS.map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
+                                ...(bevCfg ? bevCfg.strength : DRINK_STRENGTHS).map((s) => ({ value: s, label: s === 'none' ? 'Non-alcoholic' : s.charAt(0).toUpperCase() + s.slice(1) })),
                               ]}
                             />
-                          </div>
+                          </div>}
                         </div>
+                        )}
 
                         {/* Flavor notes — multi-select pill grid */}
                         <div>
@@ -3977,6 +4004,33 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   // ── Advanced details section ──────────────────────────────────────────────
   const advancedSection = (
     <section data-testid="edit-advanced-section" className="flex flex-col gap-4">
+        {/* Spice picker switches — moved here from Basics (v3 Basics has none; the
+            per-dish setting still drives the guest spice picker). */}
+        {!isAddon && !isWine && category !== 'Desserts' && (
+          <div className="border-y border-line-row divide-y divide-line-row" data-testid="edit-advanced-spice">
+              <>
+                <SwitchRow label="Show spice picker" hint="Guests choose a spice level when they add this dish.">
+                  <InkSwitch
+                    checked={spiceModifierEnabled}
+                    label="Toggle Show spice picker"
+                    testId="spice-modifier-toggle"
+                    onChange={(next) => setSpiceModifierEnabled(next)}
+                  />
+                </SwitchRow>
+                <SwitchRow label="Require a spice selection" hint="Guests must pick a level before adding to the order.">
+                  <InkSwitch
+                    checked={spiceModifierEnabled && spiceSelectionRequired}
+                    disabled={!spiceModifierEnabled}
+                    title={!spiceModifierEnabled ? 'Turn on the spice picker to require a selection.' : undefined}
+                    label="Toggle Require a spice selection"
+                    testId="spice-required-toggle"
+                    onChange={(next) => { if (spiceModifierEnabled) setSpiceSelectionRequired(next); }}
+                  />
+                </SwitchRow>
+              </>
+          </div>
+        )}
+
                 {/* AI enrichment in-progress banner — Groupings Dietary/
                     Allergen Filter PDD (2026-05-18, Step 11 reframed).
                     When a new item is saved, owner-webapp fires the

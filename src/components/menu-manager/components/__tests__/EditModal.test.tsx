@@ -235,6 +235,14 @@ function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): Diet
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+/** v3: the spice-picker switches moved from Basics to Advanced details. */
+function spiceEl(id: string) { openAdvanced(); return screen.getByTestId(id); }
+function spiceQ(id: string) { openAdvanced(); return screen.queryByTestId(id); }
+function openAdvanced() {
+  const tab = screen.queryByTestId('tab-advanced');
+  if (tab) fireEvent.click(tab);
+}
+
 describe('EditModal — form initialization', () => {
   it('renders the modal with the item name in the name field', () => {
     renderModal({ item: makeDishItem({ name: 'Truffle Pasta' }) });
@@ -582,12 +590,12 @@ describe('EditModal — save behaviour', () => {
 describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
   it('renders the spice-modifier toggle on a non-dessert dish', () => {
     renderModal({ item: makeDishItem({ category: 'Entrees', canonical_category: 'Entrees' }) });
-    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+    expect(spiceEl('spice-modifier-toggle')).toBeInTheDocument();
   });
 
   it('hides the spice-modifier toggle on Desserts (patron auto-hides regardless)', () => {
     renderModal({ item: makeDishItem({ category: 'Desserts', canonical_category: 'Desserts' }) });
-    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-modifier-toggle')).not.toBeInTheDocument();
   });
 
   it('hides the spice-modifier toggle for add-ons (never reach composition page)', () => {
@@ -595,7 +603,7 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
     // Add-ons land on the performance tab by default, but even after
     // switching tabs the toggle should never render. Just assert absence
     // in the current render.
-    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-modifier-toggle')).not.toBeInTheDocument();
   });
 
   it('initialises ON when item.spice_modifier_enabled is true', () => {
@@ -605,7 +613,7 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
         spice_modifier_enabled: true,
       } as any),
     });
-    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
+    expect(spiceEl('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
   });
 
   it('initialises OFF when item.spice_modifier_enabled is false', () => {
@@ -615,14 +623,14 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
         spice_modifier_enabled: false,
       } as any),
     });
-    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('false');
+    expect(spiceEl('spice-modifier-toggle').getAttribute('aria-checked')).toBe('false');
   });
 
   it('initialises ON when item.spice_modifier_enabled is undefined (legacy row)', () => {
     // The `?? true` fallback in EditModal preserves the pre-PDD default
     // behaviour for items that haven't been touched since the migration.
     renderModal({ item: makeDishItem() });
-    expect(screen.getByTestId('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
+    expect(spiceEl('spice-modifier-toggle').getAttribute('aria-checked')).toBe('true');
   });
 
   it('save payload defaults spice_modifier_enabled=true for legacy items', async () => {
@@ -655,7 +663,7 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
       service,
     });
 
-    await user.click(screen.getByTestId('spice-modifier-toggle'));
+    await user.click(spiceEl('spice-modifier-toggle'));
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => {
@@ -702,7 +710,7 @@ describe('EditModal — spice_modifier_enabled toggle (PDD 2026-05-15)', () => {
 describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
   it('renders the "Show spice picker" (visibility) toggle on a non-dessert dish', () => {
     renderModal({ item: makeDishItem({ category: 'Entrees', canonical_category: 'Entrees' }) });
-    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
+    expect(spiceEl('spice-modifier-toggle')).toBeInTheDocument();
   });
 
   it('renders the separate "Require a spice selection" toggle when the picker is on', () => {
@@ -710,7 +718,7 @@ describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       item: makeDishItem({ spice_modifier_enabled: true } as any),
     });
-    const req = screen.getByTestId('spice-required-toggle');
+    const req = spiceEl('spice-required-toggle');
     expect(req).toBeInTheDocument();
     expect(req).not.toBeDisabled();
     expect(req.getAttribute('aria-checked')).toBe('true'); // default preserves prior behaviour
@@ -721,7 +729,7 @@ describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       item: makeDishItem({ spice_modifier_enabled: false, spice_selection_required: true } as any),
     });
-    const req = screen.getByTestId('spice-required-toggle');
+    const req = spiceEl('spice-required-toggle');
     expect(req).toBeDisabled();
     expect(req.getAttribute('aria-checked')).toBe('false');
   });
@@ -737,7 +745,7 @@ describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
     });
 
     // Flip requirement off, leaving the picker visible.
-    await user.click(screen.getByTestId('spice-required-toggle'));
+    await user.click(spiceEl('spice-required-toggle'));
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => { expect(service.updateMenuItem).toHaveBeenCalled(); });
@@ -774,7 +782,7 @@ describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
       service,
     });
 
-    await user.click(screen.getByTestId('spice-modifier-toggle'));
+    await user.click(spiceEl('spice-modifier-toggle'));
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => { expect(service.updateMenuItem).toHaveBeenCalled(); });
@@ -785,14 +793,14 @@ describe('EditModal — split spice toggles (PDD 2026-07-17)', () => {
 
   it('omits both spice fields for add-ons (never reach the composition page)', () => {
     renderModal({ item: makeAddonItem() });
-    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-required-toggle')).not.toBeInTheDocument();
   });
 
   it('hides the Spice Modifier toggle for Desserts', () => {
     renderModal({ item: makeDishItem({ category: 'Desserts', canonical_category: 'Desserts' }) });
-    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-required-toggle')).not.toBeInTheDocument();
   });
 });
 
@@ -831,7 +839,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
       onComplete,
     });
 
-    await user.click(screen.getByTestId('spice-modifier-toggle'));
+    await user.click(spiceEl('spice-modifier-toggle'));
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => {

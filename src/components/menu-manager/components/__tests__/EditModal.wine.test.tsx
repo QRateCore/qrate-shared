@@ -138,6 +138,14 @@ async function save(service: MenuManagerService) {
   return (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls;
 }
 
+/** v3: the spice-picker switches moved from Basics to Advanced details. */
+function spiceEl(id: string) { openAdvanced(); return screen.getByTestId(id); }
+function spiceQ(id: string) { openAdvanced(); return screen.queryByTestId(id); }
+function openAdvanced() {
+  const tab = screen.queryByTestId('tab-advanced');
+  if (tab) fireEvent.click(tab);
+}
+
 describe('EditModal wine section — rendering', () => {
   it('renders identity inputs, sliders, pairing chips and tasting note for wine', () => {
     renderModal();
@@ -271,8 +279,8 @@ describe('EditModal wine section — rendering', () => {
 describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
   it('hides Show spice picker, Require a spice selection, and Build Your Own toggles for a wine item', () => {
     renderModal();
-    expect(screen.queryByTestId('spice-modifier-toggle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('spice-required-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-modifier-toggle')).not.toBeInTheDocument();
+    expect(spiceQ('spice-required-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('byo-toggle')).not.toBeInTheDocument();
   });
 
@@ -289,8 +297,9 @@ describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
       }),
       dietaryTagService: makeDietaryTagService(),
     });
-    expect(screen.getByTestId('spice-modifier-toggle')).toBeInTheDocument();
-    expect(screen.getByTestId('spice-required-toggle')).toBeInTheDocument();
+    expect(spiceEl('spice-modifier-toggle')).toBeInTheDocument();
+    expect(spiceEl('spice-required-toggle')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-food_tags')); // Build your own stays in Basics → Availability
     expect(screen.getByTestId('byo-toggle')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('tab-dietary'));
     expect(screen.getByTestId('dietary-info-card')).toBeInTheDocument();
