@@ -77,6 +77,13 @@ export interface MenuManagerActions {
   startPoolDrag: (e: React.DragEvent, itemIds: string[]) => void;
   /** End that drag (the panel's onDragEnd). */
   endPoolDrag: () => void;
+  /**
+   * Push per-menu settings the host just wrote (owner Menu workspace bulk
+   * edit / Undo) straight into the rows. The items→settings sync keeps the
+   * row's own values on a refresh ("prev wins", protects optimistic edits),
+   * so a write made outside the builder must be applied here to show.
+   */
+  applyMenuSettings: (menuId: string, patches: Array<{ itemId: string; patch: Partial<MenuItemJunctionSettings> }>) => void;
 }
 
 interface Props {
@@ -527,6 +534,16 @@ interface Props {
    */
   builderWorkspaceMode?: boolean;
   /**
+   * Owner Menu workspace (handoff v3 Phase 4): the builder's row / course /
+   * sub-category ticks are the HOST's selection — the same set as the Item
+   * library's ticks — instead of a local one. Switching menus keeps it (the
+   * selection belongs to the dishes, not to a menu).
+   */
+  externalBulkSelection?: ReadonlySet<string>;
+  onExternalBulkSelectionChange?: (next: Set<string>) => void;
+  /** Told when the header's "Bulk actions (N)" side panel opens / closes (the host hides its own bulk bar meanwhile). */
+  onBulkPanelOpenChange?: (open: boolean) => void;
+  /**
    * When supplied, the menu tab rail is PORTALED here instead of rendering
    * above the two panels (PDD 2026-08-30 — owner Menu: tabs share the search
    * row). The host owns the element; this component only fills it.
@@ -586,7 +603,7 @@ function makeRefCountSet() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -762,8 +779,25 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const bulkMenuActionsEnabled = bulkSidesEnabled || !!onBulkItemInfoForMenuItems
     || !!onBulkSetPriceForMenuItems || !!onBulkSetBoostForMenuItems
     || !!onBulkSetChefsSpecialForMenuItems || !!onBulkSetPortionForMenuItems;
-  const [bulkMenuSelection, setBulkMenuSelection] = useState<Set<string>>(new Set());
+  const [internalBulkSelection, setInternalBulkSelection] = useState<Set<string>>(new Set());
+  const bulkSelectionControlled = !!externalBulkSelection && !!onExternalBulkSelectionChange;
+  const bulkMenuSelection = useMemo<Set<string>>(
+    () => (bulkSelectionControlled ? new Set(externalBulkSelection) : internalBulkSelection),
+    [bulkSelectionControlled, externalBulkSelection, internalBulkSelection],
+  );
+  const setBulkMenuSelection = useCallback(
+    (u: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      if (bulkSelectionControlled) {
+        const next = typeof u === 'function' ? u(new Set(externalBulkSelection)) : u;
+        onExternalBulkSelectionChange!(next);
+      } else {
+        setInternalBulkSelection(u);
+      }
+    },
+    [bulkSelectionControlled, externalBulkSelection, onExternalBulkSelectionChange],
+  );
   const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
+  useEffect(() => { onBulkPanelOpenChange?.(bulkMenuSidesOpen); }, [bulkMenuSidesOpen, onBulkPanelOpenChange]);
   const [visibilityFilter, setVisibilityFilter] = useState<'All' | 'Visible' | 'Hidden'>('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<'dishes' | 'addons' | 'included'>('dishes');
   const [search, setSearch] = useState('');
@@ -812,6 +846,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       openCloneMenu: () => { if (canClone) setCloneOpen(true); },
       startPoolDrag: (e: React.DragEvent, itemIds: string[]) => poolDragRef.current?.start(e, itemIds),
       endPoolDrag: () => poolDragRef.current?.end(),
+      applyMenuSettings: (menuId, patches) => {
+        setJunctionSettings((prev) => {
+          const next = { ...prev };
+          for (const { itemId, patch } of patches) {
+            const key = `${menuId}:${itemId}`;
+            next[key] = { ...next[key], ...patch };
+          }
+          return next;
+        });
+      },
     });
     return () => onMenuActionsReady(null);
   }, [onMenuActionsReady, canClone]);
@@ -3398,7 +3442,9 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             menus={menus}
             activeMenuId={activeMenuId}
             onTabChange={(menuId) => {
-              if (bulkMenuSelection.size > 0 || bulkMenuSidesOpen) {
+              // A host-owned selection (workspace) belongs to the dishes and
+              // survives a menu switch; only the local one is cleared.
+              if (!bulkSelectionControlled && (bulkMenuSelection.size > 0 || bulkMenuSidesOpen)) {
                 const hadSelection = bulkMenuSelection.size > 0;
                 setBulkMenuSelection(new Set());
                 setBulkMenuSidesOpen(false);
@@ -3406,6 +3452,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                   onBulkSelectionClearedByTabChange?.();
                 }
               }
+              else if (bulkSelectionControlled && bulkMenuSidesOpen) setBulkMenuSidesOpen(false);
               setActiveMenuId(menuId);
             }}
             onEditMenu={setEditMenuId}
