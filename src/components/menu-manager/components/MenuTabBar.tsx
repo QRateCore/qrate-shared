@@ -229,6 +229,12 @@ export interface MenuTabBarProps {
    * Clone) byte-for-byte.
    */
   compact?: boolean;
+  /**
+   * Compact + WRAP (owner Menu workspace v5, Avi 2026-11-12): every menu tab is
+   * shown and the strip wraps onto more lines instead of hiding tabs behind a
+   * "⋯ N" button — no horizontal scrolling, every menu visible.
+   */
+  wrapTabs?: boolean;
 }
 
 /**
@@ -279,6 +285,42 @@ function CompactTabInner({ menu }: { menu: MenuSummary }) {
         </span>
       )}
     </>
+  );
+}
+
+/** v5: every menu tab, wrapping onto extra lines (no overflow button). */
+function WrappingMenuTabBar({ menus, activeMenuId, onTabChange }: Pick<MenuTabBarProps, 'menus' | 'activeMenuId' | 'onTabChange'>) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 flex-wrap items-stretch"
+      role="tablist"
+      aria-label="Menus"
+      data-testid="menu-tab-bar"
+      data-compact="true"
+      data-wrap="true"
+    >
+      {menus.map((menu) => {
+        const isActive = menu.id === activeMenuId;
+        return (
+          <button
+            key={menu.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            data-testid={`menu-tab-${menu.id}`}
+            data-menu-status={menu.active ? 'active' : 'inactive'}
+            onClick={() => onTabChange(menu.id)}
+            title={`${menu.name} · ${menu.active ? 'Active' : 'Inactive'}`}
+            className={`${COMPACT_TAB_CLS} cursor-pointer transition-colors ${
+              isActive ? 'font-semibold text-ink' : 'font-medium text-ink-soft hover:text-ink'
+            }`}
+          >
+            <CompactTabInner menu={menu} />
+            {isActive && <span aria-hidden="true" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-ink" />}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -454,6 +496,7 @@ export default function MenuTabBar({
   onEditMenu,
   onCloneMenu,
   compact = false,
+  wrapTabs = false,
 }: MenuTabBarProps) {
   // Clock used by the status pills so ACTIVE↔SCHEDULED flips as time
   // crosses a menu's start/end boundary. Same 60-second cadence as
@@ -464,6 +507,9 @@ export default function MenuTabBar({
     return () => clearInterval(id);
   }, []);
 
+  if (compact && wrapTabs) {
+    return <WrappingMenuTabBar menus={menus} activeMenuId={activeMenuId} onTabChange={onTabChange} />;
+  }
   if (compact) {
     return <CompactMenuTabBar menus={menus} activeMenuId={activeMenuId} onTabChange={onTabChange} />;
   }

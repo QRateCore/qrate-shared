@@ -556,6 +556,10 @@ interface Props {
    * inline rail. Passing null (the default) is exactly today's behaviour.
    */
   tabBarPortalTarget?: Element | null;
+  /** With tabBarPortalTarget: show EVERY menu tab, wrapping (v5) instead of the "⋯ N" overflow. */
+  wrapMenuTabs?: boolean;
+  /** v5: where the builder's Expand all / Collapse all renders (the page's status line). */
+  expandAllPortalTarget?: Element | null;
   /** Desktop: leave out the built-in ItemPool (and its resize divider) — the
    *  host draws its own item panel and stages drags through
    *  MenuManagerActions.startPoolDrag (owner Menu workspace, 2026-11-11).
@@ -612,7 +616,7 @@ function isOnMenu(item: MenuItemDisplay, menuId: string | null | undefined): boo
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3463,6 +3467,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             const tabBar = (
           <MenuTabBar
             compact={!!tabBarPortalTarget}
+            wrapTabs={!!tabBarPortalTarget && wrapMenuTabs}
             menus={menus}
             activeMenuId={activeMenuId}
             onTabChange={(menuId) => {
@@ -3559,6 +3564,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             missingPriceFilter={missingPriceFilter}
             bulkSelectionEnabled={bulkMenuActionsEnabled}
             workspaceMode={builderWorkspaceMode}
+            expandAllPortalTarget={expandAllPortalTarget}
             bulkSelection={bulkMenuSelection}
             onToggleBulkSelection={(itemId) =>
               setBulkMenuSelection((prev) => {

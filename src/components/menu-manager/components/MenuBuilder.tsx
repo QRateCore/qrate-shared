@@ -241,6 +241,9 @@ interface MenuBuilderProps {
   onRetryWineEnrichment?: () => Promise<void> | void;
   /** Owner Menu workspace (handoff v3): slim header, Expand all opens
    *  sub-categories too, tri-state select-alls, drag-only sub-category reorder. */
+  /** v5 (owner Menu workspace): Expand all / Collapse all renders HERE (the page's
+   *  status line) and the card header row (item count) is not drawn. */
+  expandAllPortalTarget?: Element | null;
   workspaceMode?: boolean;
 }
 
@@ -2819,6 +2822,7 @@ export default function MenuBuilder({
   wineEnrichmentJob = null,
   onRetryWineEnrichment,
   workspaceMode = false,
+  expandAllPortalTarget = null,
 }: MenuBuilderProps) {
   const itemsById = new Map(items.map((i) => [i.id, i] as const));
   const trackAction = useTrackAction();
@@ -2978,8 +2982,23 @@ export default function MenuBuilder({
       className="flex flex-col h-full bg-surface rounded-card border border-line shadow-card overflow-hidden"
       data-testid="menu-builder-panel"
     >
+      {/* v5: Expand all / Collapse all lives on the page's status line. */}
+      {activeMenu && expandAllPortalTarget && onCollapseAll && createPortal(
+        <button
+          type="button"
+          onClick={() => {
+            onCollapseAll(!allCollapsed);
+            if (workspaceMode) setSubcatSignal((s) => ({ open: allCollapsed, n: s.n + 1 }));
+          }}
+          data-testid="collapse-expand-all-btn"
+          className="h-8 px-2.5 rounded-ctl border-0 bg-transparent text-[13px] font-semibold text-ink whitespace-nowrap cursor-pointer hover:bg-surface2"
+        >
+          {allCollapsed ? 'Expand all' : 'Collapse all'}
+        </button>,
+        expandAllPortalTarget,
+      )}
       {/* Card header: Manage sections · count · (Inactive) ··· Expand all · Select · Bulk actions */}
-      {activeMenu && (
+      {activeMenu && !expandAllPortalTarget && (
         <div className="px-4 pt-4 pb-3 flex items-center gap-2 flex-wrap shrink-0">
           {!workspaceMode && (
           <button
