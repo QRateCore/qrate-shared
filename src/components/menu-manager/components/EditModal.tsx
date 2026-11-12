@@ -4197,7 +4197,6 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
           >
             <Trash2 size={15} aria-hidden="true" />Delete item
           </button>
-          {deleteError && <span className="text-xs text-bad" role="alert" data-testid="delete-item-error">{deleteError}</span>}
         </>
       )}
       {v5 && deleteConfirming && (
@@ -4518,7 +4517,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                 </div>
               )}
               {deleteError && !deleteConfirming && (
-                <div className="text-xs text-bad bg-bad-bg rounded-ctl px-2.5 py-1.5 flex items-center gap-1.5 mb-4">
+                <div role="alert" data-testid="delete-item-error" className="text-xs text-bad bg-bad-bg rounded-ctl px-2.5 py-1.5 flex items-center gap-1.5 mb-4">
                   <AlertCircle size={12} aria-hidden="true" />
                   {deleteError}
                 </div>
