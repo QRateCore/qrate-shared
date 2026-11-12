@@ -601,6 +601,11 @@ function makeRefCountSet() {
   };
 }
 
+/** The dish is placed on that menu. */
+function isOnMenu(item: MenuItemDisplay, menuId: string | null | undefined): boolean {
+  return !!menuId && (item.menu_associations ?? []).some((a) => a.menu_id === menuId);
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, hidePool = false, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
@@ -785,16 +790,27 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     () => (bulkSelectionControlled ? new Set(externalBulkSelection) : internalBulkSelection),
     [bulkSelectionControlled, externalBulkSelection, internalBulkSelection],
   );
+  // Controlled mode: a course / sub-category select-all toggles N dishes in
+  // ONE handler, before the host re-renders. Each update must build on the
+  // previous one, not on the prop captured at render — so keep the latest
+  // selection in a ref (re-synced whenever the host's prop changes).
+  const latestExternalRef = useRef<ReadonlySet<string> | undefined>(externalBulkSelection);
+  const seenExternalRef = useRef<ReadonlySet<string> | undefined>(externalBulkSelection);
+  if (seenExternalRef.current !== externalBulkSelection) {
+    seenExternalRef.current = externalBulkSelection;
+    latestExternalRef.current = externalBulkSelection;
+  }
   const setBulkMenuSelection = useCallback(
     (u: Set<string> | ((prev: Set<string>) => Set<string>)) => {
       if (bulkSelectionControlled) {
-        const next = typeof u === 'function' ? u(new Set(externalBulkSelection)) : u;
+        const next = typeof u === 'function' ? u(new Set(latestExternalRef.current ?? [])) : u;
+        latestExternalRef.current = next;
         onExternalBulkSelectionChange!(next);
       } else {
         setInternalBulkSelection(u);
       }
     },
-    [bulkSelectionControlled, externalBulkSelection, onExternalBulkSelectionChange],
+    [bulkSelectionControlled, onExternalBulkSelectionChange],
   );
   const [bulkMenuSidesOpen, setBulkMenuSidesOpen] = useState(false);
   useEffect(() => { onBulkPanelOpenChange?.(bulkMenuSidesOpen); }, [bulkMenuSidesOpen, onBulkPanelOpenChange]);
@@ -3658,11 +3674,15 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           // applies to every selected item. It internally filters drinks
           // back out for the Includes/Remove Includes tabs (drinks have no
           // sides), using skippedDrinkCount below purely as an info note.
+          // A host-owned selection can hold dishes from other menus (Item
+          // library ticks, kept across menu switches); this panel's bulk
+          // endpoints 404 the whole batch on any off-menu id, so pass only
+          // the dishes placed on the open menu.
           selectedItems={items
-            .filter((i) => bulkMenuSelection.has(i.id))
+            .filter((i) => bulkMenuSelection.has(i.id) && (!bulkSelectionControlled || isOnMenu(i, activeMenuId)))
             .map((i) => ({ id: i.id, name: i.name }))}
           skippedDrinkCount={
-            items.filter((i) => bulkMenuSelection.has(i.id) && isDrinkItem(i)).length
+            items.filter((i) => bulkMenuSelection.has(i.id) && (!bulkSelectionControlled || isOnMenu(i, activeMenuId)) && isDrinkItem(i)).length
           }
           pool={items}
           loadPerMenuSides={

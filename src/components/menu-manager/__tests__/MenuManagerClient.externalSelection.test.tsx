@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
-import React from 'react';
+import React, { useState } from 'react';
 import type { MenuItemDisplay, MenuSummary, MenuManagerService } from '../../../types/restaurant';
 
 type BuilderProps = { bulkSelection?: Set<string>; onToggleBulkSelection?: (id: string) => void; onOpenBulkPanel?: () => void; getSettings?: (menuId: string, itemId: string) => Record<string, unknown> };
@@ -24,7 +24,8 @@ vi.mock('../components/BulkActionsPanel', () => ({ default: () => null }));
 vi.mock('../components/BulkModifierPanel', () => ({ default: () => null }));
 vi.mock('../components/MenuEditPanel', () => ({ default: () => null }));
 vi.mock('../components/EditModal', () => ({ default: () => null }));
-vi.mock('../components/BulkMenuSidesPanel', () => ({ default: () => <div data-testid="legacy-bulk-panel" /> }));
+let panelProps: { selectedItems?: Array<{ id: string }> } = {};
+vi.mock('../components/BulkMenuSidesPanel', () => ({ default: (p: { selectedItems?: Array<{ id: string }> }) => { panelProps = p; return <div data-testid="legacy-bulk-panel" />; } }));
 vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('../track-action-context', () => ({
   useTrackAction: () => () => {},
@@ -46,8 +47,9 @@ describe('MenuManagerClient — host-owned bulk selection', () => {
     expect([...(last.bulkSelection ?? [])]).toEqual(['a']);
     act(() => last.onToggleBulkSelection!('b'));
     expect([...onChange.mock.calls[0]![0]].sort()).toEqual(['a', 'b']);
+    // The host has not re-rendered yet: the next toggle builds on {a, b}.
     act(() => last.onToggleBulkSelection!('a'));
-    expect([...onChange.mock.calls[1]![0]]).toEqual([]);
+    expect([...onChange.mock.calls[1]![0]]).toEqual(['b']);
   });
 
   it('without the props the builder keeps its own selection', () => {
@@ -74,5 +76,29 @@ describe('MenuManagerClient — host-owned bulk selection', () => {
     expect(last.getSettings!('m1', 'a').boost_level ?? null).toBeNull();
     act(() => actions!.applyMenuSettings('m1', [{ itemId: 'a', patch: { boost_level: '3', price: 9 } }]));
     expect(last.getSettings!('m1', 'a')).toMatchObject({ boost_level: '3', price: 9 });
+  });
+
+  it('a course / sub-category select-all (N toggles in ONE handler) selects every dish — each update builds on the last (review P1)', () => {
+    let hostSet = new Set<string>();
+    function Host() {
+      const [sel, setSel] = useState<Set<string>>(new Set());
+      hostSet = sel;
+      return <MenuManagerClient service={service} restaurantId="r1" initialItems={[item('a'), item('b'), item('c')]} initialMenus={[menu]} {...bulkProps}
+        externalBulkSelection={sel} onExternalBulkSelectionChange={setSel} />;
+    }
+    render(<Host />);
+    act(() => { for (const id of ['a', 'b', 'c']) last.onToggleBulkSelection!(id); });
+    expect([...hostSet].sort()).toEqual(['a', 'b', 'c']);
+    act(() => { for (const id of ['a', 'b', 'c']) last.onToggleBulkSelection!(id); });
+    expect([...hostSet]).toEqual([]);
+  });
+
+  it('the legacy Bulk actions panel only gets the ticked dishes placed on the open menu', () => {
+    const on = { ...item('a'), menu_associations: [{ menu_id: 'm1', menu_name: 'Lunch', price: 1 }] } as unknown as MenuItemDisplay;
+    const off = { ...item('b'), menu_associations: [{ menu_id: 'm2', menu_name: 'Dinner', price: 1 }] } as unknown as MenuItemDisplay;
+    render(<MenuManagerClient service={service} restaurantId="r1" initialItems={[on, off]} initialMenus={[menu]} {...bulkProps}
+      externalBulkSelection={new Set(['a', 'b'])} onExternalBulkSelectionChange={vi.fn()} />);
+    act(() => last.onOpenBulkPanel!());
+    expect(panelProps.selectedItems?.map((i) => i.id)).toEqual(['a']);
   });
 });
