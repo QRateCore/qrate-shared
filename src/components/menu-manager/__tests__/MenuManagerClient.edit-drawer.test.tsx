@@ -188,6 +188,10 @@ describe('MenuManagerClient — editItemDrawerMode', () => {
     expect(getByTestId('food-item-profile')).toBeTruthy();
     expect(getByTestId('edit-modal-mock').getAttribute('data-display-mode')).toBe('inline');
     expect(lastEditModalProps?.displayMode).toBe('inline');
+    // Rendered at the document root (portal), so it centres on the page and not
+    // on a transformed builder panel (Avi, 2026-11-11).
+    expect(getByTestId('food-item-edit-drawer-overlay').parentElement).toBe(document.body);
+    expect(drawer.parentElement?.parentElement).toBe(document.body);
   });
 
   it('drawer mode: clicking the overlay closes the drawer', async () => {

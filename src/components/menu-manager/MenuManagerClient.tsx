@@ -3167,7 +3167,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         const closeFn = cloneDraftSource
           ? () => setCloneDraftSource(null)
           : handleCloseEditModal;
-        return (
+        const drawer = (
           <>
             <div
               className="food-library-drawer-overlay"
@@ -3203,6 +3203,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             </div>
           </>
         );
+        // At the document root, so the window centres on the PAGE: an ancestor
+        // with a transform / containment (the owner workspace's load
+        // animation) would otherwise trap position:fixed inside its panel
+        // (Avi, 2026-11-11). Context and React events still flow through.
+        return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
       })()}
 
       {/* Menu Edit Panel */}
