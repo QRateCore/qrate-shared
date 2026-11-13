@@ -65,6 +65,12 @@ export interface MenuRowChromeProps {
   };
   /** The default ⋯ menu (Edit, 86 / restore, Sides, Remove) for this row. */
   rowMenu: React.ReactNode;
+  /** Take the item off this menu — or, when the row sits in a sub-category,
+   *  out of that sub-category only (same handler the ⋯ menu's Remove uses). */
+  onRemove: () => void;
+  /** The sub-category the row is rendered under (undefined / Ungrouped ⇒ the
+   *  whole menu). Drives the remove control's label. */
+  subLabel?: string;
   /** The row's pairing chips (Active / Inactive recommendations, with the
    *  Inactive popover's "Bring into menu"), exactly as the default row draws
    *  them; null when the dish has no recommendations grouping. */
@@ -1588,6 +1594,8 @@ function MenuItemRow({
               )))}
             </>
           ) : null,
+          onRemove,
+          subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
           rowMenu: (
             <RowMenu
               itemId={item.id}
