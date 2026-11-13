@@ -2380,6 +2380,16 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [structureByMenu],
   );
 
+  // Only a real first-class row can be ordered — never a synthetic structure
+  // bucket (raw-<course>-<name> fallback, more-<course>) or a label with no row.
+  const canReorderSubCategoryItems = useCallback(
+    (menuId: string, category: string, label: string): boolean => {
+      const sub = findStructureSub(menuId, category, label);
+      return !!sub && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sub.subcategory_id);
+    },
+    [findStructureSub],
+  );
+
   const orderSubCategoryItems = useCallback(
     (menuId: string, category: string, label: string, itemIds: string[]): string[] => {
       const sub = findStructureSub(menuId, category, label);
@@ -3595,6 +3605,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             // handler is always defined. Render gate must match capability.
             onReorderSubCategory: subcatV2 ? handleReorderSubCategories : undefined,
             orderSubCategoryItems: subcatV2 ? orderSubCategoryItems : undefined,
+            canReorderSubCategoryItems: subcatV2 ? canReorderSubCategoryItems : undefined,
             onReorderSubCategoryItem: subcatV2 && service.reorderSubcategoryItems ? handleReorderSubCategoryItem : undefined,
             onCreateMenu: handleCreateMenu,
             onCloneMenu: handleCloneMenu,
@@ -3714,6 +3725,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             orderSubCategories={orderSubCategories}
             onReorderSubCategory={subcatV2 ? handleReorderSubCategories : undefined}
             orderSubCategoryItems={subcatV2 ? orderSubCategoryItems : undefined}
+            canReorderSubCategoryItems={subcatV2 ? canReorderSubCategoryItems : undefined}
             onReorderSubCategoryItem={subcatV2 && service.reorderSubcategoryItems ? handleReorderSubCategoryItem : undefined}
             onCreateSubCategory={subcatV2 ? handleCreateSubCategory : undefined}
             onCreateMenu={handleCreateMenu}

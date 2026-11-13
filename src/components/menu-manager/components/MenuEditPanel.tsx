@@ -411,7 +411,15 @@ export default function MenuEditPanel({
                           {dayLabel}
                         </span>
                       </label>
-                      {enabled ? (
+                      {enabled && (entry.ranges?.length ?? 0) > 1 ? (
+                        // "+ Hours": this panel edits ONE window a day; a day with
+                        // several sets is shown read-only (core re-mirrors
+                        // start/end from ranges[0], so editing here would be
+                        // silently undone). Edit it in "Edit schedule".
+                        <span style={{ fontSize: 12, color: 'var(--text2)' }} data-testid={`schedule-ranges-${idx}`}>
+                          {entry.ranges!.map((r) => `${r.start}–${r.end}`).join(', ')} · change in Edit schedule
+                        </span>
+                      ) : enabled ? (
                         <>
                           <input
                             type="time"

@@ -400,3 +400,21 @@ describe('MenuEditPanel — drinks mode', () => {
     });
   });
 });
+
+describe('MenuEditPanel — "+ Hours" days are read-only here', () => {
+  it('a day with several sets shows them as text (no time inputs); other days stay editable', () => {
+    const menu = {
+      ...makeMenu('menu-a', 'Day'),
+      is_all_day: false,
+      days_of_week: [1, 2],
+      schedule: {
+        '1': { start: '11:00', end: '14:00', ranges: [{ start: '11:00', end: '14:00' }, { start: '17:00', end: '22:00' }] },
+        '2': { start: '11:00', end: '14:00' },
+      },
+    } as unknown as MenuSummary;
+    renderPanel({ menu, allMenus: [menu] }, makeService());
+    expect(screen.getByTestId('schedule-ranges-1')).toHaveTextContent('11:00–14:00, 17:00–22:00');
+    expect(screen.queryByTestId('schedule-start-1')).toBeNull();
+    expect(screen.getByTestId('schedule-start-2')).toBeInTheDocument();
+  });
+});

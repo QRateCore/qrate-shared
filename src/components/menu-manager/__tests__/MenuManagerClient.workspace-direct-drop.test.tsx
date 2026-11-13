@@ -16,6 +16,7 @@ import type { MenuItemDisplay, MenuSummary, MenuManagerService } from '../../../
 type BuilderProps = {
   orderSubCategoryItems?: (m: string, c: string, l: string, ids: string[]) => string[];
   onReorderSubCategoryItem?: (m: string, c: string, l: string, d: string, t: string, p: 'before' | 'after') => Promise<void> | void;
+  canReorderSubCategoryItems?: (m: string, c: string, l: string) => boolean;
   onDropBucket: (e: React.DragEvent, menuId: string, cat: string) => void;
   onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
 };
@@ -242,5 +243,21 @@ describe('MenuManagerClient — workspace dish order (v5)', () => {
   it('classic (no v2 / no service method) offers no dish reorder', () => {
     mount(false, [item('a', 'Curries')]);
     expect(last.onReorderSubCategoryItem).toBeUndefined();
+  });
+
+  it('only a real (uuid) sub-category row can be reordered — never a synthetic raw-* bucket', async () => {
+    v2 = true;
+    service = {
+      addItemToMenu: vi.fn(), updateMenuItemInMenu: vi.fn(), assignItemToSubcategory: vi.fn(),
+      reorderSubcategoryItems: vi.fn(),
+      getMenuStructure: vi.fn().mockResolvedValue({ courses: { Entrees: [
+        { subcategory_id: '11111111-1111-1111-1111-111111111111', name: 'Curries', sort_order: 0, item_ids: ['a'], count: 1 },
+        { subcategory_id: 'raw-Entrees-Rice', name: 'Rice', sort_order: 1, item_ids: ['b'], count: 1 },
+      ] } }),
+    } as unknown as MenuManagerService;
+    mount(true, [item('a', 'Curries')]);
+    await waitFor(() => expect(last.canReorderSubCategoryItems!('m1', 'Entrees', 'Curries')).toBe(true));
+    expect(last.canReorderSubCategoryItems!('m1', 'Entrees', 'Rice')).toBe(false);
+    expect(last.canReorderSubCategoryItems!('m1', 'Entrees', 'Nope')).toBe(false);
   });
 });

@@ -138,6 +138,8 @@ interface MenuBuilderProps {
   /** Menu workspace v5: move `draggedId` before / after `targetId` inside the
    *  sub-category `label` (grip drag on a row). */
   onReorderSubCategoryItem?: (menuId: string, category: string, label: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
+  /** Whether `label` is a real (saveable) sub-category — the grip shows only then. */
+  canReorderSubCategoryItems?: (menuId: string, category: string, label: string) => boolean;
   /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
   onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
   /** Create a new (empty) sub-category in a course from the rail's [+] box.
@@ -2059,6 +2061,7 @@ function CategoryBucket({
   orderSubCategories,
   orderSubCategoryItems,
   onReorderSubCategoryItem,
+  canReorderSubCategoryItems,
   showEmptySubCategoryChips,
   onReorderSubCategory,
   onCreateSubCategory,
@@ -2134,6 +2137,8 @@ function CategoryBucket({
   /** Menu workspace v5: move `draggedId` before / after `targetId` inside the
    *  sub-category `label` (grip drag on a row). */
   onReorderSubCategoryItem?: (menuId: string, category: string, label: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
+  /** Whether `label` is a real (saveable) sub-category — the grip shows only then. */
+  canReorderSubCategoryItems?: (menuId: string, category: string, label: string) => boolean;
   /** Drinks menus only — also chip sub-categories that have no items yet.
    *  Their items carry no raw_categories, so the item-derived rail would
    *  otherwise stay blank and hide a just-created sub-category. */
@@ -2729,7 +2734,8 @@ function CategoryBucket({
               const rawGroupItems = groups.get(label) ?? [];
               // Workspace v5: the owner's dish order (structure item_ids). Ungrouped
               // has no stored order (it is not a sub-category).
-              const dishOrderable = !!onReorderSubCategoryItem && label !== UNGROUPED_KEY;
+              const dishOrderable = !!onReorderSubCategoryItem && label !== UNGROUPED_KEY
+                && (canReorderSubCategoryItems ? canReorderSubCategoryItems(menuId, category, label) : true);
               const groupItems = orderSubCategoryItems && label !== UNGROUPED_KEY
                 ? (() => {
                     const byId = new Map(rawGroupItems.map((it) => [it.id, it] as const));
@@ -2907,6 +2913,7 @@ export default function MenuBuilder({
   orderSubCategories,
   orderSubCategoryItems,
   onReorderSubCategoryItem,
+  canReorderSubCategoryItems,
   onReorderSubCategory,
   onCreateSubCategory,
   onCreateMenu,
@@ -3279,6 +3286,7 @@ export default function MenuBuilder({
                 orderSubCategories={orderSubCategories}
                 orderSubCategoryItems={workspace ? orderSubCategoryItems : undefined}
                 onReorderSubCategoryItem={workspace ? onReorderSubCategoryItem : undefined}
+                canReorderSubCategoryItems={workspace ? canReorderSubCategoryItems : undefined}
                 showEmptySubCategoryChips={isDrinksMenu(activeMenu)}
                 onReorderSubCategory={onReorderSubCategory}
                 onCreateSubCategory={onCreateSubCategory}

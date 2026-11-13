@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn> }) {
+function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -78,6 +78,7 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       workspaceMode={workspaceMode}
       orderSubCategoryItems={order}
       onReorderSubCategoryItem={onReorderItem}
+      canReorderSubCategoryItems={canReorder}
       rowChrome={onReorderItem ? (p) => (
         <div data-testid={`chrome-${p.item.id}`}>
           {p.item.name}
@@ -306,6 +307,12 @@ describe('MenuBuilder — workspace dish order (v5)', () => {
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
     expect(screen.queryByTestId('grip-c')).toBeNull(); // Rice has one dish
     expect(screen.getByTestId('grip-a')).toBeInTheDocument();
+  });
+
+  it('no grip on a group that is not a real sub-category (raw fallback)', () => {
+    render(<Harness workspaceMode onReorderItem={vi.fn()} canReorder={(_m, _c, l) => l !== 'Curries'} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(screen.queryByTestId('grip-a')).toBeNull();
   });
 
   it('without onReorderSubCategoryItem (admin / waiter) there is no grip', () => {
