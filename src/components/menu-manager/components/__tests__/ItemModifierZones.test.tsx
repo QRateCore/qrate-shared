@@ -492,6 +492,10 @@ describe('ItemModifierZones — "+ Add" picker (Edit item → Menu pricing, v5)'
     const picker = await screen.findByTestId(`sides-and-add-${PARENT_ID}`) as HTMLSelectElement;
     const options = [...picker.options].map((o) => o.textContent);
     expect(options).toEqual(['+ Add a dish on this menu…', 'Rice']);
+    // App-Doc menu.set-modifiers selectors (G6): the choice zone has its own
+    // picker and the used side carries its remove control.
+    expect(screen.getByTestId(`sides-or-add-${PARENT_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`remove-sides-or-${PARENT_ID}-used`)).toBeInTheDocument();
     fireEvent.change(picker, { target: { value: SIDE_A } });
     await waitFor(() => expect(setCalls).toHaveLength(1));
     expect(setCalls[0][2]).toEqual({
