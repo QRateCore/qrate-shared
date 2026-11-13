@@ -2368,6 +2368,60 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [subcatV2, structureByMenu],
   );
 
+  // Menu workspace v5 (2026-11-12) — dish order inside a sub-category. The
+  // first-class structure returns each sub-category's item_ids in the owner's
+  // order (core sort_order); rows follow it, unknown ids keep their place last.
+  const findStructureSub = useCallback(
+    (menuId: string, category: string, label: string): MenuSubcategory | undefined => {
+      const subs = (structureByMenu[menuId]?.courses?.[category as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+      const key = normalizeSubcatKey(label);
+      return subs.find((s) => normalizeSubcatKey(s.name) === key);
+    },
+    [structureByMenu],
+  );
+
+  const orderSubCategoryItems = useCallback(
+    (menuId: string, category: string, label: string, itemIds: string[]): string[] => {
+      const sub = findStructureSub(menuId, category, label);
+      if (!sub) return itemIds;
+      const rank = new Map(sub.item_ids.map((id, i) => [id, i] as const));
+      return [...itemIds].sort((a, b) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER));
+    },
+    [findStructureSub],
+  );
+
+  const handleReorderSubCategoryItem = useCallback(
+    async (menuId: string, category: string, label: string, draggedId: string, targetId: string, position: 'before' | 'after') => {
+      if (!subcatV2 || !service.reorderSubcategoryItems || draggedId === targetId) return;
+      const sub = findStructureSub(menuId, category, label);
+      if (!sub || !sub.item_ids.includes(draggedId) || !sub.item_ids.includes(targetId)) return;
+      // The FULL member list (the endpoint needs a complete permutation —
+      // including dishes the builder may be filtering out right now).
+      const next = sub.item_ids.filter((id) => id !== draggedId);
+      const at = next.indexOf(targetId) + (position === 'after' ? 1 : 0);
+      next.splice(at, 0, draggedId);
+      if (next.every((id, i) => id === sub.item_ids[i])) return; // no-op
+      const courseKey = category as keyof MenuStructure['courses'];
+      const prevStructure = structureByMenu[menuId];
+      // Optimistic: rows snap now; rolled back below on failure.
+      setStructureByMenu((prev) => {
+        const cur = prev[menuId];
+        if (!cur) return prev;
+        const subs = ((cur.courses?.[courseKey] ?? []) as MenuSubcategory[])
+          .map((s) => (s.subcategory_id === sub.subcategory_id ? { ...s, item_ids: next } : s));
+        return { ...prev, [menuId]: { ...cur, courses: { ...cur.courses, [courseKey]: subs } } };
+      });
+      try {
+        await service.reorderSubcategoryItems(menuId, sub.subcategory_id, next);
+      } catch {
+        showToast("Couldn't save the dish order — try again");
+        if (prevStructure) setStructureByMenu((prev) => ({ ...prev, [menuId]: prevStructure }));
+        setStructureRefreshKey((k) => k + 1);
+      }
+    },
+    [subcatV2, service, findStructureSub, structureByMenu, showToast],
+  );
+
   // STR-775 — persist a new sub-category order for a course. Resolves each
   // displayed label to its first-class row, CREATING any missing row seeded with
   // its NEW position (so a course whose rows don't exist yet never collapses to
@@ -3540,6 +3594,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             // ▲▼ render but no-op when subcatV2 is off (e.g. prod), because the
             // handler is always defined. Render gate must match capability.
             onReorderSubCategory: subcatV2 ? handleReorderSubCategories : undefined,
+            orderSubCategoryItems: subcatV2 ? orderSubCategoryItems : undefined,
+            onReorderSubCategoryItem: subcatV2 && service.reorderSubcategoryItems ? handleReorderSubCategoryItem : undefined,
             onCreateMenu: handleCreateMenu,
             onCloneMenu: handleCloneMenu,
             onEditMenu: setEditMenuId,
@@ -3657,6 +3713,8 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onDeleteSubCategory={handleDeleteSubCategory}
             orderSubCategories={orderSubCategories}
             onReorderSubCategory={subcatV2 ? handleReorderSubCategories : undefined}
+            orderSubCategoryItems={subcatV2 ? orderSubCategoryItems : undefined}
+            onReorderSubCategoryItem={subcatV2 && service.reorderSubcategoryItems ? handleReorderSubCategoryItem : undefined}
             onCreateSubCategory={subcatV2 ? handleCreateSubCategory : undefined}
             onCreateMenu={handleCreateMenu}
             onCloneMenu={handleCloneMenu}

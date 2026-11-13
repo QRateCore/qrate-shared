@@ -71,6 +71,10 @@ export interface MenuRowChromeProps {
   /** The sub-category the row is rendered under (undefined / Ungrouped ⇒ the
    *  whole menu). Drives the remove control's label. */
   subLabel?: string;
+  /** Menu workspace v5: the row's grip — drag it within its sub-category to
+   *  reorder the dishes. Absent where dishes can't be ordered (Ungrouped,
+   *  admin / waiter). */
+  reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
   /** The row's pairing chips (Active / Inactive recommendations, with the
    *  Inactive popover's "Bring into menu"), exactly as the default row draws
    *  them; null when the dish has no recommendations grouping. */
@@ -128,6 +132,12 @@ interface MenuBuilderProps {
   /** STR-775 — resolve the display order of a course's sub-category labels
    *  (owner sort_order from the first-class structure; falls back to alphabetical). */
   orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
+  /** Menu workspace v5: the owner's dish order inside a sub-category — returns
+   *  `itemIds` sorted by it (unknown ids keep their place at the end). */
+  orderSubCategoryItems?: (menuId: string, category: string, label: string, itemIds: string[]) => string[];
+  /** Menu workspace v5: move `draggedId` before / after `targetId` inside the
+   *  sub-category `label` (grip drag on a row). */
+  onReorderSubCategoryItem?: (menuId: string, category: string, label: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
   /** STR-775 — persist a new sub-category order for a course (drag-grip or ▲▼). */
   onReorderSubCategory?: (menuId: string, category: string, orderedLabels: string[]) => void | Promise<void>;
   /** Create a new (empty) sub-category in a course from the rail's [+] box.
@@ -919,6 +929,7 @@ function MenuItemRow({
   onToggleActive,
   onMove,
   disableDrag = false,
+  reorderHandle,
 }: {
   item: MenuItemDisplay;
   menuId: string;
@@ -977,6 +988,8 @@ function MenuItemRow({
    *  between-buckets is suppressed so it doesn't fight the bulk
    *  selection UX. */
   disableDrag?: boolean;
+  /** Forwarded to the row chrome (workspace dish reorder grip). */
+  reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
 }) {
   // Item library search (highlight mode): null = no search running.
   const highlight = useBuilderSearchHighlight();
@@ -1596,6 +1609,7 @@ function MenuItemRow({
           ) : null,
           onRemove,
           subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
+          reorderHandle,
           rowMenu: (
             <RowMenu
               itemId={item.id}
@@ -2043,6 +2057,8 @@ function CategoryBucket({
   onRenameSubCategory,
   onDeleteSubCategory,
   orderSubCategories,
+  orderSubCategoryItems,
+  onReorderSubCategoryItem,
   showEmptySubCategoryChips,
   onReorderSubCategory,
   onCreateSubCategory,
@@ -2112,6 +2128,12 @@ function CategoryBucket({
   /** STR-775 — resolve the display order of a course's sub-category labels
    *  (owner sort_order from the first-class structure; falls back to alphabetical). */
   orderSubCategories?: (menuId: string, category: string, labels: string[]) => string[];
+  /** Menu workspace v5: the owner's dish order inside a sub-category — returns
+   *  `itemIds` sorted by it (unknown ids keep their place at the end). */
+  orderSubCategoryItems?: (menuId: string, category: string, label: string, itemIds: string[]) => string[];
+  /** Menu workspace v5: move `draggedId` before / after `targetId` inside the
+   *  sub-category `label` (grip drag on a row). */
+  onReorderSubCategoryItem?: (menuId: string, category: string, label: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
   /** Drinks menus only — also chip sub-categories that have no items yet.
    *  Their items carry no raw_categories, so the item-derived rail would
    *  otherwise stay blank and hide a just-created sub-category. */
@@ -2169,6 +2191,11 @@ function CategoryBucket({
   // STR-775 rework — the current drop target + which side the insertion line
   // shows (before/after), derived from the pointer's Y vs the row midpoint.
   const [reorderOver, setReorderOver] = useState<{ label: string; position: 'before' | 'after' } | null>(null);
+  // Menu workspace v5 — a DISH being grip-dragged inside its sub-category, and
+  // where the red insertion line shows. Its own drag (never MenuManagerClient's
+  // `dragging`), so it can't trigger a library / course drop.
+  const [rowDrag, setRowDrag] = useState<{ label: string; id: string } | null>(null);
+  const [rowOver, setRowOver] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
 
   // STR-251 round 3 — rollup attention indicator. Empty buckets are themselves
   // "needs attention" — except during initial load / brand-new menu state,
@@ -2273,11 +2300,11 @@ function CategoryBucket({
       // included, so a collapsed course accepts a drop and opens on hover — and
       // a hovered card wears the design's red ring. Sub-category bands stop
       // propagation, so a drop on one files into it, not the course.
-      data-drop-over={workspace && isDragOver && !reorderFrom ? 'true' : undefined}
-      onDragEnter={workspace && !reorderFrom ? onDragEnter : undefined}
-      onDragLeave={workspace && !reorderFrom ? onDragLeave : undefined}
+      data-drop-over={workspace && isDragOver && !reorderFrom && !rowDrag ? 'true' : undefined}
+      onDragEnter={workspace && !reorderFrom && !rowDrag ? onDragEnter : undefined}
+      onDragLeave={workspace && !reorderFrom && !rowDrag ? onDragLeave : undefined}
       onDragOver={workspace ? (e) => e.preventDefault() : undefined}
-      onDrop={workspace && !reorderFrom ? onDrop : undefined}
+      onDrop={workspace && !reorderFrom && !rowDrag ? onDrop : undefined}
       style={workspace && isDragOver && !reorderFrom
         ? { borderColor: DROP_RING.ring, boxShadow: `0 0 0 1px ${DROP_RING.ring}` }
         : undefined}
@@ -2525,10 +2552,15 @@ function CategoryBucket({
             // `subLabel` is the raw sub-category group the row is nested under
             // (undefined for the flat/onlyUngrouped render) — it scopes the
             // trash button below to that single sub-category.
-            const renderRow = (item: MenuItemDisplay, subLabel?: string) => {
+            const renderRow = (
+              item: MenuItemDisplay,
+              subLabel?: string,
+              reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void },
+            ) => {
               const row = (
                 <MenuItemRow
                   key={item.id}
+                  reorderHandle={reorderHandle}
                   item={item}
                   menuId={menuId}
                   cat={category}
@@ -2694,7 +2726,18 @@ function CategoryBucket({
               void onReorderSubCategory(menuId, category, next);
             };
             return orderedLabels.map((label) => {
-              const groupItems = groups.get(label) ?? [];
+              const rawGroupItems = groups.get(label) ?? [];
+              // Workspace v5: the owner's dish order (structure item_ids). Ungrouped
+              // has no stored order (it is not a sub-category).
+              const dishOrderable = !!onReorderSubCategoryItem && label !== UNGROUPED_KEY;
+              const groupItems = orderSubCategoryItems && label !== UNGROUPED_KEY
+                ? (() => {
+                    const byId = new Map(rawGroupItems.map((it) => [it.id, it] as const));
+                    return orderSubCategoryItems(menuId, category, label, rawGroupItems.map((it) => it.id))
+                      .map((id) => byId.get(id))
+                      .filter((it): it is MenuItemDisplay => !!it);
+                  })()
+                : rawGroupItems;
               const reorderIdx = reorderableLabels.indexOf(label);
               return (
                 <SubCategoryGroup
@@ -2706,9 +2749,9 @@ function CategoryBucket({
                   color={color}
                   containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
                   forceOpen={!!highlight && groupItems.some((it) => highlight.matchIds.has(it.id))}
-                  isDragOver={subCatDragOverLabel === label}
+                  isDragOver={subCatDragOverLabel === label && !rowDrag}
                   onDragEnter={
-                    onDragEnterSubCategory
+                    onDragEnterSubCategory && !rowDrag
                       ? (e) => onDragEnterSubCategory(e, menuId, category, label)
                       : undefined
                   }
@@ -2774,9 +2817,57 @@ function CategoryBucket({
                     },
                   } : undefined}
                 >
-                  {groupItems.map((item) => (
-                    <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>
-                  ))}
+                  {groupItems.map((item) => {
+                    if (!dishOrderable || groupItems.length < 2) {
+                      return <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>;
+                    }
+                    const isTarget = rowDrag?.label === label && rowDrag.id !== item.id;
+                    const line = isTarget && rowOver?.id === item.id ? rowOver.position : null;
+                    return (
+                      <div
+                        key={`${label}:${item.id}`}
+                        className="relative"
+                        data-testid={`dish-reorder-slot-${item.id}`}
+                        data-drop-line={line ?? undefined}
+                        style={{ opacity: rowDrag?.id === item.id && rowDrag.label === label ? 0.45 : undefined }}
+                        onDragOver={isTarget ? (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = 'move';
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                          setRowOver((prev) => (prev && prev.id === item.id && prev.position === position ? prev : { id: item.id, position }));
+                        } : undefined}
+                        onDrop={isTarget ? (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const pos = rowOver?.id === item.id ? rowOver.position : 'before';
+                          onReorderSubCategoryItem!(menuId, category, label, rowDrag!.id, item.id, pos);
+                          setRowDrag(null);
+                          setRowOver(null);
+                        } : undefined}
+                      >
+                        {line && (
+                          <div
+                            aria-hidden
+                            className="pointer-events-none absolute left-0 right-0 z-[1] h-0.5 rounded-full"
+                            style={{ background: DROP_RING.ring, [line === 'before' ? 'top' : 'bottom']: -1 }}
+                          />
+                        )}
+                        {renderRow(item, label, {
+                          onDragStart: (e) => {
+                            // Own drag type; never MenuManagerClient's item drag.
+                            e.stopPropagation();
+                            e.dataTransfer.effectAllowed = 'move';
+                            try { e.dataTransfer.setData('application/x-qrate-dish-reorder', item.id); } catch { /* jsdom */ }
+                            setRowDrag({ label, id: item.id });
+                            setRowOver(null);
+                          },
+                          onDragEnd: () => { setRowDrag(null); setRowOver(null); },
+                        })}
+                      </div>
+                    );
+                  })}
                 </SubCategoryGroup>
               );
             });
@@ -2814,6 +2905,8 @@ export default function MenuBuilder({
   onRenameSubCategory,
   onDeleteSubCategory,
   orderSubCategories,
+  orderSubCategoryItems,
+  onReorderSubCategoryItem,
   onReorderSubCategory,
   onCreateSubCategory,
   onCreateMenu,
@@ -3184,6 +3277,8 @@ export default function MenuBuilder({
                 onRenameSubCategory={onRenameSubCategory}
                 onDeleteSubCategory={onDeleteSubCategory}
                 orderSubCategories={orderSubCategories}
+                orderSubCategoryItems={workspace ? orderSubCategoryItems : undefined}
+                onReorderSubCategoryItem={workspace ? onReorderSubCategoryItem : undefined}
                 showEmptySubCategoryChips={isDrinksMenu(activeMenu)}
                 onReorderSubCategory={onReorderSubCategory}
                 onCreateSubCategory={onCreateSubCategory}

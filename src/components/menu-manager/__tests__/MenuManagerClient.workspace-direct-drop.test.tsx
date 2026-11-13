@@ -14,6 +14,8 @@ import React from 'react';
 import type { MenuItemDisplay, MenuSummary, MenuManagerService } from '../../../types/restaurant';
 
 type BuilderProps = {
+  orderSubCategoryItems?: (m: string, c: string, l: string, ids: string[]) => string[];
+  onReorderSubCategoryItem?: (m: string, c: string, l: string, d: string, t: string, p: 'before' | 'after') => Promise<void> | void;
   onDropBucket: (e: React.DragEvent, menuId: string, cat: string) => void;
   onDropSubCategory?: (e: React.DragEvent, menuId: string, cat: string, label: string) => void;
 };
@@ -202,5 +204,43 @@ describe('MenuManagerClient — workspace direct drop on a DRINKS menu', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(s.createMenuSubcategory).not.toHaveBeenCalled();
     expect(s.assignItemToSubcategory).not.toHaveBeenCalled();
+  });
+});
+
+describe('MenuManagerClient — workspace dish order (v5)', () => {
+  function svc(fail = false) {
+    return {
+      addItemToMenu: vi.fn(), updateMenuItemInMenu: vi.fn(),
+      getMenuStructure: vi.fn().mockResolvedValue({ courses: { Entrees: [{ subcategory_id: 's1', name: 'Curries', sort_order: 0, item_ids: ['a', 'b', 'c'], count: 3 }] } }),
+      assignItemToSubcategory: vi.fn(),
+      reorderSubcategoryItems: fail ? vi.fn().mockRejectedValue(new Error('x')) : vi.fn().mockResolvedValue({ reordered: true, count: 3 }),
+    };
+  }
+
+  it('orders rows by the structure and saves the FULL member list on a move', async () => {
+    v2 = true;
+    const s = svc();
+    service = s as unknown as MenuManagerService;
+    mount(true, [item('a', 'Curries'), item('b', 'Curries'), item('c', 'Curries')]);
+    await waitFor(() => expect(last.orderSubCategoryItems!('m1', 'Entrees', 'curries', ['c', 'a'])).toEqual(['a', 'c']));
+    // Move c before a (b is not on screen — still sent: the endpoint needs every member).
+    await act(async () => { await last.onReorderSubCategoryItem!('m1', 'Entrees', 'Curries', 'c', 'a', 'before'); });
+    expect(s.reorderSubcategoryItems).toHaveBeenCalledWith('m1', 's1', ['c', 'a', 'b']);
+    expect(last.orderSubCategoryItems!('m1', 'Entrees', 'Curries', ['a', 'b', 'c'])).toEqual(['c', 'a', 'b']);
+  });
+
+  it('a failed save rolls the order back', async () => {
+    v2 = true;
+    const s = svc(true);
+    service = s as unknown as MenuManagerService;
+    mount(true, [item('a', 'Curries')]);
+    await waitFor(() => expect(last.orderSubCategoryItems!('m1', 'Entrees', 'Curries', ['c', 'a'])).toEqual(['a', 'c']));
+    await act(async () => { await last.onReorderSubCategoryItem!('m1', 'Entrees', 'Curries', 'c', 'a', 'before'); });
+    await waitFor(() => expect(last.orderSubCategoryItems!('m1', 'Entrees', 'Curries', ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']));
+  });
+
+  it('classic (no v2 / no service method) offers no dish reorder', () => {
+    mount(false, [item('a', 'Curries')]);
+    expect(last.onReorderSubCategoryItem).toBeUndefined();
   });
 });

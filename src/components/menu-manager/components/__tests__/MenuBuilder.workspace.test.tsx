@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn() }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn> }) {
+function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn> }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -76,6 +76,16 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       onToggleBulkSelection={(id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
       onOpenBulkPanel={vi.fn()}
       workspaceMode={workspaceMode}
+      orderSubCategoryItems={order}
+      onReorderSubCategoryItem={onReorderItem}
+      rowChrome={onReorderItem ? (p) => (
+        <div data-testid={`chrome-${p.item.id}`}>
+          {p.item.name}
+          {p.reorderHandle && (
+            <span draggable data-testid={`grip-${p.item.id}`} onDragStart={p.reorderHandle.onDragStart} onDragEnd={p.reorderHandle.onDragEnd} />
+          )}
+        </div>
+      ) : undefined}
     />
   );
 }
@@ -260,5 +270,46 @@ describe('MenuBuilder — workspace direct drop (v5)', () => {
     expect(screen.queryByTestId('bucket-drop-Entrees')).toBeNull();
     act(() => { vi.advanceTimersByTime(500); });
     expect(screen.getByTestId('bucket-drop-Entrees')).toBeInTheDocument();
+  });
+});
+
+describe('MenuBuilder — workspace dish order (v5)', () => {
+  const curriesOrder = () => [...document.querySelectorAll('[data-testid^="chrome-"]')]
+    .map((el) => el.getAttribute('data-testid')!.replace('chrome-', ''));
+
+  it('rows inside a sub-category follow orderSubCategoryItems', () => {
+    // Curries holds a, b; the owner put b first.
+    const order = (_m: string, _c: string, l: string, ids: string[]) => (l === 'Curries' ? ['b', 'a'].filter((id) => ids.includes(id)) : ids);
+    render(<Harness workspaceMode order={order} onReorderItem={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(curriesOrder().filter((id) => id !== 'c')).toEqual(['b', 'a']);
+  });
+
+  it('grip-drag a dish onto another in the same sub-category reorders it (red line on hover)', () => {
+    const onReorderItem = vi.fn();
+    render(<Harness workspaceMode onReorderItem={onReorderItem} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(screen.getByTestId('grip-b'), { dataTransfer: dt });
+    const slot = screen.getByTestId('dish-reorder-slot-a');
+    fireEvent.dragOver(slot, { dataTransfer: dt });
+    // jsdom carries no pointer position on drag events, so the side is whichever
+    // the slot computed — the drop must use the same one the line showed.
+    const side = slot.getAttribute('data-drop-line');
+    expect(side === 'before' || side === 'after').toBe(true);
+    fireEvent.drop(slot, { dataTransfer: dt });
+    expect(onReorderItem).toHaveBeenCalledWith('menu-1', 'Entrees', 'Curries', 'b', 'a', side);
+  });
+
+  it('a single-dish sub-category and Ungrouped have no grip', () => {
+    render(<Harness workspaceMode onReorderItem={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(screen.queryByTestId('grip-c')).toBeNull(); // Rice has one dish
+    expect(screen.getByTestId('grip-a')).toBeInTheDocument();
+  });
+
+  it('without onReorderSubCategoryItem (admin / waiter) there is no grip', () => {
+    render(<Harness workspaceMode={false} />);
+    expect(screen.queryByTestId(/^grip-/)).toBeNull();
   });
 });

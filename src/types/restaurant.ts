@@ -377,8 +377,11 @@ export interface Menu {
 
 // Per-day schedule entry: start and end time for a specific day
 export interface DaySchedule {
-  start: string;  // "HH:MM"
+  start: string;  // "HH:MM" — mirrors ranges[0] when ranges is set
   end: string;    // "HH:MM"
+  /** "+ Hours" (core 2026-11-12): every opening range of the day, in order.
+   *  Absent = the single start/end window. */
+  ranges?: { start: string; end: string }[];
 }
 
 // Keys are day numbers as strings: "0"=Sun, "1"=Mon, ... "6"=Sat
@@ -1157,6 +1160,8 @@ export interface MenuManagerService {
    *  is the complete set of sub-category ids for (menuId, course) in display order;
    *  backend assigns sort_order = position. `course` is a canonical course value. */
   reorderMenuSubcategories?(menuId: string, body: { course: string; ordered_ids: string[] }): Promise<{ menu_id: string; course: string; reordered: boolean; count: number }>;
+  /** Order the dishes inside one sub-category (Menu workspace v5). `orderedItemIds` = every member, in order. */
+  reorderSubcategoryItems?(menuId: string, subId: string, orderedItemIds: string[]): Promise<{ reordered: boolean; count: number }>;
   /** Delete a sub-category (its items become unassigned within the course). */
   deleteMenuSubcategory?(menuId: string, subId: string): Promise<void>;
   /** Assign an item to a sub-category (REPLACES within that course). */
