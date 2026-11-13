@@ -636,6 +636,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
   // Core data
   const [items, setItems] = useState<MenuItemDisplay[]>(initialItems);
+  // Latest items for async follow-ups that run after awaits (a captured item
+  // object would carry a pre-write placement).
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
   const highlightQuery = (builderHighlightQuery ?? '').trim();
   const builderHighlight = useMemo<BuilderSearchHighlight | null>(
     () => (highlightQuery
@@ -1840,7 +1844,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         // placement + drink-type writes land (and not at all if they failed),
         // so the two writes never race on the placement row.
         if (workspaceDirectDrop) {
-          void drinksDone.then((ok) => { if (ok) fileDirectlyRef.current?.(menuId, cat, drinks, snap.fromCat); });
+          void drinksDone.then((ok) => {
+            if (!ok) return;
+            // Re-read the drinks AFTER the placement writes — the captured
+            // objects still say "not on this menu".
+            const fresh = drinks.map((d) => itemsRef.current.find((i) => i.id === d.id) ?? d);
+            fileDirectlyRef.current?.(menuId, cat, fresh, snap.fromCat);
+          });
         } else openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
         return;
       }
@@ -1956,8 +1966,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 // it), so a dish not yet on this menu — or not yet in this
                 // course — must be placed first, or "Filed under Ungrouped"
                 // would report a dish that never reaches the menu.
-                const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
-                if (!assoc) {
+                // Read the CURRENT placement (not the passed object, which may
+                // predate an earlier write in this drop).
+                const live = itemsRef.current.find((i) => i.id === item.id) ?? item;
+                const assoc = live.menu_associations?.find((a) => a.menu_id === menuId);
+                if (isDrinksMenu(menu)) {
+                  // A drinks menu's `cat` is a drink TYPE, not a canonical — the
+                  // placement is ['Beverages'] (as runDrinks and core's assign
+                  // path write it). Place only if the drink isn't on the menu.
+                  if (!assoc) {
+                    const associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, item.category ?? 'Beverages', {
+                      canonical_categories: ['Beverages'], raw_categories: [],
+                    });
+                    setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
+                  }
+                } else if (!assoc) {
                   const associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat, {
                     canonical_categories: [cat], raw_categories: [],
                   });
@@ -2109,6 +2132,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         applyRawCategoryMove(toProcess, menuId, cat, label, fromCat);
         return;
       }
+      // First-class sub-categories: name matching needs the loaded structure —
+      // without it a case variant of an existing sub-category would be
+      // created as a duplicate (core's create is case-sensitive).
+      if (subcatV2 && !structureByMenu[menuId]) {
+        showToast('The menu is still loading — try the drop again in a moment');
+        return;
+      }
       const existing: string[] = [];
       if (subcatV2 && structureByMenu[menuId]) {
         const subs = (structureByMenu[menuId].courses?.[cat as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
@@ -2135,7 +2165,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       }
       for (const { label, items: group } of groups.values()) applyRawCategoryMove(group, menuId, cat, label, fromCat);
     },
-    [applyRawCategoryMove, subcatV2, structureByMenu, items],
+    [applyRawCategoryMove, subcatV2, structureByMenu, items, showToast],
   );
   useEffect(() => { fileDirectlyRef.current = fileDirectly; }, [fileDirectly]);
 

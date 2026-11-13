@@ -144,3 +144,63 @@ describe('MenuManagerClient — workspace direct drop, first-class sub-categorie
     expect(svc.updateMenuItemInMenu).toHaveBeenCalledWith('x', 'm1', { canonical_categories: expect.arrayContaining(['Entrees']) });
   });
 });
+
+describe('MenuManagerClient — workspace direct drop on a DRINKS menu', () => {
+  const drinksMenu = { id: 'd1', name: 'Bar', active: true, drinks_only: true, items: [] } as unknown as MenuSummary;
+  const drink = (id: string, category: string) => ({
+    id, name: id, category, canonical_category: 'Beverages', item_type: 'dish', price: 7, active: true, menu_associations: [],
+  } as unknown as MenuItemDisplay);
+  function svc(typeOk: boolean) {
+    return {
+      addItemToMenu: vi.fn().mockResolvedValue([{ menu_id: 'd1', canonical_categories: ['Beverages'], raw_categories: [] }]),
+      updateMenuItemInMenu: vi.fn().mockResolvedValue([]),
+      bulkSetDrinkSubcategory: typeOk ? vi.fn().mockResolvedValue(undefined) : vi.fn().mockRejectedValue(new Error('boom')),
+      getMenuStructure: vi.fn().mockResolvedValue({ courses: { beer: [] } }),
+      createMenuSubcategory: vi.fn().mockResolvedValue({ subcategory_id: 's-lager' }),
+      assignItemToSubcategory: vi.fn().mockResolvedValue(undefined),
+      unassignItemFromSubcategory: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+  function mountDrinks(s: ReturnType<typeof svc>, items: MenuItemDisplay[]) {
+    v2 = true;
+    service = s as unknown as MenuManagerService;
+    let actions: { startPoolDrag: (e: React.DragEvent, ids: string[]) => void } | null = null;
+    render(<MenuManagerClient service={service} restaurantId="r1" initialItems={items} initialMenus={[drinksMenu]}
+      builderWorkspaceMode onMenuActionsReady={(a) => { actions = a as never; }} />);
+    return (ids: string[]) => act(() => actions!.startPoolDrag(ev(), ids));
+  }
+
+  it('files into the library-category sub-category only AFTER the drink is placed', async () => {
+    const s = svc(true);
+    const drag = mountDrinks(s, [drink('ipa', 'Lager')]);
+    await waitFor(() => expect(s.getMenuStructure).toHaveBeenCalled());
+    drag(['ipa']);
+    await act(async () => { last.onDropBucket(ev(), 'd1', 'beer'); });
+    await waitFor(() => expect(s.assignItemToSubcategory).toHaveBeenCalledWith('d1', 'ipa', 's-lager'));
+    expect(placementOpen).toBe(false);
+    expect(s.bulkSetDrinkSubcategory.mock.invocationCallOrder[0]).toBeLessThan(s.createMenuSubcategory.mock.invocationCallOrder[0]);
+  });
+
+  it('an Uncategorized drink is placed ONCE, as Beverages — never re-placed under the drink type', async () => {
+    const s = svc(true);
+    const drag = mountDrinks(s, [drink('cola', 'Uncategorized')]);
+    await waitFor(() => expect(s.getMenuStructure).toHaveBeenCalled());
+    drag(['cola']);
+    await act(async () => { last.onDropBucket(ev(), 'd1', 'beer'); });
+    await waitFor(() => expect(s.unassignItemFromSubcategory).toHaveBeenCalled());
+    expect(s.addItemToMenu).toHaveBeenCalledTimes(1);
+    for (const c of s.addItemToMenu.mock.calls) expect(c[4]).toMatchObject({ canonical_categories: ['Beverages'] });
+  });
+
+  it('does not file into a sub-category when the drink-type write failed', async () => {
+    const s = svc(false);
+    const drag = mountDrinks(s, [drink('ipa', 'Lager')]);
+    await waitFor(() => expect(s.getMenuStructure).toHaveBeenCalled());
+    drag(['ipa']);
+    await act(async () => { last.onDropBucket(ev(), 'd1', 'beer'); });
+    await waitFor(() => expect(s.bulkSetDrinkSubcategory).toHaveBeenCalled());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(s.createMenuSubcategory).not.toHaveBeenCalled();
+    expect(s.assignItemToSubcategory).not.toHaveBeenCalled();
+  });
+});
