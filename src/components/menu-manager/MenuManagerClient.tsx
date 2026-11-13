@@ -3380,7 +3380,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
                 role="dialog"
                 aria-modal="true"
                 aria-label={drawerLabel}
-                onKeyDown={(e) => { if (e.key === 'Escape') closeFn(); }}
+                // Esc closes the editor only when it was pressed IN the editor's
+                // own DOM. A window portalled from inside it (Edit item →
+                // Modifiers' group window / delete confirm) bubbles its keydown
+                // here through the React tree; those handle their own Esc.
+                onKeyDown={(e) => { if (e.key === 'Escape' && e.currentTarget.contains(e.target as Node)) closeFn(); }}
               >
                 <div
                   data-testid={cloneDraftSource ? 'food-item-clone-draft' : 'food-item-profile'}
