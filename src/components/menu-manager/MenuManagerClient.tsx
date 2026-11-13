@@ -702,6 +702,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const subcatV2 = isSubcategoryV2Enabled()
     && !!service.getMenuStructure
     && !!service.assignItemToSubcategory;
+  // Workspace (owner v5) drops file directly — no green zone, no chooser.
+  const workspaceDirectDrop = builderWorkspaceMode;
+  // handleDropBucket is declared before applyRawCategoryMove/fileDirectly, so it
+  // reaches the filer through a ref (a direct dep would hit the TDZ).
+  const fileDirectlyRef = useRef<
+    ((menuId: string, cat: string, toProcess: MenuItemDisplay[], fromCat: string | null, label?: string) => void) | null
+  >(null);
   const [structureByMenu, setStructureByMenu] = useState<Record<string, MenuStructure>>({});
   // Bumped after every structure write so the loader re-fetches the active menu.
   const [structureRefreshKey, setStructureRefreshKey] = useState(0);
@@ -1598,7 +1605,11 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     bucketDcRef.current[key] = Math.max(0, (bucketDcRef.current[key] ?? 1) - 1);
     if (bucketDcRef.current[key] === 0) {
       setDragOver((prev) =>
-        prev !== null && prev !== 'pool' && prev.menuId === menuId && prev.cat === cat ? null : prev,
+        // Only clear the COURSE-level state. A sub-category band's enter stops
+        // propagation, so moving row → band fires the row's leave on the course
+        // after the band set its own {label} state — clearing that here would
+        // drop the band's highlight while the pointer is on it.
+        prev !== null && prev !== 'pool' && prev.menuId === menuId && prev.cat === cat && prev.label === undefined ? null : prev,
       );
     }
   }, []);
@@ -1823,7 +1834,13 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         //
         // No default label: a drinks menu's items carry no raw_categories to
         // infer one from, so the owner picks or creates.
-        openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
+        if (workspaceDirectDrop) fileDirectlyRef.current?.(menuId, cat, drinks, snap.fromCat);
+        else openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
+        return;
+      }
+
+      if (workspaceDirectDrop) {
+        fileDirectlyRef.current?.(menuId, cat, toProcess, snap.fromCat);
         return;
       }
 
@@ -1845,7 +1862,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
 
       openSubCatPrompt(menuId, cat, toProcess, snap.fromCat, defaultLabel);
     },
-    [dragging, items, menus, restaurantId, showToast, trackAction, service, openSubCatPrompt],
+    [dragging, items, menus, restaurantId, showToast, trackAction, service, openSubCatPrompt, workspaceDirectDrop],
   );
 
   // ── Sub-category drop (menu raw sub-categories, 2026-06-09) ──────────────────
@@ -2058,6 +2075,46 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     [items, menus, service, showToast, subcatV2, findSubcategoryId],
   );
 
+  // Workspace (v5) direct filing — Avi 2026-11-12: "as simple as dragging and
+  // dropping". No chooser: a COURSE drop files each item under a sub-category
+  // named after its library category (created, or merged case-insensitively
+  // into an existing one); a SUB-CATEGORY drop (`label` set) files into it.
+  // Items with no library category land in Ungrouped. Groups are disjoint, so
+  // applyRawCategoryMove's per-item rollback stays independent per group.
+  const fileDirectly = useCallback(
+    (menuId: string, cat: string, toProcess: MenuItemDisplay[], fromCat: string | null, label?: string) => {
+      if (label !== undefined) {
+        applyRawCategoryMove(toProcess, menuId, cat, label, fromCat);
+        return;
+      }
+      const existing: string[] = [];
+      if (subcatV2 && structureByMenu[menuId]) {
+        const subs = (structureByMenu[menuId].courses?.[cat as keyof MenuStructure['courses']] ?? []) as MenuSubcategory[];
+        for (const s of subs) existing.push(s.name);
+      } else {
+        const members = sectionForCanonical(cat)?.members ?? [cat];
+        for (const it of items) {
+          const assoc = it.menu_associations?.find((a) => a.menu_id === menuId);
+          if (!assoc || !(assoc.canonical_categories ?? []).some((c) => members.includes(c))) continue;
+          for (const l of assoc.raw_categories ?? []) if ((l ?? '').trim()) existing.push(l.trim());
+        }
+      }
+      const groups = new Map<string, MenuItemDisplay[]>();
+      for (const it of toProcess) {
+        const raw = (it.category ?? '').trim();
+        const key = !raw || raw.toLowerCase() === 'uncategorized'
+          ? UNGROUPED_KEY
+          : existing.find((l) => l.toLowerCase() === raw.toLowerCase()) ?? raw;
+        const g = groups.get(key);
+        if (g) g.push(it); else groups.set(key, [it]);
+      }
+      for (const [key, group] of groups) applyRawCategoryMove(group, menuId, cat, key, fromCat);
+    },
+    [applyRawCategoryMove, subcatV2, structureByMenu, items],
+  );
+  useEffect(() => { fileDirectlyRef.current = fileDirectly; }, [fileDirectly]);
+
+
   // 7a — drop onto an existing sub-group → MOVE/re-file directly (no popup).
   const handleDropSubCategory = useCallback(
     (e: React.DragEvent, menuId: string, cat: string, label: string) => {
@@ -2078,9 +2135,10 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
       // the items landed on. Every course-area drop now confirms through the
       // popup (the owner can keep this sub-category or pick/create another),
       // rather than some drops filing silently and others opening the chooser.
-      openSubCatPrompt(menuId, cat, toProcess, snap.fromCat, label);
+      if (workspaceDirectDrop) fileDirectly(menuId, cat, toProcess, snap.fromCat, label);
+      else openSubCatPrompt(menuId, cat, toProcess, snap.fromCat, label);
     },
-    [dragging, resolveDragItems, restaurantId, trackAction, openSubCatPrompt],
+    [dragging, resolveDragItems, restaurantId, trackAction, openSubCatPrompt, workspaceDirectDrop, fileDirectly],
   );
 
   // ── Sub-category rename / delete (menu raw sub-categories, Step 9) ───────────

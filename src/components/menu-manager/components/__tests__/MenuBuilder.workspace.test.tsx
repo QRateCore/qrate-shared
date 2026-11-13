@@ -11,8 +11,8 @@
  *  - sub-categories reorder by drag only — no ▲▼ buttons, the grip stays.
  */
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import type { MenuItemDisplay, MenuSummary } from '../../../../types/restaurant';
 import MenuBuilder from '../MenuBuilder';
 import { selectionState } from '../../builderWorkspace';
@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [] }: { workspaceMode: boolean; selected?: string[] }) {
+function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn() }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn> }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -53,8 +53,8 @@ function Harness({ workspaceMode, selected: initial = [] }: { workspaceMode: boo
       junctionSettings={{}}
       activeMenuId="menu-1"
       collapsed={collapsed}
-      dragging={null}
-      dragOver={null}
+      dragging={dragOver ? { itemIds: ['x'], fromMenuId: null, fromCat: null } : null}
+      dragOver={dragOver}
       colorMap={() => ({ name: 'blue', tab: '', tabBorder: '', chip: '', chipText: '', bucket: '' }) as never}
       getSettings={(_m, id) => ({ price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null, raw_categories: RAW[id] ?? [] }) as never}
       onToggleCollapse={(k) => setCollapsed((c) => ({ ...c, [k]: !(c[k] ?? true) }))}
@@ -62,7 +62,7 @@ function Harness({ workspaceMode, selected: initial = [] }: { workspaceMode: boo
       onUpdateSettings={vi.fn().mockResolvedValue(undefined)}
       onDragStart={vi.fn()}
       onDragEnd={vi.fn()}
-      onDragEnterBucket={vi.fn()}
+      onDragEnterBucket={enter}
       onDragLeaveBucket={vi.fn()}
       onDropBucket={vi.fn()}
       onReorderSubCategory={reorder}
@@ -225,5 +225,40 @@ describe('MenuBuilder — workspace reorder without a mouse', () => {
     } finally {
       mobile = false;
     }
+  });
+});
+
+describe('MenuBuilder — workspace direct drop (v5)', () => {
+  afterEach(() => vi.useRealTimers());
+  const over = { menuId: 'menu-1', cat: 'Entrees' };
+
+  it('a hovered course wears the red ring — no green dashed zone, no "pick a sub-category" hint', () => {
+    render(<Harness workspaceMode dragOver={over} />);
+    fireEvent.click(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(screen.getByTestId('category-bucket-Entrees')).toHaveAttribute('data-drop-over', 'true');
+    expect(screen.queryByTestId('bucket-drop-hint-Entrees')).toBeNull();
+    expect(screen.queryByText(/pick a sub-category next/)).toBeNull();
+  });
+
+  it('classic mode keeps the green hint', () => {
+    render(<Harness workspaceMode={false} dragOver={over} />);
+    fireEvent.click(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(screen.getByTestId('bucket-drop-hint-Entrees')).toBeInTheDocument();
+    expect(screen.getByTestId('category-bucket-Entrees')).not.toHaveAttribute('data-drop-over');
+  });
+
+  it('the whole course card (header too) takes the drag in workspace mode', () => {
+    const enter = vi.fn();
+    render(<Harness workspaceMode enter={enter} />);
+    fireEvent.dragEnter(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(enter).toHaveBeenCalled();
+  });
+
+  it('holding a drag over a collapsed course opens it', () => {
+    vi.useFakeTimers();
+    render(<Harness workspaceMode dragOver={over} />);
+    expect(screen.queryByTestId('bucket-drop-Entrees')).toBeNull();
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(screen.getByTestId('bucket-drop-Entrees')).toBeInTheDocument();
   });
 });

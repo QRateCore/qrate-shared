@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { MenuColor } from '../lib/menuUtils';
-import { useBuilderWorkspace } from '../builderWorkspace';
+import { useBuilderWorkspace, DROP_RING } from '../builderWorkspace';
 import { UNGROUPED_KEY } from '../lib/menuUtils';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 
@@ -191,7 +191,9 @@ export function SubCategoryGroup({
         // Item-refile enter/leave only when NOT reordering (no green highlight
         // during a group reorder).
         onDragEnter={isReorderActive ? undefined : onDragEnter}
-        onDragLeave={isReorderActive ? undefined : onDragLeave}
+        // Workspace: the course CARD is a drop target too (MenuBuilder), so the
+        // band's leave must not bubble and decrement the card's enter counter.
+        onDragLeave={isReorderActive ? undefined : (e) => { if (workspace) e.stopPropagation(); onDragLeave?.(); }}
         onDragOver={(e) => {
           if (isReorderActive) { e.preventDefault(); onReorderDragOver?.(e); }
           else if (onDrop) { e.preventDefault(); }
@@ -247,9 +249,11 @@ export function SubCategoryGroup({
         // and modifier zones (see DROP_TARGET in MenuBuilder).
         className="flex items-center gap-1.5 rounded-ctl px-3 py-1.5 text-[13px] font-bold text-ink transition-colors"
         style={{
-          color: isDragOver ? 'var(--ok)' : undefined,
-          background: isDragOver ? 'var(--ok-bg)' : 'var(--surface2)',
-          outline: isDragOver ? '2px dashed var(--ok)' : undefined,
+          // Workspace (owner v5): the design's red ring + tint — the drop files
+          // straight into this sub-category, no chooser.
+          color: isDragOver && !workspace ? 'var(--ok)' : undefined,
+          background: isDragOver ? (workspace ? DROP_RING.tint : 'var(--ok-bg)') : 'var(--surface2)',
+          outline: isDragOver ? (workspace ? `2px solid ${DROP_RING.ring}` : '2px dashed var(--ok)') : undefined,
           outlineOffset: -2,
           // grab cursor when reorder is armed; pointer otherwise (row is clickable)
           cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),

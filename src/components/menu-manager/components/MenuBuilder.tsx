@@ -8,7 +8,7 @@ import WineEnrichmentBanner from './WineEnrichmentBanner';
 import { type MenuColor, intToBoostLabel, BOOST_LABELS, UNGROUPED_KEY, sortedSubCategoryLabels, MENU_SECTIONS, sectionsForMenu, isDrinksMenu, normalizeSubcatKey, preferScrapedLabel, asArray } from '../lib/menuUtils';
 import { matchesItemText } from '../filterItemsByText';
 import { useBuilderSearchHighlight } from '../builderSearchHighlight';
-import { BuilderWorkspaceContext, useBuilderWorkspace, selectionState, type BuilderWorkspaceMode } from '../builderWorkspace';
+import { BuilderWorkspaceContext, useBuilderWorkspace, selectionState, DROP_RING, DRAG_EXPAND_MS, type BuilderWorkspaceMode } from '../builderWorkspace';
 import { SubCategoryGroup } from './SubCategoryGroup';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { ManageSectionsModal, type ManageSection } from './ManageSectionsModal';
@@ -2236,6 +2236,13 @@ function CategoryBucket({
   // checked when ALL non-empty bucket items are selected; indeterminate
   // when SOME (but not all) are selected.
   const workspace = useBuilderWorkspace();
+  // Workspace: holding a dragged item over a COLLAPSED course opens it, so its
+  // sub-categories become drop targets. Cancelled when the pointer moves on.
+  useEffect(() => {
+    if (!workspace || !isDragOver || !collapsed || reorderFrom) return;
+    const t = setTimeout(onToggleCollapse, DRAG_EXPAND_MS);
+    return () => clearTimeout(t);
+  }, [workspace, isDragOver, collapsed, reorderFrom, onToggleCollapse]);
   const bucketSelectedCount = bulkSelectionEnabled && bulkSelection
     ? bucketItems.filter((it) => bulkSelection.has(it.id)).length
     : 0;
@@ -2251,9 +2258,21 @@ function CategoryBucket({
       // course, 44px header on the quiet surface, the rows inside.
       // No overflow-hidden on the box: a row's ⋯ menu drops below the row and
       // must not be clipped. The header clips its own corners instead.
-      className="mb-2.5 rounded-ctl border border-line bg-surface"
+      className="mb-2.5 rounded-ctl border border-line bg-surface transition-shadow duration-150"
       data-testid={`category-bucket-${category}`}
       data-attention={bucketHasAttention ? 'true' : undefined}
+      // Workspace (owner v5): the WHOLE course card is the drop target — header
+      // included, so a collapsed course accepts a drop and opens on hover — and
+      // a hovered card wears the design's red ring. Sub-category bands stop
+      // propagation, so a drop on one files into it, not the course.
+      data-drop-over={workspace && isDragOver && !reorderFrom ? 'true' : undefined}
+      onDragEnter={workspace && !reorderFrom ? onDragEnter : undefined}
+      onDragLeave={workspace && !reorderFrom ? onDragLeave : undefined}
+      onDragOver={workspace ? (e) => e.preventDefault() : undefined}
+      onDrop={workspace && !reorderFrom ? onDrop : undefined}
+      style={workspace && isDragOver && !reorderFrom
+        ? { borderColor: DROP_RING.ring, boxShadow: `0 0 0 1px ${DROP_RING.ring}` }
+        : undefined}
     >
       {/* Bucket header — checkbox (when bulk enabled) + collapse button */}
       <div className={`flex items-stretch overflow-hidden ${collapsed ? 'rounded-ctl' : 'rounded-t-ctl'}`}>
@@ -2347,7 +2366,7 @@ function CategoryBucket({
         // edge + the count pill below instead of the old red box.
         className={`flex-1 flex items-center gap-2.5 min-h-[44px] py-1.5 px-3.5 cursor-pointer text-left transition-colors duration-150 ${isDragOver ? '' : 'bg-surface2/50'}`}
         style={{
-          background: isDragOver ? DROP_TARGET.fill : undefined,
+          background: isDragOver ? (workspace ? DROP_RING.tint : DROP_TARGET.fill) : undefined,
           boxShadow: bucketHasAttention ? 'inset 3px 0 0 var(--bad)' : undefined,
         }}
       >
@@ -2444,13 +2463,13 @@ function CategoryBucket({
           // reorder drag passes over the bucket, but the reorder drop is handled
           // (stopPropagation) at the sub-category row, so the bucket never gets a
           // drop/leave to clear isDragOver → the green box stuck after reordering.
-          onDragEnter={reorderFrom ? undefined : onDragEnter}
-          onDragLeave={reorderFrom ? undefined : onDragLeave}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={reorderFrom ? undefined : onDrop}
+          onDragEnter={reorderFrom || workspace ? undefined : onDragEnter}
+          onDragLeave={reorderFrom || workspace ? undefined : onDragLeave}
+          onDragOver={workspace ? undefined : (e) => e.preventDefault()}
+          onDrop={reorderFrom || workspace ? undefined : onDrop}
           data-testid={`bucket-drop-${category}`}
           className="min-h-10 transition-all duration-150 border-t border-line px-2.5 pt-1.5 pb-1.5"
-          style={{
+          style={workspace ? undefined : {
             // Consistent green = "valid drop target". A faint outline appears on
             // every droppable bucket the moment a drag starts (always-visible
             // labeled zones), filling in solid when you actually hover it. Both
@@ -2466,7 +2485,7 @@ function CategoryBucket({
           {/* Bucket-level drop hint. Visible for the whole drag (not just on
               hover) so every course advertises itself as a drop target and
               spells out what dropping does. Intensifies when actually hovered. */}
-          {dragActive && bucketItems.length > 0 && (
+          {dragActive && !workspace && bucketItems.length > 0 && (
             <div
               data-testid={`bucket-drop-hint-${category}`}
               className="mx-1 my-1 px-3 py-1.5 text-xs font-semibold rounded text-center transition-colors"
@@ -2485,9 +2504,9 @@ function CategoryBucket({
             <div
               data-testid={`category-empty-${category}`}
               className="px-3 py-2.5 text-[13px] text-ink-faint"
-              style={dragActive ? { color: DROP_TARGET.accent } : undefined}
+              style={dragActive && !workspace ? { color: DROP_TARGET.accent } : undefined}
             >
-              {dragActive
+              {dragActive && !workspace
                 ? `Drop here to add to ${displayLabel}`
                 : missingPriceFilter && allBucketItems.length > 0
                   ? 'No items missing a price'
