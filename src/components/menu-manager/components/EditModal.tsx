@@ -239,6 +239,10 @@ interface EditModalProps {
    * types (OverlapItem, OverlapPlacement) stay in the owner-webapp app
    * and don't leak into the shared package.
    */
+  /** Menu pricing (v5, 2026-11-13): the selected menu's per-menu Includes
+   *  ("Includes all" / "Includes one by choice") — they moved here from the
+   *  Menus row's chevron panel. Rendered under the menu picked in that section. */
+  menuIncludesSlot?: (menuId: string) => ReactNode;
   placementsOverlapSlot?: ReactNode;
   /**
    * PDD 2026-05-26 — count of food_item_groupings for this dish. Used to
@@ -927,7 +931,7 @@ function withStored<T extends string>(list: readonly T[], stored: string | null 
   return stored && !list.includes(stored as T) ? [...list, stored as T] : [...list];
 }
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, menuIncludesSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
   const v5 = shell === 'v5';
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
@@ -4650,6 +4654,12 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   onUpdate={persistPlacement}
                   flushRef={pricingFlushRef}
                 />
+              )}
+              {isPricingSection && pricingMenu && menuIncludesSlot && (
+                <section className="mt-5" data-testid="edit-menu-includes" data-menu-id={pricingMenu.menu_id}>
+                  <h3 className="m-0 mb-2 text-[14px] font-bold text-ink">Includes on this menu</h3>
+                  {menuIncludesSlot(pricingMenu.menu_id)}
+                </section>
               )}
 
           {/* ── Add-ons tab ───────────────────────────────────────────── */}

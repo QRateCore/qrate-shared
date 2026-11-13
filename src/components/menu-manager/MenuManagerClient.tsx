@@ -38,6 +38,7 @@ import { ItemPlacementModal } from './components/ItemPlacementModal';
 import MobileMenuManagerLayout from './components/MobileMenuManagerLayout';
 import BulkActionsPanel, { mergeAssociations } from './components/BulkActionsPanel';
 import BulkMenuSidesPanel from './components/BulkMenuSidesPanel';
+import ItemModifierZones from './components/ItemModifierZones';
 import BulkModifierPanel from './components/BulkModifierPanel';
 import EditModal, { type DietaryTagService } from './components/EditModal';
 import MenuEditPanel from './components/MenuEditPanel';
@@ -3343,6 +3344,21 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             restaurantId={restaurantId}
             menus={menus}
             allItems={items.filter((i) => i.item_type !== 'addon')}
+            // v5 (2026-11-13): per-menu Includes live in Edit item → Menu
+            // pricing (the Menus row has no chevron in the workspace).
+            menuIncludesSlot={builderWorkspaceMode && perMenuSides && showIncludeZones && editItem.item_type !== 'addon'
+              ? (menuId) => (
+                <ItemModifierZones
+                  key={menuId}
+                  parent={editItem}
+                  itemsById={new Map(items.map((i) => [i.id, i] as const))}
+                  currentMenuId={menuId}
+                  perMenuSides={perMenuSides}
+                  onConfirmIncludeDrop={onConfirmIncludeDrop}
+                  withPicker
+                />
+              )
+              : undefined}
             onClose={handleCloseEditModal}
             onComplete={handleEditComplete}
             onNavigateToMenu={handleNavigateToMenu}

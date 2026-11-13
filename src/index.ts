@@ -42,7 +42,7 @@ export { createMenuManagerService } from './services/createMenuManagerService';
 // Components — Menu Manager (full two-pane menu management UI)
 export { MenuManagerClient, markMatches } from './components/menu-manager';
 export type { BulkMode, DragState, MenuManagerActions, MenuRowChromeProps } from './components/menu-manager';
-export { EditModal, MenuManagerServiceProvider, BulkActionsPanel, BulkModifierPanel, CloneMenuModal } from './components/menu-manager';
+export { EditModal, MenuManagerServiceProvider, BulkActionsPanel, BulkModifierPanel, CloneMenuModal, ItemModifierZones } from './components/menu-manager';
 export type { CloneMenuModalProps } from './components/menu-manager';
 export type { DietaryTagService } from './components/menu-manager';
 export { analyseMenuPricing, itemScopeLine, menuPricingHint, placementPath } from './components/menu-manager';

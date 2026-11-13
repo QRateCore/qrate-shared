@@ -163,6 +163,7 @@ interface RenderConfig {
   pairingsSlot?: React.ReactNode;
   /** 2026-10-18 — Recipe tab content (owner Kitchen Ops). */
   recipeSlot?: React.ReactNode;
+  menuIncludesSlot?: (menuId: string) => React.ReactNode;
   /** PDD 2026-05-26 — drives the BYO toggle's enabled/disabled state. */
   groupingsCount?: number;
 }
@@ -190,6 +191,7 @@ function renderModal(config: RenderConfig = {}) {
     groupingsSlot,
     pairingsSlot,
     recipeSlot,
+    menuIncludesSlot,
     groupingsCount,
   } = config;
 
@@ -217,6 +219,7 @@ function renderModal(config: RenderConfig = {}) {
         groupingsSlot={groupingsSlot}
         pairingsSlot={pairingsSlot}
         recipeSlot={recipeSlot}
+        menuIncludesSlot={menuIncludesSlot}
         groupingsCount={groupingsCount}
       />
     </MenuManagerServiceProvider>,
@@ -2741,5 +2744,39 @@ describe('EditModal — v5 Basics: kind switch writes a real course', () => {
     expect(updates.canonical_category).toBe('Entrees');
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     expect(onComplete.mock.calls[0][0].canonical_category).toBe('Entrees');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Menu pricing → per-menu Includes (v5, 2026-11-13: moved off the row chevron)
+// ---------------------------------------------------------------------------
+
+describe('EditModal — Includes on this menu (Menu pricing)', () => {
+  const groupingsSlot = <div data-testid="test-groupings-slot">modifiers</div>;
+  const assoc = (menu_id: string, menu_name: string) => ({
+    menu_id, menu_name, price: 12, category_name: 'Entrees', canonical_categories: ['Entrees'], raw_categories: [],
+    boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null,
+  });
+
+  it('renders the slot for the menu picked in Menu pricing', async () => {
+    const user = userEvent.setup();
+    const slot = vi.fn((menuId: string) => <div data-testid="test-includes">{menuId}</div>);
+    renderModal({
+      item: makeDishItem({ id: 'inc-1', menu_associations: [assoc('m-lunch', 'Lunch')] as never }),
+      groupingsSlot,
+      menuIncludesSlot: slot,
+    });
+    expect(screen.queryByTestId('edit-menu-includes')).toBeNull();
+    await user.click(screen.getByTestId('tab-placements'));
+    const section = await screen.findByTestId('edit-menu-includes');
+    expect(section).toHaveAttribute('data-menu-id', 'm-lunch');
+    expect(screen.getByTestId('test-includes')).toHaveTextContent('m-lunch');
+  });
+
+  it('no section without the slot', async () => {
+    const user = userEvent.setup();
+    renderModal({ item: makeDishItem({ id: 'inc-2', menu_associations: [assoc('m-lunch', 'Lunch')] as never }), groupingsSlot });
+    await user.click(screen.getByTestId('tab-placements'));
+    expect(screen.queryByTestId('edit-menu-includes')).toBeNull();
   });
 });

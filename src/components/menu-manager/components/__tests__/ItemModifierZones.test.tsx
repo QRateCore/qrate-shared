@@ -471,3 +471,39 @@ describe('ItemModifierZones — server echo + revert', () => {
     expect(screen.queryByText(`Server ${SIDE_A}`)).toBeNull();
   });
 });
+
+describe('ItemModifierZones — "+ Add" picker (Edit item → Menu pricing, v5)', () => {
+  const onMenu = (id: string, name: string) => makeDish(id, { name, menu_associations: [{ menu_id: MENU_ID }] as never });
+
+  it('offers only dishes on THIS menu (not the dish, add-ons, other menus or sides already used) and adds the pick', async () => {
+    const { adapter, setCalls } = makeAdapter({
+      sides_and: [], sides_or: [{ menu_item_id: 'used', name: 'Used', price_override: null, thumbnail_url: null, thumbnail_small_url: null }],
+    });
+    const items = [
+      onMenu(SIDE_A, 'Rice'),
+      onMenu('used', 'Used'),
+      onMenu(PARENT_ID, 'Self'),
+      makeDish('elsewhere', { name: 'Elsewhere', menu_associations: [{ menu_id: 'other' }] as never }),
+      { ...makeAddonItem('addon'), menu_associations: [{ menu_id: MENU_ID }] } as unknown as MenuItemDisplay,
+    ];
+    render(
+      <ItemModifierZones parent={makeDish(PARENT_ID)} itemsById={makeItemsById(items)} currentMenuId={MENU_ID} perMenuSides={adapter} withPicker />,
+    );
+    const picker = await screen.findByTestId(`sides-and-add-${PARENT_ID}`) as HTMLSelectElement;
+    const options = [...picker.options].map((o) => o.textContent);
+    expect(options).toEqual(['+ Add a dish on this menu…', 'Rice']);
+    fireEvent.change(picker, { target: { value: SIDE_A } });
+    await waitFor(() => expect(setCalls).toHaveLength(1));
+    expect(setCalls[0][2]).toEqual({
+      sides_and: [{ menu_item_id: SIDE_A, price_override: null }],
+      sides_or: [{ menu_item_id: 'used', price_override: null }],
+    });
+  });
+
+  it('no picker without withPicker (the row panel stays drag-only)', async () => {
+    const { adapter } = makeAdapter();
+    render(<ItemModifierZones parent={makeDish(PARENT_ID)} itemsById={makeItemsById([])} currentMenuId={MENU_ID} perMenuSides={adapter} />);
+    await screen.findByTestId(`sides-and-drop-zone-${PARENT_ID}`);
+    expect(screen.queryByTestId(`sides-and-add-${PARENT_ID}`)).toBeNull();
+  });
+});

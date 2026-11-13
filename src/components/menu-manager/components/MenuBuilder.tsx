@@ -75,6 +75,13 @@ export interface MenuRowChromeProps {
    *  reorder the dishes. Absent where dishes can't be ordered (Ungrouped,
    *  admin / waiter). */
   reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
+  /** Bring an off-menu pairing's dish onto this menu (the same flow the
+   *  Inactive pairing chip's popover runs). Absent where the host has none. */
+  onBringIntoMenu?: (memberItemId: string) => void;
+  /** Pairing dish ids the Inactive chip would list — the target shares no
+   *  non-paused menu with this dish (classifyRecMembers, the patron's
+   *  same-menu pairing rule). Lets a badge-only row mark them. */
+  inactivePairingIds?: ReadonlySet<string>;
   /** The row's pairing chips (Active / Inactive recommendations, with the
    *  Inactive popover's "Bring into menu"), exactly as the default row draws
    *  them; null when the dish has no recommendations grouping. */
@@ -1612,6 +1619,21 @@ function MenuItemRow({
           onRemove,
           subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
           reorderHandle,
+          onBringIntoMenu: onBringIntoMenu ? (memberId: string) => onBringIntoMenu(memberId, menuId) : undefined,
+          inactivePairingIds: (() => {
+            if (!menus) return undefined;
+            const menusById = new Map(menus.map((m) => [m.id, m] as const));
+            const parentActive = new Set(
+              (item.menu_associations ?? []).filter((a) => a.menu_id && menusById.get(a.menu_id)?.active).map((a) => a.menu_id),
+            );
+            const ids = new Set<string>();
+            for (const g of groupings.filter((x) => x.kind === 'recommendations')) {
+              for (const m of classifyRecMembers(g.items, itemsById, menusById, parentActive).inactive) {
+                if (m.menu_item_id) ids.add(m.menu_item_id);
+              }
+            }
+            return ids;
+          })(),
           rowMenu: (
             <RowMenu
               itemId={item.id}
@@ -2637,7 +2659,9 @@ function CategoryBucket({
               return (
                 <div
                   key={item.id}
-                  className={`flex items-stretch w-full group/row ${isSelected ? 'bg-surface2' : ''}`}
+                  // Workspace: the WHOLE row (checkbox column included) takes the
+                  // subtle hover tint, so the eye stays on one dish (Avi 2026-11-13).
+                  className={`flex items-stretch w-full group/row ${isSelected ? 'bg-surface2' : ''} ${workspace && !isSelected ? 'transition-colors hover:bg-[var(--mw-sand,#FBF7F4)]' : ''}`}
                   data-selected={isSelected ? 'true' : undefined}
                 >
                   <div

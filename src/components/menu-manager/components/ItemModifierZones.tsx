@@ -129,6 +129,10 @@ interface Props {
    * Unset → drops proceed unconditionally (legacy + tests).
    */
   onConfirmIncludeDrop?: (item: MenuItemDisplay, menuId: string | null) => Promise<boolean>;
+  /** Edit item → Menu pricing (v5, 2026-11-13): no Item library to drag from,
+   *  so each zone also gets a "+ Add" picker of the dishes already on this
+   *  menu (no off-menu gate needed). Drag-and-drop still works. */
+  withPicker?: boolean;
 }
 
 export default function ItemModifierZones({
@@ -137,6 +141,7 @@ export default function ItemModifierZones({
   currentMenuId,
   perMenuSides,
   onConfirmIncludeDrop,
+  withPicker = false,
 }: Props) {
   const [sidesAnd, setSidesAnd] = useState<MenuSideEntry[]>([]);
   const [sidesOr, setSidesOr] = useState<MenuSideEntry[]>([]);
@@ -280,6 +285,10 @@ export default function ItemModifierZones({
     setSidesOrDragOver(false);
 
     const droppedIds = parseDroppedIds(e.dataTransfer.getData('text/plain'));
+    await addIds(zone, droppedIds);
+  }
+
+  async function addIds(zone: 'and' | 'or', droppedIds: string[]) {
     if (droppedIds.length === 0) return;
 
     const targetIds = new Set((zone === 'and' ? sidesAnd : sidesOr).map((s) => s.menu_item_id));
@@ -336,6 +345,29 @@ export default function ItemModifierZones({
     setSidesAnd(nextAnd);
     setSidesOr(nextOr);
     persist(nextAnd, nextOr);
+  }
+
+  // "+ Add" picker (withPicker): dishes on THIS menu that aren't the dish
+  // itself, an add-on, or already in either zone — A→Z.
+  function renderPicker(zone: 'and' | 'or') {
+    const taken = new Set([...sidesAnd, ...sidesOr].map((s) => s.menu_item_id));
+    const options = [...itemsById.values()]
+      .filter((it) => it.id !== parent.id && it.item_type !== 'addon' && !taken.has(it.id)
+        && (it.menu_associations ?? []).some((a) => a.menu_id === currentMenuId))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return (
+      <select
+        value=""
+        aria-label={zone === 'and' ? 'Add an included side' : 'Add a choice side'}
+        onChange={(e) => { const id = e.target.value; if (id) void addIds(zone, [id]); }}
+        disabled={options.length === 0}
+        data-testid={`${zone === 'and' ? 'sides-and' : 'sides-or'}-add-${itemId}`}
+        style={{ marginTop: 6, width: '100%', height: 32, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontSize: 13, padding: '0 8px' }}
+      >
+        <option value="">{options.length ? '+ Add a dish on this menu…' : 'No other dishes on this menu'}</option>
+        {options.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+      </select>
+    );
   }
 
   // No menu context = no UI. Mirrors the v1 behaviour where the
@@ -410,6 +442,7 @@ export default function ItemModifierZones({
             )
           )}
         </div>
+        {withPicker && renderPicker('and')}
       </div>
 
       {/* ── Includes one by choice (sides_or) zone — amber tint ──────────── */}
@@ -446,6 +479,7 @@ export default function ItemModifierZones({
             )
           )}
         </div>
+        {withPicker && renderPicker('or')}
       </div>
     </div>
   );

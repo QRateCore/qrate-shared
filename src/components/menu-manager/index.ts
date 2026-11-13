@@ -3,6 +3,8 @@ export type { BulkMode, DragState, MenuManagerActions } from './MenuManagerClien
 export type { MenuRowChromeProps } from './components/MenuBuilder';
 export { markMatches } from './builderSearchHighlight';
 export { default as EditModal } from './components/EditModal';
+export { default as ItemModifierZones } from './components/ItemModifierZones';
+export type { PerMenuSidesAdapter } from './components/ItemModifierZones';
 export type { DietaryTagService } from './components/EditModal';
 export { default as BulkActionsPanel } from './components/BulkActionsPanel';
 export { default as BulkModifierPanel } from './components/BulkModifierPanel';
