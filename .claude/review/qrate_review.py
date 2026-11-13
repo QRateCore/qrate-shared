@@ -31,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-GATE_VERSION = "2026-11-12.2"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
+GATE_VERSION = "2026-11-13.1"  # bump on EVERY change — sync_gate.py refuses to overwrite a newer copy
 REVIEW_HOME = Path(__file__).resolve().parent
 # Logs are per-USER, not per-repo: a hook writing into the work tree would dirty `git status`.
 LOG_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "qrate-review-logs"

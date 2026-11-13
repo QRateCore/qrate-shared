@@ -35,11 +35,19 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
 
 ## The loop (builder agent)
 
-1. Finish the change and run your own tests. **Commit everything.** Uncommitted work is not reviewed.
+1. Finish the change and run the repo's **FULL** test suite + typecheck (the same commands its pipeline
+   CI stage runs), not just the files you touched. **Commit everything.** Uncommitted work is not reviewed.
+   **The reviewer only PASSes a fully green repo** (checklist A6, 2026-11-12): any red unit test, typecheck
+   error or red latest E2E-Dev run is a P1 BLOCK even if your diff did not cause it. The exceptions: your
+   diff is the fix for those reds and leaves the suite strictly greener, or (E2E only) you show the reds are
+   being fixed in an in-flight change and your diff touches none of those specs' surfaces. Any E2E spec you
+   add or edit must have actually RUN green (a dev run or local Playwright output, not `--list`).
 2. Launch the reviewer: Agent tool, `subagent_type: "qrate-reviewer"`. Brief it with:
    - the repo path(s). Batch a multi-repo change into ONE review so cross-repo contracts are checked.
    - the intent, in 1–3 sentences.
-   - what you tested, with the exact commands. It will verify these, not take them on faith.
+   - what you tested, with the exact commands and the HEAD sha they ran at, including the full-suite
+     summary line (`N passed / M failed`) and, for E2E specs you touched, the run that executed them.
+     It will verify these, not take them on faith.
    - anything deliberately out of scope.
    Do **not** hand it your reasoning or conclusions. Its value is reading the code cold.
 3. **PASS:** the push unlocks. Run the normal protocol: `git fetch origin && git rebase origin/main &&

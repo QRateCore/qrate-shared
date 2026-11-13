@@ -19,14 +19,34 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   hosts, Cognito pool/client IDs, `AKIA*`, `sk-ant-*`, literal `password=`/`token=`, real
   resource UUIDs as defaults. *Why: git history is permanent (`.claude/rules/secret-scan.md`).*
 - **A2 Tests exist and were run.** New behaviour has a test; the builder's "tests pass" claim is
-  verified (run the targeted suite if it takes < ~3 min, otherwise say NOT VERIFIED). No
-  `test.skip`, `it.skip`, `xit`, `@pytest.mark.skip`. *Why: CI red burns a deploy cycle; skips are banned.*
+  verified. No `test.skip`, `it.skip`, `xit`, `@pytest.mark.skip`. Targeted runs are for finding bugs;
+  the PASS itself needs the whole suite green (A6). *Why: CI red burns a deploy cycle; skips are banned.*
 - **A3 Piped exit codes.** No `cmd | tail -N && git push` / `pytest | tail` gating anything.
   *Why: `tail`'s exit code masks the test failure (memory `pipe_tail_masks_test_failure`).*
 - **A4 Does the diff match the stated intent?** Unrelated hunks, stray debug code, files from a
   parallel session swept into the commit (shared git index). *Why: concurrent agents share one index.*
 - **A5 Error paths.** Swallowed exceptions, `catch {}` / bare `except:`, best-effort helpers whose
   failure is only `console.warn`-ed on a path that matters.
+- **A6 The WHOLE suite is green — not just the touched files** (2026-11-12, Avi: "the reviewer should be
+  checking that all tests are always green"). Before PASS, all four hold (reviewer procedure step 6):
+  (a) the repo's FULL unit/CI suite + typecheck — the same commands its pipeline CI stage runs (owner
+  `npx turbo run typecheck test --filter=@qrate/owner` [+ owner-mobile] or `npx vitest run` from the
+  workspace root; core `./scripts/test-backend.sh` / `cd backend && pytest`) — was run by the reviewer,
+  or by the builder with the exact command + full summary output at the reviewed HEAD; never through
+  `| tail`. (b) **Any red test is P1 BLOCK, whether or not this diff caused it** — the only exception is
+  a diff whose purpose is fixing those reds and that leaves the suite strictly greener (before/after
+  counts). (c) The latest E2E-Dev run that ACTUALLY ran (`list-action-executions --pipeline-name
+  qrate-cicd-<repo>-dev`; logs `/aws/codebuild/qrate-cicd-<repo>-deploy`, stream `e2e-dev/<build-id>`,
+  `--profile qrate-breakglass`) is green — owner/admin/waiter E2E is nightly-only (`RUN_E2E`), so a green
+  push run is SKIPPED, not passed. Red E2E is P1 BLOCK unless this diff fixes those reds, or the builder
+  shows an in-flight fix for them AND this diff touches none of the failing specs' surfaces. A commit that
+  fixes reds is never blocked by those same reds (deadlock escape). (d) Every E2E spec the diff adds or
+  edits has RUN green — a cited dev run or local Playwright output; `--list` is not evidence, and a
+  `describe.serial` whose earlier test failed reports the new ones as "did not run". The verdict states
+  `Suite: full suite: N passed / 0 failed (<command>)` and `E2E: last E2E-Dev: <run id> <result>`.
+  *Why: 2026-11-12 a review passed an owner change on targeted vitest files while owner E2E-Dev had 40
+  reds (34 pre-existing), and a pre-existing red in the same `describe.serial` spec aborted the new
+  tests so they never ran.*
 
 ## B. qrate-core — backend / schema / infra
 
