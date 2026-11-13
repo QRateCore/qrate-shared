@@ -42,7 +42,12 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   shows an in-flight fix for them AND this diff touches none of the failing specs' surfaces. A commit that
   fixes reds is never blocked by those same reds (deadlock escape). (d) Every E2E spec the diff adds or
   edits has RUN green — a cited dev run or local Playwright output; `--list` is not evidence, and a
-  `describe.serial` whose earlier test failed reports the new ones as "did not run". The verdict states
+  `describe.serial` whose earlier test failed reports the new ones as "did not run". **Post-deploy-only
+  specs** (2026-11-13, Avi; `new-e2e-spec-never-run`, recurring): an added or edited spec that can only
+  run once the change is on dev is still NOT RUN and still blocks — there is no sign-off exception (Avi
+  chose strict). Run it first against a local build or with its reads route-mocked. Any dev run cited as
+  evidence is reported FILE BY FILE, and a test that ended through a `pending-backend` /
+  annotate-and-return escape counts as NOT RUN, not as passed. The verdict states
   `Suite: full suite: N passed / 0 failed (<command>)` and `E2E: last E2E-Dev: <run id> <result>`.
   *Why: 2026-11-12 a review passed an owner change on targeted vitest files while owner E2E-Dev had 40
   reds (34 pre-existing), and a pre-existing red in the same `describe.serial` spec aborted the new
@@ -161,6 +166,9 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   gap (`expect(count, 'no sub-categories on the seeded menu').toBeGreaterThan(0)`), after waiting for a
   terminal render state (not during a loading skeleton). Check the fixture's feature flags (e.g. Farm + Oak)
   before asserting a flag-gated surface.
+  **Retargeting a spec counts as changing it** (2026-11-13, Avi): a rewrite that points an existing spec
+  at a new control must not carry forward its old annotate-and-return escapes — remove them in the same
+  commit or turn each into a hard `expect(..., 'fixture gap: …')`.
 - **G9 App-Doc prose moves with the control** (2026-11-11; `app-doc-prose-stale-after-ui-change`,
   recurring). When a commit moves, hides or removes a visible owner-page element, grep ALL of App-Doc
   (`execution.ts`, `manifest.ts` and the `page.tsx` prose) for every phrase that described its OLD place
