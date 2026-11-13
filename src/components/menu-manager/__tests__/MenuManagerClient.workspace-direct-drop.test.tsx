@@ -9,7 +9,7 @@
  *  - without workspace mode (admin / waiter) both drops still open the chooser.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { MenuItemDisplay, MenuSummary, MenuManagerService } from '../../../types/restaurant';
 
@@ -28,7 +28,8 @@ vi.mock('../components/ItemPool', () => ({ default: () => null }));
 vi.mock('../components/MobileMenuManagerLayout', () => ({ default: () => <div /> }));
 vi.mock('../components/EditModal', () => ({ default: () => null }));
 vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
-vi.mock('../../../constants/feature-flags', async (orig) => ({ ...(await orig<object>()), isSubcategoryV2Enabled: () => false }));
+let v2 = false;
+vi.mock('../../../constants/feature-flags', async (orig) => ({ ...(await orig<object>()), isSubcategoryV2Enabled: () => v2 }));
 vi.mock('../track-action-context', () => ({
   useTrackAction: () => () => {},
   TrackActionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -46,6 +47,7 @@ const ev = () => ({ preventDefault() {}, stopPropagation() {}, dataTransfer: { s
 let service: MenuManagerService;
 beforeEach(() => {
   placementOpen = false;
+  v2 = false;
   service = {
     addItemToMenu: vi.fn().mockResolvedValue([]),
     updateMenuItemInMenu: vi.fn().mockResolvedValue([]),
@@ -89,5 +91,56 @@ describe('MenuManagerClient — workspace direct drop', () => {
     await act(async () => { last.onDropBucket(ev(), 'm1', 'Entrees'); });
     expect(placementOpen).toBe(true);
     expect(service.addItemToMenu).not.toHaveBeenCalled();
+  });
+});
+
+describe('MenuManagerClient — workspace direct drop, first-class sub-categories (the owner app path)', () => {
+  function v2Service() {
+    let n = 0;
+    return {
+      addItemToMenu: vi.fn().mockResolvedValue([{ menu_id: 'm1', canonical_categories: ['Entrees'] }]),
+      updateMenuItemInMenu: vi.fn().mockResolvedValue([]),
+      getMenuStructure: vi.fn().mockResolvedValue({ courses: { Entrees: [{ subcategory_id: 's-curries', name: 'Curries', count: 2 }] } }),
+      createMenuSubcategory: vi.fn().mockImplementation(async () => ({ subcategory_id: `s-new-${++n}` })),
+      assignItemToSubcategory: vi.fn().mockResolvedValue(undefined),
+      unassignItemFromSubcategory: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('reuses an existing sub-category case-insensitively, creates ONE for case variants, and PLACES Ungrouped dishes', async () => {
+    v2 = true;
+    const svc = v2Service();
+    service = svc as unknown as MenuManagerService;
+    const drag = mount(true, [item('dal', 'curries'), item('naan', 'breads'), item('roti', 'Breads'), item('x', 'Uncategorized')]);
+    await waitFor(() => expect(svc.getMenuStructure).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    drag(['dal', 'naan', 'roti', 'x']);
+    await act(async () => { last.onDropBucket(ev(), 'm1', 'Entrees'); });
+    await waitFor(() => expect(svc.unassignItemFromSubcategory).toHaveBeenCalled());
+    expect(placementOpen).toBe(false);
+    // existing "Curries" reused — no create for it
+    expect(svc.assignItemToSubcategory).toHaveBeenCalledWith('m1', 'dal', 's-curries');
+    // "breads" + "Breads" → one new sub-category, first spelling
+    expect(svc.createMenuSubcategory).toHaveBeenCalledTimes(1);
+    expect(svc.createMenuSubcategory).toHaveBeenCalledWith('m1', { course: 'Entrees', name: 'breads' });
+    expect(svc.assignItemToSubcategory).toHaveBeenCalledWith('m1', 'naan', 's-new-1');
+    expect(svc.assignItemToSubcategory).toHaveBeenCalledWith('m1', 'roti', 's-new-1');
+    // the Uncategorized dish is placed on the menu before it is unassigned
+    expect(svc.addItemToMenu).toHaveBeenCalledWith('x', 'm1', 1, 'Entrees', { canonical_categories: ['Entrees'], raw_categories: [] });
+    expect(svc.addItemToMenu.mock.invocationCallOrder[0]).toBeLessThan(svc.unassignItemFromSubcategory.mock.invocationCallOrder[0]);
+  });
+
+  it('an Ungrouped dish already on the menu in another course gets this course added', async () => {
+    v2 = true;
+    const svc = v2Service();
+    service = svc as unknown as MenuManagerService;
+    const onMenu = { ...item('x', ''), menu_associations: [{ menu_id: 'm1', canonical_categories: ['Desserts'], raw_categories: [] }] } as unknown as MenuItemDisplay;
+    const drag = mount(true, [onMenu]);
+    await waitFor(() => expect(svc.getMenuStructure).toHaveBeenCalled());
+    drag(['x']);
+    await act(async () => { last.onDropBucket(ev(), 'm1', 'Entrees'); });
+    await waitFor(() => expect(svc.unassignItemFromSubcategory).toHaveBeenCalled());
+    expect(svc.addItemToMenu).not.toHaveBeenCalled();
+    expect(svc.updateMenuItemInMenu).toHaveBeenCalledWith('x', 'm1', { canonical_categories: expect.arrayContaining(['Entrees']) });
   });
 });

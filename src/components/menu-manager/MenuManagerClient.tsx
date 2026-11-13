@@ -1808,6 +1808,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               );
             }
             if (drinks.length > 1) setSelected(new Set());
+            return true;
           } catch (e) {
             // Roll the optimistic drink-type change back — leaving it would show
             // the item in a zone the backend never agreed to.
@@ -1818,11 +1819,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
               }),
             );
             showToast(`Couldn't file under ${typeLabel} — ${e instanceof Error ? e.message : String(e)}`);
+            return false;
           } finally {
             for (const item of drinks) pendingWriteItemIdsRef.current.delete(item.id);
           }
         };
-        void runDrinks();
+        const drinksDone = runDrinks();
         // Then ask which sub-category, exactly as a food-course drop does.
         //
         // Without this the drop set the drink type and filed the item onto the
@@ -1834,8 +1836,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
         //
         // No default label: a drinks menu's items carry no raw_categories to
         // infer one from, so the owner picks or creates.
-        if (workspaceDirectDrop) fileDirectlyRef.current?.(menuId, cat, drinks, snap.fromCat);
-        else openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
+        // Workspace direct drop: file into the sub-category only AFTER the
+        // placement + drink-type writes land (and not at all if they failed),
+        // so the two writes never race on the placement row.
+        if (workspaceDirectDrop) {
+          void drinksDone.then((ok) => { if (ok) fileDirectlyRef.current?.(menuId, cat, drinks, snap.fromCat); });
+        } else openSubCatPrompt(menuId, cat, drinks, snap.fromCat, '');
         return;
       }
 
@@ -1946,6 +1952,22 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           for (const item of toProcess) {
             try {
               if (ungrouped) {
+                // Unassign never writes the placement row (only assign upserts
+                // it), so a dish not yet on this menu — or not yet in this
+                // course — must be placed first, or "Filed under Ungrouped"
+                // would report a dish that never reaches the menu.
+                const assoc = item.menu_associations?.find((a) => a.menu_id === menuId);
+                if (!assoc) {
+                  const associations = await service.addItemToMenu(item.id, menuId, item.price ?? 0, cat, {
+                    canonical_categories: [cat], raw_categories: [],
+                  });
+                  setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
+                } else if (!(assoc.canonical_categories ?? []).includes(cat)) {
+                  const associations = await service.updateMenuItemInMenu(item.id, menuId, {
+                    canonical_categories: resolveMoveCanonicals(assoc.canonical_categories ?? [], cat, fromCat),
+                  });
+                  setItems((prev) => prev.map((i) => (i.id !== item.id ? i : { ...i, menu_associations: associations })));
+                }
                 await service.unassignItemFromSubcategory?.(menuId, item.id, cat);
               } else {
                 await service.assignItemToSubcategory!(menuId, item.id, subId!);
@@ -2099,16 +2121,19 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           for (const l of assoc.raw_categories ?? []) if ((l ?? '').trim()) existing.push(l.trim());
         }
       }
-      const groups = new Map<string, MenuItemDisplay[]>();
+      // Keyed case-insensitively so "curries" + "Curries" in one drop make ONE
+      // sub-category (first spelling wins, or the existing one's spelling).
+      const groups = new Map<string, { label: string; items: MenuItemDisplay[] }>();
       for (const it of toProcess) {
         const raw = (it.category ?? '').trim();
-        const key = !raw || raw.toLowerCase() === 'uncategorized'
+        const label = !raw || raw.toLowerCase() === 'uncategorized'
           ? UNGROUPED_KEY
           : existing.find((l) => l.toLowerCase() === raw.toLowerCase()) ?? raw;
-        const g = groups.get(key);
-        if (g) g.push(it); else groups.set(key, [it]);
+        const k = label === UNGROUPED_KEY ? label : label.toLowerCase();
+        const g = groups.get(k);
+        if (g) g.items.push(it); else groups.set(k, { label, items: [it] });
       }
-      for (const [key, group] of groups) applyRawCategoryMove(group, menuId, cat, key, fromCat);
+      for (const { label, items: group } of groups.values()) applyRawCategoryMove(group, menuId, cat, label, fromCat);
     },
     [applyRawCategoryMove, subcatV2, structureByMenu, items],
   );
