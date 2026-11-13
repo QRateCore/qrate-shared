@@ -396,6 +396,7 @@ export function ItemPlacementModal({
               type="button"
               onClick={onCancel}
               disabled={pending}
+              data-testid="category-modal-footer-cancel"
               className="min-h-11 rounded-lg px-4 py-2 text-sm font-medium"
               style={{ color: 'var(--text2)' }}
             >

@@ -98,6 +98,12 @@ describe('ItemPlacementModal — locked-category (course/sub-category drop)', ()
     fireEvent.click(screen.getByTestId('category-modal-cancel'));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it('cancels via the footer Cancel', () => {
+    const { onCancel } = setupLocked();
+    fireEvent.click(screen.getByTestId('category-modal-footer-cancel'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ItemPlacementModal — category mode (off-menu rec/includes drop)', () => {

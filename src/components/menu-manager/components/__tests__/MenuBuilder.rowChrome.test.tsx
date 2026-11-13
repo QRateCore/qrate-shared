@@ -74,11 +74,11 @@ describe('MenuItemRow rowChrome — pairing chips', () => {
         onDragEnd={vi.fn()}
         onRemove={vi.fn()}
         onEdit={vi.fn()}
-        rowChrome={(p) => <div data-testid="chrome">{p.pairingsChips}</div>}
+        rowChrome={(p) => <div data-testid="chrome" data-inactive={[...(p.inactivePairingIds ?? [])].join(',')} />}
       />,
     );
     // The target is on no menu, so it is an Inactive pairing for this dish.
-    expect(screen.getByTestId('chrome').querySelector('[data-testid="rec-inactive-chip-itm-1"]')).not.toBeNull();
+    expect(screen.getByTestId('chrome')).toHaveAttribute('data-inactive', target.id);
   });
 });
 
@@ -124,7 +124,5 @@ describe('MenuItemRow rowChrome', () => {
     act(() => props().toggleExpanded());
     expect(props().expanded).toBe(true);
     expect(screen.getByTestId('menu-item-settings-itm-1')).toBeTruthy();
-    expect(props().pairingsChips).toBeNull();
-    expect(props().rowMenu).toBeTruthy();
   });
 });

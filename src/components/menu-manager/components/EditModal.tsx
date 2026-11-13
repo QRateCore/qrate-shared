@@ -13,7 +13,7 @@ import {
 import { itemScopeLine, menuPricingHint, placementPath } from '../lib/editModalScope';
 import { FoodItemPreviewModal } from '../../preview/FoodItemPreviewModal';
 import type {MenuItemDisplay, MenuSummary, FoodTags, BeverageTags, AddonEntry, RecommendationEntry, MenuItemPerformancePeriod, MenuItemPerformanceResponse, MenuAssociation, MenuItemJunctionSettings, ServingOption} from '../../../types/restaurant';
-import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, type BoostLabel } from '../lib/menuUtils';
+import { FOOD_TAG_FIELD_MAP, toCanonical, BOOST_LABELS, asArray, isDrinkItem, type BoostLabel } from '../lib/menuUtils';
 import { parsePriceInput } from '../../../utils/price';
 import { useCurrencySymbol } from '../../../context/CurrencyContext';
 import {
@@ -228,6 +228,10 @@ interface EditModalProps {
    * don't pass it and see no tab.
    */
   recipeSlot?: ReactNode;
+  /** Menu pricing (v5, 2026-11-13): the selected menu's per-menu Includes
+   *  ("Includes all" / "Includes one by choice") — they moved here from the
+   *  Menus row's chevron panel. Rendered under the menu picked in that section. */
+  menuIncludesSlot?: (menuId: string) => ReactNode;
   /**
    * Optional render-slot for the Placements tab's overlap surface. When
    * supplied, the node is rendered above the per-menu placement cards
@@ -239,10 +243,6 @@ interface EditModalProps {
    * types (OverlapItem, OverlapPlacement) stay in the owner-webapp app
    * and don't leak into the shared package.
    */
-  /** Menu pricing (v5, 2026-11-13): the selected menu's per-menu Includes
-   *  ("Includes all" / "Includes one by choice") — they moved here from the
-   *  Menus row's chevron panel. Rendered under the menu picked in that section. */
-  menuIncludesSlot?: (menuId: string) => ReactNode;
   placementsOverlapSlot?: ReactNode;
   /**
    * PDD 2026-05-26 — count of food_item_groupings for this dish. Used to
@@ -4655,7 +4655,8 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
                   flushRef={pricingFlushRef}
                 />
               )}
-              {isPricingSection && pricingMenu && menuIncludesSlot && (
+              {/* Drinks have no Includes — ItemModifierZones renders nothing for them. */}
+              {isPricingSection && pricingMenu && menuIncludesSlot && !isDrinkItem(item) && (
                 <section className="mt-5" data-testid="edit-menu-includes" data-menu-id={pricingMenu.menu_id}>
                   <h3 className="m-0 mb-2 text-[14px] font-bold text-ink">Includes on this menu</h3>
                   {menuIncludesSlot(pricingMenu.menu_id)}

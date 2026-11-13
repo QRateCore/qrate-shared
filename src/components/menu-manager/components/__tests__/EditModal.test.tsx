@@ -2650,7 +2650,8 @@ describe('EditModal — v5: one write at a time', () => {
     await waitFor(() => expect(screen.getByTestId('delete-item-error')).toHaveTextContent('Cannot delete'));
     expect(screen.getByTestId('edit-cancel-btn')).not.toBeDisabled();
     expect(screen.getByTestId('edit-close-btn')).not.toBeDisabled();
-    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    // onSavingChange is reported from an effect — wait for it, don't assume the same tick.
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(false));
     expect(screen.getByTestId('tab-food_tags')).not.toBeDisabled();
   });
 });
@@ -2771,6 +2772,18 @@ describe('EditModal — Includes on this menu (Menu pricing)', () => {
     const section = await screen.findByTestId('edit-menu-includes');
     expect(section).toHaveAttribute('data-menu-id', 'm-lunch');
     expect(screen.getByTestId('test-includes')).toHaveTextContent('m-lunch');
+  });
+
+  it('no section for a drink — drinks have no Includes', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      item: makeDishItem({ id: 'inc-3', canonical_category: 'Beverages', canonical_categories: ['Beverages'], menu_associations: [assoc('m-lunch', 'Lunch')] as never }),
+      groupingsSlot,
+      menuIncludesSlot: () => <div data-testid="test-includes">x</div>,
+    });
+    await user.click(screen.getByTestId('tab-placements'));
+    await screen.findByTestId('menu-pricing-row-m-lunch');
+    expect(screen.queryByTestId('edit-menu-includes')).toBeNull();
   });
 
   it('no section without the slot', async () => {

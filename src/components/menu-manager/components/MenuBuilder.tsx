@@ -63,8 +63,6 @@ export interface MenuRowChromeProps {
     commit: () => void;
     invalid: string | null;
   };
-  /** The default ⋯ menu (Edit, 86 / restore, Sides, Remove) for this row. */
-  rowMenu: React.ReactNode;
   /** Take the item off this menu — or, when the row sits in a sub-category,
    *  out of that sub-category only (same handler the ⋯ menu's Remove uses). */
   onRemove: () => void;
@@ -82,10 +80,6 @@ export interface MenuRowChromeProps {
    *  non-paused menu with this dish (classifyRecMembers, the patron's
    *  same-menu pairing rule). Lets a badge-only row mark them. */
   inactivePairingIds?: ReadonlySet<string>;
-  /** The row's pairing chips (Active / Inactive recommendations, with the
-   *  Inactive popover's "Bring into menu"), exactly as the default row draws
-   *  them; null when the dish has no recommendations grouping. */
-  pairingsChips: React.ReactNode;
 }
 
 // ── Attention rules ──────────────────────────────────────────────────────────
@@ -1599,23 +1593,6 @@ function MenuItemRow({
             commit: () => (multiCat ? handleCategoryPriceBlur(cat) : handlePriceBlur()),
             invalid: priceInvalid,
           },
-          pairingsChips: groupings.some((g) => g.kind === 'recommendations') ? (
-            <>
-              {groupings.filter((g) => g.kind === 'recommendations').map((g) => (menus ? (
-                <RecGroupingChips
-                  key={g.id}
-                  grouping={g}
-                  owningItem={item}
-                  menuId={menuId}
-                  itemsById={itemsById}
-                  menus={menus}
-                  onBringIntoMenu={onBringIntoMenu}
-                />
-              ) : (
-                <GroupingChip key={g.id} grouping={g} />
-              )))}
-            </>
-          ) : null,
           onRemove,
           subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
           reorderHandle,
@@ -1634,19 +1611,6 @@ function MenuItemRow({
             }
             return ids;
           })(),
-          rowMenu: (
-            <RowMenu
-              itemId={item.id}
-              itemName={item.name}
-              active={item.active !== false}
-              subLabel={subLabel}
-              showSides={showIncludeZones}
-              onEdit={onEdit}
-              onToggleActive={onToggleActive}
-              onSides={() => setExpanded(true)}
-              onRemove={onRemove}
-            />
-          ),
         })}</>
       ) : (
       <div className="flex items-center gap-2.5 min-h-[50px] w-full pl-1.5 pr-1 transition-colors hover:bg-surface2">
@@ -2661,7 +2625,7 @@ function CategoryBucket({
                   key={item.id}
                   // Workspace: the WHOLE row (checkbox column included) takes the
                   // subtle hover tint, so the eye stays on one dish (Avi 2026-11-13).
-                  className={`flex items-stretch w-full group/row ${isSelected ? 'bg-surface2' : ''} ${workspace && !isSelected ? 'transition-colors hover:bg-[var(--mw-sand,#FBF7F4)]' : ''}`}
+                  className={`flex items-stretch w-full group/row ${isSelected ? 'bg-surface2' : ''} ${workspace && !isSelected ? 'transition-colors hover:bg-[var(--mw-sand)]' : ''}`}
                   data-selected={isSelected ? 'true' : undefined}
                 >
                   <div
