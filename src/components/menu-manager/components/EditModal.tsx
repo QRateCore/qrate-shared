@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { applyAlcoholic, applyDrinkType, drinkTypeConfig, drinkTypesFor, SERVED_LABEL } from '../drinkConfig';
 import {
   X, Upload, Camera, Trash2, Eye, AlertCircle, ScanEye, ChevronDown, Check, Images, TriangleAlert, Copy,
-  Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils, CupSoda,
+  Tag, Leaf, SlidersHorizontal, Database, Wine, ChefHat, Settings, BarChart3, Utensils, CupSoda, Plus,
   type LucideIcon,
 } from 'lucide-react';
 import { itemScopeLine, menuPricingHint, placementPath } from '../lib/editModalScope';
@@ -136,6 +136,12 @@ interface EditModalProps {
   }) => Promise<MenuItemDisplay>;
   /** When provided, allergens and dietary restrictions use the dietary-tags API instead of free-text input. */
   dietaryTagService?: DietaryTagService;
+  /** v5.1: create a new dietary label / allergen in the restaurant's shared
+   *  list from Edit item → Dietary & allergens ("+ Dietary label" /
+   *  "+ Allergen"). Resolves to the label's stored key (slug); the editor then
+   *  switches it on for this item. The host refreshes the label lists it
+   *  passes in (customDietary / customAllergens / defaults). */
+  onCreateLabel?: (kind: 'dietary' | 'allergen', name: string) => Promise<string>;
   /** Owner-added (custom) allergens for this restaurant, beyond the FDA-9
    *  canonical set. Appended to the allergen pill picker so newly-defined
    *  allergens are immediately selectable on the item. Consumer is the
@@ -584,6 +590,7 @@ function DietaryMultiSelect({
   reviewed,
   onToggleNa,
   onAcceptAi,
+  onCreate,
 }: {
   label: string;
   options: readonly string[];
@@ -603,8 +610,27 @@ function DietaryMultiSelect({
    *  picks as-is — flips the review state to 'manually_accepted'
    *  without touching tag rows. */
   onAcceptAi?: () => void;
+  /** v5.1: create a new label of this kind from the trailing dashed pill and
+   *  switch it on for this item. Absent = no create pill. */
+  onCreate?: (name: string) => Promise<void>;
 }) {
   const [busyTag, setBusyTag] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const newNoun = type === 'dietary' ? 'dietary label' : 'allergen';
+  const draftName = (draft ?? '').trim();
+  const taken = new Set(options.flatMap((o) => [o.toLowerCase(), (labels[o] ?? o).toLowerCase()]));
+  const canSave = !!draftName && !taken.has(draftName.toLowerCase()) && !taken.has(draftName.toLowerCase().replace(/\s+/g, '_')) && !creating;
+  const saveDraft = async () => {
+    if (!onCreate || !canSave) return;
+    setCreating(true);
+    try {
+      await onCreate(draftName);
+      setDraft(null);
+    } finally {
+      setCreating(false);
+    }
+  };
   // Kar chips (Owner Portal redesign): a selected label is ink on both
   // sections — the colour no longer encodes allergen-vs-dietary, the heading
   // does. Unselected chips are outlined.
@@ -761,6 +787,79 @@ function DietaryMultiSelect({
           >
             N/A
           </button>
+          {onCreate && (draft === null ? (
+            <button
+              type="button"
+              data-testid={`dietary-new-${type}`}
+              onClick={() => setDraft('')}
+              className="dietary-new-pill"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                height: 34, padding: '0 12px', borderRadius: 999,
+                border: '1.5px dashed var(--line-input, #D6D1C7)',
+                background: 'transparent', color: 'var(--ink-soft, #6F6659)',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >
+              <Plus size={14} aria-hidden />
+              {type === 'dietary' ? 'Dietary label' : 'Allergen'}
+            </button>
+          ) : (
+            <span
+              data-testid={`dietary-new-editor-${type}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                height: 34, padding: '0 4px 0 12px', borderRadius: 999,
+                border: '1.5px solid var(--mw-accent, #B8392A)', background: 'var(--surface, #fff)',
+              }}
+              // Esc / Enter belong to this pill — never the editor around it.
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); setDraft(null); }
+                else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); void saveDraft(); }
+              }}
+            >
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={`New ${newNoun}`}
+                aria-label={`New ${newNoun}`}
+                data-testid={`dietary-new-input-${type}`}
+                style={{ width: 150, border: 'none', outline: 'none', background: 'transparent', font: 'inherit', fontSize: 13, color: 'var(--ink, #0E0E10)' }}
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void saveDraft()}
+                disabled={!canSave}
+                aria-label={`Add ${newNoun} and apply to this item`}
+                title="Add and apply to this item"
+                data-testid={`dietary-new-save-${type}`}
+                style={{
+                  width: 26, height: 26, flex: 'none', border: 'none', borderRadius: 999,
+                  background: 'var(--mw-accent, #B8392A)', color: 'var(--on-ink, #fff)',
+                  display: 'grid', placeItems: 'center', padding: 0,
+                  cursor: canSave ? 'pointer' : 'not-allowed', opacity: canSave ? 1 : 0.45,
+                }}
+              >
+                <Check size={14} strokeWidth={3} aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraft(null)}
+                aria-label="Cancel"
+                title="Cancel"
+                data-testid={`dietary-new-cancel-${type}`}
+                style={{
+                  width: 26, height: 26, flex: 'none', border: 'none', borderRadius: 999,
+                  background: 'transparent', color: 'var(--ink-soft, #6F6659)',
+                  display: 'grid', placeItems: 'center', padding: 0, cursor: 'pointer',
+                }}
+              >
+                <X size={14} aria-hidden />
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -931,7 +1030,7 @@ function withStored<T extends string>(list: readonly T[], stored: string | null 
   return stored && !list.includes(stored as T) ? [...list, stored as T] : [...list];
 }
 
-export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, menuIncludesSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
+export default function EditModal({ item, restaurantId, menus, allItems, ownerFoodCategories, onClose, onComplete, onSavingChange, onNavigateToMenu, getMenuHref, onDishAddonsChange, isNewItem = false, forceAddon = false, modifierTypeName = null, forceDish = false, onOpenPosLink, posLinkStatus, posLinkName, posLinkPrice, posSellable, preselectedDishIds, onSaveNewItem, dietaryTagService, onCreateLabel, customAllergens, customDietary, allergenDefaults, dietaryDefaults, heatLabels, sweetnessLabels, onSweetnessUpdate, onHeatSpiceUpdate, imageLibrarySlot, galleryPanelSlot, groupingsSlot, pairingsSlot, recipeSlot, placementsOverlapSlot, menuIncludesSlot, groupingsCount, displayMode = 'modal', onItemUpdate, onEnrichItem, descriptionSource, descriptionReviewed, onAcceptDescription, onCloneRequest, cloneMode = false, cloneSourceName, sourceItemId, onCloneSave, shell = 'classic' }: EditModalProps) {
   const v5 = shell === 'v5';
   const isInline = displayMode === 'inline';
   const activeHeatLabels: string[] = (heatLabels && heatLabels.length > 0)
@@ -3946,6 +4045,19 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
   );
 
   // ── Dietary & allergens section ───────────────────────────────────────────
+  // v5.1: create a label, then switch it on for this item (local for a new
+  // item, written straight away for a saved one).
+  const createAndApply = (type: 'allergen' | 'dietary') => (onCreateLabel ? async (name: string) => {
+    const slug = await onCreateLabel(type, name);
+    const current = type === 'allergen' ? allergenSet : dietarySet;
+    if (!slug || current.has(slug)) return;
+    if (isNewItem) {
+      (type === 'allergen' ? setAllergenSet : setDietarySet)((prev) => new Set(prev).add(slug));
+    } else {
+      await handleDietaryToggle(slug, type);
+    }
+  } : undefined);
+
   const dietarySection = (
     <section data-testid="dietary-info-card" className="flex flex-col gap-5">
       {dietaryTagService && restaurantId && (
@@ -3968,6 +4080,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               ? setDietarySet(new Set())
               : void handleClickNa('dietary')}
             onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('dietary')}
+            onCreate={createAndApply('dietary')}
           />
           <DietaryMultiSelect
             label="Contains allergens"
@@ -3987,6 +4100,7 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
               ? setAllergenSet(new Set())
               : void handleClickNa('allergens')}
             onAcceptAi={isNewItem ? undefined : () => void handleAcceptAi('allergens')}
+            onCreate={createAndApply('allergen')}
           />
         </>
       )}

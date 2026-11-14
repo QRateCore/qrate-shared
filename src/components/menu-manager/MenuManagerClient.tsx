@@ -214,6 +214,8 @@ interface Props {
   showVisibilityFilter?: boolean;
   /** When provided, allergens and dietary restrictions in EditModal use the dietary-tags API. */
   dietaryTagService?: DietaryTagService;
+  /** v5.1: create a dietary label / allergen inline in Edit item (see EditModal). */
+  onCreateLabel?: (kind: 'dietary' | 'allergen', name: string) => Promise<string>;
   /** Per-restaurant custom allergens / dietary + their effective canonical
    *  defaults (canonical minus hidden). Forwarded verbatim to EditModal so the
    *  allergen/dietary pill picker matches the Food Items page exactly — without
@@ -619,7 +621,7 @@ function isOnMenu(item: MenuItemDisplay, menuId: string | null | undefined): boo
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, editModalShell = 'classic', onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onCreateLabel, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, editModalShell = 'classic', onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -3327,6 +3329,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             sourceItemId={cloneDraftSource.id}
             onCloneSave={cloneMenuItem}
             dietaryTagService={dietaryTagService}
+            onCreateLabel={onCreateLabel}
             customAllergens={customAllergens}
             customDietary={customDietary}
             allergenDefaults={allergenDefaults}
@@ -3386,6 +3389,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             posLinkPrice={posLink?.state?.price ?? null}
             posSellable={posLink?.state?.sellable !== false}
             dietaryTagService={dietaryTagService}
+            onCreateLabel={onCreateLabel}
             customAllergens={customAllergens}
             customDietary={customDietary}
             allergenDefaults={allergenDefaults}

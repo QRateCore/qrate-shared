@@ -990,6 +990,13 @@ export interface GroupingItem {
    */
   reason_kind?: 'owner' | 'ai' | 'often_together' | 'great_match' | 'cuisine';
   /**
+   * Menu workspace v5.1 (2026-11-14) — the option is chosen for the guest by
+   * default (Comes with / Custom group "Pre-selected"). The server trims the
+   * set to the grouping's max_select, keeping the first N by position.
+   * Absent on a core build that predates the column — reads as false.
+   */
+  preselected?: boolean;
+  /**
    * PDD 2026-05-25 — owner/staff-only memo, projected from the linked
    * menu_items.memo so the Add member popup picker can render the Memo
    * column without an extra fetch. Add-ons only by convention.

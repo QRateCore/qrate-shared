@@ -164,6 +164,7 @@ interface RenderConfig {
   /** 2026-10-18 — Recipe tab content (owner Kitchen Ops). */
   recipeSlot?: React.ReactNode;
   menuIncludesSlot?: (menuId: string) => React.ReactNode;
+  onCreateLabel?: (kind: 'dietary' | 'allergen', name: string) => Promise<string>;
   /** PDD 2026-05-26 — drives the BYO toggle's enabled/disabled state. */
   groupingsCount?: number;
 }
@@ -192,6 +193,7 @@ function renderModal(config: RenderConfig = {}) {
     pairingsSlot,
     recipeSlot,
     menuIncludesSlot,
+    onCreateLabel,
     groupingsCount,
   } = config;
 
@@ -220,6 +222,7 @@ function renderModal(config: RenderConfig = {}) {
         pairingsSlot={pairingsSlot}
         recipeSlot={recipeSlot}
         menuIncludesSlot={menuIncludesSlot}
+        onCreateLabel={onCreateLabel}
         groupingsCount={groupingsCount}
       />
     </MenuManagerServiceProvider>,
@@ -2791,5 +2794,83 @@ describe('EditModal — Includes on this menu (Menu pricing)', () => {
     renderModal({ item: makeDishItem({ id: 'inc-2', menu_associations: [assoc('m-lunch', 'Lunch')] as never }), groupingsSlot });
     await user.click(screen.getByTestId('tab-placements'));
     expect(screen.queryByTestId('edit-menu-includes')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v5.1 — create a dietary label / allergen inline (Dietary & allergens)
+// ---------------------------------------------------------------------------
+
+describe('EditModal — "+ Dietary label" / "+ Allergen" inline create (v5.1)', () => {
+  it('no create pill without onCreateLabel', () => {
+    renderDietary({ item: makeDishItem({ id: 'nl-0' }), dietaryTagService: makeDietaryTagService() });
+    expect(screen.queryByTestId('dietary-new-dietary')).toBeNull();
+  });
+
+  it('Enter creates the label and switches it on for this item', async () => {
+    const dietary = makeDietaryTagService();
+    const onCreateLabel = vi.fn().mockResolvedValue('low_sodium');
+    renderDietary({ item: makeDishItem({ id: 'nl-1' }), dietaryTagService: dietary, onCreateLabel });
+    fireEvent.click(screen.getByTestId('dietary-new-dietary'));
+    const input = screen.getByTestId('dietary-new-input-dietary');
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: 'Low Sodium' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(onCreateLabel).toHaveBeenCalledWith('dietary', 'Low Sodium'));
+    await waitFor(() => expect(dietary.setItemTags).toHaveBeenCalledWith('rest-1', 'nl-1', { dietary: ['low_sodium'] }));
+    await waitFor(() => expect(screen.queryByTestId('dietary-new-input-dietary')).toBeNull());
+  });
+
+  it('✓ saves an allergen; a duplicate (any case) or an empty name cannot be saved', async () => {
+    const onCreateLabel = vi.fn().mockResolvedValue('sesame_seeds');
+    renderDietary({ item: makeDishItem({ id: 'nl-2' }), dietaryTagService: makeDietaryTagService(), onCreateLabel });
+    fireEvent.click(screen.getByTestId('dietary-new-allergen'));
+    const save = screen.getByTestId('dietary-new-save-allergen');
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByTestId('dietary-new-input-allergen'), { target: { value: 'PEANUTS' } });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByTestId('dietary-new-input-allergen'), { target: { value: 'Sesame seeds' } });
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(onCreateLabel).toHaveBeenCalledWith('allergen', 'Sesame seeds'));
+  });
+
+  it('Esc cancels the pill only — the editor stays open', () => {
+    const onClose = vi.fn();
+    const onCreateLabel = vi.fn();
+    renderDietary({ item: makeDishItem({ id: 'nl-3' }), dietaryTagService: makeDietaryTagService(), onCreateLabel, onClose });
+    // The hosts close Edit item on an Esc that bubbles up to them — stand in
+    // for one above the editor's root.
+    const host = vi.fn();
+    document.addEventListener('keydown', host);
+    fireEvent.click(screen.getByTestId('dietary-new-dietary'));
+    fireEvent.keyDown(screen.getByTestId('dietary-new-input-dietary'), { key: 'Escape' });
+    document.removeEventListener('keydown', host);
+    expect(host).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('dietary-new-input-dietary')).toBeNull();
+    expect(screen.getByTestId('dietary-new-dietary')).toBeTruthy();
+    // × cancels the same way.
+    fireEvent.click(screen.getByTestId('dietary-new-dietary'));
+    fireEvent.click(screen.getByTestId('dietary-new-cancel-dietary'));
+    expect(screen.queryByTestId('dietary-new-input-dietary')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onCreateLabel).not.toHaveBeenCalled();
+  });
+
+  it('on a new (unsaved) item the created label is selected locally, with no tag write', async () => {
+    const dietary = makeDietaryTagService();
+    const onCreateLabel = vi.fn().mockResolvedValue('vegan');
+    renderDietary({
+      item: makeDishItem({ id: 'temp-nl-4', name: '' }),
+      isNewItem: true,
+      onSaveNewItem: vi.fn().mockResolvedValue({ id: 'real-nl-4' }),
+      dietaryTagService: dietary,
+      onCreateLabel,
+    });
+    fireEvent.click(screen.getByTestId('dietary-new-dietary'));
+    fireEvent.change(screen.getByTestId('dietary-new-input-dietary'), { target: { value: 'Plant based' } });
+    fireEvent.keyDown(screen.getByTestId('dietary-new-input-dietary'), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByTestId('dietary-pill-dietary-vegan')).toHaveAttribute('aria-pressed', 'true'));
+    expect(dietary.setItemTags).not.toHaveBeenCalled();
   });
 });
