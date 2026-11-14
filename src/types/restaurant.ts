@@ -997,6 +997,12 @@ export interface GroupingItem {
    */
   preselected?: boolean;
   /**
+   * Pairings (v5.1): true when this row is a symmetric pairing STORED under the
+   * partner dish and only mirrored onto this one. It shares the partner's
+   * position, so reordering this dish must not write it.
+   */
+  mirrored?: boolean;
+  /**
    * PDD 2026-05-25 — owner/staff-only memo, projected from the linked
    * menu_items.memo so the Add member popup picker can render the Memo
    * column without an extra fetch. Add-ons only by convention.
