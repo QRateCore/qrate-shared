@@ -627,6 +627,8 @@ function DietaryMultiSelect({
     try {
       await onCreate(draftName);
       setDraft(null);
+    } catch {
+      // The host already told the owner (toast); keep the draft open to retry.
     } finally {
       setCreating(false);
     }

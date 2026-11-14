@@ -2835,6 +2835,17 @@ describe('EditModal — "+ Dietary label" / "+ Allergen" inline create (v5.1)', 
     await waitFor(() => expect(onCreateLabel).toHaveBeenCalledWith('allergen', 'Sesame seeds'));
   });
 
+  it('a failed create keeps the pill open with the name, to try again', async () => {
+    const onCreateLabel = vi.fn().mockRejectedValue(new Error('nope'));
+    renderDietary({ item: makeDishItem({ id: 'nl-5' }), dietaryTagService: makeDietaryTagService(), onCreateLabel });
+    fireEvent.click(screen.getByTestId('dietary-new-dietary'));
+    fireEvent.change(screen.getByTestId('dietary-new-input-dietary'), { target: { value: 'Low FODMAP' } });
+    fireEvent.click(screen.getByTestId('dietary-new-save-dietary'));
+    await waitFor(() => expect(onCreateLabel).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('dietary-new-save-dietary')).not.toBeDisabled());
+    expect(screen.getByTestId('dietary-new-input-dietary')).toHaveValue('Low FODMAP');
+  });
+
   it('Esc cancels the pill only — the editor stays open', () => {
     const onClose = vi.fn();
     const onCreateLabel = vi.fn();
