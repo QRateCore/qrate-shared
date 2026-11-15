@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder, dragStart, orderSubs, onCreateSub }: { dragStart?: ReturnType<typeof vi.fn>; orderSubs?: (m: string, c: string, labels: string[]) => string[]; onCreateSub?: ReturnType<typeof vi.fn>; workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
+function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder, dragStart, orderSubs, onCreateSub, dropSub }: { dropSub?: ReturnType<typeof vi.fn>; dragStart?: ReturnType<typeof vi.fn>; orderSubs?: (m: string, c: string, labels: string[]) => string[]; onCreateSub?: ReturnType<typeof vi.fn>; workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -65,6 +65,7 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       onDragEnterBucket={enter}
       onDragLeaveBucket={vi.fn()}
       onDropBucket={vi.fn()}
+      onDropSubCategory={dropSub}
       onReorderSubCategory={reorder}
       onCreateMenu={vi.fn().mockResolvedValue(undefined)}
       onEditMenu={vi.fn()}
@@ -369,5 +370,19 @@ describe('MenuBuilder — workspace course header (Avi 2026-11-15)', () => {
     expect(subSelect('Curries')!.className).toContain('accent-[var(--accent)]');
     const bar = screen.getByTestId(/^subcategory-drop-.*-Curries$/) as HTMLElement;
     expect(bar.style.background).toBe('var(--surface)');
+  });
+});
+
+describe('MenuBuilder — grip drag onto a sibling sub-category (Avi 2026-11-15)', () => {
+  it('a dish grip-dragged out of Curries files into the Rice band; its own band is not a target', () => {
+    const dropSub = vi.fn();
+    render(<Harness workspaceMode onReorderItem={vi.fn()} dropSub={dropSub} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(screen.getByTestId('grip-a'), { dataTransfer: dt }); // a sits in Curries (orderable)
+    fireEvent.drop(screen.getByTestId(/^subcategory-drop-.*-Curries$/), { dataTransfer: dt });
+    expect(dropSub).not.toHaveBeenCalled();
+    fireEvent.drop(screen.getByTestId(/^subcategory-drop-.*-Rice$/), { dataTransfer: dt });
+    expect(dropSub).toHaveBeenCalledWith(expect.anything(), 'menu-1', 'Entrees', 'Rice');
   });
 });
