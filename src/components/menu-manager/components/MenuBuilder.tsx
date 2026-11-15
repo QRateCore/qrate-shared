@@ -2682,6 +2682,8 @@ function CategoryBucket({
               // MenuItemRow itself stays untouched (and drag-and-drop on
               // the row still works because the drag handlers live on the
               // row's outer div, NOT the checkbox).
+              // Classic / mobile only — the workspace desktop row draws its box in
+              // the row chrome (chromeSelects, above), same testid.
               // The checkbox is always in the DOM (the owner-menu-bulk-actions
               // canary clicks `menu-builder-row-select-<id>` straight after
               // opening a tab, with no Select toggle), but it is faded until the

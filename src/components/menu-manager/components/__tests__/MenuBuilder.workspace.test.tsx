@@ -199,7 +199,7 @@ describe('MenuBuilder — workspace sub-category reorder', () => {
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
     const bar = screen.getByTestId(/^subcategory-drop-.*-Curries$/);
     // Only the grip drags (Avi 2026-11-15), never the bar itself.
-    expect(bar.getAttribute('draggable')).toBeNull();
+    expect(bar.getAttribute('draggable')).not.toBe('true');
     expect(within(bar).getByTestId(/^subcategory-reorder-grip-/).getAttribute('draggable')).toBe('true');
     expect(screen.queryByTestId(/^subcategory-move-up-/)).toBeNull();
     expect(screen.queryByTestId(/^subcategory-move-down-/)).toBeNull();

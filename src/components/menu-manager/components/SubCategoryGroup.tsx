@@ -141,6 +141,17 @@ export function SubCategoryGroup({
   // control kept on the phone). Empty on desktop → unchanged.
   const mobileTapClass = isMobile ? 'min-w-11 min-h-11 flex items-center justify-center' : '';
 
+  // Owner workspace: only the grip drags (Avi 2026-11-15). Classic keeps the
+  // whole header as the drag source. A separate marker keeps the header's
+  // item-refile drop from mistaking a group reorder for an item drag.
+  const barDrags = !workspace && reorderEnabled && !renaming;
+  const gripDrags = !!workspace && reorderEnabled && !renaming;
+  const startReorderDrag = (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
+    onReorderDragStart?.();
+  };
+
   async function submitRename() {
     const next = draftName.trim();
     if (!next || next === label) {
@@ -174,10 +185,13 @@ export function SubCategoryGroup({
           style={{ height: 3, background: 'var(--ink)' }}
         />
       )}
-      {/* Header — always rendered (unconditional E2E sync-point). The header is
-          the drop target; ONLY the grip starts a reorder drag (Avi 2026-11-15:
-          every drag in the builder starts from the left handle). */}
+      {/* Header — always rendered (unconditional E2E sync-point) and the drop
+          target. Owner workspace: ONLY the grip starts a reorder drag (Avi
+          2026-11-15). Classic (admin / waiter): the whole header drags, as before. */}
       <div
+        draggable={barDrags}
+        onDragStart={barDrags ? startReorderDrag : undefined}
+        onDragEnd={barDrags ? () => onReorderDragEnd?.() : undefined}
         // Item-refile enter/leave only when NOT reordering (no green highlight
         // during a group reorder).
         onDragEnter={isReorderActive ? undefined : onDragEnter}
@@ -245,8 +259,8 @@ export function SubCategoryGroup({
           border: workspace ? '1px solid var(--line)' : undefined,
           outline: isDragOver ? (workspace ? `2px solid ${DROP_RING.ring}` : '2px dashed var(--ok)') : undefined,
           outlineOffset: -2,
-          // The row toggles on click; only the grip shows the grab cursor.
-          cursor: renaming ? 'text' : 'pointer',
+          // Workspace: the row toggles on click; only the grip shows grab.
+          cursor: renaming ? 'text' : (barDrags ? 'grab' : 'pointer'),
           opacity: isReorderDragging ? (workspace ? 0.45 : 0.4) : undefined,
         }}
       >
@@ -256,14 +270,9 @@ export function SubCategoryGroup({
             data-testid={`subcategory-reorder-grip-${category}-${label}`}
             // The ONLY reorder drag source. A separate marker keeps the header's
             // item-refile drop from mistaking a group reorder for an item drag.
-            draggable={!renaming}
-            onDragStart={!renaming ? (e) => {
-              e.stopPropagation();
-              e.dataTransfer.effectAllowed = 'move';
-              try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
-              onReorderDragStart?.();
-            } : undefined}
-            onDragEnd={() => onReorderDragEnd?.()}
+            draggable={gripDrags}
+            onDragStart={gripDrags ? (e) => { e.stopPropagation(); startReorderDrag(e); } : undefined}
+            onDragEnd={gripDrags ? () => onReorderDragEnd?.() : undefined}
             title={workspace && !isMobile ? 'Drag to reorder (or Alt+↑ / Alt+↓)' : undefined}
             className="flex items-center justify-center shrink-0 text-ink-faint hover:text-ink"
             style={{ cursor: renaming ? undefined : 'grab', width: 18, height: 18 }}
