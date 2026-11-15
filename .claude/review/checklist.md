@@ -93,6 +93,19 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   works — e.g. a header search that now opens a results list over the page needs every "type, then click a
   row" spec to close the list first. A spec that switches editor sections must re-select the section before
   using a field that lives in another one.
+- **C8 Rendered TEXT changes ⇒ grep the canary for that text before PASS** (2026-11-15, Avi;
+  `stale-e2e-assert-after-ui-change`, recurring). When an element keeps its testid but what it RENDERS
+  changes (a label dropped for an icon, a value reformatted), run
+  `git -C qrate-canary grep -n '<testid>' origin/main` and check every `toContainText` / `toHaveText` on it
+  (and the same in `e2e/`). Each one is fixed in the same release (with the canary proven on demand), or the
+  diff keeps the old text reachable (e.g. screen-reader text beside the icon). *Why: the owner wine price
+  became icon + amount and canary owner-menu-bulk-actions still read "Glass $11.00".*
+- **C9 Shared menu-manager changes made for the owner workspace stay workspace-only** (2026-11-15, Avi;
+  `ungated-classic-change`, recurring). A `packages/shared` menu-manager change written for the owner Menus
+  workspace is guarded by `useBuilderWorkspace()` / `workspaceMode` / `rowChrome` unless the brief says the
+  classic builder (admin, waiter) changes too. Check the classic `MenuManagerClient` props still reach the
+  old path. *Why: grip-only sub-category drag first landed ungated and would have changed admin and waiter
+  on their next submodule bump.*
 
 ## D. Cross-repo contracts
 
