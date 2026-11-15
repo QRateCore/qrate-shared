@@ -76,6 +76,10 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   AND reads it 500s in that window. Split it: the schema commit `[DEPLOY FIRST]`, the code `[DEPLOY SECOND]`,
   and a prod release train must carry the schema commit in an EARLIER train than the code (or prove prod
   already has the column before approving).
+- **B11 A new DB-backed test file is wired into CI** (2026-11-15, Avi; `db-tests-skip-in-ci`, from the
+  cart-suggestions review). A new test file that skips without `TEST_DATABASE_URL` ⇒ it is added to the CI
+  schema-integration step in `infrastructure-cdk-cicd/lib/cicd-core-pipeline-stack.ts`, or it never runs in
+  the pipeline.
 
 ## C. Webapps (owner / admin / patron / waiter / wine / landing)
 
@@ -206,3 +210,6 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   empty", the item count, the destinations and name-uniqueness from ALL items of every kind with no search
   applied — never from the panel's current kind or search — and must never target a synthetic bucket
   (the "Other" row for uncategorised items).
+- **G13 An Owner App-Doc bump is checked against upstream's `DOC_VERSION`** (2026-11-15, Avi;
+  `app-doc-version-collision`). Owner App-Doc bump ⇒ compare `DOC_VERSION` with current `origin/main` before
+  PASS; if upstream bumped too, the builder rebases + regenerates both `app-doc-manifest.json` before review.
