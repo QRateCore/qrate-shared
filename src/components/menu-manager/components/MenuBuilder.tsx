@@ -73,6 +73,13 @@ export interface MenuRowChromeProps {
    *  reorder the dishes. Absent where dishes can't be ordered (Ungrouped,
    *  admin / waiter). */
   reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
+  /** The row's bulk-select checkbox, drawn by the chrome right after the grip
+   *  (Avi 2026-11-15). Absent when bulk selection is off. Keep the testid
+   *  `menu-builder-row-select-<id>`. */
+  select?: { checked: boolean; onToggle: () => void };
+  /** Wine rows: both serving prices, formatted (`$12.00`), or null for a slot
+   *  with no price — the chrome shows Glass and Bottle side by side. */
+  winePrices?: { glass: string | null; bottle: string | null };
   /** Bring an off-menu pairing's dish onto this menu (the same flow the
    *  Inactive pairing chip's popover runs). Absent where the host has none. */
   onBringIntoMenu?: (memberItemId: string) => void;
@@ -933,6 +940,7 @@ function MenuItemRow({
   onMove,
   disableDrag = false,
   reorderHandle,
+  chromeSelect,
 }: {
   item: MenuItemDisplay;
   menuId: string;
@@ -993,6 +1001,8 @@ function MenuItemRow({
   disableDrag?: boolean;
   /** Forwarded to the row chrome (workspace dish reorder grip). */
   reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void };
+  /** Forwarded to the row chrome: the bulk-select checkbox it draws after the grip. */
+  chromeSelect?: { checked: boolean; onToggle: () => void };
 }) {
   // Item library search (highlight mode): null = no search running.
   const highlight = useBuilderSearchHighlight();
@@ -1369,6 +1379,23 @@ function MenuItemRow({
     : (multiCat ? settings.category_prices?.[cat] != null : settings.price != null);
 
   const attention = itemHasAttention(item, settings);
+  const rowDraggable = !disableDrag && !expanded;
+  // The workspace chrome draws its own grip; that grip is the ONLY drag source.
+  const gripOnly = !!rowChrome && !isMobile;
+  // The chrome grip carries both drags: the move/file drag (to another course
+  // or sub-category) and, where the dishes can be ordered, the in-place reorder.
+  const chromeGrip = rowDraggable
+    ? {
+        onDragStart: (e: React.DragEvent) => {
+          onDragStart(e, item.id, menuId, cat);
+          reorderHandle?.onDragStart(e);
+        },
+        onDragEnd: () => {
+          reorderHandle?.onDragEnd();
+          onDragEnd();
+        },
+      }
+    : reorderHandle;
   // Approved-only count — AI-suggested addons that the owner hasn't accepted
   // yet are excluded from the row badge so the number reflects the live menu.
   const approvedAddons = countApprovedAddons(item);
@@ -1432,24 +1459,28 @@ function MenuItemRow({
       // would fight the checkbox UX) and while expanded (the editing UI owns the
       // pointer). onDragStart carries this row's menu + course so the drop target
       // can move/file it.
-      draggable={!disableDrag && !expanded}
+      // Owner workspace chrome (Avi 2026-11-15): only the left grip drags — the
+      // row itself is not a drag source there (gripOnly).
+      draggable={rowDraggable && !gripOnly}
       onDragStart={
-        !disableDrag && !expanded
+        rowDraggable && !gripOnly
           ? (e) => onDragStart(e, item.id, menuId, cat)
           : undefined
       }
-      onDragEnd={!disableDrag && !expanded ? onDragEnd : undefined}
+      onDragEnd={rowDraggable && !gripOnly ? onDragEnd : undefined}
       className={`w-full border-b border-line-row ${expanded ? 'bg-surface2/40' : ''} ${
         searchMatch === true
-          ? 'bg-[var(--surface-sunk)] shadow-[inset_3px_0_0_var(--accent)]'
+          ? `bg-[var(--surface-sunk)] ${gripOnly ? '' : 'shadow-[inset_3px_0_0_var(--accent)]'}`
           : searchMatch === false ? 'opacity-45 transition-opacity' : ''
       }`}
       style={{
-        borderLeft: `3px solid ${attention ? 'var(--bad)' : 'transparent'}`,
+        // Workspace: no red attention stripe (Avi 2026-11-15) — the course's
+        // ⚠ count carries it.
+        borderLeft: gripOnly ? undefined : `3px solid ${attention ? 'var(--bad)' : 'transparent'}`,
         // grab cursor signals a collapsed row is draggable (drag onto a course
         // to MOVE it, or into a sub-category to file it — PDD #6). Only when the
         // row is actually draggable, so editing/bulk-select rows keep default.
-        cursor: !disableDrag && !expanded ? 'grab' : undefined,
+        cursor: rowDraggable && !gripOnly ? 'grab' : undefined,
       }}
     >
       {isMobile ? (
@@ -1595,7 +1626,14 @@ function MenuItemRow({
           },
           onRemove,
           subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
-          reorderHandle,
+          reorderHandle: chromeGrip,
+          select: chromeSelect,
+          winePrices: isWine
+            ? {
+                glass: wineGlassCents != null ? `${currencySymbol}${(wineGlassCents / 100).toFixed(2)}` : null,
+                bottle: wineBottleCents != null ? `${currencySymbol}${(wineBottleCents / 100).toFixed(2)}` : null,
+              }
+            : undefined,
           onBringIntoMenu: onBringIntoMenu ? (memberId: string) => onBringIntoMenu(memberId, menuId) : undefined,
           inactivePairingIds: (() => {
             if (!menus) return undefined;
@@ -2240,6 +2278,20 @@ function CategoryBucket({
     return extra.length ? [...itemDerivedRawCategories, ...extra] : itemDerivedRawCategories;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showEmptySubCategoryChips, orderSubCategories, menuId, category, itemDerivedRawCategories]);
+  const workspace = useBuilderWorkspace();
+  // Workspace (Avi 2026-11-15): the header chips summarise a COLLAPSED course
+  // only — expanded, the sub-category bands are right there — and they follow
+  // the owner's sub-category order, not item count.
+  const headerChips = useMemo(() => {
+    if (!workspace) return bucketRawCategories;
+    if (!collapsed) return [];
+    if (!orderSubCategories) return bucketRawCategories;
+    const ordered = orderSubCategories(menuId, category, bucketRawCategories.map((rc) => rc.label));
+    const rank = new Map(ordered.map((l, i) => [normalizeSubcatKey(l), i] as const));
+    return [...bucketRawCategories].sort(
+      (a, b) => (rank.get(normalizeSubcatKey(a.label)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(normalizeSubcatKey(b.label)) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [workspace, collapsed, orderSubCategories, menuId, category, bucketRawCategories]);
 
   // A section can hold sub-categories with NO items yet — created from the [+]
   // but never filled. The empty-bucket branch below short-circuits before the
@@ -2261,7 +2313,6 @@ function CategoryBucket({
   // PDD 2026-05-22 — bucket-level select-all state.
   // checked when ALL non-empty bucket items are selected; indeterminate
   // when SOME (but not all) are selected.
-  const workspace = useBuilderWorkspace();
   // Workspace: holding a dragged item over a COLLAPSED course opens it, so its
   // sub-categories become drop targets. Cancelled when the pointer moves on.
   useEffect(() => {
@@ -2311,7 +2362,7 @@ function CategoryBucket({
           >
             <input
               type="checkbox"
-              className="w-3.5 h-3.5 accent-ink cursor-pointer"
+              className={`w-3.5 h-3.5 cursor-pointer ${workspace ? 'accent-[var(--accent)]' : 'accent-ink'}`}
               data-testid={`menu-builder-bucket-select-${category}`}
               checked={allBucketSelected}
               ref={(el) => {
@@ -2393,7 +2444,8 @@ function CategoryBucket({
         className={`flex-1 flex items-center gap-2.5 min-h-[44px] py-1.5 px-3.5 cursor-pointer text-left transition-colors duration-150 ${isDragOver ? '' : 'bg-surface2/50'}`}
         style={{
           background: isDragOver ? (workspace ? DROP_RING.tint : DROP_TARGET.fill) : undefined,
-          boxShadow: bucketHasAttention ? 'inset 3px 0 0 var(--bad)' : undefined,
+          // Workspace: no red attention bar (Avi 2026-11-15) — the ⚠ count stays.
+          boxShadow: bucketHasAttention && !workspace ? 'inset 3px 0 0 var(--bad)' : undefined,
         }}
       >
         <span className="text-ink-soft shrink-0">
@@ -2414,7 +2466,7 @@ function CategoryBucket({
                 is width-bounded (label ellipsis-truncates). On desktop only the
                 first MAX_RAWCAT_CHIPS render inline (rest → "+N"); on mobile they
                 wrap so nothing is cut off. */}
-            {bucketRawCategories.slice(0, MAX_RAWCAT_CHIPS).map((rc) => (
+            {headerChips.slice(0, MAX_RAWCAT_CHIPS).map((rc) => (
               <span
                 key={rc.label}
                 data-testid={`bucket-rawcat-chip-${category}-${rc.label}`}
@@ -2435,22 +2487,22 @@ function CategoryBucket({
                 <span className="shrink-0 font-semibold opacity-80">{rc.count}</span>
               </span>
             ))}
-            {bucketRawCategories.length > MAX_RAWCAT_CHIPS && (
+            {headerChips.length > MAX_RAWCAT_CHIPS && (
               <span
                 data-testid={`bucket-rawcats-overflow-${category}`}
-                title={bucketRawCategories
+                title={headerChips
                   .slice(MAX_RAWCAT_CHIPS)
                   .map((rc) => `${rc.label} (${rc.count})`)
                   .join(', ')}
                 className="shrink-0 text-[11px] font-semibold text-ink-soft rounded-full bg-surface border border-line px-2 py-px"
               >
-                +{bucketRawCategories.length - MAX_RAWCAT_CHIPS}
+                +{headerChips.length - MAX_RAWCAT_CHIPS}
               </span>
             )}
           {/* Bare [+] at the end of the sub-category row → inline create.
               Commits on Enter or blur; stops propagation so it never toggles
               the course collapse. */}
-          {onCreateSubCategory && (
+          {onCreateSubCategory && !workspace && (
             <SubCategoryCreateBox
               menuId={menuId}
               category={category}
@@ -2548,10 +2600,15 @@ function CategoryBucket({
               subLabel?: string,
               reorderHandle?: { onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void },
             ) => {
+              // Workspace desktop chrome draws the checkbox itself, right after
+              // the grip (Avi 2026-11-15), instead of a leading column.
+              const chromeSelects = bulkSelectionEnabled && !!rowChrome && !isMobile;
+              const isSelected = bulkSelection?.has(item.id) ?? false;
               const row = (
                 <MenuItemRow
                   key={item.id}
                   reorderHandle={reorderHandle}
+                  chromeSelect={chromeSelects ? { checked: isSelected, onToggle: () => onToggleBulkSelection?.(item.id) } : undefined}
                   item={item}
                   menuId={menuId}
                   cat={category}
@@ -2609,12 +2666,22 @@ function CategoryBucket({
                 />
               );
               if (!bulkSelectionEnabled) return row;
+              if (chromeSelects) {
+                return (
+                  <div
+                    key={item.id}
+                    className={`w-full ${isSelected ? 'bg-surface2' : ''}`}
+                    data-selected={isSelected ? 'true' : undefined}
+                  >
+                    {row}
+                  </div>
+                );
+              }
               // PDD 2026-05-22 Step 9 — render a leading checkbox column
               // when bulk selection is enabled. Wraps the row sideways so
               // MenuItemRow itself stays untouched (and drag-and-drop on
               // the row still works because the drag handlers live on the
               // row's outer div, NOT the checkbox).
-              const isSelected = bulkSelection?.has(item.id) ?? false;
               // The checkbox is always in the DOM (the owner-menu-bulk-actions
               // canary clicks `menu-builder-row-select-<id>` straight after
               // opening a tab, with no Select toggle), but it is faded until the
@@ -2743,9 +2810,11 @@ function CategoryBucket({
                   color={color}
                   containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
                   forceOpen={!!highlight && groupItems.some((it) => highlight.matchIds.has(it.id))}
-                  isDragOver={subCatDragOverLabel === label && !rowDrag}
+                  // A dish grip-dragged inside one sub-category can still be
+                  // filed into a SIBLING band (the grip carries both drags).
+                  isDragOver={subCatDragOverLabel === label && rowDrag?.label !== label}
                   onDragEnter={
-                    onDragEnterSubCategory && !rowDrag
+                    onDragEnterSubCategory && rowDrag?.label !== label
                       ? (e) => onDragEnterSubCategory(e, menuId, category, label)
                       : undefined
                   }
@@ -2754,8 +2823,9 @@ function CategoryBucket({
                       ? () => onDragLeaveSubCategory(menuId, category, label)
                       : undefined
                   }
+                  // Its own band is not a target for a dish dragged from it.
                   onDrop={
-                    onDropSubCategory
+                    onDropSubCategory && rowDrag?.label !== label
                       ? (e) => onDropSubCategory(e, menuId, category, label)
                       : undefined
                   }

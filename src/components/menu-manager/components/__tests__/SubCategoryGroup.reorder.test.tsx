@@ -41,23 +41,24 @@ describe('SubCategoryGroup reorder controls', () => {
     expect(screen.getByTestId('subcategory-move-down-Beverages-Beer (Bottle)')).toBeTruthy();
   });
 
-  it('makes the whole header row draggable when reorderEnabled', () => {
+  it('only the grip is draggable when reorderEnabled — the header row is not (Avi 2026-11-15)', () => {
     renderGroup();
-    expect((screen.getByTestId(ROW) as HTMLElement).getAttribute('draggable')).toBe('true');
+    expect((screen.getByTestId('subcategory-reorder-grip-Beverages-Beer (Bottle)') as HTMLElement).getAttribute('draggable')).toBe('true');
+    expect((screen.getByTestId(ROW) as HTMLElement).getAttribute('draggable')).toBeNull();
   });
 
   it('is NOT draggable while renaming (so the input stays usable)', () => {
-    // Open rename via the pencil, then the row must not be draggable.
+    // Open rename via the pencil, then the grip must not be draggable.
     renderGroup({ onRename: vi.fn() });
     fireEvent.click(screen.getByTestId('subcategory-rename-Beverages-Beer (Bottle)'));
-    expect((screen.getByTestId(ROW) as HTMLElement).getAttribute('draggable')).toBe('false');
+    expect((screen.getByTestId('subcategory-reorder-grip-Beverages-Beer (Bottle)') as HTMLElement).getAttribute('draggable')).toBe('false');
   });
 
   it('hides reorder controls when reorderEnabled is false', () => {
     renderGroup({ reorderEnabled: false });
     expect(screen.queryByTestId('subcategory-reorder-grip-Beverages-Beer (Bottle)')).toBeNull();
     expect(screen.queryByTestId('subcategory-move-up-Beverages-Beer (Bottle)')).toBeNull();
-    expect((screen.getByTestId(ROW) as HTMLElement).getAttribute('draggable')).toBe('false');
+    expect((screen.getByTestId(ROW) as HTMLElement).getAttribute('draggable')).toBeNull();
   });
 
   it('fires onMoveUp / onMoveDown on the ▲▼ buttons', () => {
@@ -76,13 +77,16 @@ describe('SubCategoryGroup reorder controls', () => {
     expect((screen.getByTestId('subcategory-move-down-Beverages-Beer (Bottle)') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('row drag fires onReorderDragStart; drop while reordering fires onReorderDrop, NOT item-refile', () => {
+  it('grip drag fires onReorderDragStart; drop while reordering fires onReorderDrop, NOT item-refile', () => {
     const onReorderDragStart = vi.fn();
     const onReorderDrop = vi.fn();
     const onDrop = vi.fn(); // item-refile — must NOT fire during a reorder drop
     renderGroup({ onReorderDragStart, onReorderDrop, onDrop, isReorderActive: true });
     const row = screen.getByTestId(ROW);
+    // A drag started on the header itself (not the grip) does nothing.
     fireEvent.dragStart(row, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } });
+    expect(onReorderDragStart).not.toHaveBeenCalled();
+    fireEvent.dragStart(screen.getByTestId('subcategory-reorder-grip-Beverages-Beer (Bottle)'), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } });
     fireEvent.drop(row, { dataTransfer: { setData: vi.fn() } });
     expect(onReorderDragStart).toHaveBeenCalledTimes(1);
     expect(onReorderDrop).toHaveBeenCalledTimes(1);

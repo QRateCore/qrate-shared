@@ -174,20 +174,10 @@ export function SubCategoryGroup({
           style={{ height: 3, background: 'var(--ink)' }}
         />
       )}
-      {/* Header — always rendered (unconditional E2E sync-point). The WHOLE row
-          is the reorder drag source (when reorderEnabled && not renaming) and
-          the drop target; the grip is the visual affordance. */}
+      {/* Header — always rendered (unconditional E2E sync-point). The header is
+          the drop target; ONLY the grip starts a reorder drag (Avi 2026-11-15:
+          every drag in the builder starts from the left handle). */}
       <div
-        // Row-level drag source — grab anywhere on the header to reorder. A
-        // separate marker keeps the header's item-refile drop from mistaking a
-        // group reorder for an item drag.
-        draggable={reorderEnabled && !renaming}
-        onDragStart={reorderEnabled && !renaming ? (e) => {
-          e.dataTransfer.effectAllowed = 'move';
-          try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
-          onReorderDragStart?.();
-        } : undefined}
-        onDragEnd={reorderEnabled ? () => onReorderDragEnd?.() : undefined}
         // Item-refile enter/leave only when NOT reordering (no green highlight
         // during a group reorder).
         onDragEnter={isReorderActive ? undefined : onDragEnter}
@@ -238,25 +228,25 @@ export function SubCategoryGroup({
         aria-expanded={!collapsed}
         aria-label={collapsed ? `Expand ${display}` : `Collapse ${display}`}
         aria-keyshortcuts={reorderEnabled ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
-        title={reorderEnabled && workspace && !isMobile ? 'Drag to reorder (or Alt+↑ / Alt+↓)' : undefined}
         // Full-width row: opt out of the global press-scale (see the course
         // header in MenuBuilder.tsx — same owner feedback 2026-07-21).
         data-no-press
         data-testid={`subcategory-drop-${category}-${label}`}
-        // The design's sub-category band: quiet surface2 fill, 13px bold, the
-        // controls (grip · chevron · count · ▲▼ · rename · delete) on the same
-        // row. Green = "valid drop target", consistent with the course buckets
+        // The sub-category band: 13px bold, the controls (grip · chevron ·
+        // count · ▲▼ · rename · delete) on the same row. Workspace: white with a
+        // hairline border (Avi 2026-11-15); elsewhere the quiet surface2 fill. Green = "valid drop target", consistent with the course buckets
         // and modifier zones (see DROP_TARGET in MenuBuilder).
         className="flex items-center gap-1.5 rounded-ctl px-3 py-1.5 text-[13px] font-bold text-ink transition-colors"
         style={{
           // Workspace (owner v5): the design's red ring + tint — the drop files
           // straight into this sub-category, no chooser.
           color: isDragOver && !workspace ? 'var(--ok)' : undefined,
-          background: isDragOver ? (workspace ? DROP_RING.tint : 'var(--ok-bg)') : 'var(--surface2)',
+          background: isDragOver ? (workspace ? DROP_RING.tint : 'var(--ok-bg)') : (workspace ? 'var(--surface)' : 'var(--surface2)'),
+          border: workspace ? '1px solid var(--line)' : undefined,
           outline: isDragOver ? (workspace ? `2px solid ${DROP_RING.ring}` : '2px dashed var(--ok)') : undefined,
           outlineOffset: -2,
-          // grab cursor when reorder is armed; pointer otherwise (row is clickable)
-          cursor: reorderEnabled && !renaming ? 'grab' : (renaming ? 'text' : 'pointer'),
+          // The row toggles on click; only the grip shows the grab cursor.
+          cursor: renaming ? 'text' : 'pointer',
           opacity: isReorderDragging ? (workspace ? 0.45 : 0.4) : undefined,
         }}
       >
@@ -264,8 +254,19 @@ export function SubCategoryGroup({
           <span
             aria-hidden="true"
             data-testid={`subcategory-reorder-grip-${category}-${label}`}
-            className="flex items-center justify-center shrink-0 text-ink-faint"
-            style={{ cursor: 'grab', width: 18, height: 18 }}
+            // The ONLY reorder drag source. A separate marker keeps the header's
+            // item-refile drop from mistaking a group reorder for an item drag.
+            draggable={!renaming}
+            onDragStart={!renaming ? (e) => {
+              e.stopPropagation();
+              e.dataTransfer.effectAllowed = 'move';
+              try { e.dataTransfer.setData('application/x-qrate-subcat-reorder', label); } catch { /* jsdom noop */ }
+              onReorderDragStart?.();
+            } : undefined}
+            onDragEnd={() => onReorderDragEnd?.()}
+            title={workspace && !isMobile ? 'Drag to reorder (or Alt+↑ / Alt+↓)' : undefined}
+            className="flex items-center justify-center shrink-0 text-ink-faint hover:text-ink"
+            style={{ cursor: renaming ? undefined : 'grab', width: 18, height: 18 }}
           >
             <GripVertical size={14} />
           </span>
@@ -273,7 +274,7 @@ export function SubCategoryGroup({
         {selectAll && !collapsed && (
           <input
             type="checkbox"
-            className="w-3.5 h-3.5 accent-ink cursor-pointer shrink-0"
+            className={`w-3.5 h-3.5 cursor-pointer shrink-0 ${workspace ? 'accent-[var(--accent)]' : 'accent-ink'}`}
             data-testid={`subcategory-select-${category}-${label}`}
             checked={selectAll.state === 'all'}
             ref={(el) => { if (el) el.indeterminate = selectAll.state === 'some'; }}

@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder }: { workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
+function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder, dragStart, orderSubs, onCreateSub }: { dragStart?: ReturnType<typeof vi.fn>; orderSubs?: (m: string, c: string, labels: string[]) => string[]; onCreateSub?: ReturnType<typeof vi.fn>; workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -60,7 +60,7 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       onToggleCollapse={(k) => setCollapsed((c) => ({ ...c, [k]: !(c[k] ?? true) }))}
       onCollapseAll={(collapse) => setCollapsed(Object.fromEntries(keys.map((k) => [k, collapse])))}
       onUpdateSettings={vi.fn().mockResolvedValue(undefined)}
-      onDragStart={vi.fn()}
+      onDragStart={dragStart ?? vi.fn()}
       onDragEnd={vi.fn()}
       onDragEnterBucket={enter}
       onDragLeaveBucket={vi.fn()}
@@ -77,6 +77,8 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       onOpenBulkPanel={vi.fn()}
       workspaceMode={workspaceMode}
       orderSubCategoryItems={order}
+      orderSubCategories={orderSubs}
+      onCreateSubCategory={onCreateSub}
       onReorderSubCategoryItem={onReorderItem}
       canReorderSubCategoryItems={canReorder}
       rowChrome={onReorderItem ? (p) => (
@@ -196,8 +198,9 @@ describe('MenuBuilder — workspace sub-category reorder', () => {
     render(<Harness workspaceMode />);
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
     const bar = screen.getByTestId(/^subcategory-drop-.*-Curries$/);
-    expect(bar.getAttribute('draggable')).toBe('true');
-    expect(within(bar).getByTestId(/^subcategory-reorder-grip-/)).toBeTruthy();
+    // Only the grip drags (Avi 2026-11-15), never the bar itself.
+    expect(bar.getAttribute('draggable')).toBeNull();
+    expect(within(bar).getByTestId(/^subcategory-reorder-grip-/).getAttribute('draggable')).toBe('true');
     expect(screen.queryByTestId(/^subcategory-move-up-/)).toBeNull();
     expect(screen.queryByTestId(/^subcategory-move-down-/)).toBeNull();
   });
@@ -302,21 +305,69 @@ describe('MenuBuilder — workspace dish order (v5)', () => {
     expect(onReorderItem).toHaveBeenCalledWith('menu-1', 'Entrees', 'Curries', 'b', 'a', side);
   });
 
-  it('a single-dish sub-category and Ungrouped have no grip', () => {
+  // Every collapsed row has a grip now (it is the ONLY drag source — Avi
+  // 2026-11-15); only orderable groups get the in-place reorder slots.
+  it('a single-dish sub-category keeps its grip (move drag) but has no reorder slot', () => {
     render(<Harness workspaceMode onReorderItem={vi.fn()} />);
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
-    expect(screen.queryByTestId('grip-c')).toBeNull(); // Rice has one dish
-    expect(screen.getByTestId('grip-a')).toBeInTheDocument();
+    expect(screen.getByTestId('grip-c')).toBeInTheDocument(); // Rice has one dish
+    expect(screen.queryByTestId('dish-reorder-slot-c')).toBeNull();
+    expect(screen.getByTestId('dish-reorder-slot-a')).toBeInTheDocument();
   });
 
-  it('no grip on a group that is not a real sub-category (raw fallback)', () => {
+  it('no reorder slot on a group that is not a real sub-category (raw fallback)', () => {
     render(<Harness workspaceMode onReorderItem={vi.fn()} canReorder={(_m, _c, l) => l !== 'Curries'} />);
     fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
-    expect(screen.queryByTestId('grip-a')).toBeNull();
+    expect(screen.getByTestId('grip-a')).toBeInTheDocument();
+    expect(screen.queryByTestId('dish-reorder-slot-a')).toBeNull();
   });
 
-  it('without onReorderSubCategoryItem (admin / waiter) there is no grip', () => {
-    render(<Harness workspaceMode={false} />);
-    expect(screen.queryByTestId(/^grip-/)).toBeNull();
+  it('the grip starts the move/file drag; the row itself is not draggable', () => {
+    const start = vi.fn();
+    render(<Harness workspaceMode onReorderItem={vi.fn()} dragStart={start} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(screen.getByTestId('menu-item-row-c').getAttribute('draggable')).toBe('false');
+    fireEvent.dragStart(screen.getByTestId('grip-c'), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } });
+    expect(start).toHaveBeenCalledWith(expect.anything(), 'c', 'menu-1', 'Entrees');
+  });
+});
+
+describe('MenuBuilder — workspace course header (Avi 2026-11-15)', () => {
+  const chips = () => [...document.querySelectorAll('[data-testid^="bucket-rawcat-chip-Entrees-"]')]
+    .map((el) => el.getAttribute('data-testid')!.replace('bucket-rawcat-chip-Entrees-', ''));
+  // Owner order puts Rice first even though Curries has more dishes.
+  const riceFirst = (_m: string, _c: string, labels: string[]) => ['Rice', 'Curries'].filter((l) => labels.includes(l));
+
+  it('collapsed: the sub-category chips follow the owner order; expanded: they are gone', () => {
+    render(<Harness workspaceMode orderSubs={riceFirst} />);
+    expect(chips()).toEqual(['Rice', 'Curries']);
+    fireEvent.click(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(screen.getByTestId('bucket-drop-Entrees')).toBeInTheDocument();
+    expect(chips()).toEqual([]);
+    fireEvent.click(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(chips()).toEqual(['Rice', 'Curries']);
+  });
+
+  it('classic mode keeps the count-ordered chips, expanded or not', () => {
+    render(<Harness workspaceMode={false} orderSubs={riceFirst} />);
+    fireEvent.click(screen.getByTestId('collapse-bucket-Entrees'));
+    expect(chips()).toEqual(['Curries', 'Rice']);
+  });
+
+  it('no [+] add-sub-category on a workspace course header; classic keeps it', () => {
+    const { unmount } = render(<Harness workspaceMode onCreateSub={vi.fn()} />);
+    expect(screen.queryByTestId('subcategory-create-add-Entrees')).toBeNull();
+    unmount();
+    render(<Harness workspaceMode={false} onCreateSub={vi.fn()} />);
+    expect(screen.getByTestId('subcategory-create-add-Entrees')).toBeInTheDocument();
+  });
+
+  it('course and sub-category checkboxes are red (accent); bands are white', () => {
+    render(<Harness workspaceMode />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(bucketCheckbox()!.className).toContain('accent-[var(--accent)]');
+    expect(subSelect('Curries')!.className).toContain('accent-[var(--accent)]');
+    const bar = screen.getByTestId(/^subcategory-drop-.*-Curries$/) as HTMLElement;
+    expect(bar.style.background).toBe('var(--surface)');
   });
 });

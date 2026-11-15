@@ -117,7 +117,9 @@ describe('MenuItemRow under a highlight search', () => {
   it('a match is marked and its chrome gets the query', () => {
     const { chrome, row } = renderRow({ query: 'chick', matchIds: new Set(['itm-1']) });
     expect(row()).toHaveAttribute('data-search', 'match');
-    expect(row().className).toContain('shadow-[inset_3px_0_0_var(--accent)]');
+    // Workspace chrome: the match keeps its sunk tint but no red stripe (Avi 2026-11-15).
+    expect(row().className).toContain('bg-[var(--surface-sunk)]');
+    expect(row().className).not.toContain('inset_3px');
     expect(chrome().searchQuery).toBe('chick');
   });
 
