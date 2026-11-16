@@ -2426,7 +2426,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
         // PDD 2026-05-26 — BYO classification. Only sent for dishes;
         // add-ons can never be BYO themselves. API enforces hard-block
         // when is_byo=true and groupings empty (returns 400).
-        ...(isAddon ? {} : { is_byo: isByo }),
+        // v5.2 (owner shell): "Build your own" is gone from Edit item, so the
+        // key is omitted and the stored value stays untouched (Avi 2026-11-16).
+        // Classic (admin) keeps the toggle and still sends it.
+        ...(isAddon || v5 ? {} : { is_byo: isByo }),
         // Wine serving sizes (PDD 2026-06-15) — sent only for wine items
         // (undefined ⇒ omitted, so non-wine saves leave the column untouched).
         ...(servingOptionsPayload !== undefined ? { serving_options: servingOptionsPayload } : {}),
@@ -3197,8 +3200,10 @@ export default function EditModal({ item, restaurantId, menus, allItems, ownerFo
       <div className={`border-y border-line-row ${v5 ? '-mt-2' : ''}`} data-testid="edit-availability">
         {visibilityRow}
         {/* Dish settings — spice picker visibility + required, and Build Your
-            Own. Hidden for Desserts (no spice) and wine (neither applies). */}
-        {!isWine && (
+            Own. Hidden for Desserts (no spice) and wine (neither applies).
+            v5.2: the owner (v5) shell drops Build your own and its divider —
+            in v5 this block held only that row, so it is not rendered. */}
+        {!isWine && !v5 && (
           <div className="border-t border-line-row divide-y divide-line-row" data-testid="edit-dish-settings">
             {!v5 && category !== 'Desserts' && spiceSwitchRows}
             {(() => {
