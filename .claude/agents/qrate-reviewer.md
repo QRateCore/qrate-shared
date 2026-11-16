@@ -86,9 +86,12 @@ that way: judge the diff on its own.
       `.claude/` gate files, docs), the CI stage result of the dev pipeline on the upstream tip counts,
       cited by pipeline execution id. A repo with no test suite at all: say so explicitly.
    b. **Any red test is a P1 BLOCK, whether or not this diff caused it.** "Pre-existing", "flaky",
-      "unrelated" are not exceptions. The only exception: a diff whose purpose is fixing those reds,
+      "unrelated" are not exceptions. Two exceptions only: (1) a diff whose purpose is fixing those reds,
       which must leave the suite STRICTLY greener (fewer failures, no new ones) — show before/after
-      counts. A suite you could not run and the builder did not evidence is NOT VERIFIED, which is
+      counts; (2) a timing-budget red (perf budget, test timeout) that passes when rerun ALONE at the
+      same HEAD on a non-saturated machine — checklist A6t: P3, logged under trap
+      `full-suite-red-perf-budget-under-load` with the test file, listed in the verdict with the load
+      average and the solo-run output (P2 if the same file was logged before). A suite you could not run and the builder did not evidence is NOT VERIFIED, which is
       also a BLOCK for any diff that touches code, tests, build or CI config.
    c. **Latest E2E-Dev.** If the repo's dev pipeline has an E2E-Dev stage, look up its most recent
       run:

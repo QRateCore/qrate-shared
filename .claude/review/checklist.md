@@ -35,7 +35,7 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   or by the builder with the exact command + full summary output at the reviewed HEAD; never through
   `| tail`. (b) **Any red test is P1 BLOCK, whether or not this diff caused it** — the only exception is
   a diff whose purpose is fixing those reds and that leaves the suite strictly greener (before/after
-  counts). (c) The latest E2E-Dev run that ACTUALLY ran (`list-action-executions --pipeline-name
+  counts), and a timing-budget red that passes when rerun alone (A6t). (c) The latest E2E-Dev run that ACTUALLY ran (`list-action-executions --pipeline-name
   qrate-cicd-<repo>-dev`; logs `/aws/codebuild/qrate-cicd-<repo>-deploy`, stream `e2e-dev/<build-id>`,
   `--profile qrate-breakglass`) is green — owner/admin/waiter E2E is nightly-only (`RUN_E2E`), so a green
   push run is SKIPPED, not passed. Red E2E is P1 BLOCK unless this diff fixes those reds, or the builder
@@ -48,10 +48,30 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   chose strict). Run it first against a local build or with its reads route-mocked. Any dev run cited as
   evidence is reported FILE BY FILE, and a test that ended through a `pending-backend` /
   annotate-and-return escape counts as NOT RUN, not as passed. The verdict states
-  `Suite: full suite: N passed / 0 failed (<command>)` and `E2E: last E2E-Dev: <run id> <result>`.
+  `Suite: full suite: N passed / M failed (<command>)` with M = 0, or M = only A6t reds, each listed and `E2E: last E2E-Dev: <run id> <result>`.
   *Why: 2026-11-12 a review passed an owner change on targeted vitest files while owner E2E-Dev had 40
   reds (34 pre-existing), and a pre-existing red in the same `describe.serial` spec aborted the new
   tests so they never ran.*
+- **A6t Timing-budget reds under load** (2026-11-16, Avi; trap `full-suite-red-perf-budget-under-load`,
+  recurring). A timing-budget test (a perf budget such as "renders in <200 ms", or a 5 s test timeout)
+  that fails ONLY in a saturated full run is rerun ON ITS OWN at the same HEAD, on a machine that is not
+  saturated (`uptime` load average below the core count; if it is higher, wait and rerun — a solo run
+  under heavy load proves nothing either way).
+  - **Still red alone** → a real red: P1 BLOCK under A6(b).
+  - **Passes alone** → does NOT block by itself. Log it as **P3** under trap
+    `full-suite-red-perf-budget-under-load` with the test FILE in the summary, and list it in the verdict
+    with the full-run failure, the load average at the time and the solo-run output. The builder files
+    it, or fixes it in the same change, to use a load-tolerant budget.
+  - **Same test file logged this way in a second review** → **P2** until its budget is fixed (match on
+    the trap slug + test file; older entries under `flaky-unit-under-load` / `full-suite-red` count).
+  *Why: 2026-11-15/16 the owner full suite went red under load (EditModal 5 s timeouts,
+  `FoodLibraryTable.perf` 200 ms budget) in several sessions, and each time the files passed alone —
+  "passes alone" must be proven and recorded, never assumed, and two reviewers must reach the same
+  verdict on it.*
+  Older `full-suite-red` entries that name a directory instead of a test file count only when their
+  summary names the same test. A checklist change that adds or removes an exception updates the matching
+  step in `.claude/agents/qrate-reviewer.md` in the same version bump (grep both for the rule's key
+  phrase, e.g. "only exception", "0 failed").
 
 ## B. qrate-core — backend / schema / infra
 
