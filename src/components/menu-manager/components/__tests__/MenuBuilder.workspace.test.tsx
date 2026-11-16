@@ -41,7 +41,7 @@ function item(id: string, name: string): MenuItemDisplay {
 const ITEMS = [item('a', 'Dal'), item('b', 'Paneer'), item('c', 'Biryani')];
 const RAW: Record<string, string[]> = { a: ['Curries'], b: ['Curries'], c: ['Rice'] };
 
-function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder, dragStart, orderSubs, onCreateSub, dropSub }: { dropSub?: ReturnType<typeof vi.fn>; dragStart?: ReturnType<typeof vi.fn>; orderSubs?: (m: string, c: string, labels: string[]) => string[]; onCreateSub?: ReturnType<typeof vi.fn>; workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
+function Harness({ boost = {}, workspaceMode, selected: initial = [], dragOver = null, enter = vi.fn(), order, onReorderItem, canReorder, dragStart, orderSubs, onCreateSub, dropSub }: { boost?: Record<string, string>; dropSub?: ReturnType<typeof vi.fn>; dragStart?: ReturnType<typeof vi.fn>; orderSubs?: (m: string, c: string, labels: string[]) => string[]; onCreateSub?: ReturnType<typeof vi.fn>; workspaceMode: boolean; selected?: string[]; dragOver?: { menuId: string; cat: string } | null; enter?: ReturnType<typeof vi.fn>; order?: (m: string, c: string, l: string, ids: string[]) => string[]; onReorderItem?: ReturnType<typeof vi.fn>; canReorder?: (m: string, c: string, l: string) => boolean }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState(new Set(initial));
   const keys = ['menu-1:Starters', 'menu-1:Mains', 'menu-1:Desserts', 'menu-1:Drinks', 'menu-1:Entrees'];
@@ -56,7 +56,7 @@ function Harness({ workspaceMode, selected: initial = [], dragOver = null, enter
       dragging={dragOver ? { itemIds: ['x'], fromMenuId: null, fromCat: null } : null}
       dragOver={dragOver}
       colorMap={() => ({ name: 'blue', tab: '', tabBorder: '', chip: '', chipText: '', bucket: '' }) as never}
-      getSettings={(_m, id) => ({ price: null, boost_level: null, chefs_special: false, portion_type: 'single', portion_serves: null, raw_categories: RAW[id] ?? [] }) as never}
+      getSettings={(_m, id) => ({ price: null, boost_level: boost[id] ?? null, chefs_special: false, portion_type: 'single', portion_serves: null, raw_categories: RAW[id] ?? [] }) as never}
       onToggleCollapse={(k) => setCollapsed((c) => ({ ...c, [k]: !(c[k] ?? true) }))}
       onCollapseAll={(collapse) => setCollapsed(Object.fromEntries(keys.map((k) => [k, collapse])))}
       onUpdateSettings={vi.fn().mockResolvedValue(undefined)}
@@ -384,5 +384,48 @@ describe('MenuBuilder — grip drag onto a sibling sub-category (Avi 2026-11-15)
     expect(dropSub).not.toHaveBeenCalled();
     fireEvent.drop(screen.getByTestId(/^subcategory-drop-.*-Rice$/), { dataTransfer: dt });
     expect(dropSub).toHaveBeenCalledWith(expect.anything(), 'menu-1', 'Entrees', 'Rice');
+  });
+});
+
+describe('MenuBuilder — Boost orders dishes inside a sub-category (Avi 2026-11-15)', () => {
+  const curries = () => [...document.querySelectorAll('[data-testid^="chrome-"]')]
+    .map((el) => el.getAttribute('data-testid')!.replace('chrome-', ''))
+    .filter((id) => id !== 'c');
+
+  it('workspace: a High dish rises above an unboosted one, whatever the manual order', () => {
+    render(<Harness workspaceMode boost={{ b: '3' }} onReorderItem={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(curries()).toEqual(['b', 'a']);
+  });
+
+  it('workspace: the same boost keeps the manual order', () => {
+    const order = (_m: string, _c: string, l: string, ids: string[]) => (l === 'Curries' ? ['b', 'a'].filter((id) => ids.includes(id)) : ids);
+    render(<Harness workspaceMode boost={{ a: '2', b: '2' }} order={order} onReorderItem={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    expect(curries()).toEqual(['b', 'a']);
+  });
+
+  it('classic (admin / waiter): no boost sort', () => {
+    render(<Harness workspaceMode={false} boost={{ b: '3' }} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    // Classic Expand all opens courses only; open the Curries sub-category.
+    if (!screen.queryByTestId('menu-item-row-a')) fireEvent.click(screen.getByTestId('subcategory-toggle-Entrees-Curries'));
+    const names = [...document.querySelectorAll('[data-testid^="menu-item-row-"]')]
+      .map((el) => el.getAttribute('data-testid')!.replace('menu-item-row-', ''))
+      .filter((id) => id === 'a' || id === 'b');
+    expect(names).toEqual(['a', 'b']);
+  });
+
+  it('a dish cannot be dropped among dishes of another boost tier', () => {
+    const onReorderItem = vi.fn();
+    render(<Harness workspaceMode boost={{ b: '3' }} onReorderItem={onReorderItem} />);
+    fireEvent.click(screen.getByTestId('collapse-expand-all-btn'));
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(screen.getByTestId('grip-b'), { dataTransfer: dt });
+    const slot = screen.getByTestId('dish-reorder-slot-a');
+    fireEvent.dragOver(slot, { dataTransfer: dt });
+    expect(slot.getAttribute('data-drop-line')).toBeNull();
+    fireEvent.drop(slot, { dataTransfer: dt });
+    expect(onReorderItem).not.toHaveBeenCalled();
   });
 });

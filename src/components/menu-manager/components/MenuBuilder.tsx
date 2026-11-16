@@ -10,6 +10,7 @@ import { matchesItemText } from '../filterItemsByText';
 import { useBuilderSearchHighlight } from '../builderSearchHighlight';
 import { BuilderWorkspaceContext, useBuilderWorkspace, selectionState, DROP_RING, DRAG_EXPAND_MS, type BuilderWorkspaceMode } from '../builderWorkspace';
 import { SubCategoryGroup } from './SubCategoryGroup';
+import { boostRank, sortByBoost } from '../lib/boostOrder';
 import { SubCategoryCreateBox } from './SubCategoryCreateBox';
 import { ManageSectionsModal, type ManageSection } from './ManageSectionsModal';
 import { COLOR_WARNING } from '../../../constants/colors';
@@ -69,6 +70,10 @@ export interface MenuRowChromeProps {
   /** The sub-category the row is rendered under (undefined / Ungrouped ⇒ the
    *  whole menu). Drives the remove control's label. */
   subLabel?: string;
+  /** The row sits inside a sub-category band (Ungrouped included), so the
+   *  chrome indents it one level deeper than a course-level row (tree cascade,
+   *  Avi 2026-11-15). */
+  nested?: boolean;
   /** Menu workspace v5: the row's grip — drag it within its sub-category to
    *  reorder the dishes. Absent where dishes can't be ordered (Ungrouped,
    *  admin / waiter). */
@@ -1626,6 +1631,7 @@ function MenuItemRow({
           },
           onRemove,
           subLabel: subLabel && subLabel !== UNGROUPED_KEY ? subLabel : undefined,
+          nested: !!subLabel,
           reorderHandle: chromeGrip,
           select: chromeSelect,
           winePrices: isWine
@@ -2755,9 +2761,13 @@ function CategoryBucket({
               ? orderSubCategories(menuId, category, [...groups.keys()])
               : sortedSubCategoryLabels([...groups.keys()]);
             const onlyUngrouped = orderedLabels.length === 1 && orderedLabels[0] === UNGROUPED_KEY;
+            // Workspace (Avi 2026-11-15): dishes order by Boost H > M > L > none;
+            // the same boost keeps the owner's manual order (stable sort).
+            const rankOf = (it: MenuItemDisplay) => boostRank(getSettings(menuId, it.id), category);
+            const boostSorted = (list: MenuItemDisplay[]) => (workspace ? sortByBoost(list, rankOf) : list);
             if (onlyUngrouped) {
               // No subLabel — flat render falls back to whole-menu removal.
-              return bucketItems.map((item) => renderRow(item));
+              return boostSorted(bucketItems).map((item) => renderRow(item));
             }
             // STR-775 — the non-Ungrouped labels are the reorderable set; Ungrouped
             // is a sentinel bucket, never reordered (always rendered last).
@@ -2793,14 +2803,14 @@ function CategoryBucket({
               // has no stored order (it is not a sub-category).
               const dishOrderable = !!onReorderSubCategoryItem && label !== UNGROUPED_KEY
                 && (canReorderSubCategoryItems ? canReorderSubCategoryItems(menuId, category, label) : true);
-              const groupItems = orderSubCategoryItems && label !== UNGROUPED_KEY
+              const groupItems = boostSorted(orderSubCategoryItems && label !== UNGROUPED_KEY
                 ? (() => {
                     const byId = new Map(rawGroupItems.map((it) => [it.id, it] as const));
                     return orderSubCategoryItems(menuId, category, label, rawGroupItems.map((it) => it.id))
                       .map((id) => byId.get(id))
                       .filter((it): it is MenuItemDisplay => !!it);
                   })()
-                : rawGroupItems;
+                : rawGroupItems);
               const reorderIdx = reorderableLabels.indexOf(label);
               return (
                 <SubCategoryGroup
@@ -2887,7 +2897,11 @@ function CategoryBucket({
                     if (!dishOrderable || groupItems.length < 2) {
                       return <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>;
                     }
-                    const isTarget = rowDrag?.label === label && rowDrag.id !== item.id;
+                    // Only among dishes of the dragged dish's own boost tier
+                    // (a cross-tier drop would be undone by the boost sort).
+                    const dragged = rowDrag?.label === label ? groupItems.find((it) => it.id === rowDrag.id) : undefined;
+                    const isTarget = !!dragged && dragged.id !== item.id
+                      && (!workspace || rankOf(dragged) === rankOf(item));
                     const line = isTarget && rowOver?.id === item.id ? rowOver.position : null;
                     return (
                       <div

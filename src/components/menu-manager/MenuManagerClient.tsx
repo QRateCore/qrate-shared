@@ -3136,7 +3136,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
           durationMs: Date.now() - start,
           metadata: { sourceMenuId, clonedMenuId: cloned.id },
         });
-        showToast('Menu cloned (inactive — toggle live in menu settings)');
+        showToast('Menu cloned (inactive — turn it on with its Active switch)');
         if (onRefresh) onRefresh();
       } catch (err) {
         trackAction('menu.manager.cloneMenu', {
