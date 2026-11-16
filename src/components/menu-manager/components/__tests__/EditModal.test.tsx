@@ -2088,6 +2088,57 @@ describe('EditModal — is_byo toggle (PDD 2026-05-26)', () => {
   });
 });
 
+// v5.2 (Menu workspace handoff, Avi 2026-11-16): the owner (v5) shell drops
+// "Build your own" from Edit item. The stored is_byo is left untouched, so the
+// save payload omits the key. The classic shell (admin) keeps both — pinned
+// by the describe above.
+describe('EditModal — v5 shell: Build your own removed (v5.2)', () => {
+  function renderV5(item: MenuItemDisplay, service = makeService()) {
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="v5" item={item} restaurantId="rest-1" menus={[]} allItems={[]} groupingsCount={2}
+          onClose={vi.fn()} onComplete={vi.fn()} />
+      </MenuManagerServiceProvider>,
+    );
+    return service;
+  }
+
+  it('shows no Build your own toggle (nor its dish-settings block)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderV5(makeDishItem({ is_byo: true } as any));
+    expect(screen.queryByTestId('byo-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-dish-settings')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Build your own/i)).not.toBeInTheDocument();
+  });
+
+  it('save payload has no is_byo, so a stored true stays true', async () => {
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderV5(makeDishItem({ is_byo: true } as any), service);
+    fireEvent.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(service.updateMenuItem).toHaveBeenCalled());
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates).not.toHaveProperty('is_byo');
+  });
+
+  it('classic shell still shows the toggle and sends is_byo', async () => {
+    const saved = makeDishItem();
+    const service = makeService({ updateMenuItem: vi.fn().mockResolvedValue(saved) });
+    render(
+      <MenuManagerServiceProvider value={service}>
+        <EditModal shell="classic" item={makeDishItem()} restaurantId="rest-1" menus={[]} allItems={[]} groupingsCount={2}
+          onClose={vi.fn()} onComplete={vi.fn()} />
+      </MenuManagerServiceProvider>,
+    );
+    expect(screen.getByTestId('byo-toggle')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('edit-save-btn'));
+    await waitFor(() => expect(service.updateMenuItem).toHaveBeenCalled());
+    const [, updates] = (service.updateMenuItem as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updates).toHaveProperty('is_byo', false);
+  });
+});
+
 describe('EditModal — effective dietary/allergen defaults + custom (2026-06-14)', () => {
   // The pill picker base is the per-restaurant EFFECTIVE canonical set
   // (canonical minus hidden) when the consumer passes dietaryDefaults/
