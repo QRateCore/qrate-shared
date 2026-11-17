@@ -129,6 +129,19 @@ function makeDietaryTagService(overrides: Partial<DietaryTagService> = {}): Diet
   };
 }
 
+/**
+ * Set a field's text in ONE change event. `userEvent.type` fires one event per
+ * character and EditModal (~6k lines) re-renders on each, so the ~250
+ * keystrokes in this file cost ~150 ms apiece under load and pushed tests past
+ * the 5 s timeout. These tests pin the save payload and counters, not
+ * per-keystroke behaviour, so a single change (appended, like typing) is
+ * equivalent.
+ */
+function typeInto(el: HTMLElement, text: string) {
+  const field = el as HTMLInputElement | HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: field.value + text } });
+}
+
 async function save(service: MenuManagerService) {
   const user = userEvent.setup();
   await user.click(screen.getByTestId('edit-save-btn'));
@@ -239,17 +252,15 @@ describe('EditModal wine section — rendering', () => {
   });
 
   it('shows a live character counter on the tasting note (max 160)', async () => {
-    const user = userEvent.setup();
     renderModal();
     const note = screen.getByTestId('beverage-input-tasting-note') as HTMLTextAreaElement;
     expect(note.maxLength).toBe(160);
     expect(screen.getByTestId('beverage-tasting-note-counter').textContent).toBe('0/160');
-    await user.type(note, 'Bold and structured');
+    typeInto(note, 'Bold and structured');
     expect(screen.getByTestId('beverage-tasting-note-counter').textContent).toBe('19/160');
   });
 
   it('shows live character counters on short story (max 300) and long story (max 3000)', async () => {
-    const user = userEvent.setup();
     renderModal();
     const short = screen.getByTestId('beverage-input-short-story') as HTMLTextAreaElement;
     const long = screen.getByTestId('beverage-input-long-story') as HTMLTextAreaElement;
@@ -257,7 +268,7 @@ describe('EditModal wine section — rendering', () => {
     expect(long.maxLength).toBe(3000);
     expect(screen.getByTestId('beverage-short-story-counter').textContent).toBe('0/300');
     expect(screen.getByTestId('beverage-long-story-counter').textContent).toBe('0/3000');
-    await user.type(short, 'A boutique estate.');
+    typeInto(short, 'A boutique estate.');
     expect(screen.getByTestId('beverage-short-story-counter').textContent).toBe('18/300');
   });
 
@@ -310,27 +321,24 @@ describe('EditModal wine section — spice/BYO/dietary hidden for wine', () => {
 
 describe('EditModal wine section — old-world chip', () => {
   it('derives Old World read-only for a known old-world country', async () => {
-    const user = userEvent.setup();
     renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'France');
+    typeInto(screen.getByTestId('beverage-input-country'), 'France');
     const chip = screen.getByTestId('beverage-old-world-chip');
     expect(chip.getAttribute('data-derived')).toBe('true');
     expect(chip.textContent).toBe('Old World');
   });
 
   it('derives New World read-only for a known new-world country', async () => {
-    const user = userEvent.setup();
     renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'Chile');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Chile');
     const chip = screen.getByTestId('beverage-old-world-chip');
     expect(chip.getAttribute('data-derived')).toBe('true');
     expect(chip.textContent).toBe('New World');
   });
 
   it('renders an editable toggle for an unknown country', async () => {
-    const user = userEvent.setup();
     renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'Atlantis');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Atlantis');
     const chip = screen.getByTestId('beverage-old-world-chip');
     expect(chip.getAttribute('data-derived')).toBe('false');
     expect(screen.getByTestId('beverage-old-world-old')).toBeInTheDocument();
@@ -340,13 +348,12 @@ describe('EditModal wine section — old-world chip', () => {
 
 describe('EditModal wine section — save payload shape', () => {
   it('sends identity fields top-level + beverage sub-object in a follow-up PUT', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-varietal'), 'Nebbiolo');
-    await user.type(screen.getByTestId('beverage-input-producer'), 'Gaja');
-    await user.type(screen.getByTestId('beverage-input-region'), 'Barolo');
-    await user.type(screen.getByTestId('beverage-input-vintage'), '2019');
-    await user.type(screen.getByTestId('beverage-input-country'), 'Italy');
+    typeInto(screen.getByTestId('beverage-input-varietal'), 'Nebbiolo');
+    typeInto(screen.getByTestId('beverage-input-producer'), 'Gaja');
+    typeInto(screen.getByTestId('beverage-input-region'), 'Barolo');
+    typeInto(screen.getByTestId('beverage-input-vintage'), '2019');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Italy');
 
     const calls = await save(service);
     expect(calls).toHaveLength(2);
@@ -370,9 +377,8 @@ describe('EditModal wine section — save payload shape', () => {
   });
 
   it('does NOT send wine_old_world for a known-world country (server derives)', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'France');
+    typeInto(screen.getByTestId('beverage-input-country'), 'France');
     const calls = await save(service);
     const [, winePatch] = calls[1];
     expect(winePatch.wine_country).toBe('France');
@@ -382,7 +388,7 @@ describe('EditModal wine section — save payload shape', () => {
   it('sends the explicit wine_old_world toggle for an unknown country', async () => {
     const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'Atlantis');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Atlantis');
     await user.click(screen.getByTestId('beverage-old-world-old'));
     const calls = await save(service);
     const [, winePatch] = calls[1];
@@ -391,9 +397,8 @@ describe('EditModal wine section — save payload shape', () => {
   });
 
   it('omits wine_old_world for an unknown country when the owner never toggled', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-country'), 'Atlantis');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Atlantis');
     const calls = await save(service);
     const [, winePatch] = calls[1];
     expect(winePatch).not.toHaveProperty('wine_old_world');
@@ -463,19 +468,17 @@ describe('EditModal wine section — save payload shape', () => {
   });
 
   it('tasting note rides beverage.tasting_note', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-tasting-note'), 'Cherry and tar, firm tannin.');
+    typeInto(screen.getByTestId('beverage-input-tasting-note'), 'Cherry and tar, firm tannin.');
     const calls = await save(service);
     const patchBev = calls[1][1].beverage as Record<string, unknown>;
     expect(patchBev.tasting_note).toBe('Cherry and tar, firm tannin.');
   });
 
   it('short_story and long_story ride beverage.{short_story,long_story} on both channels', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal();
-    await user.type(screen.getByTestId('beverage-input-short-story'), 'A boutique Piedmont estate.');
-    await user.type(screen.getByTestId('beverage-input-long-story'), 'Founded in 1920 by...');
+    typeInto(screen.getByTestId('beverage-input-short-story'), 'A boutique Piedmont estate.');
+    typeInto(screen.getByTestId('beverage-input-long-story'), 'Founded in 1920 by...');
     const calls = await save(service);
     const mainBev = (calls[0][1].food_tags as FoodTags).beverage as Record<string, unknown>;
     expect(mainBev.short_story).toBe('A boutique Piedmont estate.');
@@ -506,7 +509,6 @@ describe('EditModal wine section — save payload shape', () => {
   });
 
   it('does not send story_source from this form — provenance is server-owned', async () => {
-    const user = userEvent.setup();
     const { service } = renderModal({
       item: makeWineItem({
         food_tags: {
@@ -514,7 +516,7 @@ describe('EditModal wine section — save payload shape', () => {
         } as FoodTags,
       }),
     });
-    await user.type(screen.getByTestId('beverage-input-short-story'), 'Edited by owner.');
+    typeInto(screen.getByTestId('beverage-input-short-story'), 'Edited by owner.');
     const calls = await save(service);
     const mainBev = (calls[0][1].food_tags as FoodTags).beverage as Record<string, unknown>;
     // Preserved via the key-preserving spread, not re-sent as a form-owned
@@ -543,11 +545,10 @@ describe('EditModal wine section — save payload shape', () => {
   });
 
   it('onComplete carries the wine identity fields (PUT response does not echo them)', async () => {
-    const user = userEvent.setup();
     const onComplete = vi.fn();
     const { service } = renderModal({ onComplete });
-    await user.type(screen.getByTestId('beverage-input-producer'), 'Gaja');
-    await user.type(screen.getByTestId('beverage-input-country'), 'Italy');
+    typeInto(screen.getByTestId('beverage-input-producer'), 'Gaja');
+    typeInto(screen.getByTestId('beverage-input-country'), 'Italy');
     await save(service);
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     const updated = onComplete.mock.calls[0][0];
