@@ -116,8 +116,10 @@ that way: judge the diff on its own.
       **Deadlock escape:** a commit that fixes E2E or unit reds is never blocked BY those same reds.
       It must pass everything else, and it must leave the suite strictly greener.
    d. **E2E specs this diff adds or edits must have actually RUN green.** `playwright test --list`
-      proves parse, not pass. Require either a dev E2E run that included them (cite the run and the
-      spec's result lines) or a local Playwright run of those specs with its output. Check the output
+      proves parse, not pass. Require a SAVED pass transcript of a run of those specs at the reviewed
+      HEAD — the brief cites the file path plus its `N passed` line (a dev E2E run log at that HEAD
+      counts) — or make your own run at the reviewed HEAD (checklist A6(d)). `--list` output or an HTML
+      report from a different run is not evidence. Check the output
       for `did not run` / `skipped`: in a `describe.serial` block an earlier failing test (often a
       pre-existing red in the same file) skips every later one, so the new tests never executed.
       A new or edited spec that did not run is NOT VERIFIED, which is a P1 BLOCK.

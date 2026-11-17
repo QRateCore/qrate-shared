@@ -41,13 +41,18 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   push run is SKIPPED, not passed. Red E2E is P1 BLOCK unless this diff fixes those reds, or the builder
   shows an in-flight fix for them AND this diff touches none of the failing specs' surfaces. A commit that
   fixes reds is never blocked by those same reds (deadlock escape). (d) Every E2E spec the diff adds or
-  edits has RUN green — a cited dev run or local Playwright output; `--list` is not evidence, and a
+  edits has RUN green — evidenced per the saved-transcript rule below; `--list` is not evidence, and a
   `describe.serial` whose earlier test failed reports the new ones as "did not run". **Post-deploy-only
   specs** (2026-11-13, Avi; `new-e2e-spec-never-run`, recurring): an added or edited spec that can only
   run once the change is on dev is still NOT RUN and still blocks — there is no sign-off exception (Avi
   chose strict). Run it first against a local build or with its reads route-mocked. Any dev run cited as
   evidence is reported FILE BY FILE, and a test that ended through a `pending-backend` /
-  annotate-and-return escape counts as NOT RUN, not as passed. The verdict states
+  annotate-and-return escape counts as NOT RUN, not as passed. **Saved pass transcript** (2026-11-16,
+  Avi; trap `new-e2e-spec-never-run`): for every new or edited E2E spec the brief cites a saved
+  transcript of a run of THAT spec at the reviewed HEAD — the file path plus its `N passed` line — or
+  the reviewer makes its own run at the reviewed HEAD. `--list` output, or an HTML report from a
+  different run, does not count. (A6t's timing-budget allowance is for the UNIT full suite only; it never
+  turns a new or edited E2E spec that did not pass into evidence.) The verdict states
   `Suite: full suite: N passed / M failed (<command>)` with M = 0, or M = only A6t reds, each listed and `E2E: last E2E-Dev: <run id> <result>`.
   *Why: 2026-11-12 a review passed an owner change on targeted vitest files while owner E2E-Dev had 40
   reds (34 pre-existing), and a pre-existing red in the same `describe.serial` spec aborted the new
@@ -95,7 +100,9 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   The deploy runs `cdk deploy` (new code live) BEFORE db-init (migration), so a commit that adds a column
   AND reads it 500s in that window. Split it: the schema commit `[DEPLOY FIRST]`, the code `[DEPLOY SECOND]`,
   and a prod release train must carry the schema commit in an EARLIER train than the code (or prove prod
-  already has the column before approving).
+  already has the column before approving). **Degrade wording** (2026-11-16, Avi; trap
+  `code-before-schema-window`): a reader that degrades to an empty 200 in the cdk→db-init window is P2
+  (silent wrong data); a reader that 500s is P1. Either way, the commit message says which.
 - **B11 A new DB-backed test file is wired into CI** (2026-11-15, Avi; `db-tests-skip-in-ci`, from the
   cart-suggestions review). A new test file that skips without `TEST_DATABASE_URL` ⇒ it is added to the CI
   schema-integration step in `infrastructure-cdk-cicd/lib/cicd-core-pipeline-stack.ts`, or it never runs in
@@ -107,7 +114,8 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **C2 `data-testid` on new interactive elements**; E2E selectors use testids/roles, never text/CSS.
 - **C3 E2E specs follow the 10 rules** in `deployment-traps.md` (trailing-slash URL regex, no CSS
   `[value=]` on controlled inputs, no `**/` in JSDoc, unconditional sync-points, guard optional data).
-- **C4 E2E tables ≥ 9900**; owner E2E pinned to Farm+Oak; cleanup restores shared state.
+- **C4 E2E tables ≥ 9900**; owner E2E pinned to Farm+Oak; cleanup restores shared state AND reads it
+  back (see E4).
 - **C5 Fonts self-hosted** — no `next/font/google` or Google `/l/font?kit=` (CodeBuild flake).
 - **C6 Submodule pointer.** `packages/shared` bump is intentional and the turbo input override still exists.
 - **C7 A control that changes what it does or what it covers ⇒ every E2E that drives it moves in the same
@@ -139,11 +147,32 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   calls a new core route must not ship before core reaches the env.
 - **D3 WS `ServerMessage` union is closed** — a new message type needs both ends.
 
+### Release trains
+
+- **R1 Trains carry test de-flakes** (2026-11-16, Avi; trap `full-suite-red`). A train cut from a prod
+  branch carries main's test-only de-flake commits for any test that is red in the full run (A6t
+  timing-budget reds included: if main has their fix, the train carries it; if main has none yet, A6t
+  applies — P3, listed and filed).
+- **R2 Edited specs run against the release build** (2026-11-16, Avi; trap `new-e2e-spec-never-run`).
+  Every spec edited relative to the PROD base is run against the release build: the release pipeline has
+  no E2E stage, and main's E2E-Dev does not count when the release source differs from main.
+- **R3 A NEW remote release branch is keyed against the default branch** (2026-11-16, Avi; trap
+  `new-release-branch-review-key` — new slug, first recorded here). The push gate keys a branch that does
+  not yet exist on origin against `origin/main` (`origin/master` where that is the default, e.g.
+  qrate-recommender). The reviewer computes that key read-only — never by changing git config:
+  `python3 -c "import sys; sys.path.insert(0,'<repo>/.claude/review'); import qrate_review as q; print(q.review_key('<repo>','HEAD','<release-branch>'))"`.
+  The builder cuts the branch with `--no-track` so its local upstream cannot shift the key, and says so
+  in the brief.
+
 ## E. Canaries (qrate-canary)
 
 - **E1** Asserts the app's REAL shape (read the component/route), pinned to its OWN artifact id.
 - **E2** No vacuous assertions; cleanup asserted; no retries on stateful journeys.
 - **E3** Schedule rows have `extraEnv`; never armed before an on-demand green; never touches real POS.
+- **E4 Shared-fixture restore is read back** (2026-11-16, Avi; traps `e2e-shared-fixture-cross-spec-race`,
+  `shared-fixture-precedence-leak`, `e2e-mutates-low-numbered-table`). A canary or test (incl. E2E, C4)
+  that changes shared fixture state restores it in `finally` / `afterAll` AND reads it back to prove the
+  restore took — a restore call alone is not evidence.
 
 ## F. Firmware (qrate-table-device)
 
