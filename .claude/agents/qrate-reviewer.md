@@ -61,6 +61,9 @@ that way: judge the diff on its own.
    - What else calls this? `grep` for callers. A changed signature or contract breaks them.
    - Cross-repo: does a webapp call a core route or field that doesn't exist yet on the target env?
      Does a core change break the deployed webapp or canary?
+   - Optional request field whose absence changes the result (checklist D4): grep EVERY caller repo
+     for it — each must send it (file:line + caller contract test), or the server fallback must be
+     business-correct (restaurant timezone, not UTC). The proving fixture must vary that dimension (E5).
    - Schema: additive only? Does it run on every deploy against live RDS?
    - Security: authn/authz on new routes, IDOR on path ids, secrets, injection.
    - Cost: EMF dimensions, log retention, polling intervals, new always-on resources.

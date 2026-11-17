@@ -146,6 +146,19 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **D2 Deploy order** stated: core `[DEPLOY FIRST]` → webapps `[DEPLOY SECOND]`. A webapp change that
   calls a new core route must not ship before core reaches the env.
 - **D3 WS `ServerMessage` union is closed** — a new message type needs both ends.
+- **D4 Optional request fields that change server behaviour** (2026-11-16, Avi; trap
+  `optional-param-silent-fallback`). When a diff adds an optional request field or query param whose
+  ABSENCE changes the server's result — OR adds/changes a CALLER of an endpoint that has one — it does
+  one of: (a) shows EVERY caller sending it — file:line in
+  each caller repo — plus a contract test in the caller asserting the field is in the real request body;
+  or (b) makes the server's fallback correct for the business, never the Lambda clock or locale (time
+  falls back to the restaurant's timezone, not UTC; and where that timezone can be NULL — it is NULL for
+  existing restaurants — the server must not guess: it returns an explicit not-ready/required error,
+  e.g. core's `timezone_required`, so the caller is forced onto (a)). Either way, the fixture proving the path exercises
+  the dimension the field controls: a time-dependent field is proven against a timed menu, at a moment
+  where local and UTC dates differ — not only against an all-day fixture. The reviewer greps the callers.
+  *(Suggestions API took optional `local_time`/`day_of_week`, fell back to UTC; the patron never sent
+  them; dev Anant evening orders got no suggestions.)*
 
 ### Release trains
 
@@ -173,6 +186,9 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   `shared-fixture-precedence-leak`, `e2e-mutates-low-numbered-table`). A canary or test (incl. E2E, C4)
   that changes shared fixture state restores it in `finally` / `afterAll` AND reads it back to prove the
   restore took — a restore call alone is not evidence.
+- **E5 Fixtures must vary the tested dimension** (2026-11-16, Avi; trap `fixture-removes-tested-dimension`).
+  A canary fixture that removes the dimension under test (all-day menus for time logic, single-currency for
+  money, one guest for table logic) cannot be the only proof of that dimension; add a step that varies it.
 
 ## F. Firmware (qrate-table-device)
 
