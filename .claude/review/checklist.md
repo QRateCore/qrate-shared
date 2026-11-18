@@ -189,6 +189,13 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **E5 Fixtures must vary the tested dimension** (2026-11-16, Avi; trap `fixture-removes-tested-dimension`).
   A canary fixture that removes the dimension under test (all-day menus for time logic, single-currency for
   money, one guest for table logic) cannot be the only proof of that dimension; add a step that varies it.
+- **E6 A new or edited canary spec or step has a green on-demand run before push** (2026-11-17, Avi;
+  PROMOTE from the cart-suggestions canary review; `canary-authoring.md` Rules 1 + 7). The brief cites a
+  saved run of THAT canary whose code includes the change: an ECS `run-task` of the deployed or a
+  locally built image (schedule's own `Input` replayed; task id + `exitCode 0` + log stream), or a local
+  run at the reviewed HEAD (transcript path + its `N passed` line). `--list`, `tsc`, a scheduled run, or a
+  run of an image that predates the change is not evidence. Missing evidence for a qrate-canary change
+  = **P1 BLOCK**. Applies to every canary-spec change, scheduled or not (E3 still governs arming).
 
 ## F. Firmware (qrate-table-device)
 

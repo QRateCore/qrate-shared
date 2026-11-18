@@ -126,6 +126,10 @@ that way: judge the diff on its own.
       for `did not run` / `skipped`: in a `describe.serial` block an earlier failing test (often a
       pre-existing red in the same file) skips every later one, so the new tests never executed.
       A new or edited spec that did not run is NOT VERIFIED, which is a P1 BLOCK.
+   e. **Canary specs/steps this diff adds or edits (qrate-canary) must have a green ON-DEMAND run**
+      (checklist E6): an ECS `run-task` task id + `exitCode 0` + log stream, or a saved local
+      transcript at the reviewed HEAD — of code that contains the change. `--list`, a scheduled run, or
+      an image older than the change is not evidence. Missing evidence is a P1 BLOCK.
 7. **Simplicity, briefly.** Flag only real duplication of an existing helper or dead code the diff
    adds (P3). Do not redesign the change.
 
