@@ -236,8 +236,9 @@ interface MenuBuilderProps {
   /**
    * Free-text filter for the chosen menu's rows (2026-07-05). Driven by the
    * app-shell search on the owner Menu page (PageSearchContext). When non-empty,
-   * only rows whose name/description match are shown, empty categories are
-   * hidden, and matching categories auto-expand. Optional + defaults to no
+   * only rows whose name/description match are shown, matching categories
+   * auto-expand and the others stay listed, collapsed (v5.2.2 — the same rule
+   * as the Item library search). Optional + defaults to no
    * filtering, so waiter/admin consumers are unaffected.
    */
   builderSearchQuery?: string;
@@ -2110,7 +2111,6 @@ function CategoryBucket({
   suppressEmptyAttention = false,
   scrollToItemId,
   searchMatchIds = null,
-  searchHidden = false,
 }: {
   category: string;
   /** Optional friendly header label. Defaults to `category` (the canonical).
@@ -2215,14 +2215,16 @@ function CategoryBucket({
    * A search is narrowing the menu (owner Menu workspace v5.2.1: the Item
    * library search, or the header search): the ids that match. `itemIds`
    * stays the WHOLE course. Only matching rows render and every count is of
-   * matches; a sub-category with no match is HIDDEN, not unmounted, so its
-   * open/closed state is still the owner's when the search clears. Every drag
-   * is off meanwhile: a reorder of a filtered list would save an order built
-   * from the visible rows only. null = no search.
+   * matches; in a course WITH a match, a sub-category without one is HIDDEN,
+   * not unmounted, so its open/closed state is still the owner's when the
+   * search clears. A course with NO match stays visible (v5.2.2, Avi
+   * 2026-11-19: "keep the courses visible as drop targets") — collapsed by
+   * MenuBuilder, and opened by hand it lists its sub-categories closed (drop
+   * targets, no dishes). Reordering is off meanwhile (a reorder of a filtered
+   * list would save an order built from the visible rows only); a drop from
+   * the Item library still works. null = no search.
    */
   searchMatchIds?: ReadonlySet<string> | null;
-  /** The whole course has no match: hidden (kept mounted, as above). */
-  searchHidden?: boolean;
 }) {
   const searchFiltering = !!searchMatchIds;
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
@@ -2307,6 +2309,9 @@ function CategoryBucket({
   // only — expanded, the sub-category bands are right there — and they follow
   // the owner's sub-category order, not item count.
   const headerChips = useMemo(() => {
+    // During a search every count shows matches only; the chips count the
+    // whole course, so they are not shown then (review 2026-11-19).
+    if (searchFiltering) return [];
     if (!workspace) return bucketRawCategories;
     if (!collapsed) return [];
     if (!orderSubCategories) return bucketRawCategories;
@@ -2315,7 +2320,7 @@ function CategoryBucket({
     return [...bucketRawCategories].sort(
       (a, b) => (rank.get(normalizeSubcatKey(a.label)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(normalizeSubcatKey(b.label)) ?? Number.MAX_SAFE_INTEGER),
     );
-  }, [workspace, collapsed, orderSubCategories, menuId, category, bucketRawCategories]);
+  }, [searchFiltering, workspace, collapsed, orderSubCategories, menuId, category, bucketRawCategories]);
 
   // A section can hold sub-categories with NO items yet — created from the [+]
   // but never filled. The empty-bucket branch below short-circuits before the
@@ -2361,9 +2366,7 @@ function CategoryBucket({
       // must not be clipped. The header clips its own corners instead.
       className="mb-2.5 rounded-ctl border border-line bg-surface transition-shadow duration-150"
       data-testid={`category-bucket-${category}`}
-      // A search with no match in this course: hidden, NOT unmounted (its
-      // sub-categories keep the owner's open/closed state for the clear).
-      hidden={searchHidden || undefined}
+      data-search-nomatch={searchFiltering && bucketItems.length === 0 ? 'true' : undefined}
       data-attention={bucketHasAttention ? 'true' : undefined}
       // Workspace (owner v5): the WHOLE course card is the drop target — header
       // included, so a collapsed course accepts a drop and opens on hover — and
@@ -2560,9 +2563,12 @@ function CategoryBucket({
       </div>
       </div>
 
-      {/* Bucket items + drop zone */}
-      {!collapsed && (
+      {/* Bucket items + drop zone. During a search a collapsed course keeps
+          its body MOUNTED but hidden, so the sub-categories keep the owner's
+          own open/closed state for when the search clears (v5.2.2). */}
+      {(!collapsed || searchFiltering) && (
         <div
+          hidden={collapsed || undefined}
           // STR-775 — during a SUB-CATEGORY reorder drag (reorderFrom set), the
           // item-refile bucket drop is suppressed: its enter/drop fire as the
           // reorder drag passes over the bucket, but the reorder drop is handled
@@ -2603,6 +2609,14 @@ function CategoryBucket({
               {isDragOver
                 ? `Drop to add to ${displayLabel} — pick a sub-category next`
                 : `Drop here to add to ${displayLabel}`}
+            </div>
+          )}
+          {searchFiltering && bucketItems.length === 0 && groupingItems.length > 0 && (
+            <div
+              data-testid={`category-search-nomatch-${category}`}
+              className="px-3 py-2 text-[13px] text-ink-faint"
+            >
+              No dishes here match — drop one from the Item library.
             </div>
           )}
           {groupingItems.length === 0 && pendingEmptySubLabels.length === 0 ? (
@@ -2835,9 +2849,12 @@ function CategoryBucket({
                 : rawGroupItems);
               const reorderIdx = reorderableLabels.indexOf(label);
               // Searching: only the matches show (and count); a sub-category
-              // without one (an empty owner-made one included) is hidden, one
-              // with a match is held open.
+              // with a match is held open. In a course WITH a match, one
+              // without (an empty owner-made one included) is hidden; in a
+              // course with NO match every sub-category shows, held closed, as
+              // a drop target for a library dish (v5.2.2).
               const shownItems = searchMatchIds ? groupItems.filter((it) => searchMatchIds.has(it.id)) : groupItems;
+              const courseHasMatch = bucketItems.length > 0;
               return (
                 <SubCategoryGroup
                   key={label}
@@ -2846,9 +2863,10 @@ function CategoryBucket({
                   menuId={menuId}
                   itemCount={shownItems.length}
                   color={color}
-                  hidden={searchFiltering && shownItems.length === 0}
+                  hidden={searchFiltering && courseHasMatch && shownItems.length === 0}
                   containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
                   forceOpen={searchFiltering && shownItems.length > 0}
+                  forceClosed={searchFiltering && !courseHasMatch}
                   // A dish grip-dragged inside one sub-category can still be
                   // filed into a SIBLING band (the grip carries both drags).
                   isDragOver={subCatDragOverLabel === label && rowDrag?.label !== label}
@@ -3111,11 +3129,26 @@ export default function MenuBuilder({
   const builderQuery = (builderSearchQuery ?? '').trim();
   const searchActive = builderQuery.length > 0;
   // Owner Menu workspace v5.2.1 §3: the Item library search FILTERS the menu
-  // (it used to only highlight): sections and sub-categories without a
-  // matching dish hide, those with one open (without touching the owner's own
-  // open/closed state), counts are of matches, and drag is off meanwhile.
+  // (it used to only highlight): only matching dishes show, sub-categories
+  // without a match hide inside a matching course, courses with a match open
+  // (without touching the owner's own open/closed state), counts are of
+  // matches, and reordering is off meanwhile. v5.2.2: courses never hide.
   const highlight = useBuilderSearchHighlight();
   const filterActive = searchActive || !!highlight;
+  // v5.2.2 (Avi 2026-11-19): during a search every course stays visible; one
+  // with a match opens, one without stays collapsed. The owner can still open
+  // or close any course meanwhile — into this SEARCH-ONLY state, so their own
+  // saved open/closed state is never written. It resets with each new query
+  // (and menu), and is ignored once the search clears.
+  const searchKey = filterActive ? `${activeMenuId ?? ''}|${builderQuery}|${highlight?.query ?? ''}` : '';
+  const [searchOpenState, setSearchOpenState] = useState<{ key: string; open: Record<string, boolean> }>({ key: '', open: {} });
+  const searchOpen = searchOpenState.key === searchKey ? searchOpenState.open : {};
+  const searchCourseOpen = (cat: string, hasMatch: boolean) => searchOpen[cat] ?? hasMatch;
+  const toggleSearchCourse = (cat: string, hasMatch: boolean) =>
+    setSearchOpenState((prev) => {
+      const open = prev.key === searchKey ? prev.open : {};
+      return { key: searchKey, open: { ...open, [cat]: !(open[cat] ?? hasMatch) } };
+    });
   // Highlight search: once typing settles, bring the first match into view in
   // THIS scroll area (a matching section opens with its faded rows above it).
   const builderScrollRef = useRef<HTMLDivElement | null>(null);
@@ -3327,7 +3360,7 @@ export default function MenuBuilder({
         {searchActive && totalItems === 0 && (
           <div
             data-testid="menu-builder-search-empty"
-            className="px-4 py-8 text-center text-[13px] text-ink-faint"
+            className="px-1 pt-1 pb-3 text-[13px] text-ink-faint"
           >
             No items in this menu match “{builderQuery}”.
           </div>
@@ -3335,16 +3368,15 @@ export default function MenuBuilder({
         {!searchActive && highlight && totalItems === 0 && (
           <div
             data-testid="menu-builder-library-search-empty"
-            className="px-2 py-8 text-center text-[13px] text-ink-faint"
+            className="px-1 pt-1 pb-3 text-[13px] text-ink-faint"
           >
             No items on this menu match “{highlight.query}”.
           </div>
         )}
         {sectionBuckets
-          // While searching, drop categories with no matching rows so the
-          // owner only sees sections that contain a hit.
-          // While searching, a course with no matching row is hidden (kept
-          // mounted so its sub-categories keep the owner's open state).
+          // While searching, EVERY course stays visible (v5.2.2, Avi
+          // 2026-11-19): those with a match open on their matches, those
+          // without stay collapsed (count 0) as drop targets for the library.
           .map((sec) => {
             const cat = sec.canonical;
             const collapseKey = `${activeMenu?.id}:${cat}`;
@@ -3366,17 +3398,20 @@ export default function MenuBuilder({
                 displayLabel={sec.label}
                 itemIds={filterActive ? sec.allItemIds : sec.itemIds}
                 searchMatchIds={filterActive ? new Set(sec.itemIds) : null}
-                searchHidden={filterActive && sec.itemIds.length === 0}
                 itemsById={itemsById}
                 menus={menus}
                 menuId={activeMenu!.id}
                 scrollToItemId={scrollToItemId}
-                collapsed={filterActive ? false : (collapsed[collapseKey] ?? true)}
+                collapsed={filterActive ? !searchCourseOpen(cat, sec.itemIds.length > 0) : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}
-                // Held open by a search → the chevron waits for the search to
-                // clear (the owner's own state is what comes back).
-                onToggleCollapse={() => { if (!filterActive) handleToggleCollapseTracked(collapseKey); }}
+                // During a search the chevron (and a drag hovering a collapsed
+                // course) flips a search-only state; the owner's own state is
+                // untouched and is what comes back when the search clears.
+                onToggleCollapse={() => {
+                  if (filterActive) toggleSearchCourse(cat, sec.itemIds.length > 0);
+                  else handleToggleCollapseTracked(collapseKey);
+                }}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}

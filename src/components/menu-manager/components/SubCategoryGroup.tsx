@@ -66,6 +66,9 @@ export interface SubCategoryGroupProps {
   /** Holds an Item-library search match — shown open while the search runs,
    *  without changing the owner's own open/closed state (restored on clear). */
   forceOpen?: boolean;
+  /** v5.2.2: a search found nothing in this course — shown closed (a drop
+   *  target, no dishes) without changing the owner's own open/closed state. */
+  forceClosed?: boolean;
   /** A search left it without a match (owner Menu workspace v5.2.1): hidden,
    *  but kept mounted so the owner's open/closed state survives the search. */
   hidden?: boolean;
@@ -101,6 +104,7 @@ export function SubCategoryGroup({
   canMoveDown = false,
   containsScrollTarget = false,
   forceOpen = false,
+  forceClosed = false,
   hidden = false,
   selectAll,
 }: SubCategoryGroupProps) {
@@ -121,10 +125,10 @@ export function SubCategoryGroup({
     setCollapsed(!signalOpen);
   }, [signalN, signalOpen]);
   // A search match holds it open; the owner's own state comes back on clear.
-  const collapsed = forceOpen ? false : ownCollapsed;
-  // While a search holds it open the chevron does nothing — flipping the
-  // hidden own state would change what comes back when the search clears.
-  const toggle = () => { if (!forceOpen) setCollapsed((c) => !c); };
+  const collapsed = forceOpen ? false : forceClosed ? true : ownCollapsed;
+  // While a search holds it open (or closed) the chevron does nothing —
+  // flipping the hidden own state would change what comes back on clear.
+  const toggle = () => { if (!forceOpen && !forceClosed) setCollapsed((c) => !c); };
   // Auto-expand when a deep-link (scrollToItemId) targets an item in THIS
   // sub-category, so "open this item on the menu" lands with its sub-category
   // open (the course is expanded by MenuBuilder in tandem).
