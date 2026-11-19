@@ -66,6 +66,9 @@ export interface SubCategoryGroupProps {
   /** Holds an Item-library search match — shown open while the search runs,
    *  without changing the owner's own open/closed state (restored on clear). */
   forceOpen?: boolean;
+  /** A search left it without a match (owner Menu workspace v5.2.1): hidden,
+   *  but kept mounted so the owner's open/closed state survives the search. */
+  hidden?: boolean;
   /** Owner Menu workspace: tri-state select-all on the bar (shown while it is
    *  expanded and has items). */
   selectAll?: { state: 'none' | 'some' | 'all'; total: number; onToggle: () => void };
@@ -98,6 +101,7 @@ export function SubCategoryGroup({
   canMoveDown = false,
   containsScrollTarget = false,
   forceOpen = false,
+  hidden = false,
   selectAll,
 }: SubCategoryGroupProps) {
   const workspace = useBuilderWorkspace();
@@ -174,6 +178,7 @@ export function SubCategoryGroup({
     <div
       data-testid={`subcategory-group-${category}-${label}`}
       data-sub-label={label}
+      hidden={hidden || undefined}
       className="mt-1.5 first:mt-0"
     >
       {/* Insertion line above this row while a reorder drag hovers its top half. */}

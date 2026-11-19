@@ -2109,6 +2109,8 @@ function CategoryBucket({
   selectMode = false,
   suppressEmptyAttention = false,
   scrollToItemId,
+  searchMatchIds = null,
+  searchHidden = false,
 }: {
   category: string;
   /** Optional friendly header label. Defaults to `category` (the canonical).
@@ -2209,8 +2211,20 @@ function CategoryBucket({
    * "you skipped this one" signal.
    */
   suppressEmptyAttention?: boolean;
+  /**
+   * A search is narrowing the menu (owner Menu workspace v5.2.1: the Item
+   * library search, or the header search): the ids that match. `itemIds`
+   * stays the WHOLE course. Only matching rows render and every count is of
+   * matches; a sub-category with no match is HIDDEN, not unmounted, so its
+   * open/closed state is still the owner's when the search clears. Every drag
+   * is off meanwhile: a reorder of a filtered list would save an order built
+   * from the visible rows only. null = no search.
+   */
+  searchMatchIds?: ReadonlySet<string> | null;
+  /** The whole course has no match: hidden (kept mounted, as above). */
+  searchHidden?: boolean;
 }) {
-  const highlight = useBuilderSearchHighlight();
+  const searchFiltering = !!searchMatchIds;
   const allBucketItems = itemIds.map((id) => itemsById.get(id)).filter(Boolean) as MenuItemDisplay[];
 
   // STR-858 — mobile "86 whole course" (bulk-hide a downed course, e.g. fryer
@@ -2244,9 +2258,13 @@ function CategoryBucket({
   // Visible items honour the missing-price filter. Counts (attention + total)
   // stay anchored on the unfiltered list so the bucket header doesn't flicker
   // as the user toggles the filter.
-  const bucketItems = missingPriceFilter
+  // What the sub-categories are built from: the price filter only, so a
+  // sub-category without a search match still mounts (hidden) below.
+  const groupingItems = missingPriceFilter
     ? allBucketItems.filter((it) => itemHasAttention(it, getSettings(menuId, it.id)))
     : allBucketItems;
+  // What is shown and counted: the search matches among them.
+  const bucketItems = searchMatchIds ? groupingItems.filter((it) => searchMatchIds.has(it.id)) : groupingItems;
   const bucketEmpty = allBucketItems.length === 0;
   const emptyIsAttention = bucketEmpty && !suppressEmptyAttention;
   const bucketHasAttention = emptyIsAttention || attentionCount > 0;
@@ -2310,10 +2328,10 @@ function CategoryBucket({
   // plain empty-state message unchanged.
   const pendingEmptySubLabels = useMemo(
     () =>
-      bucketItems.length === 0 && showEmptySubCategoryChips && orderSubCategories
+      groupingItems.length === 0 && showEmptySubCategoryChips && orderSubCategories
         ? orderSubCategories(menuId, category, []).filter((l) => l !== UNGROUPED_KEY)
         : [],
-    [bucketItems.length, showEmptySubCategoryChips, orderSubCategories, menuId, category],
+    [groupingItems.length, showEmptySubCategoryChips, orderSubCategories, menuId, category],
   );
 
   // PDD 2026-05-22 — bucket-level select-all state.
@@ -2343,6 +2361,9 @@ function CategoryBucket({
       // must not be clipped. The header clips its own corners instead.
       className="mb-2.5 rounded-ctl border border-line bg-surface transition-shadow duration-150"
       data-testid={`category-bucket-${category}`}
+      // A search with no match in this course: hidden, NOT unmounted (its
+      // sub-categories keep the owner's open/closed state for the clear).
+      hidden={searchHidden || undefined}
       data-attention={bucketHasAttention ? 'true' : undefined}
       // Workspace (owner v5): the WHOLE course card is the drop target — header
       // included, so a collapsed course accepts a drop and opens on hover — and
@@ -2584,7 +2605,7 @@ function CategoryBucket({
                 : `Drop here to add to ${displayLabel}`}
             </div>
           )}
-          {bucketItems.length === 0 && pendingEmptySubLabels.length === 0 ? (
+          {groupingItems.length === 0 && pendingEmptySubLabels.length === 0 ? (
             <div
               data-testid={`category-empty-${category}`}
               className="px-3 py-2.5 text-[13px] text-ink-faint"
@@ -2642,8 +2663,9 @@ function CategoryBucket({
                   // it doesn't fight the bulk-selection UX. When nothing
                   // is selected, normal drag-to-recategorize works.
                   disableDrag={
-                    bulkSelectionEnabled
-                    && (bulkSelection?.size ?? 0) > 0
+                    searchFiltering
+                    || (bulkSelectionEnabled
+                    && (bulkSelection?.size ?? 0) > 0)
                   }
                   onRemove={() => {
                     // computeRowRemoval decides the scope from where the row is
@@ -2734,7 +2756,7 @@ function CategoryBucket({
               string,
               { items: MenuItemDisplay[]; seen: Set<string>; variants: Map<string, number> }
             >();
-            for (const item of bucketItems) {
+            for (const item of groupingItems) {
               const labels = getSettings(menuId, item.id).raw_categories;
               const list = labels && labels.length ? labels : [UNGROUPED_KEY];
               for (const raw of list) {
@@ -2812,16 +2834,21 @@ function CategoryBucket({
                   })()
                 : rawGroupItems);
               const reorderIdx = reorderableLabels.indexOf(label);
+              // Searching: only the matches show (and count); a sub-category
+              // without one (an empty owner-made one included) is hidden, one
+              // with a match is held open.
+              const shownItems = searchMatchIds ? groupItems.filter((it) => searchMatchIds.has(it.id)) : groupItems;
               return (
                 <SubCategoryGroup
                   key={label}
                   label={label}
                   category={category}
                   menuId={menuId}
-                  itemCount={groupItems.length}
+                  itemCount={shownItems.length}
                   color={color}
+                  hidden={searchFiltering && shownItems.length === 0}
                   containsScrollTarget={!!scrollToItemId && groupItems.some((it) => it.id === scrollToItemId)}
-                  forceOpen={!!highlight && groupItems.some((it) => highlight.matchIds.has(it.id))}
+                  forceOpen={searchFiltering && shownItems.length > 0}
                   // A dish grip-dragged inside one sub-category can still be
                   // filed into a SIBLING band (the grip carries both drags).
                   isDragOver={subCatDragOverLabel === label && rowDrag?.label !== label}
@@ -2881,19 +2908,19 @@ function CategoryBucket({
                   onMoveDown={() => moveLabel(label, reorderIdx + 1)}
                   canMoveUp={reorderIdx > 0}
                   canMoveDown={reorderIdx >= 0 && reorderIdx < reorderableLabels.length - 1}
-                  selectAll={workspace && bulkSelectionEnabled && groupItems.length > 0 ? {
-                    state: selectionState(groupItems.map((it) => it.id), bulkSelection),
-                    total: groupItems.length,
+                  selectAll={workspace && bulkSelectionEnabled && shownItems.length > 0 ? {
+                    state: selectionState(shownItems.map((it) => it.id), bulkSelection),
+                    total: shownItems.length,
                     onToggle: () => {
-                      const all = selectionState(groupItems.map((it) => it.id), bulkSelection) === 'all';
-                      for (const it of groupItems) {
+                      const all = selectionState(shownItems.map((it) => it.id), bulkSelection) === 'all';
+                      for (const it of shownItems) {
                         const isSel = bulkSelection?.has(it.id) ?? false;
                         if (all ? isSel : !isSel) onToggleBulkSelection?.(it.id);
                       }
                     },
                   } : undefined}
                 >
-                  {groupItems.map((item) => {
+                  {shownItems.map((item) => {
                     if (!dishOrderable || groupItems.length < 2) {
                       return <Fragment key={`${label}:${item.id}`}>{renderRow(item, label)}</Fragment>;
                     }
@@ -3083,7 +3110,12 @@ export default function MenuBuilder({
   // `itemsById` map (used for id lookups / rec classification) untouched.
   const builderQuery = (builderSearchQuery ?? '').trim();
   const searchActive = builderQuery.length > 0;
+  // Owner Menu workspace v5.2.1 §3: the Item library search FILTERS the menu
+  // (it used to only highlight): sections and sub-categories without a
+  // matching dish hide, those with one open (without touching the owner's own
+  // open/closed state), counts are of matches, and drag is off meanwhile.
   const highlight = useBuilderSearchHighlight();
+  const filterActive = searchActive || !!highlight;
   // Highlight search: once typing settles, bring the first match into view in
   // THIS scroll area (a matching section opens with its faded rows above it).
   const builderScrollRef = useRef<HTMLDivElement | null>(null);
@@ -3108,8 +3140,11 @@ export default function MenuBuilder({
       ...sec,
       /** Every item in the section, before the search filter (Manage sections). */
       allItemIds: ids,
-      itemIds: searchActive
+      /** The search matches (= `allItemIds` without a search). */
+      itemIds: filterActive
         ? ids.filter((id) => {
+            if (highlight && !highlight.matchIds.has(id)) return false;
+            if (!searchActive) return true;
             const it = itemsById.get(id);
             return it ? matchesItemText(it, builderQuery) : false;
           })
@@ -3297,10 +3332,19 @@ export default function MenuBuilder({
             No items in this menu match “{builderQuery}”.
           </div>
         )}
+        {!searchActive && highlight && totalItems === 0 && (
+          <div
+            data-testid="menu-builder-library-search-empty"
+            className="px-2 py-8 text-center text-[13px] text-ink-faint"
+          >
+            No items on this menu match “{highlight.query}”.
+          </div>
+        )}
         {sectionBuckets
           // While searching, drop categories with no matching rows so the
           // owner only sees sections that contain a hit.
-          .filter((sec) => !searchActive || sec.itemIds.length > 0)
+          // While searching, a course with no matching row is hidden (kept
+          // mounted so its sub-categories keep the owner's open state).
           .map((sec) => {
             const cat = sec.canonical;
             const collapseKey = `${activeMenu?.id}:${cat}`;
@@ -3314,26 +3358,25 @@ export default function MenuBuilder({
             // Bucket general-area highlight only when NOT hovering a sub-group.
             const isDragOverBucket = dragOverHere !== null && dragOverHere.label === undefined;
             const subCatDragOverLabel = dragOverHere?.label ?? null;
-            const highlightHolds = !!highlight && sec.allItemIds.some((id) => highlight.matchIds.has(id));
 
             return (
               <CategoryBucket
                 key={cat}
                 category={cat}
                 displayLabel={sec.label}
-                itemIds={sec.itemIds}
+                itemIds={filterActive ? sec.allItemIds : sec.itemIds}
+                searchMatchIds={filterActive ? new Set(sec.itemIds) : null}
+                searchHidden={filterActive && sec.itemIds.length === 0}
                 itemsById={itemsById}
                 menus={menus}
                 menuId={activeMenu!.id}
                 scrollToItemId={scrollToItemId}
-                collapsed={searchActive || highlightHolds
-                  ? false
-                  : (collapsed[collapseKey] ?? true)}
+                collapsed={filterActive ? false : (collapsed[collapseKey] ?? true)}
                 getSettings={getSettings}
                 color={activeColor}
-                // Held open by the library search → the chevron waits for the
-                // search to clear (the owner's own state is what comes back).
-                onToggleCollapse={() => { if (!highlightHolds) handleToggleCollapseTracked(collapseKey); }}
+                // Held open by a search → the chevron waits for the search to
+                // clear (the owner's own state is what comes back).
+                onToggleCollapse={() => { if (!filterActive) handleToggleCollapseTracked(collapseKey); }}
                 onUpdateSettings={onUpdateSettings}
                 onUpdateModifiers={onUpdateModifiers}
                 onConfirmRecommendationDrop={onConfirmRecommendationDrop}
@@ -3359,10 +3402,10 @@ export default function MenuBuilder({
                 onDeleteSubCategory={onDeleteSubCategory}
                 orderSubCategories={orderSubCategories}
                 orderSubCategoryItems={workspace ? orderSubCategoryItems : undefined}
-                onReorderSubCategoryItem={workspace ? onReorderSubCategoryItem : undefined}
+                onReorderSubCategoryItem={workspace && !filterActive ? onReorderSubCategoryItem : undefined}
                 canReorderSubCategoryItems={workspace ? canReorderSubCategoryItems : undefined}
                 showEmptySubCategoryChips={isDrinksMenu(activeMenu)}
-                onReorderSubCategory={onReorderSubCategory}
+                onReorderSubCategory={filterActive ? undefined : onReorderSubCategory}
                 onCreateSubCategory={onCreateSubCategory}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}

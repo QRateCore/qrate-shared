@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * Builder search in HIGHLIGHT mode (owner Menu workspace, handoff v2): the Item
- * library's search marks the matching rows on the Menus tab instead of hiding
- * the rest. Matches get a tinted row with an inset rule and the matched text
- * in a <mark>; other rows fade; sections and sub-categories that hold a match
- * open (without touching the owner's own open/closed state, so clearing the
- * search restores it).
+ * The Item library's search on the Menus tab (owner Menu workspace). Since
+ * v5.2.1 it FILTERS the menu: only matching rows show (tinted, the matched
+ * text in a <mark>); sections and sub-categories without a match are hidden
+ * and those with one open (without touching the owner's own open/closed
+ * state, so clearing the search restores it). A row outside the matches is
+ * still "dim" here for any consumer that renders it.
  *
  * A context rather than props: the flag is read three components down
  * (MenuBuilder → CategoryBucket → SubCategoryGroup / MenuItemRow).

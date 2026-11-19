@@ -527,10 +527,10 @@ interface Props {
    */
   builderSearchQuery?: string;
   /**
-   * Owner Menu workspace (handoff v2): the Item library's search HIGHLIGHTS
-   * matching rows on the builder — matches tinted + <mark>ed, the rest faded,
-   * sections / sub-categories holding a match opened — instead of filtering.
-   * Independent of `builderSearchQuery` (the header search keeps filtering).
+   * Owner Menu workspace: the Item library's search. Since v5.2.1 it FILTERS
+   * the builder (courses / sub-categories without a matching dish hide, those
+   * with one open, counts are of matches, drag is off) and the matches stay
+   * tinted + <mark>ed. Applied on top of `builderSearchQuery` (the header search).
    */
   builderHighlightQuery?: string;
   /**
