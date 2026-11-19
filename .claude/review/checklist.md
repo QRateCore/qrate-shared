@@ -123,6 +123,16 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   back (see E4).
 - **C5 Fonts self-hosted** — no `next/font/google` or Google `/l/font?kit=` (CodeBuild flake).
 - **C6 Submodule pointer.** `packages/shared` bump is intentional and the turbo input override still exists.
+  The pointed-to submodule commit must already be on the SUBMODULE's own remote. Check that remote directly,
+  never via `git -C packages/shared ...` (in a fresh worktree the submodule is not initialised and git
+  silently runs in the SUPERPROJECT): take the url from `.gitmodules`
+  (`git config -f .gitmodules submodule.packages/shared.url`) and check it READ-ONLY in a throwaway bare repo
+  under the scratchpad: `git init --bare <tmp>`, `git -C <tmp> fetch --no-tags <url> main`, then
+  `git -C <tmp> merge-base --is-ancestor <pointer> FETCH_HEAD` (exit 0 = on the remote). Never run
+  `submodule update --init` in a review checkout; an unfetched sha errors, which is not a "no".
+  A pointer to a local-only or soon-to-be-rebased commit is **P1**: the pre-push rebase gives it a new SHA
+  and the superproject's dev CI submodule fetch fails ("not our ref"). Push the submodule FIRST, then point
+  the superproject at the pushed SHA (see G14).
 - **C7 A control that changes what it does or what it covers ⇒ every E2E that drives it moves in the same
   commit** (2026-11-12, Avi; `stale-e2e-assert-after-ui-change`, recurring). When a shared control changes
   behaviour, renders something new on top (a dropdown, an overlay), or loses/renames a testid, grep `e2e/`
@@ -293,3 +303,8 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
 - **G13 An Owner App-Doc bump is checked against upstream's `DOC_VERSION`** (2026-11-15, Avi;
   `app-doc-version-collision`). Owner App-Doc bump ⇒ compare `DOC_VERSION` with current `origin/main` before
   PASS; if upstream bumped too, the builder rebases + regenerates both `app-doc-manifest.json` before review.
+- **G14 A submodule pointer names a commit already on the submodule's remote** (2026-11-19, Avi;
+  `submodule-pointer-pushed-before-submodule`). Applies to ANY repo whose `.gitmodules` lists the moved
+  submodule (owner/admin/waiter/pos `packages/shared`, owner/admin `packages/shared-design`, ...). Before
+  PASSing a diff that moves a pointer, check it against the submodule's own remote as in C6. Order: rebase +
+  push the submodule commits, repoint the superproject at the PUSHED SHAs, then review/push it.
