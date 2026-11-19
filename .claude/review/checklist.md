@@ -107,6 +107,11 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   cart-suggestions review). A new test file that skips without `TEST_DATABASE_URL` ⇒ it is added to the CI
   schema-integration step in `infrastructure-cdk-cicd/lib/cicd-core-pipeline-stack.ts`, or it never runs in
   the pipeline.
+- **B12 Import dedupe is count-aware** (2026-11-19, Avi; `import-dedup-drops-genuine-repeats`, recurring,
+  from the bookkeeping-entries review). A bulk import that skips lines already saved must skip at most as
+  many copies of a key as are ALREADY SAVED (a Counter, not a set), and must never dedupe lines within the
+  batch itself — two identical real lines (same date, payee, amount) are two entries. Require a test that
+  saves 1 and imports 2 identical lines and asserts exactly 1 is added.
 
 ## C. Webapps (owner / admin / patron / waiter / wine / landing)
 
@@ -233,6 +238,9 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   success path AND in every catch/finally — before touching state, opening resources or reporting an error.
   The id that answers "was I abandoned?" must not be bumped by the flow's own failure handler; who clears a
   busy flag is decided by a separate per-attempt id. Each guard needs a test that is red without it.
+  **Stale-bound callbacks bail first** (2026-11-19, Avi; from the bookkeeping-entries review): a callback
+  or effect bound to an older key (restaurant, document, month) must return BEFORE it takes or bumps the
+  shared ticket/generation; a stale call that bumps it first invalidates the CURRENT flow's in-flight work.
 - **G6 Every App-Doc selector has a unit test that renders it** (2026-11-10;
   `app-doc-selector-contract-without-unit-test`, recurring). App-Doc `execution.ts` is the SAGE-AI
   contract: any `data-testid` that a commit adds to or changes in an App-Doc procedure's `selectors` (and
