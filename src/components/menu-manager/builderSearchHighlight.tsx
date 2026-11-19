@@ -13,6 +13,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react';
+import { markMatches as markSearchMatches } from '../search/Highlight';
 
 export interface BuilderSearchHighlight {
   /** Trimmed, non-empty query. */
@@ -28,27 +29,10 @@ export function useBuilderSearchHighlight(): BuilderSearchHighlight | null {
 }
 
 /**
- * `text` with every case-insensitive occurrence of `query` wrapped in <mark>.
- * Returns the plain string when there is nothing to mark.
+ * `text` with every case-insensitive occurrence of `query` marked — the shared
+ * search highlight (components/search/Highlight), keeping the menu rows'
+ * `builder-search-mark` testid.
  */
 export function markMatches(text: string, query: string | null | undefined): ReactNode {
-  const q = (query ?? '').trim().toLowerCase();
-  if (!q) return text;
-  const lower = text.toLowerCase();
-  const parts: ReactNode[] = [];
-  let from = 0;
-  let at = lower.indexOf(q);
-  if (at < 0) return text;
-  while (at >= 0) {
-    if (at > from) parts.push(text.slice(from, at));
-    parts.push(
-      <mark key={at} className="rounded-[2px] bg-surface2 px-px text-accent" data-testid="builder-search-mark">
-        {text.slice(at, at + q.length)}
-      </mark>,
-    );
-    from = at + q.length;
-    at = lower.indexOf(q, from);
-  }
-  if (from < text.length) parts.push(text.slice(from));
-  return <>{parts}</>;
+  return markSearchMatches(text, query, 'builder-search-mark');
 }

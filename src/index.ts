@@ -41,6 +41,9 @@ export { createMenuManagerService } from './services/createMenuManagerService';
 
 // Components — Menu Manager (full two-pane menu management UI)
 export { MenuManagerClient, markMatches } from './components/menu-manager';
+// Search highlighting (owner Menu workspace v5.2.1 §4) — one implementation for every search box.
+export { Highlight, SEARCH_HIGHLIGHT_STYLE, markMatches as markSearchMatches } from './components/search/Highlight';
+export type { HighlightProps } from './components/search/Highlight';
 export type { BulkMode, DragState, MenuManagerActions, MenuRowChromeProps } from './components/menu-manager';
 export { EditModal, MenuManagerServiceProvider, BulkActionsPanel, BulkModifierPanel, CloneMenuModal, ItemModifierZones } from './components/menu-manager';
 export type { CloneMenuModalProps } from './components/menu-manager';

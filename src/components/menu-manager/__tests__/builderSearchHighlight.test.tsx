@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Builder search HIGHLIGHT mode (owner Menu workspace, handoff v2): the Item
- * library's search marks matching rows instead of filtering. Pinned:
- *  - markMatches wraps every case-insensitive hit in <mark>;
+ * The Item library's search on the Menus tab (owner Menu workspace; it FILTERS
+ * the menu since v5.2.1 — see MenuBuilder.librarySearch.test). Pinned here:
+ *  - markMatches wraps every case-insensitive hit in <mark> (the shared
+ *    v5.2.1 highlight);
  *  - MenuManagerClient provides the matches (by name) only while a
  *    highlight query is set, and leaves the header search's filter alone;
  *  - a row is "match" / "dim" under a search and unmarked without one, and the
@@ -61,6 +62,15 @@ describe('markMatches', () => {
     const marks = screen.getAllByTestId('builder-search-mark');
     expect(marks.map((m) => m.textContent)).toEqual(['Paneer', 'paneer']);
     expect(screen.getByTestId('t').textContent).toBe('Paneer pakora with paneer');
+  });
+
+  it('v5.2.1: the shared highlight look (#F5D3CD / #7A2219, no padding), not the old surface2 / accent classes', () => {
+    render(<span>{markMatches('Dal', 'dal')}</span>);
+    const mark = screen.getByTestId('builder-search-mark');
+    expect(mark.style.backgroundColor).toBe('rgb(245, 211, 205)');
+    expect(mark.style.color).toBe('rgb(122, 34, 25)');
+    expect(mark.style.padding).toBe('0px');
+    expect(mark.className).not.toContain('bg-surface2');
   });
 
   it('returns the plain text for an empty query or no hit', () => {
