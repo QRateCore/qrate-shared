@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Users, Eye, EyeOff, X, Trash2, Search, ChevronRight } from 'lucide-react';
 import Select from '../common/Select';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { StaffMember, StaffRole, ExperienceService } from '../../types/experience';
@@ -14,6 +14,14 @@ const ROLE_LABELS: Record<StaffRole, string> = {
   chef: 'Chef',
   bartender: 'Bartender',
   manager: 'Manager',
+};
+
+const ROLE_PLURALS: Record<StaffRole, string> = {
+  server: 'Servers',
+  host: 'Hosts',
+  chef: 'Chefs',
+  bartender: 'Bartenders',
+  manager: 'Managers',
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -41,9 +49,16 @@ interface StaffManagementProps {
    * Omitted → the card grid (waiter, admin, phones).
    */
   listKit?: ListKit;
+  /**
+   * Owner v2 Operations › Staff (Orders handoff v1, O5): with a list kit, put
+   * search, the role filter and Add staff on one toolbar row above the list
+   * (no header strip, no portal), give each row an initial avatar + chevron,
+   * and say "Remove staff" in the drawer. Behaviour is unchanged.
+   */
+  toolbar?: boolean;
 }
 
-export default function StaffManagement({ restaurantId, service, actionsSlot, listKit: hostKit }: StaffManagementProps) {
+export default function StaffManagement({ restaurantId, service, actionsSlot, listKit: hostKit, toolbar = false }: StaffManagementProps) {
   const isMobile = useIsMobile();
   // Phones keep the cards whatever the host passes.
   const listKit = isMobile ? undefined : hostKit;
@@ -230,6 +245,7 @@ export default function StaffManagement({ restaurantId, service, actionsSlot, li
   );
 
   const inTabContext = actionsSlot !== undefined;
+  const useToolbar = !!listKit && toolbar;
   const addStaffButton = (
     <button
       onClick={() => setShowForm(!showForm)}
@@ -247,7 +263,7 @@ export default function StaffManagement({ restaurantId, service, actionsSlot, li
     <div>
       {/* Desktop tab context: the tab row owns the title AND the Add Staff
           control, so no header strip renders here at all. */}
-      {actionsSlot ? (
+      {useToolbar ? null : actionsSlot ? (
         createPortal(addStaffButton, actionsSlot)
       ) : (
         <div className={`mb-6 flex ${isMobile ? 'flex-col' : 'items-center justify-between'}`}>
@@ -293,6 +309,7 @@ export default function StaffManagement({ restaurantId, service, actionsSlot, li
           onAskDelete={setConfirmDeleteId}
           onDelete={handleDelete}
           deletingId={deletingId}
+          toolbar={useToolbar ? { onAdd: () => setShowForm(true) } : undefined}
         />
       ) : (
         <>
@@ -415,7 +432,7 @@ export default function StaffManagement({ restaurantId, service, actionsSlot, li
 
 function StaffListView({
   kit, staff, loading, showForm, onCloseForm, form, openMemberId, onOpenMember, onCloseMember,
-  onToggleActive, togglingId, canDelete, confirmDeleteId, onAskDelete, onDelete, deletingId,
+  onToggleActive, togglingId, canDelete, confirmDeleteId, onAskDelete, onDelete, deletingId, toolbar,
 }: {
   kit: ListKit;
   staff: StaffMember[];
@@ -433,11 +450,38 @@ function StaffListView({
   onAskDelete: (id: string | null) => void;
   onDelete: (m: StaffMember) => void;
   deletingId: string | null;
+  toolbar?: { onAdd: () => void };
 }) {
   const { DataTable, Drawer, DrawerFooter, StatusPill } = kit;
   const roleLabel = (m: StaffMember) => ROLE_LABELS[m.role as StaffRole] || m.role;
+  const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  // Only roles someone actually holds become chips, in the house order.
+  const roles = useMemo(
+    () => (Object.keys(ROLE_LABELS) as StaffRole[]).filter(r => staff.some(m => m.role === r)),
+    [staff],
+  );
+  const activeRole = roleFilter !== 'all' && !roles.includes(roleFilter as StaffRole) ? 'all' : roleFilter;
+  const q = query.trim().toLowerCase();
+  const rows = toolbar
+    ? staff.filter(m => (activeRole === 'all' || m.role === activeRole)
+        && (!q || m.name.toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q)))
+    : staff;
+  const filtered = toolbar && staff.length > 0 && rows.length === 0;
+  const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
   const columns: ListKitColumn<StaffMember>[] = [
-    { key: 'name', header: 'Name', width: 'minmax(180px,1.2fr)', render: (m) => <span className="font-semibold overflow-hidden text-ellipsis">{m.name}</span> },
+    {
+      key: 'name', header: 'Name', width: 'minmax(180px,1.2fr)',
+      render: (m) => (toolbar ? (
+        <span className="inline-flex items-center gap-2.5 min-w-0">
+          <span aria-hidden="true" data-testid={`staff-avatar-${m.id}`}
+            className="inline-flex items-center justify-center shrink-0 w-7 h-7 rounded-full bg-surface2 text-ink text-[11px] font-bold">
+            {initials(m.name)}
+          </span>
+          <span className="font-semibold overflow-hidden text-ellipsis">{m.name}</span>
+        </span>
+      ) : <span className="font-semibold overflow-hidden text-ellipsis">{m.name}</span>),
+    },
     { key: 'role', header: 'Role', width: '130px', render: (m) => <StatusPill tone="tag">{roleLabel(m)}</StatusPill> },
     { key: 'email', header: 'Email', width: 'minmax(200px,1.6fr)', render: (m) => <span className="text-ink-soft overflow-hidden text-ellipsis" title={m.email}>{m.email}</span> },
     {
@@ -448,15 +492,51 @@ function StaffListView({
         ? <StatusPill tone="ok" dot testId={`staff-status-${m.id}`}>Active</StatusPill>
         : <StatusPill tone="tag" testId={`staff-status-${m.id}`}>Inactive</StatusPill>),
     },
+    ...(toolbar ? [{
+      key: 'open', header: '', width: '40px',
+      render: () => <ChevronRight aria-hidden="true" className="h-4 w-4 text-ink-soft" />,
+    } as ListKitColumn<StaffMember>] : []),
   ];
   const member = staff.find(m => m.id === openMemberId) ?? null;
   const btn = 'inline-flex items-center justify-center gap-1.5 min-h-10 px-4 rounded-ctl text-sm font-semibold whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed';
 
+  const chip = (on: boolean) => `inline-flex items-center min-h-9 px-3 rounded-full text-sm font-semibold border ${
+    on ? 'bg-ink text-on-ink border-ink' : 'bg-surface text-ink border-line hover:bg-surface2'}`;
+
   return (
     <>
+      {toolbar && (
+        <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="staff-toolbar">
+          <label className="relative flex items-center min-w-[200px] flex-1 max-w-[320px]">
+            <Search aria-hidden="true" className="absolute left-3 h-4 w-4 text-ink-soft" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search staff"
+              aria-label="Search staff"
+              data-testid="staff-search"
+              className="w-full min-h-10 pl-9 pr-3 rounded-ctl border border-line bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
+          <div role="group" aria-label="Filter by role" className="flex flex-wrap items-center gap-1.5" data-testid="staff-role-filter">
+            <button type="button" aria-pressed={activeRole === 'all'} onClick={() => setRoleFilter('all')}
+              data-testid="staff-role-all" className={chip(activeRole === 'all')}>All</button>
+            {roles.map(r => (
+              <button key={r} type="button" aria-pressed={activeRole === r} onClick={() => setRoleFilter(r)}
+                data-testid={`staff-role-${r}`} className={chip(activeRole === r)}>{ROLE_PLURALS[r]}</button>
+            ))}
+          </div>
+          <button type="button" onClick={toolbar.onAdd} data-testid="add-staff-btn"
+            className={`${btn} ml-auto bg-ink text-on-ink border border-ink hover:bg-ink-hover`}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add staff
+          </button>
+        </div>
+      )}
       <DataTable
         columns={columns}
-        rows={staff}
+        rows={rows}
         rowKey={(m) => m.id}
         onRowClick={(m) => onOpenMember(m.id)}
         rowLabel={(m) => m.name}
@@ -464,7 +544,7 @@ function StaffListView({
         minWidth={640}
         testId="staff-list"
         ariaLabel="Staff"
-        empty={loading ? 'Loading staff…' : 'No staff members yet — add your first team member with Add Staff.'}
+        empty={loading ? 'Loading staff…' : filtered ? 'No staff match this filter.' : `No staff members yet — add your first team member with ${toolbar ? 'Add staff' : 'Add Staff'}.`}
       />
 
       <Drawer open={showForm} onClose={onCloseForm} eyebrow="Staff" title="Add a team member" width={640} testId="add-staff-modal">
@@ -495,7 +575,7 @@ function StaffListView({
                 </span>
               ) : (
                 <button type="button" onClick={() => onAskDelete(member.id)} data-testid="staff-remove"
-                  className="text-sm font-semibold text-bad hover:underline">Remove from team</button>
+                  className="text-sm font-semibold text-bad hover:underline">{toolbar ? 'Remove staff' : 'Remove from team'}</button>
               ))}
             >
               <button

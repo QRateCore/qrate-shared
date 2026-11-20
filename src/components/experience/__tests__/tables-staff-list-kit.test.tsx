@@ -179,6 +179,64 @@ describe('Staff with a list kit', () => {
   });
 });
 
+describe('Staff toolbar variant (owner v2 Operations › Staff, O5)', () => {
+  const m = (id: string, name: string, role: string, email = `${id}@x.test`) =>
+    ({ id, name, email, role, is_active: true } as StaffMember);
+  const staff = [m('s1', 'Daniel Park', 'server'), m('s2', 'Priya Rao', 'host'), m('s3', 'Sam Lee', 'server', 'sam@kitchen.test')];
+
+  it('puts search, role chips (only held roles) and Add staff on one row above the list', async () => {
+    const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff, count: 3 }) });
+    render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} toolbar />);
+    await screen.findByTestId('staff-row-s1');
+    const bar = screen.getByTestId('staff-toolbar');
+    expect(within(bar).getByTestId('staff-search')).toBeTruthy();
+    expect(within(bar).getByTestId('add-staff-btn').textContent).toBe('Add staff');
+    expect(within(bar).getByTestId('staff-role-server').textContent).toBe('Servers');
+    expect(within(bar).getByTestId('staff-role-host').textContent).toBe('Hosts');
+    expect(within(bar).queryByTestId('staff-role-chef')).toBeNull();
+    expect(screen.getByTestId('staff-avatar-s1').textContent).toBe('DP');
+  });
+
+  it('filters by role and by name or email, and says when nothing matches', async () => {
+    const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff, count: 3 }) });
+    render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} toolbar />);
+    await screen.findByTestId('staff-row-s1');
+    await userEvent.click(screen.getByTestId('staff-role-server'));
+    expect(screen.getByTestId('staff-role-server').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByTestId('staff-row-s2')).toBeNull();
+    expect(screen.getByTestId('staff-row-s1')).toBeTruthy();
+    expect(screen.getByTestId('staff-row-s3')).toBeTruthy();
+    await userEvent.type(screen.getByTestId('staff-search'), 'kitchen');
+    expect(screen.queryByTestId('staff-row-s1')).toBeNull();
+    expect(screen.getByTestId('staff-row-s3')).toBeTruthy();
+    await userEvent.click(screen.getByTestId('staff-role-host'));
+    expect(screen.queryByTestId('staff-row-s3')).toBeNull();
+    await userEvent.click(screen.getByTestId('staff-role-all'));
+    await userEvent.clear(screen.getByTestId('staff-search'));
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+  });
+
+  it('opens Add staff from the toolbar and says "Remove staff" in the drawer', async () => {
+    const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff, count: 3 }), deleteStaff: vi.fn() });
+    render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} toolbar />);
+    await userEvent.click(await screen.findByTestId('add-staff-btn'));
+    expect(await screen.findByTestId('add-staff-modal')).toBeTruthy();
+    await userEvent.click(screen.getByText('Close dialog'));
+    await userEvent.click(screen.getByTestId('staff-row-s2'));
+    expect((await screen.findByTestId('staff-remove')).textContent).toBe('Remove staff');
+  });
+
+  it('without the toolbar flag nothing changes (waiter / admin / Experience tab)', async () => {
+    const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff, count: 3 }), deleteStaff: vi.fn() });
+    render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} />);
+    await screen.findByTestId('staff-row-s1');
+    expect(screen.queryByTestId('staff-toolbar')).toBeNull();
+    expect(screen.queryByTestId('staff-avatar-s1')).toBeNull();
+    await userEvent.click(screen.getByTestId('staff-row-s2'));
+    expect((await screen.findByTestId('staff-remove')).textContent).toBe('Remove from team');
+  });
+});
+
 describe('a slow table read never undoes a local write', () => {
   it('keeps a deleted table gone when an older read resolves after the delete', async () => {
     // Mount reads resolve normally. Then Regenerate QR starts a TABLES re-read
