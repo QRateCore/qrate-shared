@@ -45,6 +45,20 @@ vi.mock('../../../../hooks/useIsMobile', () => ({
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
+/**
+ * Set a field's text in ONE change event (same helper as EditModal.wine.test).
+ * `userEvent.type` fires one event per character and EditModal (~6k lines)
+ * re-renders on each, so long strings pushed tests past the 5 s timeout under
+ * full-suite load. These tests pin what is saved, not per-keystroke behaviour.
+ */
+function typeInto(el: HTMLElement, text: string) {
+  const field = el as HTMLInputElement | HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: field.value + text } });
+}
+function setText(el: HTMLElement, text: string) {
+  fireEvent.change(el, { target: { value: text } });
+}
+
 function makeDishItem(overrides: Partial<MenuItemDisplay> = {}): MenuItemDisplay {
   return {
     id: 'item-1',
@@ -942,9 +956,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
     renderModal({ item: makeDishItem({ name: 'Old Name' }), service, onComplete });
 
     const nameInput = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.tripleClick(nameInput);
-    await user.keyboard('{Backspace}');
-    await user.type(nameInput, 'Truffle Pasta');
+    setText(nameInput, 'Truffle Pasta');
 
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
@@ -963,9 +975,7 @@ describe('EditModal — onComplete propagates the server response (PDD 2026-05-1
     });
 
     const descInput = screen.getByTestId('edit-description-input') as HTMLTextAreaElement;
-    await user.tripleClick(descInput);
-    await user.keyboard('{Backspace}');
-    await user.type(descInput, 'Rich and creamy');
+    setText(descInput, 'Rich and creamy');
 
     await user.click(screen.getByTestId('edit-save-btn'));
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
@@ -1369,7 +1379,7 @@ describe('EditModal — deferred dish association for new addons', () => {
     expect(service.updateItemModifiers).not.toHaveBeenCalled();
 
     // Fill required name + price, then save.
-    await user.type(screen.getByTestId('edit-name-input'), 'Truffle Oil');
+    typeInto(screen.getByTestId('edit-name-input'), 'Truffle Oil');
     await user.type(screen.getByTestId('edit-price-input'), '3');
     await user.click(screen.getByTestId('edit-save-btn'));
 
@@ -1418,7 +1428,7 @@ describe('EditModal — deferred dish association for new addons', () => {
 
     // Fill required fields for a dish
     const nameInput = screen.getByTestId('edit-name-input');
-    await user.type(nameInput, 'New Dish');
+    typeInto(nameInput, 'New Dish');
     const descInput = screen.getByTestId('edit-description-input');
     await user.type(descInput, 'Desc');
 
@@ -1598,8 +1608,8 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
 
     // Fill the required dish fields (on Basics), then save
     fireEvent.click(screen.getByTestId('tab-food_tags'));
-    await user.type(screen.getByTestId('edit-name-input'), 'Pad Thai');
-    await user.type(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
+    typeInto(screen.getByTestId('edit-name-input'), 'Pad Thai');
+    typeInto(screen.getByTestId('edit-description-input'), 'Rice noodles, peanuts, lime');
     await user.click(screen.getByTestId('edit-save-btn'));
 
     await waitFor(() => {
@@ -1608,11 +1618,11 @@ describe('EditModal — deferred dietary/allergen tags for new dish items', () =
 
     // Both draft selections flushed against the real DB id via setItemTags
     // (PR 3 of allergens/dietary consolidation: single PATCH replaces the
-    // per-tag addTag loop).
-    expect(dietary.setItemTags).toHaveBeenCalledWith('rest-1', 'real-dish-42', {
+    // per-tag addTag loop). The flush follows the awaited create, so wait.
+    await waitFor(() => expect(dietary.setItemTags).toHaveBeenCalledWith('rest-1', 'real-dish-42', {
       allergens: ['peanuts'],
       dietary: ['vegan'],
-    });
+    }));
   });
 });
 
@@ -1826,8 +1836,7 @@ describe('EditModal — cloneMode name validation gate', () => {
     const user = userEvent.setup();
     renderClone(vi.fn());
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, 'Grilled Chicken');
+    setText(input, 'Grilled Chicken');
     const helper = screen.getByTestId('edit-name-error');
     expect(helper.textContent).toMatch(/must differ from the source/i);
     expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(true);
@@ -1837,8 +1846,7 @@ describe('EditModal — cloneMode name validation gate', () => {
     const user = userEvent.setup();
     renderClone(vi.fn());
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, 'COPY of Foo');
+    setText(input, 'COPY of Foo');
     const helper = screen.getByTestId('edit-name-error');
     expect(helper.textContent).toMatch(/cannot contain ['"]Copy['"]/i);
     expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(true);
@@ -1848,8 +1856,7 @@ describe('EditModal — cloneMode name validation gate', () => {
     const user = userEvent.setup();
     renderClone(vi.fn());
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, 'Spicy Grilled Chicken');
+    setText(input, 'Spicy Grilled Chicken');
     expect(screen.queryByTestId('edit-name-error')).not.toBeInTheDocument();
     expect((screen.getByTestId('edit-clone-save-btn') as HTMLButtonElement).disabled).toBe(false);
   });
@@ -1884,8 +1891,7 @@ describe('EditModal — cloneMode Save Copy round-trip', () => {
       </MenuManagerServiceProvider>,
     );
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, 'Spicy Grilled Chicken');
+    setText(input, 'Spicy Grilled Chicken');
     await user.click(screen.getByTestId('edit-clone-save-btn'));
 
     await waitFor(() => expect(onCloneSave).toHaveBeenCalledTimes(1));
@@ -1921,8 +1927,7 @@ describe('EditModal — cloneMode Save Copy round-trip', () => {
       </MenuManagerServiceProvider>,
     );
     const input = screen.getByTestId('edit-name-input') as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, 'Spicy Grilled Chicken');
+    setText(input, 'Spicy Grilled Chicken');
     await user.click(screen.getByTestId('edit-clone-save-btn'));
 
     const banner = await screen.findByTestId('edit-clone-error');

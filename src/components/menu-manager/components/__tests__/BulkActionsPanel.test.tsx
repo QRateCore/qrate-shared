@@ -951,7 +951,7 @@ describe('BulkActionsPanel — Grouping "Optional 1" preset (STR-985)', () => {
     );
     // Grouping tab is opt-in — rendered because onBulkApplyGrouping is wired.
     await user.click(screen.getByTestId('bulk-tab-grouping'));
-    await user.type(screen.getByTestId('bulk-grouping-name-input'), 'Sub Choices');
+    fireEvent.change(screen.getByTestId('bulk-grouping-name-input'), { target: { value: 'Sub Choices' } });
     await user.click(screen.getByTestId('bulk-grouping-rule-preset-optionalOne'));
     await user.click(screen.getByTestId('bulk-apply'));
     expect(onBulkApplyGrouping).toHaveBeenCalledWith(
