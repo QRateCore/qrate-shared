@@ -308,3 +308,14 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   submodule (owner/admin/waiter/pos `packages/shared`, owner/admin `packages/shared-design`, ...). Before
   PASSing a diff that moves a pointer, check it against the submodule's own remote as in C6. Order: rebase +
   push the submodule commits, repoint the superproject at the PUSHED SHAs, then review/push it.
+- **G15 A gate change bumps `GATE_VERSION` above EVERY repo's remote copy** (2026-11-19, Avi;
+  `gate-version-collision`). Parallel sessions change the gate on the same day, and two different
+  `2026-11-19.1`s collided. Before PASSing a diff that bumps `GATE_VERSION`, read it on the default branch
+  of EVERY repo sync_gate targets (remote matches its `QRATE_REMOTE`: QRateCore/* and qrate-builder/*):
+  in each checkout `git fetch origin <default>`, confirm `git ls-remote origin refs/heads/<default>` equals
+  `origin/<default>` (else the ref is stale; fetch again), then
+  `git show origin/<default>:.claude/review/qrate_review.py | grep GATE_VERSION` (qrate-recommender's
+  default is `master`). For a repo with no local checkout, `git clone --bare --filter=blob:none` it into the
+  scratchpad and `git show` there. Never `gh api …/contents` (gate-denied). The new value must be STRICTLY
+  greater than the highest found, and the change must not drop another session's checklist entry. Lower or
+  equal ⇒ **P1**: the builder rebases, re-merges the other change, and bumps again.
