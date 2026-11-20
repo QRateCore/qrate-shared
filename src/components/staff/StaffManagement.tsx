@@ -462,13 +462,17 @@ function StaffListView({
     [staff],
   );
   const activeRole = roleFilter !== 'all' && !roles.includes(roleFilter as StaffRole) ? 'all' : roleFilter;
+  // A chosen role that no one holds any more falls back to All for good, so
+  // adding someone with that role later does not silently re-apply the filter.
+  useEffect(() => { if (activeRole !== roleFilter) setRoleFilter('all'); }, [activeRole, roleFilter]);
   const q = query.trim().toLowerCase();
   const rows = toolbar
     ? staff.filter(m => (activeRole === 'all' || m.role === activeRole)
-        && (!q || m.name.toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q)))
+        && (!q || (m.name ?? '').toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q)))
     : staff;
   const filtered = toolbar && staff.length > 0 && rows.length === 0;
-  const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
+  // restaurant_owners.name is nullable (self-signup rows insert NULL): fall back to the email.
+  const initials = (m: StaffMember) => ((m.name ?? '').trim() || (m.email ?? '')).split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || '?';
   const columns: ListKitColumn<StaffMember>[] = [
     {
       key: 'name', header: 'Name', width: 'minmax(180px,1.2fr)',
@@ -476,7 +480,7 @@ function StaffListView({
         <span className="inline-flex items-center gap-2.5 min-w-0">
           <span aria-hidden="true" data-testid={`staff-avatar-${m.id}`}
             className="inline-flex items-center justify-center shrink-0 w-7 h-7 rounded-full bg-surface2 text-ink text-[11px] font-bold">
-            {initials(m.name)}
+            {initials(m)}
           </span>
           <span className="font-semibold overflow-hidden text-ellipsis">{m.name}</span>
         </span>

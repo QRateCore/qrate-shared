@@ -226,6 +226,37 @@ describe('Staff toolbar variant (owner v2 Operations › Staff, O5)', () => {
     expect((await screen.findByTestId('staff-remove')).textContent).toBe('Remove staff');
   });
 
+  it('a staff row with no name renders (initials from the email) and search still works', async () => {
+    const noName = { ...m('s9', 'x', 'server', 'olu@x.test'), name: null as unknown as string };
+    const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff: [noName, staff[1]], count: 2 }) });
+    render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} toolbar />);
+    expect((await screen.findByTestId('staff-avatar-s9')).textContent).toBe('O');
+    await userEvent.type(screen.getByTestId('staff-search'), 'priya');
+    expect(screen.queryByTestId('staff-row-s9')).toBeNull();
+    expect(screen.getByTestId('staff-row-s2')).toBeTruthy();
+  });
+
+  it('a role filter whose last member is removed falls back to All for good', async () => {
+    let list = [...staff];
+    const getStaff = vi.fn().mockImplementation(() => Promise.resolve({ staff: list, count: list.length }));
+    const deleteStaff = vi.fn().mockImplementation((_r: string, id: string) => { list = list.filter(x => x.id !== id); return Promise.resolve(); });
+    const svc = makeService([], { getStaff, deleteStaff });
+    const { rerender } = render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} toolbar />);
+    await screen.findByTestId('staff-row-s1');
+    await userEvent.click(screen.getByTestId('staff-role-host'));
+    await userEvent.click(screen.getByTestId('staff-row-s2'));
+    await userEvent.click(await screen.findByTestId('staff-remove'));
+    await userEvent.click(await screen.findByTestId('staff-remove-confirm'));
+    await waitFor(() => expect(screen.queryByTestId('staff-role-host')).toBeNull());
+    expect(screen.getByTestId('staff-role-all').getAttribute('aria-pressed')).toBe('true');
+    // A new host arrives on the next read (as after Add staff): the list stays on All.
+    list = [...list, m('s4', 'Hana Ito', 'host')];
+    rerender(<StaffManagement restaurantId="r1b" service={svc} listKit={kit} toolbar />);
+    expect(await screen.findByTestId('staff-row-s4')).toBeTruthy();
+    expect(screen.getByTestId('staff-row-s1')).toBeTruthy();
+    expect(screen.getByTestId('staff-role-all').getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('without the toolbar flag nothing changes (waiter / admin / Experience tab)', async () => {
     const svc = makeService([], { getStaff: vi.fn().mockResolvedValue({ staff, count: 3 }), deleteStaff: vi.fn() });
     render(<StaffManagement restaurantId="r1" service={svc} listKit={kit} />);
