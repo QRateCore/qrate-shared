@@ -153,6 +153,22 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   classic builder (admin, waiter) changes too. Check the classic `MenuManagerClient` props still reach the
   old path. *Why: grip-only sub-category drag first landed ungated and would have changed admin and waiter
   on their next submodule bump.*
+- **C10 A testid that is new, renamed or newly rendered somewhere ⇒ grep `e2e/` (and the canary) for ABSENCE
+  asserts and wide selectors on it** (2026-11-21, Avi; `stale-e2e-assert-after-ui-change`,
+  `e2e-contradictory-assertion-after-ui-change`, recurring). **Trigger:** any `+`/`-` line that carries a test
+  id in ANY spelling — `data-testid`, a `testId=` / `dataTestId=` / `*TestId=` prop handed to a shared component,
+  `accessibilityIdentifier` — or any changed line that alters WHEN or WHERE an element carrying one renders
+  (its `&&` / ternary / `if … return null` / `hidden` condition, or mounting it in a new window or state).
+  Run `git diff <base>..HEAD | grep -nE '^[+-].*([dD]ata-?[tT]est-?[iI]d|[tT]est[iI]d=|accessibilityIdentifier)'`,
+  then read the diff for condition-only changes. A pre-existing id rendered somewhere new counts: in 8491275a
+  `testId="mw-groups-modal-required"` (a prop, not `data-testid`) was newly shown in the Custom group window,
+  and an owner E2E asserted it absent. A templated id (`` data-testid={`mw-item-groups-row-${tk}`} ``) creates a
+  family, so treat it as a prefix. For every id the trigger finds, search the repo's `e2e/` specs and helpers
+  (and `git -C qrate-canary grep -n … origin/main` if canary specs drive that surface) for (a) assertions that
+  it is ABSENT — `toHaveCount(0)`, `not.toBeVisible()`, `not.toBeAttached()`, "no X switch" checks — that
+  would now fail, and (b) prefix / attribute / regex selectors (`[data-testid^="…"]`, `[data-testid*="…"]`,
+  `getByTestId(/…/)`) that would now ALSO match the new element and change a count or trip strict mode. Each
+  hit is fixed in the same change, or **P1 BLOCK** (E2E-Dev goes red).
 
 ## D. Cross-repo contracts
 
