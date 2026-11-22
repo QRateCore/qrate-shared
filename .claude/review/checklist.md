@@ -57,6 +57,16 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   *Why: 2026-11-12 a review passed an owner change on targeted vitest files while owner E2E-Dev had 40
   reds (34 pre-existing), and a pre-existing red in the same `describe.serial` spec aborted the new
   tests so they never ran.*
+  **Gate-only syncs list repo health first** (2026-11-22, Avi; from the 2026-11-21.1 rollout). Before a
+  review of a diff that touches only the gate files (`.claude/review/`, `.claude/agents/qrate-reviewer.md`,
+  `.claude/rules/qrate-code-review-gate.md`, the gate hooks in `.claude/settings.json`) in more than one
+  repo, the brief lists, for EVERY repo in the sync, its latest dev pipeline execution (id, status,
+  source sha) as the CI / unit-test result, and its latest E2E-Dev run that actually ran (or "no E2E-Dev
+  stage"). A repo that is red is left out of the sync up front, with the reason in the brief, or fixed
+  first — it is not left for the reviewer to find as a BLOCK mid-review. A gate-only sync brief without
+  this list is **P2**, and any red repo still in the batch is P1 under (b). *Why: in the 21.1 round three
+  repos (qrate-core, qrate-engineering-team, qrate-patron-webapp) were found red only during review,
+  which held the whole batch.*
 - **A6t Timing-budget reds under load** (2026-11-16, Avi; trap `full-suite-red-perf-budget-under-load`,
   recurring). A timing-budget test (a perf budget such as "renders in <200 ms", or a 5 s test timeout)
   that fails ONLY in a saturated full run is rerun ON ITS OWN at the same HEAD, on a machine that is not
@@ -163,7 +173,18 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   then read the diff for condition-only changes. A pre-existing id rendered somewhere new counts: in 8491275a
   `testId="mw-groups-modal-required"` (a prop, not `data-testid`) was newly shown in the Custom group window,
   and an owner E2E asserted it absent. A templated id (`` data-testid={`mw-item-groups-row-${tk}`} ``) creates a
-  family, so treat it as a prefix. For every id the trigger finds, search the repo's `e2e/` specs and helpers
+  family, so treat it as a prefix.
+  **Data-only family members** (2026-11-22, Avi; deferred P3 from the 21.1 review): a family also gains a
+  member when a diff only adds an entry (or renames a key) in an array, map, object, enum or union that
+  feeds a templated id — adding `['notes', 'Notes']` to the tab list in `MappingDrawer.tsx` that renders
+  `` tid(`tab-${key}`) `` creates `bk-config-tab-notes` (prefix from the `PnlView` caller; `bk-mapping-` by default) with no testid on
+  any changed line. So also run
+  `git diff --name-only <base>..HEAD | xargs git grep -lE '(est-?[iI]d|tid\().*\$\{' HEAD --` (touched files
+  that render a templated id) and read every `+`/`-` data-entry line in them; for an entry changed in a
+  different file (a constants module), `git grep -n '<CONST_NAME>' HEAD` and check whether a consumer
+  renders a templated id from it. The reviewer resolves the family prefix (follow helpers such as
+  `tid = s => \`${testIdPrefix}-${s}\`` and the caller's `testIdPrefix`) and searches it as below.
+  For every id the trigger finds, search the repo's `e2e/` specs and helpers
   (and `git -C qrate-canary grep -n … origin/main` if canary specs drive that surface) for (a) assertions that
   it is ABSENT — `toHaveCount(0)`, `not.toBeVisible()`, `not.toBeAttached()`, "no X switch" checks — that
   would now fail, and (b) prefix / attribute / regex selectors (`[data-testid^="…"]`, `[data-testid*="…"]`,
@@ -335,3 +356,13 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   scratchpad and `git show` there. Never `gh api …/contents` (gate-denied). The new value must be STRICTLY
   greater than the highest found, and the change must not drop another session's checklist entry. Lower or
   equal ⇒ **P1**: the builder rebases, re-merges the other change, and bumps again.
+- **G16 Every new or changed checklist rule is dry-run on the commit that motivated it** (2026-11-22, Avi;
+  from the 21.1 round, where the first two C10 wordings did not fire on 8491275a). Applies to any diff that
+  adds a rule to, or changes the trigger or text of a rule in, `checklist.md` (find them with
+  `git diff <base>..HEAD -- .claude/review/checklist.md | grep -nE '^[+-]- \*\*[A-G][0-9]+'` plus the changed
+  lines inside each rule). Before the change ships, the builder runs each such rule's EXACT trigger or grep,
+  as written in the new text, against the commit that motivated it (or, when the motivating case is a
+  hypothetical, a scratch commit that reproduces it), and records in the commit message, per rule: the
+  command, the sha it ran on and the hit (file:line). A rule with no motivating commit names one before it
+  ships. A rule that does not fire on its own motivating case cannot ship: missing or failed dry-run
+  evidence ⇒ **P1**. The reviewer re-runs at least one recorded dry run.

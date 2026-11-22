@@ -87,7 +87,10 @@ that way: judge the diff on its own.
       exact command plus its full summary output, if it was run at the HEAD you are reviewing (check
       the sha they cite). For a diff that touches only files no test, build or CI step reads (the
       `.claude/` gate files, docs), the CI stage result of the dev pipeline on the upstream tip counts,
-      cited by pipeline execution id. A repo with no test suite at all: say so explicitly.
+      cited by pipeline execution id. A gate-only sync across repos must arrive with the builder's
+      per-repo health list (latest dev run + E2E-Dev per repo; red repos left out with a reason —
+      checklist A6); check it, and treat a missing list as P2. A repo with no test suite at all: say so
+      explicitly.
    b. **Any red test is a P1 BLOCK, whether or not this diff caused it.** "Pre-existing", "flaky",
       "unrelated" are not exceptions. Two exceptions only: (1) a diff whose purpose is fixing those reds,
       which must leave the suite STRICTLY greener (fewer failures, no new ones) — show before/after

@@ -76,10 +76,15 @@ It is **enforced by hooks that ship inside every repo**. Agents don't have to re
 ## Changing the gate itself (keep every repo identical)
 
 The gate files are **identical in every QRate repo**. To change any of them:
-1. Edit the files in one repo, and bump `GATE_VERSION` in `qrate_review.py`.
-2. Run `python3 .claude/review/sync_gate.py --from . --to <dir containing all the repo checkouts>`.
+1. Edit the files in one repo, and bump `GATE_VERSION` in `qrate_review.py` above every repo's remote
+   copy (checklist G15).
+2. Dry-run every new or changed checklist rule on the commit that motivated it and record the command,
+   sha and hit in the commit message (checklist G16).
+3. List each repo's health (latest dev pipeline run and E2E-Dev) and leave red repos out, or fix them
+   first (checklist A6, gate-only syncs).
+4. Run `python3 .claude/review/sync_gate.py --from . --to <dir containing all the repo checkouts>`.
    It copies the gate files into every sibling QRate repo and merges the hooks into each
    `.claude/settings.json`. It refuses to overwrite a newer `GATE_VERSION`.
-3. Commit in each repo. Each of those commits goes through the gate like any other change.
+5. Commit in each repo. Each of those commits goes through the gate like any other change.
 
 Pushes made by hand in a terminal outside Claude Code are not gated.
