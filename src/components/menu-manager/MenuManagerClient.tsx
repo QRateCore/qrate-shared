@@ -727,6 +727,17 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   const [structureByMenu, setStructureByMenu] = useState<Record<string, MenuStructure>>({});
   // Bumped after every structure write so the loader re-fetches the active menu.
   const [structureRefreshKey, setStructureRefreshKey] = useState(0);
+  // Host editor (onEditItem): this client's handleEditComplete never runs, so
+  // a save / Menu pricing change / delete made in the host's editor reaches the
+  // builder only through the host's refresh. Re-derive the active menu's
+  // structure on each refresh edge too, or a dish taken off (or filed on) this
+  // menu in the editor stays where it was in the tree until a reload.
+  const hostRefreshPrevRef = useRef(refreshing);
+  useEffect(() => {
+    const ended = hostRefreshPrevRef.current && !refreshing;
+    hostRefreshPrevRef.current = refreshing;
+    if (ended && hostEditItem && subcatV2) setStructureRefreshKey((k) => k + 1);
+  }, [refreshing, hostEditItem, subcatV2]);
 
   // UI state
   const [activeMenuId, setActiveMenuId] = useState<string | null>(() => {

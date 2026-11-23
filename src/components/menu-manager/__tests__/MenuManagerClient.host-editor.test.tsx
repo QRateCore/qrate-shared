@@ -5,7 +5,8 @@
  * Owner Menu workspace (2026-11-22, Avi: "the edit modal has to be consistent
  * wherever it is opened up from"): every builder / pool edit and the
  * `openItemId` deep link go to the host's editor, and this client's own
- * EditModal never mounts. Without the prop (admin, waiter) nothing changes.
+ * EditModal never mounts, and a host refresh re-reads the active menu's
+ * structure. Without the prop (admin, waiter) nothing changes.
  *
  * (Factories / mocks copied from MenuManagerClient.edit-drawer.test.tsx.)
  *
@@ -232,5 +233,27 @@ describe('MenuManagerClient — onEditItem (host editor)', () => {
   it('without onEditItem the openItemId deep link still opens the built-in EditModal', async () => {
     const { getByTestId } = renderClient({ openItemId: 'B' });
     expect(getByTestId('edit-modal-mock')).toBeTruthy();
+  });
+  it('a host refresh (refreshing true → false) re-reads the active menu structure, so an edit made in the host editor shows in the tree', async () => {
+    const svc = { ...makeService(), getMenuStructure: vi.fn().mockResolvedValue({ menu_id: 'menu-1', courses: [] }), assignItemToSubcategory: vi.fn() } as MenuManagerService;
+    const props = { service: svc, restaurantId: 'r1', initialMenus: [makeMenu('menu-1')], editItemDrawerMode: true } as const;
+    const { rerender } = render(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing={false} onEditItem={vi.fn()} />);
+    await act(async () => {});
+    const before = (svc.getMenuStructure as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+    await act(async () => { rerender(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing onEditItem={vi.fn()} />); });
+    await act(async () => { rerender(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing={false} onEditItem={vi.fn()} />); });
+    expect((svc.getMenuStructure as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('without onEditItem a refresh edge does not re-read the structure (admin / waiter unchanged)', async () => {
+    const svc = { ...makeService(), getMenuStructure: vi.fn().mockResolvedValue({ menu_id: 'menu-1', courses: [] }), assignItemToSubcategory: vi.fn() } as MenuManagerService;
+    const props = { service: svc, restaurantId: 'r1', initialMenus: [makeMenu('menu-1')], editItemDrawerMode: true } as const;
+    const { rerender } = render(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing={false} />);
+    await act(async () => {});
+    const before = (svc.getMenuStructure as ReturnType<typeof vi.fn>).mock.calls.length;
+    await act(async () => { rerender(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing />); });
+    await act(async () => { rerender(<MenuManagerClient {...props} initialItems={[makeItem('A')]} refreshing={false} />); });
+    expect((svc.getMenuStructure as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before);
   });
 });
