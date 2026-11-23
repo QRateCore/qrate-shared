@@ -571,6 +571,14 @@ interface Props {
   /** EditModal shell for this host ('v5' = owner Menu workspace design; default classic). */
   editModalShell?: 'classic' | 'v5';
   /**
+   * The host opens the item editor itself (owner Menu workspace, 2026-11-22:
+   * ONE Edit item wherever a dish is opened from). Every builder / pool edit
+   * — row, tile, ⋯, mobile row, pool card — and the `openItemId` deep link
+   * call this INSTEAD of this client's own EditModal, which then never opens.
+   * Pass a STABLE callback. Admin / waiter leave it unset (own EditModal).
+   */
+  onEditItem?: (itemId: string) => void;
+  /**
    * Receives the menu-level actions (open settings / clone) once this client
    * has mounted, and `null` on unmount. Pass a STABLE callback (a useState
    * setter is ideal) — it is an effect dependency.
@@ -621,7 +629,7 @@ function isOnMenu(item: MenuItemDisplay, menuId: string | null | undefined): boo
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onCreateLabel, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, editModalShell = 'classic', onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
+export default function MenuManagerClient({ service, restaurantId, initialItems, initialMenus, onRefresh, refreshing = false, openItemId, initialMenuId, initialScrollToItemId, showMenuStatsBanner = false, overlapTotal = 0, onOverlapPillClick, onConfirmRecommendationDrop, onBringIntoMenu, onConfirmItemRemoval, byoHandlers, showAddons = true, showRecommendations = true, showAddGrouping = true, perMenuSides, showIncludeZones = true, rowChrome, onConfirmIncludeDrop, showVisibilityFilter = true, dietaryTagService, onCreateLabel, customAllergens, customDietary, allergenDefaults, dietaryDefaults, onBulkSpice, onBulkDietary, onBulkSweetness, onBulkServingSizes, onBulkEnrich, onBulkApplyGrouping, onBulkRemoveGrouping, loadGroupingsForItem, onBulkAddMembersToGrouping, onBulkAddSidesToMenuItems, onBulkRemoveSidesFromMenuItems, onBulkItemInfoForMenuItems, onBulkSetPriceForMenuItems, onBulkSetBoostForMenuItems, onBulkSetChefsSpecialForMenuItems, onBulkSetPortionForMenuItems, loadPerMenuSides, onBulkSelectionClearedByTabChange, onSweetnessUpdate, onHeatSpiceUpdate, heatLabels, sweetnessLabels, imageLibrarySlot, groupingsSlot, pairingsSlot, editItemDrawerMode = false, showItemTypeFilter = false, onEnrichItem, cloneMenuItem, builderSearchQuery, builderHighlightQuery, builderWorkspaceMode = false, externalBulkSelection, onExternalBulkSelectionChange, onBulkPanelOpenChange, poolGroupByRawCategory = false, tabBarPortalTarget = null, wrapMenuTabs = false, expandAllPortalTarget = null, hidePool = false, editModalShell = 'classic', onEditItem: hostEditItem, onMenuActionsReady, fetchWineEnrichmentStatus, retryWineEnrichment, posLink }: Props) {
   const trackAction = useTrackAction();
   const isMobile = useIsMobile();
 
@@ -852,6 +860,12 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
     selectAll: _selectAll,
   } = useRangeSelection();
   const [editItemId, setEditItemId] = useState<string | null>(null);
+  // Where a builder / pool "edit this dish" goes: the host's editor when it
+  // supplies one (owner workspace), else this client's own EditModal.
+  const openItemEditor = useCallback((id: string) => {
+    if (hostEditItem) hostEditItem(id);
+    else setEditItemId(id);
+  }, [hostEditItem]);
   // Tell the host which item's editor is open, so it can load that item's POS
   // linkage. The Menu Builder's list projection has no POS columns, so the
   // editor cannot read the status off the item the way the Food Items drawer
@@ -1238,10 +1252,20 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
   );
 
   // Open edit modal for a specific item when navigated from another page (e.g. Patron Engagement)
+  // With a host editor the deep link opens it ONCE per id: this effect re-runs
+  // on every items refresh, and the host's editor (unlike setEditItemId) is
+  // not idempotent — it would reopen after the owner closed it.
+  const deepLinkOpenedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!openItemId || items.length === 0) return;
-    setEditItemId(openItemId);
-  }, [openItemId, items]);
+    if (!hostEditItem) {
+      setEditItemId(openItemId);
+      return;
+    }
+    if (deepLinkOpenedRef.current === openItemId) return;
+    deepLinkOpenedRef.current = openItemId;
+    hostEditItem(openItemId);
+  }, [openItemId, items, hostEditItem]);
 
   // Scroll-to-item navigation — used by the "Appears in" menu chips on the
   // food-item profile drawer. The MenuBuilder scroll effect queries the DOM
@@ -3576,7 +3600,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSelectAll: handleSelectAll,
             onClearSelect: handleClearSelect,
             onSelectCategoryItems: handleSelectCategoryItems,
-            onEditItem: setEditItemId,
+            onEditItem: openItemEditor,
             onOpenBulk: (mode) => setBulkMode(mode),
             onOpenBulkModifiers: () => setBulkModifiersOpen(true),
             onDragStart: handleDragStart,
@@ -3631,7 +3655,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onCloneMenu: handleCloneMenu,
             onEditMenu: setEditMenuId,
             onRemoveItemFromMenu: handleRemoveItemFromMenu,
-            onEditItem: setEditItemId,
+            onEditItem: openItemEditor,
             onUpdateModifiers: handleUpdateModifiers,
             onBringIntoMenu,
             // STR-858 — mobile-only 1-tap 86/restore in the builder row (desktop
@@ -3752,7 +3776,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onCloneMenu={handleCloneMenu}
             onEditMenu={setEditMenuId}
             onRemoveItemFromMenu={handleRemoveItemFromMenu}
-            onEditItem={setEditItemId}
+            onEditItem={openItemEditor}
             // The desktop row's ⋯ menu offers "Hide from guests / Show to
             // guests" — the same global 86 the mobile row button toggles.
             onToggleItemActive={handleToggleItemActive}
@@ -3851,7 +3875,7 @@ export default function MenuManagerClient({ service, restaurantId, initialItems,
             onSelectAll={handleSelectAll}
             onClearSelect={handleClearSelect}
             onSelectCategoryItems={handleSelectCategoryItems}
-            onEditItem={setEditItemId}
+            onEditItem={openItemEditor}
             onOpenBulk={(mode) => setBulkMode(mode)}
             onOpenBulkModifiers={() => setBulkModifiersOpen(true)}
             onDragStart={handleDragStart}
