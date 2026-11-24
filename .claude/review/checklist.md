@@ -113,6 +113,30 @@ output must say PASS / FAIL / N/A — never silently skip a triggered check.
   already has the column before approving). **Degrade wording** (2026-11-16, Avi; trap
   `code-before-schema-window`): a reader that degrades to an empty 200 in the cdk→db-init window is P2
   (silent wrong data); a reader that 500s is P1. Either way, the commit message says which.
+  **Prod exposure** (2026-11-24, Avi; trap `code-before-schema-window`, recurring; from the waiter PIN
+  sign-in review, core d8ca78c8). B10 fires when one diff adds a column AND reads it: the column is named by
+  `git diff <base>..HEAD -- backend/lambdas/database-init/ | grep -nE '^\+.*ADD COLUMN IF NOT EXISTS'`, and its
+  RUNTIME readers are the files whose added lines name it:
+  `git diff <base>..HEAD -- 'backend/lambdas/' 'layers/' ':!backend/lambdas/database-init/*' ':!*/tests/*'
+  | awk -v c=<column> '/^\+\+\+ b\//{f=substr($0,7)} /^\+[^+]/ && $0 ~ ("(^|[^A-Za-z0-9_])" c "([^A-Za-z0-9_]|$)") {print f}' | sort -u`.
+  The window is **P1 by default** (P2 if the reader degrades to an empty 200). It drops to **P2 only when the
+  commit body PROVES no prod request can reach any reader**, per reader, with commands — file or `def`
+  absence on the release branch is NOT proof (a new helper or module is called from routes that ARE on prod;
+  a cherry-picked train has new shas, so commit ancestry is not proof either). The proof, against the newest
+  release branch `latest=$(git ls-remote --heads origin 'refs/heads/release/*' | awk '{sub("refs/heads/","",$2); print $2}' | sort -V | tail -1)`
+  after `git fetch origin "$latest"`:
+  1. every caller chain from the reader up to an entry point —
+     `git grep -nE '<function|module>' HEAD -- 'backend/lambdas/' 'layers/' ':!*/tests/*'`, repeated upward
+     (every lambda dir, not only `*/src/` — the metric/analytics rollups keep their SQL in package dirs);
+  2. for each entry point, either it is a CLIENT-invoked route/dispatch that is absent on prod
+     (`git grep -nE '<route regex>' "origin/$latest" -- <handler>` prints nothing) AND no client already on
+     prod calls it, or it sits behind a guard prod traffic cannot meet, named with evidence (e.g. a request
+     header/scheme only the new client sends, plus `git grep -n` of the guard showing it returns BEFORE any DB
+     read). A SELF-triggering entry point — an EventBridge schedule, SQS/stream consumer or other event source
+     created by the same `cdk deploy` — fires in the prod window with no client, so "absent on release" is
+     never proof for it: it stays P1 unless guarded.
+  When any chain is unproven, it is prod-exposed. Either way the commit body states the window: which
+  surface errors, in which envs, and why prod has none.
 - **B11 A new DB-backed test file is wired into CI** (2026-11-15, Avi; `db-tests-skip-in-ci`, from the
   cart-suggestions review). A new test file that skips without `TEST_DATABASE_URL` ⇒ it is added to the CI
   schema-integration step in `infrastructure-cdk-cicd/lib/cicd-core-pipeline-stack.ts`, or it never runs in
